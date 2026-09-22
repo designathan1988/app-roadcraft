@@ -129,11 +129,17 @@ export function stepAdmission(w: SimWorld): void {
         r.v.reservedConnectors = reservations.map(
           (reservation) => reservation.connector.id,
         );
-        r.v.constraints.obstacles.push({
-          gap: Math.max(0, r.d),
-          speed: 0,
-          kind: 'signal',
-        });
+        // `longitudinalConstraints` has already pushed the signal obstacle
+        // for this vehicle from the same `mustStopAtSignal` decision. Pushing
+        // a second identical one changes nothing for IDM, which takes the
+        // minimum, but it doubled every per-kind diagnostic count.
+        if (!r.v.constraints.obstacles.some((o) => o.kind === 'signal')) {
+          r.v.constraints.obstacles.push({
+            gap: Math.max(0, r.d),
+            speed: 0,
+            kind: 'signal',
+          });
+        }
         continue;
       }
 
@@ -482,7 +488,24 @@ function bankerSafeAfterGrant(
       }
     }
 
-    if (!allocation.size && !maximum.size) continue;
+    // A process that HOLDS NOTHING cannot be part of a deadlock.
+    //
+    // Deadlock needs hold-and-wait. A vehicle with no allocation is not
+    // holding a resource anyone else could be waiting for, so the system can
+    // always just decline to grant it anything and let everybody else finish.
+    // Counting its future intent as a reason to refuse somebody else models a
+    // state that cannot occur.
+    //
+    // This mattered because of where reservedConnectors comes from: the
+    // reserveOnly branch publishes a maximum claim for every vehicle stopped
+    // at a RED light, before any safety check runs. Measured on a signalised
+    // crossroads, all eleven vehicles carried a reservation while the claims
+    // table was completely empty, and 'conflict' was the single commonest
+    // reason a car with a green light was refused. A queue of cars that cannot
+    // legally move was making the junction look unsafe to the one car that
+    // could.
+    if (!allocation.size) continue;
+    if (!maximum.size) continue;
     for (const resource of allocation) {
       const owner = owners.get(resource);
       if (owner !== undefined && owner !== vehicle.id && !sharedConvoyResource(w, resource)) return false;
