@@ -325,13 +325,18 @@ function followerIn(w: SimWorld, laneId: LaneletId, rear: number, self: number):
 function gapIsSafe(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
   const rear = v.s - v.archetype.length;
 
-  for (const otherId of w.rt(target).order) {
-    const other = w.veh(otherId);
-    if (!other || other.id === v.id) continue;
+  // Every BODY in the target lane, not just its occupancy list: a vehicle
+  // still sliding out of it, and the tail of one whose front has already
+  // entered the junction, are both physically there. Measured before this: a
+  // sedan moved in beside the last ten metres of a bus that had just turned.
+  for (const body of w.bodiesIn(target)) {
+    const other = body.vehicle;
+    if (other.id === v.id) continue;
 
-    const otherRear = other.s - other.archetype.length;
-    if (other.s <= rear) {
-      const gap = rear - other.s;
+    const otherFront = body.s;
+    const otherRear = otherFront - other.archetype.length;
+    if (otherFront <= rear) {
+      const gap = rear - otherFront;
       const need = Math.max(JAM_GAP, other.driver.s0) + other.v * other.driver.T * 0.5;
       if (gap < need) return false;
     } else if (otherRear >= v.s) {

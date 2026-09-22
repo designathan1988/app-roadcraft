@@ -1,49 +1,140 @@
 import { segSeg } from '@core/intersect';
 import type { Vec2 } from '@core/vec2';
+import type { Polyline } from '@core/polyline';
 import type { NodeId } from './ids';
-import type { ConnectorId, LaneletGraph } from './lanelets';
+import type { Connector, ConnectorId, Lanelet, LaneletGraph } from './lanelets';
+import { m } from './units';
 
-export type ConflictKind = 'cross' | 'merge';
+/**
+ * `cross`: the two centrelines intersect. `merge`: both end in the same lane.
+ * `swept`: the centrelines never meet, but the BODIES driven along them do —
+ * opposing left turns that pass too close, a bus swinging its tail across the
+ * lane beside it.
+ */
+export type ConflictKind = 'cross' | 'merge' | 'swept';
+
+/**
+ * Size classes a conflict zone is measured for.
+ *
+ * World knows nothing about the fleet, so the classes are envelopes in metres
+ * and the simulation maps each archetype to the smallest one containing it
+ * (`bodyClassOf`); `tests/sim/conflictZones.spec.ts` checks every archetype
+ * fits. Three classes are enough to separate what matters: two cars in a pair
+ * of turn lanes do not touch, two buses in the same pair do.
+ */
+export type BodyClass = 0 | 1 | 2;
+export const BODY_CLASSES: readonly BodyClass[] = [0, 1, 2];
+export const BODY_CLASS_NAMES = ['small', 'car', 'heavy'] as const;
+export const BODY_ENVELOPE: readonly { readonly length: number; readonly width: number }[] = [
+  { length: m(2.2), width: m(0.9) },
+  { length: m(5.7), width: m(2.05) },
+  { length: m(12.1), width: m(2.6) },
+];
+export const HEAVY: BodyClass = 2;
+
+export function bodyClassOf(length: number, width: number): BodyClass {
+  for (const c of BODY_CLASSES) {
+    const e = BODY_ENVELOPE[c] as { length: number; width: number };
+    if (length <= e.length && width <= e.width) return c;
+  }
+  return HEAVY;
+}
+
+/**
+ * Centre-arc interval over which a body of one class on one movement overlaps
+ * the swept area of a body of another class on the other movement.
+ *
+ * Arc positions are of the BODY CENTRE along the movement, measured from the
+ * stop line: negative while the centre is still on the approach, beyond the
+ * connector length once it is on the exit lane.
+ */
+export interface Zone {
+  readonly enter: number;
+  readonly exit: number;
+}
 
 export interface ConflictPoint {
   readonly id: number;
   readonly node: NodeId;
   readonly a: ConnectorId;
   readonly b: ConnectorId;
-  /** Arc position of the point along connector `a`. */
+  /** Earliest arc position of the zone along connector `a`, body front. */
   readonly sA: number;
-  /** Arc position of the point along connector `b`. */
+  /** Earliest arc position of the zone along connector `b`, body front. */
   readonly sB: number;
   readonly kind: ConflictKind;
   readonly at: Vec2;
+  /**
+   * Zone on `a` (or `b`) for a body of class `mine` against a body of class
+   * `theirs` on the other movement, or null when those two sizes never touch.
+   */
+  zone(on: ConnectorId, mine: BodyClass, theirs: BodyClass): Zone | null;
 }
 
 export interface ConflictRef {
   readonly point: number;
-  /** Arc position along the connector holding this reference. */
+  /** Earliest front arc position of the zone, for ordering. */
   readonly s: number;
   readonly other: ConnectorId;
   readonly kind: ConflictKind;
+  /**
+   * Body-centre arc position past which a vehicle of each class has cleared
+   * the zone against ANY vehicle on the other movement. -Infinity when that
+   * class never touches it.
+   */
+  readonly exit: readonly number[];
+}
+
+/** Two movements out of the same lane: resolved by car-following, not claims. */
+export interface Diverge {
+  readonly other: ConnectorId;
+  /** Centre arc past which a body of class `mine` on the OTHER movement is clear of `theirs` on this one. */
+  otherExit(mine: BodyClass, theirs: BodyClass): number;
 }
 
 /**
- * Where two movements through a junction actually cross.
+ * Sampling step of the body centre along a movement, world units. Each sampled
+ * rectangle is lengthened by half a step at both ends, so consecutive samples
+ * overlap and a thin conflict cannot fall between two of them.
+ */
+const SWEEP_STEP = 1;
+/** Clearance kept around every body, world units (6 cm). */
+const SWEEP_MARGIN = 0.15;
+/** Broad-phase cell size, world units. */
+const CELL = 8;
+
+/**
+ * Where two movements through a junction physically conflict.
  *
- * Computed once per topology version by sampling connector centrelines, not per
- * frame. The V6 monolith ran `polylinesTooClose` — 441 distance tests plus 400
- * segment intersections per pair — inside the per-vehicle admission check,
- * twice a frame, uncached (defect 5.7). Worse, it tested a path built for a
- * DIFFERENT lane than the one the vehicle actually drove, so it invented
- * phantom conflicts that blocked green movements forever (defect 2.4).
+ * This used to be the intersection of two connector CENTRELINES, which is a
+ * point on paper and nothing on the road. Measured in seeded traffic on six
+ * junction layouts, it missed every conflict that is not a crossing of lines:
+ * opposing left turns whose bodies brush as they pass, a bus on a right turn
+ * swinging over the left turn beside it, a truck clipping a through movement
+ * on a skewed leg — and it released every claim when the REAR passed the
+ * crossing point, while the body was still half across the other lane.
  *
- * Movements that share an origin lane are excluded: those are handled by
- * ordinary car-following, not by conflict arbitration. Movements that share a
- * destination lane are included as merges.
+ * Each movement is now swept with the real body shape the renderer draws — a
+ * rectangle centred on the path and aligned to its tangent — for three size
+ * classes, and a zone is the interval of body-centre positions over which that
+ * rectangle overlaps the other movement's swept area. Claims are held until
+ * the vehicle's centre passes the zone exit for its own size, and a smaller
+ * vehicle is only held back by what could actually touch it.
+ *
+ * Built once per topology version, never per frame. The nesting of the classes
+ * (a smaller body at a centre is contained in a larger one at the same centre)
+ * is what keeps it cheap: the heavy/heavy overlap is computed first with a
+ * spatial grid, and the eight other class pairs only re-test the rectangle
+ * pairs that heavy/heavy found.
  */
 export class ConflictIndex {
   readonly points: ConflictPoint[] = [];
   /** References held by each connector, sorted by arc position. */
   readonly byConnector = new Map<ConnectorId, ConflictRef[]>();
+  /** Sibling movements from the same lane whose bodies overlap near the split. */
+  readonly diverges = new Map<ConnectorId, Diverge[]>();
+  /** Movements whose zone reaches a body still waiting behind its stop line. */
+  readonly queueIntrusions: { a: ConnectorId; b: ConnectorId; mine: BodyClass; theirs: BodyClass }[] = [];
 
   /**
    * Conflict ids are resources held by live vehicles, so their meaning must
@@ -57,32 +148,51 @@ export class ConflictIndex {
   build(graph: LaneletGraph): void {
     this.points.length = 0;
     this.byConnector.clear();
+    this.diverges.clear();
+    this.queueIntrusions.length = 0;
 
     for (const junction of graph.junctions.values()) {
       const ids = junction.connectors.slice().sort();
+      const sweeps = new Map<ConnectorId, Sweep>();
+      for (const id of ids) {
+        const c = graph.connectors.get(id);
+        if (!c) continue;
+        const sweep = sweepOf(graph, c);
+        if (sweep) sweeps.set(id, sweep);
+      }
+
       for (let i = 0; i < ids.length; i++) {
         for (let j = i + 1; j < ids.length; j++) {
           const a = graph.connectors.get(ids[i] as ConnectorId);
           const b = graph.connectors.get(ids[j] as ConnectorId);
-          if (!a || !b) continue;
+          const sa = a && sweeps.get(a.id);
+          const sb = b && sweeps.get(b.id);
+          if (!a || !b || !sa || !sb) continue;
 
-          // Same origin lane: a diverge. Car-following handles it.
-          if (a.fromLane === b.fromLane) continue;
+          const zones = pairZones(sa, sb);
+          if (!zones) continue;
 
-          const la = graph.lanelet(a.lanelet);
-          const lb = graph.lanelet(b.lanelet);
-          if (!la || !lb) continue;
-
-          if (a.toLane === b.toLane) {
-            // Shared destination: the merge point is the end of both.
-            this.add(junction.node, a.id, b.id, la.length, lb.length, 'merge', la.centre.sampleAt(la.length).p);
+          if (a.fromLane === b.fromLane) {
+            pushDiverge(this.diverges, a.id, b.id, zones, false);
+            pushDiverge(this.diverges, b.id, a.id, zones, true);
             continue;
           }
 
-          const hit = firstCrossing(la.centre.toPoints(), lb.centre.toPoints());
-          if (hit) {
-            this.add(junction.node, a.id, b.id, hit.sA, hit.sB, 'cross', hit.at);
+          this.recordIntrusions(a.id, b.id, zones);
+
+          let kind: ConflictKind = 'swept';
+          let at = zoneCentre(sa, zones);
+          if (a.toLane === b.toLane) {
+            kind = 'merge';
+            at = sa.path.sampleAt(sa.crossing.length).p;
+          } else {
+            const hit = firstCrossing(sa.crossing.centre.toPoints(), sb.crossing.centre.toPoints());
+            if (hit) {
+              kind = 'cross';
+              at = hit.at;
+            }
           }
+          this.add(junction.node, a.id, b.id, kind, at, zones);
         }
       }
     }
@@ -90,31 +200,65 @@ export class ConflictIndex {
     for (const list of this.byConnector.values()) list.sort((p, q) => p.s - q.s);
   }
 
+  private recordIntrusions(a: ConnectorId, b: ConnectorId, zones: PairZones): void {
+    for (const mine of BODY_CLASSES) {
+      for (const theirs of BODY_CLASSES) {
+        const onA = zones.get(mine, theirs, false);
+        if (onA && onA.enter + (BODY_ENVELOPE[mine]?.length ?? 0) / 2 <= 0) {
+          this.queueIntrusions.push({ a, b, mine, theirs });
+        }
+        const onB = zones.get(theirs, mine, true);
+        if (onB && onB.enter + (BODY_ENVELOPE[theirs]?.length ?? 0) / 2 <= 0) {
+          this.queueIntrusions.push({ a: b, b: a, mine: theirs, theirs: mine });
+        }
+      }
+    }
+  }
+
   private add(
     node: NodeId,
     a: ConnectorId,
     b: ConnectorId,
-    sA: number,
-    sB: number,
     kind: ConflictKind,
     at: Vec2,
+    zones: PairZones,
   ): void {
     const [lo, hi] = a < b ? [a, b] : [b, a];
-    const key = `${node}|${lo}|${hi}|${kind}`;
+    // The key is the connector pair: a pair changing from a line crossing to a
+    // swept conflict after an edit is still the same resource.
+    const key = `${node}|${lo}|${hi}`;
     let id = this.idByKey.get(key);
     if (id === undefined) {
       id = this.nextId++;
       this.idByKey.set(key, id);
     }
 
+    const sA = earliestFront(zones, false);
+    const sB = earliestFront(zones, true);
+    const point: ConflictPoint = {
+      id,
+      node,
+      a,
+      b,
+      sA,
+      sB,
+      kind,
+      at,
+      zone: (on, mine, theirs) =>
+        on === a ? zones.get(mine, theirs, false) : on === b ? zones.get(mine, theirs, true) : null,
+    };
     // Assignment rather than push preserves the stable (possibly sparse) id.
-    this.points[id] = { id, node, a, b, sA, sB, kind, at };
-    pushRef(this.byConnector, a, { point: id, s: sA, other: b, kind });
-    pushRef(this.byConnector, b, { point: id, s: sB, other: a, kind });
+    this.points[id] = point;
+    pushRef(this.byConnector, a, { point: id, s: sA, other: b, kind, exit: clearExits(zones, false) });
+    pushRef(this.byConnector, b, { point: id, s: sB, other: a, kind, exit: clearExits(zones, true) });
   }
 
   refs(connector: ConnectorId): readonly ConflictRef[] {
     return this.byConnector.get(connector) ?? [];
+  }
+
+  divergesOf(connector: ConnectorId): readonly Diverge[] {
+    return this.diverges.get(connector) ?? [];
   }
 
   /** True when the two connectors have at least one conflict point. */
@@ -122,6 +266,232 @@ export class ConflictIndex {
     for (const r of this.refs(a)) if (r.other === b) return true;
     return false;
   }
+}
+
+// ------------------------------------------------------------------ sweeps
+
+interface Sweep {
+  readonly crossing: Lanelet;
+  /** Approach, movement and exit joined, parametrised from the stop line. */
+  readonly path: { sampleAt(c: number): { p: Vec2; t: Vec2 } };
+  /** First sampled centre arc position (negative: on the approach). */
+  readonly c0: number;
+  readonly count: number;
+  /** Per sample: centre x, y and unit tangent x, y. */
+  readonly frame: Float64Array;
+  /** Broad phase of the HEAVY rectangles: cell key -> sample indices. */
+  readonly grid: Map<number, number[]>;
+}
+
+function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
+  const inbound = graph.lanelet(c.fromLane);
+  const crossing = graph.lanelet(c.lanelet);
+  const outbound = graph.lanelet(c.toLane);
+  if (!inbound || !crossing || !outbound) return null;
+
+  const path = joinedPath(inbound.centre, crossing.centre, outbound.centre);
+  const heavy = BODY_ENVELOPE[HEAVY] as { length: number; width: number };
+  const c0 = -heavy.length / 2;
+  const c1 = crossing.length + heavy.length / 2;
+  const count = Math.max(2, Math.ceil((c1 - c0) / SWEEP_STEP) + 1);
+  const frame = new Float64Array(count * 4);
+  const grid = new Map<number, number[]>();
+
+  for (let i = 0; i < count; i++) {
+    const f = path.sampleAt(c0 + i * SWEEP_STEP);
+    frame[i * 4] = f.p.x;
+    frame[i * 4 + 1] = f.p.y;
+    frame[i * 4 + 2] = f.t.x;
+    frame[i * 4 + 3] = f.t.y;
+    const [hl, hw] = halfExtent(HEAVY);
+    const ex = Math.abs(f.t.x) * hl + Math.abs(f.t.y) * hw;
+    const ey = Math.abs(f.t.y) * hl + Math.abs(f.t.x) * hw;
+    for (let gx = Math.floor((f.p.x - ex) / CELL); gx <= Math.floor((f.p.x + ex) / CELL); gx++) {
+      for (let gy = Math.floor((f.p.y - ey) / CELL); gy <= Math.floor((f.p.y + ey) / CELL); gy++) {
+        const key = cellKey(gx, gy);
+        const list = grid.get(key);
+        if (list) list.push(i);
+        else grid.set(key, [i]);
+      }
+    }
+  }
+  return { crossing, path, c0, count, frame, grid };
+}
+
+const cellKey = (x: number, y: number): number => (x + 32768) * 65536 + (y + 32768);
+
+function halfExtent(cls: BodyClass): [number, number] {
+  const e = BODY_ENVELOPE[cls] as { length: number; width: number };
+  return [e.length / 2 + SWEEP_STEP / 2 + SWEEP_MARGIN, e.width / 2 + SWEEP_MARGIN];
+}
+
+/** Whether sample `i` is a legal centre for a body of this class. */
+function inRange(s: Sweep, i: number, cls: BodyClass): boolean {
+  const half = (BODY_ENVELOPE[cls] as { length: number }).length / 2;
+  const c = s.c0 + i * SWEEP_STEP;
+  return c >= -half - 1e-9 && c <= s.crossing.length + half + 1e-9;
+}
+
+/**
+ * The approach, the movement and the exit as one arc-length parameter.
+ * Beyond either end the path continues straight along its end tangent, so a
+ * very short approach still places the tail of a long body somewhere sensible.
+ */
+function joinedPath(inbound: Polyline, crossing: Polyline, outbound: Polyline) {
+  return {
+    sampleAt(c: number): { p: Vec2; t: Vec2 } {
+      if (c < 0) {
+        const s = inbound.length + c;
+        if (s >= 0) return inbound.sampleAt(s);
+        const f = inbound.sampleAt(0);
+        return { p: { x: f.p.x + f.t.x * s, y: f.p.y + f.t.y * s }, t: f.t };
+      }
+      if (c <= crossing.length) return crossing.sampleAt(c);
+      const s = c - crossing.length;
+      if (s <= outbound.length) return outbound.sampleAt(s);
+      const f = outbound.sampleAt(outbound.length);
+      const over = s - outbound.length;
+      return { p: { x: f.p.x + f.t.x * over, y: f.p.y + f.t.y * over }, t: f.t };
+    },
+  };
+}
+
+function overlap(
+  a: Sweep, i: number, ca: BodyClass,
+  b: Sweep, j: number, cb: BodyClass,
+): boolean {
+  const [ahl, ahw] = halfExtent(ca);
+  const [bhl, bhw] = halfExtent(cb);
+  const ax = a.frame[i * 4] as number, ay = a.frame[i * 4 + 1] as number;
+  const aux = a.frame[i * 4 + 2] as number, auy = a.frame[i * 4 + 3] as number;
+  const bx = b.frame[j * 4] as number, by = b.frame[j * 4 + 1] as number;
+  const bux = b.frame[j * 4 + 2] as number, buy = b.frame[j * 4 + 3] as number;
+  const dx = bx - ax, dy = by - ay;
+  const axes = [aux, auy, -auy, aux, bux, buy, -buy, bux];
+  for (let k = 0; k < 8; k += 2) {
+    const nx = axes[k] as number, ny = axes[k + 1] as number;
+    const d = Math.abs(dx * nx + dy * ny);
+    const ra = ahl * Math.abs(aux * nx + auy * ny) + ahw * Math.abs(-auy * nx + aux * ny);
+    const rb = bhl * Math.abs(bux * nx + buy * ny) + bhw * Math.abs(-buy * nx + bux * ny);
+    if (d >= ra + rb) return false;
+  }
+  return true;
+}
+
+// ------------------------------------------------------------------- zones
+
+interface PairZones {
+  /** Zone on `a` (`onB` false) or on `b` (true) for body `mine` against `theirs`. */
+  get(mine: BodyClass, theirs: BodyClass, onB: boolean): Zone | null;
+}
+
+/**
+ * All nine class-pair zones of two movements, or null when even two heavy
+ * bodies never touch.
+ */
+function pairZones(a: Sweep, b: Sweep): PairZones | null {
+  // Heavy against heavy, through the grid.
+  const hits: number[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < a.count; i++) {
+    const [hl, hw] = halfExtent(HEAVY);
+    const x = a.frame[i * 4] as number, y = a.frame[i * 4 + 1] as number;
+    const tx = a.frame[i * 4 + 2] as number, ty = a.frame[i * 4 + 3] as number;
+    const ex = Math.abs(tx) * hl + Math.abs(ty) * hw;
+    const ey = Math.abs(ty) * hl + Math.abs(tx) * hw;
+    seen.clear();
+    for (let gx = Math.floor((x - ex) / CELL); gx <= Math.floor((x + ex) / CELL); gx++) {
+      for (let gy = Math.floor((y - ey) / CELL); gy <= Math.floor((y + ey) / CELL); gy++) {
+        for (const j of b.grid.get(cellKey(gx, gy)) ?? []) {
+          if (seen.has(j)) continue;
+          seen.add(j);
+          if (overlap(a, i, HEAVY, b, j, HEAVY)) hits.push(i, j);
+        }
+      }
+    }
+  }
+  if (!hits.length) return null;
+
+  // 3 x 3 class pairs x [enterA, exitA, enterB, exitB]; NaN = no overlap.
+  const table = new Float64Array(36).fill(Number.NaN);
+  for (const ca of BODY_CLASSES) {
+    for (const cb of BODY_CLASSES) {
+      const at = (ca * 3 + cb) * 4;
+      for (let k = 0; k < hits.length; k += 2) {
+        const i = hits[k] as number;
+        const j = hits[k + 1] as number;
+        if (!inRange(a, i, ca) || !inRange(b, j, cb)) continue;
+        if (ca !== HEAVY || cb !== HEAVY) {
+          if (!overlap(a, i, ca, b, j, cb)) continue;
+        }
+        const cA = a.c0 + i * SWEEP_STEP;
+        const cB = b.c0 + j * SWEEP_STEP;
+        widen(table, at, cA);
+        widen(table, at + 2, cB);
+      }
+    }
+  }
+
+  return {
+    get(mine, theirs, onB) {
+      const at = onB ? (theirs * 3 + mine) * 4 + 2 : (mine * 3 + theirs) * 4;
+      const enter = table[at] as number;
+      if (Number.isNaN(enter)) return null;
+      // Half a step either side covers the motion between two samples.
+      return { enter: enter - SWEEP_STEP / 2, exit: (table[at + 1] as number) + SWEEP_STEP / 2 };
+    },
+  };
+}
+
+function widen(table: Float64Array, at: number, c: number): void {
+  const lo = table[at] as number;
+  const hi = table[at + 1] as number;
+  table[at] = Number.isNaN(lo) ? c : Math.min(lo, c);
+  table[at + 1] = Number.isNaN(hi) ? c : Math.max(hi, c);
+}
+
+/** Earliest body-FRONT arc position at which any class enters the zone. */
+function earliestFront(zones: PairZones, onB: boolean): number {
+  let best = Infinity;
+  for (const mine of BODY_CLASSES) {
+    const z = zones.get(mine, HEAVY, onB);
+    const half = (BODY_ENVELOPE[mine] as { length: number }).length / 2;
+    if (z) best = Math.min(best, z.enter + half);
+  }
+  return best;
+}
+
+/** Per class, the centre past which the body is clear of any other body. */
+function clearExits(zones: PairZones, onB: boolean): number[] {
+  return BODY_CLASSES.map((mine) => {
+    let exit = -Infinity;
+    for (const theirs of BODY_CLASSES) {
+      const z = zones.get(mine, theirs, onB);
+      if (z) exit = Math.max(exit, z.exit);
+    }
+    return exit;
+  });
+}
+
+function zoneCentre(a: Sweep, zones: PairZones): Vec2 {
+  const z = zones.get(HEAVY, HEAVY, false);
+  return a.path.sampleAt(z ? (z.enter + z.exit) / 2 : 0).p;
+}
+
+function pushDiverge(
+  map: Map<ConnectorId, Diverge[]>,
+  self: ConnectorId,
+  other: ConnectorId,
+  zones: PairZones,
+  selfIsB: boolean,
+): void {
+  const entry: Diverge = {
+    other,
+    otherExit: (mine, theirs) => zones.get(mine, theirs, !selfIsB)?.exit ?? -Infinity,
+  };
+  const list = map.get(self);
+  if (list) list.push(entry);
+  else map.set(self, [entry]);
 }
 
 function pushRef(

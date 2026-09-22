@@ -38,8 +38,20 @@ describe('complete signal movement matrix', () => {
         for (let i = 0; i < protectedMovements.length; i++) {
           for (let j = i + 1; j < protectedMovements.length; j++) {
             checked++;
-            expect(sim.conflicts.conflict(protectedMovements[i]!.id, protectedMovements[j]!.id),
-              `${config.name}: ${protectedMovements[i]!.id} conflicts with ${protectedMovements[j]!.id}`).toBe(false);
+            const a = protectedMovements[i]!;
+            const b = protectedMovements[j]!;
+            const label = `${config.name}: ${a.id} conflicts with ${b.id}`;
+            const ref = sim.conflicts.refs(a.id).find(r => r.other === b.id);
+            const point = ref === undefined ? undefined : sim.conflicts.points[ref.point];
+            // No CENTRELINE crossing and no merge: two protected movements
+            // released together must never be two streams that cross.
+            expect(point?.kind === 'cross' || point?.kind === 'merge', label).toBe(false);
+            // And no ordinary car may touch another on a protected green. The
+            // remaining case — two HEAVY bodies whose swept areas graze, which
+            // is real geometry where lanes of unequal width meet, and between
+            // two lanes of one approach — is serialised by the claim table;
+            // `tests/sim/collisions.spec.ts` checks the bodies themselves.
+            expect(point?.zone(a.id, 1, 1) ?? null, label).toBeNull();
           }
         }
         for (const crossing of stage.pedWalk) {

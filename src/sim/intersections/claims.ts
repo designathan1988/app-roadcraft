@@ -1,5 +1,5 @@
 import type { ConnectorId } from '@world/lanelets';
-import type { ConflictIndex } from '@world/conflictPoints';
+import { BODY_CLASSES, HEAVY, type BodyClass, type ConflictIndex, type ConflictPoint } from '@world/conflictPoints';
 import type { VehicleId } from '../vehicles/state';
 
 export interface Claim {
@@ -8,11 +8,40 @@ export interface Claim {
   readonly grantedTick: number;
 }
 
+/** Where a claim holder's body is, along the movement it holds. */
+export interface HolderState {
+  readonly cls: BodyClass;
+  /** Body-centre arc position along the claimed connector, from its stop line. */
+  readonly centre: number;
+}
+
+/** Resolves a claim to its holder's live position; null when it cannot be placed. */
+export type LocateHolder = (claim: Claim) => HolderState | null;
+
 /**
- * Exclusive occupancy of conflict points inside junctions.
+ * Whether two movements may hold one conflict zone together right now.
+ *
+ * True when their body sizes never touch in that zone, or when either body has
+ * already driven past its end of the zone. Nothing else about the pair
+ * matters: a body that has not reached the zone yet still has all of it ahead.
+ */
+export function zoneShareable(
+  point: ConflictPoint,
+  a: { readonly connector: ConnectorId; readonly state: HolderState },
+  b: { readonly connector: ConnectorId; readonly state: HolderState },
+): boolean {
+  if (a.connector === b.connector) return true;
+  const onA = point.zone(a.connector, a.state.cls, b.state.cls);
+  const onB = point.zone(b.connector, b.state.cls, a.state.cls);
+  if (!onA || !onB) return true;
+  return a.state.centre > onA.exit || b.state.centre > onB.exit;
+}
+
+/**
+ * Occupancy of the swept conflict zones inside junctions.
  *
  * There is no `expiresAt` anywhere in this class, and that is deliberate. A
- * claim is released when the vehicle's REAR passes the point, or when the
+ * claim is released when the vehicle's BODY has left the zone, or when the
  * vehicle is removed — both driven by the same integrator that moves it. A
  * claim therefore cannot outlive its holder or its holder's motion.
  *
@@ -51,15 +80,36 @@ export class ClaimTable {
   }
 
   /**
-   * True when every listed point is free, already held by this vehicle, or is
-   * occupied by a vehicle on this exact connector. The last case is a safe
-   * convoy: both vehicles follow the same lane centreline and cannot conflict
-   * with a movement on another connector while either rear is in the box.
+   * True when every listed zone is free, already held by this vehicle, held by
+   * a vehicle on this exact connector, or held by a body that cannot touch
+   * this one there any more.
+   *
+   * A convoy on one connector follows one centreline and is kept apart by car
+   * following. A holder on ANOTHER connector blocks only while its body is
+   * still inside the part of the zone a body of the applicant's size could
+   * reach — a car in the second of two turn lanes does not wait for the car in
+   * the first, a bus does.
    */
-  available(points: readonly number[], vehicle: VehicleId, connector: ConnectorId): boolean {
+  available(
+    points: readonly number[],
+    vehicle: VehicleId,
+    connector: ConnectorId,
+    cls: BodyClass,
+    conflicts: ConflictIndex,
+    locate: LocateHolder,
+  ): boolean {
     for (const p of points) {
-      const held = this.byPoint.get(p) ?? [];
-      if (held.some((claim) => claim.vehicle !== vehicle && claim.connector !== connector)) return false;
+      const point = conflicts.points[p];
+      for (const claim of this.byPoint.get(p) ?? []) {
+        if (claim.vehicle === vehicle || claim.connector === connector) continue;
+        const state = locate(claim);
+        if (!point || !state) return false;
+        // The applicant has not entered yet, so its whole zone is ahead of it.
+        const applicant = { cls, centre: -Infinity };
+        if (!zoneShareable(point, { connector: claim.connector, state }, { connector, state: applicant })) {
+          return false;
+        }
+      }
     }
     return true;
   }
@@ -83,11 +133,19 @@ export class ClaimTable {
     this.byVehicle.set(vehicle, held);
   }
 
-  /** Releases points the vehicle's rear has already cleared. */
+  /**
+   * Releases zones the vehicle's body has already driven out of.
+   *
+   * `centre` is the body-centre arc position along `connector`, which keeps
+   * growing past the connector's end while the rear is still clearing it. A
+   * zone is released once the centre is past the zone exit for this body size
+   * against ANY size on the other movement.
+   */
   releasePassed(
     vehicle: VehicleId,
     connector: ConnectorId,
-    rearS: number,
+    centre: number,
+    cls: BodyClass,
     conflicts: ConflictIndex,
   ): void {
     const held = this.byVehicle.get(vehicle);
@@ -109,8 +167,7 @@ export class ClaimTable {
         this.dropVehicleAtPoint(vehicle, p);
         continue;
       }
-      const s = point.a === connector ? point.sA : point.b === connector ? point.sB : Infinity;
-      if (rearS > s) {
+      if (centre > clearedAt(point, connector, cls)) {
         this.dropVehicleAtPoint(vehicle, p);
       } else {
         keep.push(p);
@@ -126,7 +183,7 @@ export class ClaimTable {
     connector: ConnectorId,
     conflicts: ConflictIndex,
   ): void {
-    this.releasePassed(vehicle, connector, Infinity, conflicts);
+    this.releasePassed(vehicle, connector, Infinity, HEAVY, conflicts);
   }
 
   releaseAll(vehicle: VehicleId): void {
@@ -179,4 +236,15 @@ export class ClaimTable {
       else this.byVehicle.delete(vehicle);
     }
   }
+}
+
+/** Body-centre position past which `cls` on `connector` is clear of the zone. */
+export function clearedAt(point: ConflictPoint, connector: ConnectorId, cls: BodyClass): number {
+  if (point.a !== connector && point.b !== connector) return Infinity;
+  let exit = -Infinity;
+  for (const theirs of BODY_CLASSES) {
+    const zone = point.zone(connector, cls, theirs);
+    if (zone) exit = Math.max(exit, zone.exit);
+  }
+  return exit;
 }

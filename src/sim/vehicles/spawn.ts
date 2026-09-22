@@ -86,13 +86,15 @@ export function spawnVehicle(w: SimWorld): boolean {
   for (const { id } of ranked) {
     const lane = w.lanelet(id);
     if (!lane) continue;
-    const tail = w.laneTail(id);
+    // The tail includes a body still sliding out of this lane.
+    let tailRear = Infinity;
+    for (const body of w.bodiesIn(id)) tailRear = Math.min(tailRear, body.s - body.vehicle.archetype.length);
     const entryClearance = Math.max(0.5, Math.min(1.5, arch.width / 4));
     // `s` is the front of the vehicle. Its rear must be on the authored road
     // at birth; the entry node has no lanelet behind it to carry the body.
     if (lane.length <= arch.length + entryClearance) continue;
     const needed = arch.length + entryClearance + JAM_GAP;
-    if (tail && tail.s - tail.archetype.length < needed) continue;
+    if (tailRear < needed) continue;
 
     // The driver is drawn BEFORE the free-flow speed and from the same stream,
     // so the two are part of one personality rather than two independent rolls.

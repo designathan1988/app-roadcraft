@@ -1,7 +1,7 @@
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import type { ConstraintSet } from './idm';
-import { findLeader } from './leaderIndex';
+import { divergeObstacle, findLeader } from './leaderIndex';
 import { signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
 import { nextConnector } from '../intersections/admission';
@@ -26,6 +26,11 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
 
   const leader = findLeader(w, v);
   if (leader) constraints.obstacles.push(leader);
+
+  // A body that left the same stop line on another movement and is still
+  // sweeping the start both movements share.
+  const diverging = divergeObstacle(w, v);
+  if (diverging) constraints.obstacles.push(diverging);
 
   const lane = w.lanelet(v.lanelet);
   if (!lane) return constraints;

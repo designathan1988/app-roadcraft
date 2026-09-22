@@ -93,6 +93,7 @@ that `world` and `sim` never call `Math.random` (invariant 5, which
 | overtaking and lane discipline | `src/sim/vehicles/laneChange.ts` | [docs/architecture.md](docs/architecture.md) |
 | pedestrian pace, parties, steering, destinations | `src/sim/peds/behaviour.ts` | [docs/architecture.md](docs/architecture.md) |
 | right of way, gap acceptance, deadlock | `src/sim/intersections/admission.ts` | [docs/architecture.md](docs/architecture.md) |
+| which movements physically conflict, and where | `src/world/conflictPoints.ts` | `tests/sim/collisions.spec.ts` |
 | signal plans and phases | `src/sim/signals/` | [docs/architecture.md](docs/architecture.md) |
 | tools, undo, save/load | `src/editor/` | [docs/architecture.md](docs/architecture.md) |
 | any text the player reads | `src/ui/i18n/en.ts` **and** `pt-BR.ts` | [docs/i18n.md](docs/i18n.md) |
@@ -284,3 +285,17 @@ download is not available.
 * **Every dab of the terrain brush re-solves the whole road network.** That is
   why painting is rate-limited by what the last rebuild actually cost
   (`terrainPaintInterval` in `src/main.ts`) rather than by a fixed interval.
+* **A conflict is two bodies, not two lines.** `world/conflictPoints.ts` sweeps
+  the drawn body rectangle of three size classes along every movement; a zone
+  is where two swept areas overlap, and a claim is held until the body centre
+  is past the zone exit. The centreline version missed opposing left turns,
+  a bus swinging over the turn beside it, and released claims while the body
+  was still across the other lane. If you change the vehicle pose in
+  `sim/pose.ts`, the sweep in `conflictPoints.ts` must change with it, and
+  `tests/sim/collisions.spec.ts` is what will tell you.
+* **A lane change occupies two lanes.** The transfer moves the occupancy index
+  at once; the body slides across over the next second. `Vehicle.shadow`
+  keeps it in the old lane until a heavy vehicle could pass beside it, and
+  `SimWorld.bodiesIn` is the list anything asking "is this lane clear here"
+  must read — not `rt(id).order`, which misses shadows and the tails of
+  vehicles whose front has already entered the junction.

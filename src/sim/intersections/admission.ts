@@ -8,6 +8,8 @@ import { signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
 import { hasDownstreamStorage } from './spillback';
 import { COARSE_EPS } from '@core/scalar';
+import { bodyClassOfArchetype } from '../vehicles/archetypes';
+import { type Claim, type HolderState, zoneShareable } from './claims';
 
 export type RowClass = 'signalGreen' | 'priority' | 'stop' | 'yield' | 'none';
 
@@ -117,6 +119,13 @@ export function stepAdmission(w: SimWorld): void {
   // on the resources a holder needs next. Oldest request first makes that
   // preemption finite; ROW, distance and id remain deterministic tie-breakers.
   requests.sort(byPriority);
+
+  // A zone that reaches back over a stop line cannot be protected by a claim
+  // alone: the vehicle standing in it has not been admitted to anything.
+  for (const r of requests) {
+    const stop = stopShortOfIntrusion(w, r.v, r.conn, r.d);
+    if (stop !== null) r.v.constraints.obstacles.push({ gap: stop, speed: 0, kind: 'conflict' });
+  }
 
   for (const r of requests) {
     const verdict = evaluate(w, r);
@@ -274,7 +283,11 @@ function evaluate(w: SimWorld, r: Request): Verdict {
 
   // Only the connector physically about to be entered becomes a hard claim.
   // Future connectors remain maximum needs in the Banker's safety check.
-  if (!w.claims.available(current.points, r.v.id, current.connector.id)) {
+  if (!w.claims.available(current.points, r.v.id, current.connector.id,
+    bodyClassOfArchetype(r.v.archetype), w.conflicts, (claim) => holderState(w, claim))) {
+    return { ok: false, reason: 'conflict', reservations };
+  }
+  if (queuedBodyInZone(w, r.v, current.connector)) {
     return { ok: false, reason: 'conflict', reservations };
   }
   if (!convoyCanEnter(w, r, current.connector)) {
@@ -394,6 +407,65 @@ function movementReservedByOther(w: SimWorld, v: Vehicle, conn: Connector): bool
 }
 
 /**
+ * Whether a vehicle WAITING at another movement's stop line is inside the area
+ * this one would sweep.
+ *
+ * Swept zones are measured from the stop line, and on a few geometries they
+ * reach back over it: the tail of a bus on a right turn swings across the
+ * front of the car standing at the line in the lane beside it. That car holds
+ * no claim - it has not been admitted to anything - so the claim table cannot
+ * see it; the index records exactly these cases as `queueIntrusions`. The bus
+ * waits until the car has gone.
+ */
+function queuedBodyInZone(w: SimWorld, v: Vehicle, conn: Connector): boolean {
+  const mine = bodyClassOfArchetype(v.archetype);
+  for (const ref of w.conflicts.refs(conn.id)) {
+    const point = w.conflicts.points[ref.point];
+    const other = w.connector(ref.other);
+    if (!point || !other) continue;
+    const head = w.laneHead(other.fromLane);
+    const lane = w.lanelet(other.fromLane);
+    if (!head || !lane || head.id === v.id) continue;
+    // An admitted head is protected by its own claim instead.
+    if (head.admittedConnector) continue;
+    // Only the movement the head is actually about to take.
+    if (nextConnector(w, head)?.id !== other.id) continue;
+    const z = point.zone(other.id, bodyClassOfArchetype(head.archetype), mine);
+    if (!z) continue;
+    const centre = head.s - lane.length - head.archetype.length / 2;
+    if (centre >= z.enter) return true;
+  }
+  return false;
+}
+
+/**
+ * Distance to stop at so the body stays outside a zone that reaches back over
+ * the stop line while another movement holds it. Null when the stop line
+ * itself is far enough.
+ */
+function stopShortOfIntrusion(w: SimWorld, v: Vehicle, conn: Connector, d: number): number | null {
+  const mine = bodyClassOfArchetype(v.archetype);
+  let stop: number | null = null;
+  for (const ref of w.conflicts.refs(conn.id)) {
+    const point = w.conflicts.points[ref.point];
+    if (!point) continue;
+    for (const claim of w.claims.holdersAt(ref.point)) {
+      if (claim.vehicle === v.id || claim.connector === conn.id) continue;
+      const holder = holderState(w, claim);
+      if (!holder) continue;
+      const z = point.zone(conn.id, mine, holder.cls);
+      const theirs = point.zone(claim.connector, holder.cls, mine);
+      if (!z || !theirs || holder.centre > theirs.exit) continue;
+      const frontAtEntry = z.enter + v.archetype.length / 2;
+      if (frontAtEntry >= 0) continue;
+      const gap = Math.max(0, d + frontAtEntry);
+      stop = stop === null ? gap : Math.min(stop, gap);
+    }
+  }
+  return stop;
+}
+
+/**
  * A follower may share a same-path claim only at the stop line, after the
  * existing convoy has physically entered the connector. This keeps a real
  * car-following stream through green while never handing a far-back queue a
@@ -405,7 +477,10 @@ function convoyCanEnter(w: SimWorld, r: Request, conn: Connector): boolean {
   const owners = new Map<number, Vehicle>();
   for (const point of points) {
     for (const claim of w.claims.holdersAt(point)) {
-      if (claim.vehicle === r.v.id) continue;
+      // Holders on OTHER movements have already been judged by the claim
+      // table, which lets a body through beside one it cannot touch. This gate
+      // is only about the convoy on this very path.
+      if (claim.vehicle === r.v.id || claim.connector !== conn.id) continue;
       const owner = w.veh(claim.vehicle);
       if (owner) owners.set(owner.id, owner);
     }
@@ -574,12 +649,52 @@ function bankerSafeAfterGrant(
   return unfinished.size === 0;
 }
 
-/** A conflict resource may have several holders only while all share a path. */
+/**
+ * A conflict resource may have several holders only while no two of them can
+ * touch there: a convoy on one path, bodies too small to meet in that zone, or
+ * one of them already out of it.
+ */
 function sharedConvoyResource(w: SimWorld, resource: ResourceKey): boolean {
   if (!resource.startsWith('point:')) return false;
-  const point = Number(resource.slice('point:'.length));
-  const claims = w.claims.holdersAt(point);
-  return claims.length > 0 && claims.every((claim) => claim.connector === claims[0]?.connector);
+  const id = Number(resource.slice('point:'.length));
+  const point = w.conflicts.points[id];
+  const claims = w.claims.holdersAt(id);
+  if (!point || claims.length === 0) return false;
+  const placed = claims.map((claim) => ({ connector: claim.connector, state: holderState(w, claim) }));
+  for (let i = 0; i < placed.length; i++) {
+    for (let j = i + 1; j < placed.length; j++) {
+      const a = placed[i];
+      const b = placed[j];
+      if (!a || !b || a.connector === b.connector) continue;
+      if (!a.state || !b.state) return false;
+      if (!zoneShareable(point, { connector: a.connector, state: a.state },
+        { connector: b.connector, state: b.state })) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Where a claim holder's body is along the movement it holds.
+ *
+ * Granted but still on the approach: a negative centre, measured back from the
+ * stop line. On the movement: its own arc position. Past the exit with the rear
+ * still clearing: the connector length plus how far the front has gone beyond.
+ */
+export function holderState(w: SimWorld, claim: Claim): HolderState | null {
+  const v = w.veh(claim.vehicle);
+  const conn = w.connector(claim.connector);
+  if (!v || !conn) return null;
+  const cls = bodyClassOfArchetype(v.archetype);
+  const half = v.archetype.length / 2;
+  if (v.lanelet === conn.id) return { cls, centre: v.s - half };
+  if (v.lanelet === conn.fromLane) {
+    const lane = w.lanelet(conn.fromLane);
+    return lane ? { cls, centre: v.s - lane.length - half } : null;
+  }
+  const token = v.clearingConnectors.find((t) => t.connector === conn.id);
+  if (token) return { cls, centre: conn.length + token.distanceBeyondExit - half };
+  return null;
 }
 
 /**
@@ -671,9 +786,16 @@ export function hasAcceptableGap(w: SimWorld, r: Request): boolean {
     CRITICAL_GAP[r.conn.turn] * r.v.driver.gapFactor - impatience,
   );
 
+  const mine = bodyClassOfArchetype(r.v.archetype);
   for (const ref of w.conflicts.refs(r.conn.id)) {
     const other = w.connector(ref.other);
     if (!other) continue;
+    // A movement from the same approach is not a stream this one gives way
+    // to: the two leave side by side, and whether their bodies can touch is
+    // the claim table's question, not a gap to wait for. Counting it made a
+    // right turn wait for a gap in the lane BESIDE it, because a bus in that
+    // pair of lanes can swing across both.
+    if (other.inSegment === r.conn.inSegment) continue;
     if (!movementIsActive(w, other)) continue;
 
     // Anything approaching on the conflicting movement's origin lane.
@@ -684,6 +806,10 @@ export function hasAcceptableGap(w: SimWorld, r: Request): boolean {
     // possible turn as live is a false yield and can even make a vehicle yield
     // to itself on compact geometry.
     if (approach.id === r.v.id || nextConnector(w, approach)?.id !== other.id) continue;
+    // Only a body that can actually reach this one is a reason to wait.
+    if (!w.conflicts.points[ref.point]?.zone(r.conn.id, mine, bodyClassOfArchetype(approach.archetype))) {
+      continue;
+    }
     const lane = w.lanelet(other.fromLane);
     if (!lane) continue;
 
@@ -700,10 +826,18 @@ export function hasAcceptableGap(w: SimWorld, r: Request): boolean {
   return true;
 }
 
-/** Seconds to clear past the last conflict point of this movement. */
+/**
+ * Seconds for the FRONT to reach the point where the body has left the last
+ * conflict zone of this movement.
+ */
 function clearTime(w: SimWorld, r: Request): number {
   const refs = w.conflicts.refs(r.conn.id);
-  const last = refs.length ? (refs[refs.length - 1] as { s: number }).s : r.conn.length;
+  const cls = bodyClassOfArchetype(r.v.archetype);
+  let exit = -Infinity;
+  for (const ref of refs) exit = Math.max(exit, ref.exit[cls] ?? -Infinity);
+  const last = Number.isFinite(exit)
+    ? Math.max(0, exit + r.v.archetype.length / 2)
+    : r.conn.length;
   const lanelet = w.lanelet(r.conn.lanelet);
   const speed = Math.max(2, Math.min(r.v.v0, lanelet?.speedLimit ?? r.v.v0) * 0.6);
   return (r.d + last) / speed;

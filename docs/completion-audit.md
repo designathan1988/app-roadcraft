@@ -18,9 +18,9 @@ fixes do not change a block to verified.
 | Block | Full scope to verify | Status | Evidence |
 | --- | --- | --- | --- |
 | 1. Roads and meshes | Missing asphalt; holes, deformation, overlap, indices, triangulation, normals, UVs; road connections, snapping and alignment; curves, junctions and connectors; edited terrain; ramps, elevated roads, viaducts, bridges and tunnels, including every transition; affected-only rebuilds; pier dimensions and shadows; bounds; vehicle bodies stay on carriageways | Open | Pending union change and player-map fixture found in the worktree |
-| 2. Junctions | Running four-way, T, skewed, 5+ leg, mixed class, one/two-way and mixed lane-count scenarios; a record for every movement with origin, lane, intent, connector, destination lane, geometry, displayed signal and simultaneous conflicts; lane order; valid left/right/U-turn paths; physical volume conflicts; buses/trucks; admission, priority, yield, spillback and realistic deadlock handling | In progress | Five production layouts and 544 body/movement pairs verified; physical conflict regions and admission still open |
-| 3. Signals | Displayed light agrees with actual permission; protected conflicts excluded; compatible opposite movements; yielding permissive lefts and exclusive phases; queue discharge and cycle length; demand includes queue length, wait, arrival rate, distance, desired movement and downstream capacity; corridor offsets from distance/speed; every phase checked against actual conflicts | Open | Requires runtime movement records |
-| 4. Vehicle behavior | Natural speed, acceleration/braking/headway and reaction delay; independent driver traits; adjacent, physical lane changes with intermediate occupancy; weaving, early positioning and missed turns; merges and cooperation; complete passing maneuvers and passing side; persistent route intentions and bounded congestion knowledge; curvature/lateral-acceleration speed; physical dimensions, truck off-tracking, bus stops, distinct motorcycles/bicycles; continuous pose and carriageway containment | In progress | Body anchor, adjacent transfers and persistent next-turn intent improved; full dual-lane occupancy and remaining behavior open |
+| 2. Junctions | Running four-way, T, skewed, 5+ leg, mixed class, one/two-way and mixed lane-count scenarios; a record for every movement with origin, lane, intent, connector, destination lane, geometry, displayed signal and simultaneous conflicts; lane order; valid left/right/U-turn paths; physical volume conflicts; buses/trucks; admission, priority, yield, spillback and realistic deadlock handling | In progress | Swept-footprint conflict zones for three body classes; zero body overlaps in 7 layouts x 4 seeds (up to intensity 3, 300 s); stop-line intrusion guards; saturated discharge still low and heavy off-tracking model open |
+| 3. Signals | Displayed light agrees with actual permission; protected conflicts excluded; compatible opposite movements; yielding permissive lefts and exclusive phases; queue discharge and cycle length; demand includes queue length, wait, arrival rate, distance, desired movement and downstream capacity; corridor offsets from distance/speed; every phase checked against actual conflicts | Open | Protected greens checked against swept zones (no crossing/merge, no car/car overlap). Measured: saturated discharge about half of a realistic rate (pre-existing); cycle/demand/offset work open |
+| 4. Vehicle behavior | Natural speed, acceleration/braking/headway and reaction delay; independent driver traits; adjacent, physical lane changes with intermediate occupancy; weaving, early positioning and missed turns; merges and cooperation; complete passing maneuvers and passing side; persistent route intentions and bounded congestion knowledge; curvature/lateral-acceleration speed; physical dimensions, truck off-tracking, bus stops, distinct motorcycles/bicycles; continuous pose and carriageway containment | In progress | Dual-lane occupancy during lane changes (shadows), diverge following and tail-aware lane-change gaps implemented and tested; rest of the block open |
 | 5. Traffic generation | Coherent scalable demand and distribution; no congestion-balanced spawn shortcut; independent entry demand without a single global fixed attempt | Open | Not yet audited |
 | 6. Vehicle visuals and functions | Preserve mirrors, plates, wheels/hubs, pillars and interior; visible human drivers/passengers with correct poses; glass; functioning doors/windows/headlights/tails/brakes/indicators; spinning and steering wheels; every function driven by simulation state | Open | Not yet audited |
 | 7. Pedestrians | Target 80 distinct human characters (user increased the earlier minimum of 30); convincing proportional humans; natural start/walk/turn/stop/idle/wait, limbs, gaze and posture; body/appearance/speed/posture variety; no arbitrary pauses, jitter, sliding, overlap or sharp spins; physical obstacle avoidance, personal space and queues; correct footways/zebras, kerb waiting, signals, traffic reactions and persistent destinations | Open | Commit 753a309 is a partial implementation requiring broader validation; expanded variety requested on 2026-09-22 |
@@ -30,7 +30,7 @@ fixes do not change a block to verified.
 | 11. Graphics | Improved viaduct-safe shadows; emissive bloom; day/night with matching lamps/headlights; cascaded shadows; vegetation wind; water reflections; AO; materials and lighting within performance budgets | Open | Not yet audited |
 | 12. Performance | Cached static shadows; local vegetation and road/terrain work; avoid full 90,601-vertex shape scans; efficient water rebuilds; stable materials/shaders; instance disposal; anisotropy; fewer per-frame sorts/allocations; large traffic and crowds | Open | Needs measured before/after workloads |
 | 13. Architecture and cleanup | Reduce main.ts; terrain brush, overlay and panels extraction; no world/UI cycle; enforced layers and deterministic RNG; dead exports and Portuguese comments; shared scenery/structure and water/texture code; valid tsconfig; remove specified probes | In progress | Temporary diagnostic config found; named probe files absent at initial inventory |
-| 14. Required tests | Complete movement/phase table; protected conflicts; adjacent physical lane changes; vehicle footprint collisions and heavy turns; curvature; full-run kerb safety; meshes/terrain transitions; universal bounds; pedestrian avoidance; pole workflow; all vehicle lighting/doors/windows/occupants | In progress | New movement-footprint, signal-matrix, lane-intent and full-run containment tests pass; remaining gates still open |
+| 14. Required tests | Complete movement/phase table; protected conflicts; adjacent physical lane changes; vehicle footprint collisions and heavy turns; curvature; full-run kerb safety; meshes/terrain transitions; universal bounds; pedestrian avoidance; pole workflow; all vehicle lighting/doors/windows/occupants | In progress | Movement-footprint, signal-matrix, lane-intent, full-run containment and full-run body-collision tests pass; remaining gates still open |
 
 ## Work order
 
@@ -137,3 +137,46 @@ Create local commits for completed changes; do not push without instruction.
   phases and physical body-volume conflicts remains open. Lane-change
   occupancy is still keyed to the new lane before the lateral manoeuvre
   finishes. Do not mark junctions, signals or vehicle behavior complete.
+
+## Physical junction conflicts and dual lane occupancy checkpoint
+
+- New measurement: `tests/sim/support/bodies.ts` tests every pair of drawn
+  vehicle bodies (oriented rectangles at the rendered pose, 4 cm tolerance)
+  for overlap. At 8ce8675 it found **120 overlapping pairs** in seven seeded
+  150 s scenarios (six junction layouts plus the saved player map) and 290
+  at intensity 3 over 300 s. Categories: lane changes (84), followers driving
+  into a leader that took a different movement out of the same lane (33),
+  and junction bodies whose centrelines never cross (opposing left turns,
+  a bus swinging over the adjacent turn, a truck clipping a skewed through).
+- Root causes: (1) conflict points were centreline intersections released when
+  the REAR passed the crossing point; (2) diverging movements from one lane
+  were excluded from conflicts and invisible to car-following; (3) a lane
+  change moved occupancy to the new lane at once while the body slid across
+  for about a second; (4) lane-change and spawn gaps read only the occupancy
+  list, missing tails of vehicles already on a connector.
+- Fixes: `world/conflictPoints.ts` sweeps the drawn body for small, car and
+  heavy classes and stores a zone per class pair; claims are shared only
+  when bodies cannot touch and released when the centre leaves the zone
+  (`sim/intersections/claims.ts`); `divergeObstacle` follows sibling
+  movements through their shared start; `Vehicle.shadow` keeps a
+  lane-changing vehicle in both lanes; `SimWorld.bodiesIn` feeds lane-change
+  gaps and spawn checks; admission refuses a heavy turn while an unadmitted
+  vehicle stands inside its sweep at another stop line, and stops arrivals
+  short of such a zone.
+- Result (`docs/audit/junction-physical-conflicts.json`): **zero** body
+  overlaps in all seven scenarios at intensity 2 and in 21 runs at intensity
+  3 (seeds 7, 1234, 99991; 300 s). In the running dev game (four-way avenues,
+  intensity 3, 240 s, 134 vehicles) zero overlapping ticks.
+- Throughput, connector entries at intensity 2: 1126 before, 1060 after
+  (-6 %); at intensity 3 seed 7: 2059 before, 1889 after (-8 %). Losses are
+  concentrated on five-leg (-22 % to -32 %), one-way and mixed-lane layouts,
+  where heavy vehicles now wait for bodies they would previously have
+  driven through. Part of the old throughput was physically impossible.
+- Open, measured: saturated discharge is poor before and after — about 3 to 4
+  vehicles inside a four-way avenue box during green with 13 to 18 queued per
+  lane; permissive lefts and protected throughs block each other through the
+  zones. The body pose is a centred tangent rectangle, so heavy vehicles
+  swing both ends OUTWARD on a turn instead of off-tracking inward; that
+  inflates heavy zones and produced the recorded
+  `junction-queue-intrusions.json` cases. Both belong to the signals and
+  vehicle-behaviour blocks and are not solved here.

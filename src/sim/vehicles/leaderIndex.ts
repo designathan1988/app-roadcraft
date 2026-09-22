@@ -2,6 +2,7 @@ import type { LaneletId } from '@world/lanelets';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import type { Obstacle } from './idm';
+import { bodyClassOfArchetype } from './archetypes';
 
 /** How many lanelets ahead the leader search will walk. */
 const LOOKAHEAD_HOPS = 3;
@@ -17,23 +18,38 @@ const LOOKAHEAD_HOPS = 3;
  * The V6 monolith rebuilt a full occupancy map from scratch in six different
  * places every frame and scanned all vehicles per lane-head test (defect 5.7).
  * Here each lanelet keeps a sorted occupancy list maintained on entry and exit.
+ *
+ * Two kinds of body are in a lane without being in its occupancy list, and
+ * both used to be driven into:
+ *
+ *   - a vehicle sliding OUT of the lane after a lane change (its `shadow`);
+ *   - a vehicle that left the same stop line on a DIFFERENT movement and whose
+ *     body still sweeps the shared start of both turns (`divergeObstacle`).
  */
 export function findLeader(w: SimWorld, v: Vehicle): Obstacle | null {
   const rt = w.rt(v.lanelet);
   const idx = rt.order.indexOf(v.id);
+  let best: Obstacle | null = null;
+  const consider = (o: Obstacle): void => {
+    if (!best || o.gap < best.gap) best = o;
+  };
 
   // Ahead in the same lane: the list is ascending by arc position.
   if (idx >= 0 && idx + 1 < rt.order.length) {
     const aheadId = rt.order[idx + 1];
     const lead = aheadId === undefined ? undefined : w.veh(aheadId);
     if (lead) {
-      return {
+      consider({
         gap: lead.s - lead.archetype.length - v.s,
         speed: lead.v,
         kind: 'vehicle',
-      };
+      });
     }
   }
+  for (const shadow of shadowsAhead(w, v.lanelet, v.s, v.id)) {
+    consider({ gap: shadow.rear - v.s, speed: shadow.vehicle.v, kind: 'vehicle' });
+  }
+  if (best) return best;
 
   // Head of this lanelet: walk forward along the planned route.
   const here = w.lanelet(v.lanelet);
@@ -52,18 +68,103 @@ export function findLeader(w: SimWorld, v: Vehicle): Obstacle | null {
     const tailId = nrt.order[0];
     const tail = tailId === undefined ? undefined : w.veh(tailId);
     if (tail) {
-      return {
+      consider({
         gap: dist + tail.s - tail.archetype.length,
         speed: tail.v,
         kind: 'vehicle',
-      };
+      });
     }
+    for (const shadow of shadowsAhead(w, nextId, -Infinity, v.id)) {
+      consider({ gap: dist + shadow.rear, speed: shadow.vehicle.v, kind: 'vehicle' });
+    }
+    if (best) return best;
     const lanelet = w.lanelet(nextId);
     if (!lanelet) break;
     dist += lanelet.length;
   }
 
   return null;
+}
+
+/** Rears of bodies sliding out of a lane, ahead of `s` on it. */
+function shadowsAhead(
+  w: SimWorld,
+  laneId: LaneletId,
+  s: number,
+  self: number,
+): { vehicle: Vehicle; rear: number }[] {
+  const out: { vehicle: Vehicle; rear: number }[] = [];
+  for (const id of w.rt(laneId).shadows) {
+    if (id === self) continue;
+    const other = w.veh(id);
+    if (!other?.shadow || other.shadow.lanelet !== laneId) continue;
+    const front = other.s + other.shadow.offset;
+    if (front <= s) continue;
+    out.push({ vehicle: other, rear: front - other.archetype.length });
+  }
+  return out;
+}
+
+/**
+ * The body of a vehicle that took a DIFFERENT movement out of the same lane,
+ * while it still sweeps the start this vehicle's movement shares with it.
+ *
+ * Two turns leaving one stop line coincide at the line and part a few metres
+ * later. Car-following only looked down its own connector, so once the leader
+ * had turned onto the other one it vanished from view with its tail still on
+ * the approach: measured in seeded traffic, 33 followers drove into such a
+ * tail. `ConflictIndex.diverges` says, per pair and size, how far the leader's
+ * centre has to get before the two bodies can no longer touch; until then its
+ * rear is followed like any other leader's, projected onto the shared start.
+ */
+export function divergeObstacle(w: SimWorld, v: Vehicle): Obstacle | null {
+  const here = w.lanelet(v.lanelet);
+  if (!here) return null;
+
+  let connectorId: LaneletId | undefined;
+  let offset: number;
+  if (here.kind === 'connector') {
+    connectorId = here.id;
+    offset = -v.s;
+  } else {
+    // Only the vehicle nearest the stop line needs this; everyone behind it
+    // follows it.
+    if (w.laneHead(here.id)?.id !== v.id) return null;
+    connectorId = v.route[1];
+    offset = here.length - v.s;
+    const horizon = Math.max(50, v.v * v.driver.T * 3 + (v.v * v.v) / (2 * v.driver.b));
+    if (offset > horizon) return null;
+  }
+  if (connectorId === undefined) return null;
+  const siblings = w.conflicts.divergesOf(connectorId);
+  if (!siblings.length) return null;
+
+  const mine = bodyClassOfArchetype(v.archetype);
+  let best: Obstacle | null = null;
+  for (const d of siblings) {
+    const other = w.connector(d.other);
+    if (!other) continue;
+    const candidates: { vehicle: Vehicle; front: number }[] = [];
+    for (const id of w.rt(other.id).order) {
+      const o = w.veh(id);
+      if (o) candidates.push({ vehicle: o, front: o.s });
+    }
+    // Bodies whose front is already on the exit lane but whose tail may not be.
+    for (const id of w.rt(other.toLane).order) {
+      const o = w.veh(id);
+      if (o && o.rearPath[0] === other.id) candidates.push({ vehicle: o, front: other.length + o.s });
+    }
+    for (const { vehicle: o, front } of candidates) {
+      if (o.id === v.id) continue;
+      const centre = front - o.archetype.length / 2;
+      if (centre > d.otherExit(bodyClassOfArchetype(o.archetype), mine)) continue;
+      // Whoever is further along the shared start leads.
+      if (here.kind === 'connector' && front <= v.s) continue;
+      const gap = offset + front - o.archetype.length;
+      if (!best || gap < best.gap) best = { gap, speed: o.v, kind: 'vehicle' };
+    }
+  }
+  return best;
 }
 
 /** The next `n` lanelets on the vehicle's route, excluding the current one. */

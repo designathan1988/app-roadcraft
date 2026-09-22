@@ -18,6 +18,13 @@ export interface LaneletRuntime {
   readonly id: LaneletId;
   /** Ascending by `s`; index 0 is nearest the entry, last is nearest the exit. */
   order: VehicleId[];
+  /**
+   * Vehicles whose body still overlaps this lane while they slide out of it.
+   * A lane change moves a vehicle's occupancy to the new lane at once, but its
+   * body crosses the gap over the next second; until it has, anyone behind it
+   * in the lane it is leaving must still see it. See `Vehicle.shadow`.
+   */
+  shadows: VehicleId[];
   /** A retired lanelet still carrying agents: no new entries accepted. */
   ghost: boolean;
   /** Tick at which a ghost was created, so it can be force-collected. */
@@ -124,7 +131,7 @@ export class SimWorld {
   rt(id: LaneletId): LaneletRuntime {
     let r = this.runtime.get(id);
     if (!r) {
-      r = { id, order: [], ghost: false, ghostSince: 0 };
+      r = { id, order: [], shadows: [], ghost: false, ghostSince: 0 };
       this.runtime.set(id, r);
     }
     return r;
@@ -294,7 +301,56 @@ export class SimWorld {
     return first === undefined ? undefined : this.vehicles.get(first);
   }
 
+  /** Registers a vehicle's body as still occupying the lane it is leaving. */
+  addShadow(v: Vehicle, lanelet: LaneletId, offset: number, clearAt: number): void {
+    this.clearShadow(v);
+    v.shadow = { lanelet, offset, clearAt };
+    const rt = this.rt(lanelet);
+    if (!rt.shadows.includes(v.id)) rt.shadows.push(v.id);
+  }
+
+  clearShadow(v: Vehicle): void {
+    if (!v.shadow) return;
+    const rt = this.runtime.get(v.shadow.lanelet);
+    if (rt) {
+      const i = rt.shadows.indexOf(v.id);
+      if (i >= 0) rt.shadows.splice(i, 1);
+    }
+    v.shadow = null;
+  }
+
+  /**
+   * Every body in a lane with its front arc position there: the occupants, the
+   * vehicles still sliding out of it, projected onto its centreline, and the
+   * tails of vehicles whose front has already moved on to the next lanelet.
+   */
+  bodiesIn(id: LaneletId): { vehicle: Vehicle; s: number }[] {
+    const rt = this.rt(id);
+    const out: { vehicle: Vehicle; s: number }[] = [];
+    for (const vid of rt.order) {
+      const v = this.vehicles.get(vid);
+      if (v) out.push({ vehicle: v, s: v.s });
+    }
+    for (const vid of rt.shadows) {
+      const v = this.vehicles.get(vid);
+      if (v?.shadow?.lanelet === id) out.push({ vehicle: v, s: v.s + v.shadow.offset });
+    }
+    const lane = this.lanelet(id);
+    if (lane) {
+      for (const next of this.graph.exitsOf(id)) {
+        for (const vid of this.rt(next).order) {
+          const v = this.vehicles.get(vid);
+          if (v && v.rearPath[0] === id && v.s < v.archetype.length) {
+            out.push({ vehicle: v, s: lane.length + v.s });
+          }
+        }
+      }
+    }
+    return out;
+  }
+
   removeVehicle(v: Vehicle): void {
+    this.clearShadow(v);
     this.exitLanelet(v, v.lanelet);
     this.claims.releaseAll(v.id);
     this.vehicles.delete(v.id);

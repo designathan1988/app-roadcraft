@@ -107,6 +107,9 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
 /** Re-binds agents to the rebuilt topology after a live edit. */
 export function rebindAgents(w: SimWorld): void {
   for (const v of w.vehiclesInIdOrder()) {
+    // A shadow is a projection onto a sibling lane that may have been rebuilt
+    // with a different length; the lateral slide finishes without it.
+    w.clearShadow(v);
     const lane = w.lanelet(v.lanelet);
     if (!lane) {
       // The lanelet is gone. Keep the agent alive only if something plausible

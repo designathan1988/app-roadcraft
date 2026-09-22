@@ -4,10 +4,20 @@ import type { Vehicle } from './state';
 import { desiredSpeed } from './driver';
 import { resolveSpeed } from './idm';
 import { planFrom } from '../routing/router';
+import { bodyClassOfArchetype } from './archetypes';
+import { BODY_ENVELOPE, HEAVY } from '@world/conflictPoints';
 import { COARSE_EPS } from '@core/scalar';
 import { addScaled, dot, perp, sub } from '@core/vec2';
 
 const CLEARANCE_EPSILON = COARSE_EPS;
+
+/**
+ * Width of the widest vehicle that may be driving in the lane being left, and
+ * the clearance kept to it: the shadow lasts until a heavy vehicle could pass
+ * alongside the sliding body without touching it.
+ */
+const SHADOW_OTHER_WIDTH = BODY_ENVELOPE[HEAVY]?.width ?? 0;
+const SHADOW_MARGIN = 0.3;
 
 /**
  * The ONLY writer of `s`, `v` and `lanelet`.
@@ -63,6 +73,7 @@ export function integrateAll(w: SimWorld): void {
       const shrink = LATERAL_CLOSE_RATE * DT;
       v.lateral = Math.abs(v.lateral) <= shrink ? 0 : v.lateral - Math.sign(v.lateral) * shrink;
     }
+    if (v.shadow && (v.lateral === 0 || Math.abs(v.lateral) < v.shadow.clearAt)) w.clearShadow(v);
     // What "held up" means, for the driver who is about to decide whether to
     // look for another way round: crawling at less than a third of what they
     // wanted. Measured against their own target rather than against a fixed
@@ -105,7 +116,8 @@ export function integrateAll(w: SimWorld): void {
       w.claims.releasePassed(
         v.id,
         finalLane.id,
-        v.s - v.archetype.length,
+        v.s - v.archetype.length / 2,
+        bodyClassOfArchetype(v.archetype),
         w.conflicts,
       );
     }
@@ -208,9 +220,20 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
     // physically where it already was, and leaves only the sideways part -
     // which is what `lateral` then slides out.
     const anchor = lane.centre.closestPoint(was.p);
+    const sOnOld = v.s;
     v.s = anchor.s;
     const now = lane.centre.sampleAt(anchor.s);
     v.lateral = dot(sub(was.p, now.p), perp(now.t));
+
+    // DUAL OCCUPANCY. The body is still where it was, across the old lane, and
+    // will be for most of the slide. Leave a shadow there until the gap to
+    // the old centreline is wide enough for the widest vehicle to pass beside
+    // it. Measured before this existed: 84 body overlaps in seven seeded
+    // scenarios, nearly all a vehicle entering or driving on in the lane this
+    // one had "already" left.
+    const separation = (v.archetype.width + SHADOW_OTHER_WIDTH) / 2 + SHADOW_MARGIN;
+    const clearAt = Math.max(0, Math.abs(v.lateral) - separation);
+    w.addShadow(v, from.id, sOnOld - v.s, clearAt);
   }
 
   w.exitLanelet(v, v.lanelet);
@@ -256,9 +279,10 @@ function advanceClearanceTokens(
       continue;
     }
 
-    const rearOnConnector =
-      connector.length + token.distanceBeyondExit - v.archetype.length;
-    w.claims.releasePassed(v.id, connector.id, rearOnConnector, w.conflicts);
+    const centreOnConnector =
+      connector.length + token.distanceBeyondExit - v.archetype.length / 2;
+    w.claims.releasePassed(v.id, connector.id, centreOnConnector,
+      bodyClassOfArchetype(v.archetype), w.conflicts);
     keep.push(token);
   }
   v.clearingConnectors = keep;
@@ -320,6 +344,9 @@ function advanceTo(w: SimWorld, v: Vehicle, target: string, carried: number): bo
   if (!lane) return false;
 
   const current = w.lanelet(v.lanelet);
+  // A shadow is a position on a sibling of the CURRENT lane; it means nothing
+  // once the front has moved on.
+  w.clearShadow(v);
   if (current?.kind === 'link' && lane.kind === 'connector') {
     v.desiredLane = null;
     v.movementIntent = null;

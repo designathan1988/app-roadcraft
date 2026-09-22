@@ -5,6 +5,8 @@ import { Network } from '@world/network';
 import { SimWorld } from '@sim/world';
 import { step } from '@sim/pipeline';
 import { DT } from '@sim/params';
+import { holderState } from '@sim/intersections/admission';
+import { zoneShareable } from '@sim/intersections/claims';
 
 /**
  * What a signal plan is FOR.
@@ -145,13 +147,21 @@ describe('signal plans', () => {
       for (const point of held) {
         const holders = fixture.sim.claims.holdersAt(point);
         if (holders.length < 2) continue;
-        // Several holders are legal only when they are all taking the SAME
-        // movement, which is a convoy rather than a conflict.
-        const first = holders[0]?.connector;
-        if (holders.some((h) => h.connector !== first)) {
-          offences.push(
-            `point ${point} held by ${holders.map((h) => `${h.vehicle}@${h.connector}`).join(', ')}`,
-          );
+        // Several holders are legal only on the SAME movement (a convoy), or
+        // when their bodies cannot touch in that zone: sizes that never meet
+        // there, or one of them already past it.
+        const zone = fixture.sim.conflicts.points[point];
+        for (let i = 0; i < holders.length; i++) {
+          for (let j = i + 1; j < holders.length; j++) {
+            const a = holders[i]!;
+            const b = holders[j]!;
+            if (a.connector === b.connector) continue;
+            const sa = holderState(fixture.sim, a);
+            const sb = holderState(fixture.sim, b);
+            if (zone && sa && sb && zoneShareable(zone, { connector: a.connector, state: sa },
+              { connector: b.connector, state: sb })) continue;
+            offences.push(`point ${point} held by ${a.vehicle}@${a.connector}, ${b.vehicle}@${b.connector}`);
+          }
         }
       }
     });

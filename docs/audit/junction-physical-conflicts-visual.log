@@ -1,0 +1,124 @@
+
+> roadcraft@7.0.0 verify:visual
+> npm run build && node scripts/verify-visual.mjs --shots
+
+
+> roadcraft@7.0.0 build
+> tsc --noEmit && vite build
+
+[36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 210 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                     13.34 kB │ gzip:   3.42 kB
+dist/assets/male_18-C6mXF9QB.glb                 1,237.62 kB
+dist/assets/male_11-pzBTsV5o.glb                 1,264.14 kB
+dist/assets/male_13-CN1UYKka.glb                 1,268.39 kB
+dist/assets/business_male_07-Cd4GOJpf.glb        1,272.29 kB
+dist/assets/male_14-B3qtlbWd.glb                 1,272.39 kB
+dist/assets/business_male_04-BEenQ35a.glb        1,278.98 kB
+dist/assets/male_12-DSpessJJ.glb                 1,282.42 kB
+dist/assets/business_male_05-BeySYxMX.glb        1,286.59 kB
+dist/assets/male_17-tQMGeOe9.glb                 1,294.84 kB
+dist/assets/male_child_01-Bu1drOtr.glb           1,303.19 kB
+dist/assets/police_male_06-BZChlzE2.glb          1,303.23 kB
+dist/assets/wood_male_01-FQxy24fZ.glb            1,303.50 kB
+dist/assets/business_male_06-DSsa5wwL.glb        1,312.00 kB
+dist/assets/male_20-Bvpoi4tg.glb                 1,328.33 kB
+dist/assets/female_child_01-B7LhIHIc.glb         1,335.42 kB
+dist/assets/construction_male_05-DGa288IH.glb    1,340.18 kB
+dist/assets/male_child_02-CPqk4TyW.glb           1,340.98 kB
+dist/assets/male_16-CmzatEv0.glb                 1,341.68 kB
+dist/assets/sports_male_02-BhxHlcjG.glb          1,345.99 kB
+dist/assets/delivery_male_01-DHxFx_ML.glb        1,355.50 kB
+dist/assets/sports_male_04-BzJmfqEz.glb          1,358.02 kB
+dist/assets/construction_male_02-BrS1M0E0.glb    1,360.74 kB
+dist/assets/pilot_male_01-DcGWRjpq.glb           1,361.63 kB
+dist/assets/pilot_male_02-CR7XUpGE.glb           1,378.29 kB
+dist/assets/chef_female_01-G7XDdUev.glb          1,378.36 kB
+dist/assets/pilot_male_03-inTsfidi.glb           1,394.44 kB
+dist/assets/construction_male_07-DkgD1GuR.glb    1,420.16 kB
+dist/assets/medical_male_03-Df0-l3ZU.glb         1,420.78 kB
+dist/assets/pilot_female_01-BLS1qspn.glb         1,426.44 kB
+dist/assets/pilot_female_02-DObCFDQ5.glb         1,439.91 kB
+dist/assets/male_09-Cmfml2ke.glb                 1,454.39 kB
+dist/assets/medical_male_04-CYsEG95D.glb         1,457.28 kB
+dist/assets/construction_male_08-DtCirKHk.glb    1,465.09 kB
+dist/assets/construction_female_01-BRgCLe4f.glb  1,474.25 kB
+dist/assets/security_male_01-2w9H4l-x.glb        1,483.35 kB
+dist/assets/male_07-ohAjQZGP.glb                 1,489.05 kB
+dist/assets/police_male_01-D6lWHc97.glb          1,512.84 kB
+dist/assets/business_male_02-DzQJJYxH.glb        1,520.61 kB
+dist/assets/security_female_01-DSLM29VR.glb      1,527.94 kB
+dist/assets/male_03-oQApLBuD.glb                 1,555.36 kB
+dist/assets/business_female_04-Cf548McG.glb      1,566.66 kB
+dist/assets/male_10-Cife4J78.glb                 1,578.14 kB
+dist/assets/business_male_03-CWvD4Mq8.glb        1,582.02 kB
+dist/assets/construction_male_03-C7aIetaY.glb    1,593.32 kB
+dist/assets/construction_male_06-CbVR0I2d.glb    1,599.82 kB
+dist/assets/male_02-DZK1b8HK.glb                 1,620.32 kB
+dist/assets/female_02-82zomPtl.glb               1,632.93 kB
+dist/assets/male_08-BH3kIzuT.glb                 1,634.41 kB
+dist/assets/construction_male_04-D1KyIx4H.glb    1,641.78 kB
+dist/assets/medical_female_02-CG3J0IXC.glb       1,650.36 kB
+dist/assets/sports_male_03-BdSgZo-Q.glb          1,655.27 kB
+dist/assets/medical_female_01-SjQOfKAU.glb       1,657.38 kB
+dist/assets/medical_female_03-8RKzGvrp.glb       1,662.63 kB
+dist/assets/male_01-CiTv_uXn.glb                 1,664.74 kB
+dist/assets/sports_female_02-BmLZncTt.glb        1,677.33 kB
+dist/assets/male_04-B_6qohVv.glb                 1,688.45 kB
+dist/assets/female_01-Cxn-4izM.glb               1,692.38 kB
+dist/assets/gardener_male_01-DNcnd2jX.glb        1,693.32 kB
+dist/assets/female_08-CG1DKZf-.glb               1,696.35 kB
+dist/assets/business_male_01-CDpGxJ_z.glb        1,697.53 kB
+dist/assets/female_12-CvjsGSDF.glb               1,702.30 kB
+dist/assets/female_07-RPXk1lq_.glb               1,720.38 kB
+dist/assets/police_male_03-C0PCZ937.glb          1,724.69 kB
+dist/assets/male_05-KG_OeKa0.glb                 1,724.97 kB
+dist/assets/business_female_03-BL3PoAN3.glb      1,737.44 kB
+dist/assets/female_11-CqGvY_qY.glb               1,740.04 kB
+dist/assets/female_17-TDuZorjj.glb               1,744.54 kB
+dist/assets/female_09-DDOOPd9y.glb               1,745.01 kB
+dist/assets/business_female_01-BVYD98kg.glb      1,746.93 kB
+dist/assets/female_13-BxtRyoiI.glb               1,753.44 kB
+dist/assets/male_06-DIokc9C9.glb                 1,768.86 kB
+dist/assets/medical_male_02-D-2tKkfO.glb         1,780.90 kB
+dist/assets/medical_male_01-9lCU27cT.glb         1,786.45 kB
+dist/assets/female_05-BtuZdoDg.glb               1,789.56 kB
+dist/assets/female_04-BPB8NQG2.glb               1,798.03 kB
+dist/assets/female_14-DWStU9NP.glb               1,824.70 kB
+dist/assets/female_party_02-ZjQny0Dy.glb         1,896.14 kB
+dist/assets/female_03-CvFDBoUU.glb               1,927.29 kB
+dist/assets/female_party_01-Dj0yPiqJ.glb         1,982.23 kB
+dist/assets/business_female_02-8lWb0AYW.glb      2,004.46 kB
+dist/assets/index-BMrgq4pt.css                      11.42 kB │ gzip:   3.04 kB
+dist/assets/index-yWwoOKJv.js                      324.52 kB │ gzip: 111.36 kB │ map: 1,673.93 kB
+dist/assets/three-DOQcvLvt.js                      730.97 kB │ gzip: 206.18 kB │ map: 3,235.18 kB
+
+[32m✓ built in 307ms[39m
+[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 700 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+┌─────────┬──────────────────────────┬────────┬──────────┬───────────┬───────────┬──────────────┬───────────┬─────────────────────┬────────┬──────────────┬─────────────┬──────────┬───────────┬─────┐
+│ (index) │ scenario                 │ meshes │ vertices │ triangles │ nonFinite │ belowTerrain │ worstSink │ heaviest            │ buried │ portalMeshes │ signalLamps │ litLamps │ rebuildMs │ fps │
+├─────────┼──────────────────────────┼────────┼──────────┼───────────┼───────────┼──────────────┼───────────┼─────────────────────┼────────┼──────────────┼─────────────┼──────────┼───────────┼─────┤
+│ 0       │ 'player-grid-and-bends'  │ 385    │ 345898   │ 335951    │ 0         │ 0            │ 0         │ 'footway:41896'     │ 0      │ 0            │ 120         │ 40       │ 506       │ 29  │
+│ 1       │ 'crossroads-flat'        │ 153    │ 700709   │ 120958    │ 0         │ 0            │ 0         │ 'tree-trunks:34040' │ 0      │ 0            │ 24          │ 8        │ 103       │ 47  │
+│ 2       │ 'crossroads-rolling'     │ 198    │ 965970   │ 134695    │ 0         │ 0            │ 0         │ 'tree-trunks:33720' │ 0      │ 0            │ 24          │ 8        │ 97        │ 36  │
+│ 3       │ 'junction-mixed-T'       │ 182    │ 961622   │ 129437    │ 0         │ 0            │ 0         │ 'tree-trunks:32720' │ 0      │ 0            │ 18          │ 6        │ 86        │ 32  │
+│ 4       │ 'junction-skewed'        │ 199    │ 970860   │ 139805    │ 0         │ 0            │ 0         │ 'tree-trunks:33000' │ 0      │ 0            │ 24          │ 8        │ 112       │ 29  │
+│ 5       │ 'junction-five-leg'      │ 216    │ 982826   │ 158123    │ 0         │ 0            │ 0         │ 'tree-trunks:32120' │ 0      │ 0            │ 30          │ 10       │ 139       │ 30  │
+│ 6       │ 'junction-one-way'       │ 199    │ 969374   │ 134803    │ 0         │ 0            │ 0         │ 'tree-trunks:33720' │ 0      │ 0            │ 24          │ 8        │ 110       │ 27  │
+│ 7       │ 'viaduct-over-road'      │ 32     │ 123108   │ 97372     │ 0         │ 0            │ 0         │ 'tree-trunks:33960' │ 0      │ 0            │ 0           │ 0        │ 85        │ 31  │
+│ 8       │ 'elevated-to-grade'      │ 135    │ 962266   │ 129755    │ 0         │ 0            │ 0         │ 'tree-trunks:32200' │ 0      │ 0            │ 0           │ 0        │ 80        │ 35  │
+│ 9       │ 'bridge-over-river'      │ 135    │ 951822   │ 117907    │ 0         │ 0            │ 0         │ 'tree-trunks:34280' │ 0      │ 0            │ 0           │ 0        │ 109       │ 45  │
+│ 10      │ 'city-on-edited-terrain' │ 740    │ 1122589  │ 282685    │ 0         │ 0            │ 0         │ 'tree-trunks:33360' │ 0      │ 0            │ 216         │ 72       │ 470       │ 40  │
+│ 11      │ 'tunnel-through-hill'    │ 125    │ 963330   │ 138263    │ 0         │ 0            │ 0         │ 'tree-trunks:31480' │ 21053  │ 3            │ 0           │ 0        │ 85        │ 59  │
+│ 12      │ 'signalised-junction'    │ 204    │ 968212   │ 136067    │ 0         │ 0            │ 0         │ 'tree-trunks:33960' │ 0      │ 0            │ 24          │ 8        │ 93        │ 36  │
+│ 13      │ 'aim-at-elevated-node'   │ 0      │ 0        │ 0         │ 0         │ 0            │ 0         │ 'offset 23px'       │ 0      │ 0            │ 0           │ 0        │ 0         │ 0   │
+│ 14      │ 'after-terrain-edit'     │ 30     │ 105762   │ 81324     │ 0         │ 0            │ 0         │ 'tree-trunks:33480' │ 0      │ 0            │ 0           │ 0        │ 128       │ 0   │
+└─────────┴──────────────────────────┴────────┴──────────┴───────────┴───────────┴──────────────┴───────────┴─────────────────────┴────────┴──────────────┴─────────────┴──────────┴───────────┴─────┘
+visual verification passed (15 scenarios, backend three-webgl)

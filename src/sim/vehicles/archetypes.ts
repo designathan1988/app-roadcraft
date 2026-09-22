@@ -1,3 +1,4 @@
+import { bodyClassOf, type BodyClass } from '@world/conflictPoints';
 import { m } from '@world/units';
 
 /**
@@ -256,3 +257,6 @@ export const archetypeWeights = (): readonly (readonly [Archetype, number])[] =>
  */
 export const archetypeById = (id: string): Archetype =>
   ARCHETYPES.find((a) => a.id === id) ?? (ARCHETYPES[1] as Archetype);
+
+/** The conflict-zone size class a body of this archetype is measured with. */
+export const bodyClassOfArchetype = (a: Archetype): BodyClass => bodyClassOf(a.length, a.width);
