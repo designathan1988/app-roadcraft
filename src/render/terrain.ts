@@ -10,6 +10,7 @@ import {
 } from 'three';
 
 import type { RoadDoc } from '@world/doc';
+import { MAP_SIZE } from '@world/bounds';
 import {
   MAX_TERRAIN_STAMPS,
   TERRAIN_WATER_HEIGHT,
@@ -30,7 +31,7 @@ import { WATER_DEPTH_ATTRIBUTE, createWaterSurface } from './water';
  * resolution the play area needs would be most of the frame's vertex budget
  * spent on ground nobody builds on.
  */
-const TERRAIN_SIZE = 4_800;
+const TERRAIN_SIZE = MAP_SIZE;
 /** Cells per side. 300 gives a 16-unit cell: 6.4 m, fine enough for a brush. */
 const TERRAIN_SEGMENTS = 300;
 const TERRAIN_BASE = -0.12;

@@ -17,6 +17,7 @@ import type { UtilityPole, UtilitySpan } from './utilities';
 import { impossibleAmong, worsensAnyNode } from './legAngles';
 import type { RoadStructure } from './structures';
 import { MAX_TERRAIN_STAMPS, type TerrainStamp } from './terrain';
+import { clampToMap } from './bounds';
 
 /** Legal driving directions, relative to the stored `a -> b` orientation. */
 export type SegmentDirection = 'both' | 'aToB' | 'bToA';
@@ -128,8 +129,9 @@ export class RoadDoc {
   }
 
   addPole(at: { x: number; y: number }, lamp = false): UtilityPole {
+    const on = clampToMap(at);
     const id = asPoleId(this.poleIds.take());
-    const pole: UtilityPole = { id, x: at.x, y: at.y, lamp };
+    const pole: UtilityPole = { id, x: on.x, y: on.y, lamp };
     this.poles.set(id, pole);
     this.revision++;
     return pole;
@@ -182,9 +184,19 @@ export class RoadDoc {
 
   // ---------------------------------------------------------------- mutation
 
+  /**
+   * Adds a node, ON THE MAP.
+   *
+   * The ground is a finite plate, and every position authored here is clamped
+   * to it. Nothing else could enforce it: a node is what a road, its footway,
+   * its junction, its lamps, its bins and its lanelets are all derived from,
+   * so a node past the rim takes all of them with it — a road hanging over the
+   * void, which is what "nothing may leave the map" was reported against.
+   */
   addNode(p: Vec2): RoadNode {
+    const at = clampToMap(p);
     const id = asNodeId(this.nodeIds.take());
-    const n: RoadNode = { id, x: p.x, y: p.y, incident: [], control: 'auto', blockedMovements: [] };
+    const n: RoadNode = { id, x: at.x, y: at.y, incident: [], control: 'auto', blockedMovements: [] };
     this.nodes.set(id, n);
     this.markNode(id);
     return n;
@@ -286,9 +298,12 @@ export class RoadDoc {
    * predicted: the angles come from the flattened polyline, and a curve's
    * tangent is not a closed form of the endpoint.
    */
-  moveNode(id: NodeId, p: Vec2): boolean {
+  moveNode(id: NodeId, to: Vec2): boolean {
     const n = this.nodes.get(id);
     if (!n) return false;
+    // Dragging a node off the plate is the same offence as building one there,
+    // and is caught in the same place.
+    const p = clampToMap(to);
     if (n.x === p.x && n.y === p.y) return true;
 
     const touched: NodeId[] = [id];

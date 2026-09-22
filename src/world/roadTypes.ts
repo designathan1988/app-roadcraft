@@ -69,6 +69,28 @@ export interface RoadType {
   readonly line: string;
 }
 
+/**
+ * The colour of a painted line.
+ *
+ * These lived in `ui/overlay/palette.ts`, and that made `world` import `ui` -
+ * the one import cycle in the project, and a violation of the layer order in
+ * AGENTS.md section 2. A line's colour is a property of the ROAD CLASS, not of
+ * the interface: the same yellow centre line has to be produced by the mesh
+ * builder, by the minimap and by the overlay, and three consumers in three
+ * layers mean the value belongs beside the class it describes.
+ */
+export const markingColor = (rt: RoadType): string => rt.line;
+
+/**
+ * Edge lines.
+ *
+ * Two of them, because an edge line has to read against the asphalt on one
+ * side and the kerb on the other; drawing one colour left it invisible against
+ * whichever it happened to match.
+ */
+export const EDGE_LINE_LIGHT = '#8f9490';
+export const EDGE_LINE_DARK = '#2b2f30';
+
 /** Extra half-width of the kerb band beyond the asphalt edge. */
 const CURB_BAND = 0.9;
 /** Extra half-width of the casing beyond the footway edge. */

@@ -20,27 +20,46 @@ here has to be rebuildable from the document in a fraction of a second.
 
 ---
 
-## 2. The dependency order (never violate it)
+## 2. The dependency order (enforced, not merely stated)
 
 ```
 core  →  world  →  sim
                 →  render
         world  →  editor  →  ui
+core  →  view   →  render, ui
 ```
 
 * `core` knows nothing about roads. Pure 2D geometry and numerics.
 * `world` owns the **document** (what the player authored) and everything
   derived from it that is not a picture: road widths, junction outlines, surface
-  polygons, the **elevation field**, lanelets, terrain.
+  polygons, the **elevation field**, lanelets, terrain, and **where the map
+  ends** (`world/bounds.ts`).
 * `sim` reads `world` and owns vehicles, pedestrians and signals. It never
   reads `render`.
-* `render` reads `world` and `sim` and owns three.js. **Nothing outside
-  `src/render/` may import `three`.**
-* `editor` mutates the document. `ui` is the DOM.
+* `view` is the seam between a world point and a screen point, and knows only
+  `core`. Both renderers implement it, which is what lets the editor work in
+  world coordinates and never ask which renderer is running.
+* `render` reads `world`, `sim` and `view`, and owns three.js. **Nothing
+  outside `src/render/` may import `three`.**
+* `editor` mutates the document. `ui` is the DOM; it may READ `sim`, because
+  the inspector and the minimap display live simulation state.
 * `main.ts` wires them together and owns the input handling and the frame loop.
+  It is the composition root, and the only file allowed to touch everything.
 
-If you find yourself wanting to import `render` from `world`, the thing you want
-belongs in `world` instead.
+If you find yourself wanting to import `render` from `world`, the thing you
+want belongs in `world` instead.
+
+**`eslint.config.js` now enforces this**, one `no-restricted-imports` block per
+layer. It was a paragraph before, and two violations had grown under it: a real
+cycle, `world/markings.ts` importing its line colours from `ui/overlay/palette`,
+and `render` reaching `ui` through `view` because the flat camera sat in
+`ui/overlay/`. The colours moved to `world/roadTypes.ts` and the camera to
+`view/camera.ts`; the rule is what stops the next one.
+
+`tests/arch/layers.spec.ts` covers the two rules a lint rule cannot express:
+that `world` and `sim` never call `Math.random` (invariant 5, which
+`core/rng.ts` claimed was checked by a test that did not exist), and that
+`three` is imported nowhere outside `render`.
 
 ---
 

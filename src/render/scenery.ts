@@ -95,6 +95,38 @@ const BIN_WIDE = m(0.46);
  */
 const BIN_EVERY = 3;
 
+/**
+ * The rest of the street furniture, at real sizes.
+ *
+ * A street with nothing on it but lamp columns and bins reads as a model of a
+ * street. What makes one look inhabited is the small stuff nobody looks at
+ * directly: somewhere to sit, a hydrant on the kerb, a post box on the corner.
+ * They also do the same job the trees do - each is an object of a KNOWN size,
+ * so they give the eye something to measure the rest against.
+ *
+ * Each appears on its own cycle of columns, and the cycles are coprime with
+ * each other and with the bin's, so they do not line up into a repeating
+ * pattern along the street.
+ */
+const BENCH_EVERY = 4;
+const HYDRANT_EVERY = 7;
+const POSTBOX_EVERY = 11;
+
+/** A park bench: 1.8 m long, seat at 0.45 m, back to 0.85 m. */
+const BENCH_LONG = m(1.8);
+const BENCH_DEEP = m(0.52);
+const BENCH_SEAT = m(0.45);
+const BENCH_BACK = m(0.85);
+const BENCH_SLAB = m(0.07);
+
+/** A fire hydrant: a 0.75 m barrel with a cap. */
+const HYDRANT_TALL = m(0.75);
+const HYDRANT_WIDE = m(0.26);
+
+/** A post box: a 1.1 m body on a short plinth. */
+const POSTBOX_TALL = m(1.1);
+const POSTBOX_WIDE = m(0.44);
+
 const LAMP_SPACING = 88;
 /** Nothing is planted closer than this to the edge of a road's casing. */
 const PLANT_CLEARANCE = 16;
@@ -141,6 +173,12 @@ export function buildScenery(
   const arms: Placement[] = [];
   const lamps: Placement[] = [];
   const bins: Placement[] = [];
+  const benchSeats: Placement[] = [];
+  const benchBacks: Placement[] = [];
+  const benchLegs: Placement[] = [];
+  const hydrants: Placement[] = [];
+  const hydrantCaps: Placement[] = [];
+  const postboxes: Placement[] = [];
   let column = 0;
 
   for (const ribbon of net.ribbons.values()) {
@@ -190,6 +228,87 @@ export function buildScenery(
           sz: BIN_WIDE,
         });
       }
+      // The rest of the furniture, on the same line and each on its own
+      // cycle. `outward` is measured from the column towards the buildings,
+      // so nothing stands where somebody would be walking.
+      const furnitureAt = (outward: number): { x: number; y: number } => ({
+        x: x + frame.n.x * side * outward,
+        y: y + frame.n.y * side * outward,
+      });
+      // Along the footway, so a bench faces the road rather than lying across
+      // the walking width.
+      const alongYaw = angleOf(frame.t);
+
+      if (column % BENCH_EVERY === 1) {
+        const at = furnitureAt(m(1.1));
+        benchSeats.push({
+          x: at.x,
+          y: at.y,
+          z: base + BENCH_SEAT,
+          yaw: alongYaw,
+          sx: BENCH_LONG,
+          sy: BENCH_SLAB,
+          sz: BENCH_DEEP,
+        });
+        // The back leans against the buildings, so somebody sitting on it
+        // faces the street.
+        benchBacks.push({
+          x: at.x + frame.n.x * side * (BENCH_DEEP / 2),
+          y: at.y + frame.n.y * side * (BENCH_DEEP / 2),
+          z: base + (BENCH_SEAT + BENCH_BACK) / 2,
+          yaw: alongYaw,
+          sx: BENCH_LONG,
+          sy: BENCH_BACK - BENCH_SEAT,
+          sz: BENCH_SLAB,
+        });
+        for (const end of [-1, 1]) {
+          benchLegs.push({
+            x: at.x + frame.t.x * end * (BENCH_LONG / 2 - m(0.12)),
+            y: at.y + frame.t.y * end * (BENCH_LONG / 2 - m(0.12)),
+            z: base + BENCH_SEAT / 2,
+            yaw: alongYaw,
+            sx: m(0.07),
+            sy: BENCH_SEAT,
+            sz: BENCH_DEEP * 0.8,
+          });
+        }
+      }
+
+      if (column % HYDRANT_EVERY === 2) {
+        const at = furnitureAt(-m(0.35));
+        hydrants.push({
+          x: at.x,
+          y: at.y,
+          z: base + HYDRANT_TALL / 2,
+          yaw: inwardYaw,
+          sx: HYDRANT_WIDE,
+          sy: HYDRANT_TALL,
+          sz: HYDRANT_WIDE,
+        });
+        hydrantCaps.push({
+          x: at.x,
+          y: at.y,
+          z: base + HYDRANT_TALL + m(0.06),
+          yaw: inwardYaw,
+          sx: HYDRANT_WIDE * 1.25,
+          sy: m(0.12),
+          sz: HYDRANT_WIDE * 1.25,
+        });
+      }
+
+      if (column % POSTBOX_EVERY === 3) {
+        const at = furnitureAt(m(1.0));
+        postboxes.push({
+          x: at.x,
+          y: at.y,
+          z: base + POSTBOX_TALL / 2,
+          yaw: inwardYaw,
+          sx: POSTBOX_WIDE,
+          sy: POSTBOX_TALL,
+          sz: POSTBOX_WIDE * 0.72,
+        });
+      }
+
       column++;
     }
   }
@@ -277,6 +396,19 @@ export function buildScenery(
   });
   const binGeometry = new CylinderGeometry(0.5, 0.42, 1, 10);
 
+  const timber = new MeshStandardMaterial({ color: 0x6b5236, roughness: 0.88, metalness: 0 });
+  const hydrantMaterial = new MeshStandardMaterial({
+    color: 0xb03a2c,
+    roughness: 0.55,
+    metalness: 0.25,
+  });
+  const postboxMaterial = new MeshStandardMaterial({
+    color: 0x1f4f8a,
+    roughness: 0.58,
+    metalness: 0.3,
+  });
+  const hydrantGeometry = new CylinderGeometry(0.5, 0.56, 1, 8);
+
   const poleGeometry = new CylinderGeometry(
     LAMP_TOP_RADIUS,
     LAMP_BASE_RADIUS,
@@ -293,6 +425,12 @@ export function buildScenery(
     build('street-light-arms', boxGeometry, metal, arms),
     build('street-light-lamps', boxGeometry, glow, lamps),
     build('street-bins', binGeometry, binMaterial, bins),
+    build('bench-seats', boxGeometry, timber, benchSeats),
+    build('bench-backs', boxGeometry, timber, benchBacks),
+    build('bench-legs', boxGeometry, metal, benchLegs),
+    build('hydrants', hydrantGeometry, hydrantMaterial, hydrants),
+    build('hydrant-caps', hydrantGeometry, hydrantMaterial, hydrantCaps),
+    build('post-boxes', boxGeometry, postboxMaterial, postboxes),
     build('tree-trunks', trunkGeometry, bark, trunks),
     build('tree-canopies', canopyGeometry, leaf, canopies),
     build('bushes', bushGeometry, leaf, bushes),
@@ -308,16 +446,22 @@ export function buildScenery(
     poleGeometry,
     boxGeometry,
     binGeometry,
+    hydrantGeometry,
     trunkGeometry,
     canopyGeometry,
     bushGeometry,
   ];
-  const materials = [metal, glow, bark, leaf, binMaterial];
+  const materials = [metal, glow, bark, leaf, binMaterial, timber, hydrantMaterial, postboxMaterial];
 
   return {
     meshes,
     triangles,
     dispose() {
+      // The InstancedMesh itself owns GPU buffers for its matrices and its
+      // colours, and they are not freed by disposing the geometry. Every
+      // rebuild - and a rebuild happens on every edit - leaked one set per
+      // mesh.
+      for (const mesh of meshes) mesh.dispose();
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
     },

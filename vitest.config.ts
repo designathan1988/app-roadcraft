@@ -21,10 +21,13 @@ export default defineConfig({
     // Headless by design: no DOM. Anything needing a canvas uses the FakeCtx recorder.
     environment: 'node',
     include: ['tests/**/*.spec.ts'],
-    // Same scratch pattern ESLint and git already ignore. Without it the
-    // stated invariant — a throwaway probe cannot break `npm run check` — was
-    // false through the runner even while it held through the linter.
-    exclude: ['tests/e2e/**', 'tests/_*/**'],
+    // Scratch space for investigation, ignored by the runner, the linter and
+    // the compiler alike. The pattern used to be `tests/_*/**`, which only
+    // matches a folder at the TOP of `tests/` - a probe dropped beside the
+    // tests it was probing, `tests/world/_diag.spec.ts`, ran and could break
+    // `npm run check`, which is exactly what the invariant promised it could
+    // not. Any path segment starting with an underscore is scratch now.
+    exclude: ['tests/e2e/**', 'tests/**/_*/**', 'tests/**/_*'],
     // Tests always run with invariant assertions armed.
     env: { SIM_STRICT: '1' },
     testTimeout: 60_000,

@@ -1,8 +1,15 @@
-import { Level, type RoadType, laneWidth, lanesPerDirection } from '@world/roadTypes';
+import {
+  EDGE_LINE_DARK,
+  EDGE_LINE_LIGHT,
+  Level,
+  type RoadType,
+  laneWidth,
+  lanesPerDirection,
+  markingColor,
+} from '@world/roadTypes';
 import type { Network, SegmentRibbon } from '@world/network';
 import { offsetPolyline } from '@core/offset';
 import type { Vec2 } from '@core/vec2';
-import { markingColor, EDGE_LINE_LIGHT, EDGE_LINE_DARK } from '@ui/overlay/palette';
 import { type Aabb, intersects } from '@core/aabb';
 import type { Junction } from '@world/junction/build';
 import {

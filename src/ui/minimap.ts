@@ -3,7 +3,7 @@ import type { Aabb } from '@core/aabb';
 import type { RoadDoc } from '@world/doc';
 import type { Network, SegmentRibbon } from '@world/network';
 import type { SimWorld } from '@sim/world';
-import type { Camera } from '@ui/overlay/camera';
+import type { Camera } from '@view/camera';
 import type { CanvasSurface } from '@ui/overlay/surface';
 import { SELECTION, TERRAIN_SHADE } from '@ui/overlay/palette';
 

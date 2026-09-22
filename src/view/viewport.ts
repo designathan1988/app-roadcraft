@@ -1,5 +1,5 @@
 import type { Vec2 } from '@core/vec2';
-import { MAX_ZOOM, MIN_ZOOM, type Camera } from '@ui/overlay/camera';
+import { MAX_ZOOM, MIN_ZOOM, type Camera } from './camera';
 
 /** Which of the four quarter turns the view is at. Zero for a top-down view. */
 export type Facing = 0 | 1 | 2 | 3;

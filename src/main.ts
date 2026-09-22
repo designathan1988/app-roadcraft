@@ -15,7 +15,7 @@ import {
   type PoleRunPlan,
 } from '@editor/poles';
 
-import { Camera } from '@ui/overlay/camera';
+import { Camera } from '@view/camera';
 import { type Viewport, flatViewport } from '@view/viewport';
 import { CanvasSurface } from '@ui/overlay/surface';
 import { INVALID, SELECTION, HOVER } from '@ui/overlay/palette';
@@ -1467,7 +1467,7 @@ let pending = false;
 // or two frames — and the status bar and minimap are only refreshed from inside
 // that loop. Starting at zero meant a paused map kept the initial HTML readout
 // for ever: measured on an all-combinations test map of 32 roads and 47 nodes,
-// the status bar read "0 vias · 0 nós" while the roads were plainly drawn, and
+// the status bar read "0 roads · 0 nodes" while the roads were plainly drawn,
 // the minimap stayed blank.
 let uiClock = 0.4;
 let minimapClock = 0.1;
@@ -2108,7 +2108,7 @@ requestDraw();
 // moving, so its UI work cannot be the only place that runs it: a map that
 // loads paused ended the loop before the first status pass and kept the initial
 // HTML for ever. Measured on an all-combinations map of 32 roads and 47 nodes:
-// the roads drew, the status bar read "0 vias · 0 nós", and the minimap was
+// the roads drew, the status bar read "0 roads · 0 nodes", and the minimap was
 // never resized from its default 300x150.
 updateStatus();
 syncFlatCameraFromView();
