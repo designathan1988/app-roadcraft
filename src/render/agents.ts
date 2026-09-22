@@ -24,6 +24,7 @@ import type { Ped } from '@sim/peds/state';
 import type { SimWorld } from '@sim/world';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
+import { DT } from '@sim/params';
 
 /**
  * Traffic agents — vehicles, riders, pedestrians and their dogs — as instanced
@@ -109,11 +110,20 @@ const MAX_RIDERS = 400;
 /**
  * Zoom at which the closest band switches on.
  *
- * The viewport runs from 0.18 to 3.2 and `detailCutoffZoom` sits between 0.2
- * and 0.5, so this is comfortably inside the detailed range: below it a wing
- * mirror is about one pixel.
+ * This was 0.9, and that number was reasoned about against a viewport running
+ * from 0.18 to 3.2. The isometric rig's own range at an 800-pixel canvas is
+ * `height / (halfHeight * 2)` over a half-height clamped to [55, 950], which
+ * is 0.42 to 7.27 - so 0.9 sits above twice the minimum and the game is played
+ * well below it. The practical effect was that mirrors, number plates, wheel
+ * hubs, pillars AND THE PEOPLE INSIDE THE CARS existed in the code, were
+ * placed correctly, and were almost never drawn. Reported, reasonably, as
+ * "the cars have no detail at all" and "you didn't put anyone in the cars".
+ *
+ * 0.55 puts the close band just above the detail cutoff, so detail appears as
+ * soon as anything is worth looking at. It costs about ten more matrix writes
+ * per vehicle, which the update-range fix below more than pays for.
  */
-const NEAR_DETAIL_ZOOM = 0.9;
+const NEAR_DETAIL_ZOOM = 0.55;
 
 /** One full stride cycle per 1.5 m of ground covered. */
 const GAIT_PER_UNIT = (2 * Math.PI) / m(1.5);
@@ -121,6 +131,24 @@ const GAIT_PER_UNIT = (2 * Math.PI) / m(1.5);
 const LEG_SWING = 0.44;
 
 const SIDES = [1, -1] as const;
+
+/**
+ * Lamp state for the vehicle currently being drawn.
+ *
+ * The tail lamp used to be a constant, so every car on the map was drawn with
+ * its lights in exactly the same state whatever it was doing - the single
+ * biggest thing standing between the traffic and being readable, because a
+ * queue forming is a line of brake lights coming on one after another.
+ *
+ * It is a closure variable rather than a parameter because the four body
+ * builders each place lamps from several call sites; threading it through all
+ * of them would be a wider change than the thing it expresses.
+ */
+interface LampState {
+  tail: number;
+  /** Lit indicator side: +1 left, -1 right, 0 none. */
+  indicate: number;
+}
 
 export interface AgentMeshes {
   readonly meshes: readonly InstancedMesh[];
@@ -199,6 +227,21 @@ const CHROME = 0xb9bec4;
 const PLATE = 0xf0efe6;
 const HEADLAMP = 0xfff3c4;
 const TAILLAMP = 0xff3b2f;
+/** A tail lamp with the brakes on. */
+const BRAKELAMP = 0xff1a08;
+/** The amber of an indicator, on the side the vehicle is moving towards. */
+const INDICATOR = 0xffa11c;
+/**
+ * Deceleration, in units per second per second, at which the brake lights come on.
+ *
+ * Real brake lights are wired to the pedal rather than to a threshold, but the
+ * simulation has no pedal - it has an acceleration, and a driver easing off is
+ * not braking. About 1 unit/s^2 is the point where a following driver would
+ * see the nose dip.
+ */
+const BRAKE_DECEL = 1.0;
+/** How far into a lane change the indicator stays lit, in world units. */
+const INDICATOR_LATERAL = 0.15;
 const SIGN = 0xffe7a8;
 const BOX_BODY = 0xe6e8ea;
 
@@ -734,7 +777,11 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     for (const side of SIDES) {
       place(trims, side * L * 0.49, 0, H * 0.22, L * 0.035, H * 0.17, W * 0.99, TRIM);
       place(lamps, L * 0.495, side * W * 0.31, H * 0.36, L * 0.02, H * 0.1, W * 0.2, HEADLAMP);
-      place(lamps, -L * 0.495, side * W * 0.33, H * 0.38, L * 0.018, H * 0.09, W * 0.17, TAILLAMP);
+      place(lamps, -L * 0.495, side * W * 0.33, H * 0.38, L * 0.018, H * 0.09, W * 0.17, lamp.tail);
+      if (lamp.indicate === side) {
+        place(lamps, -L * 0.49, side * W * 0.42, H * 0.38, L * 0.016, H * 0.08, W * 0.08, INDICATOR);
+        place(lamps, L * 0.49, side * W * 0.4, H * 0.36, L * 0.016, H * 0.08, W * 0.08, INDICATOR);
+      }
     }
     placeWheels(plan, band);
     if (band < 2) return;
@@ -771,7 +818,10 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     place(trims, 0, 0, H * 0.11, L * 0.99, H * 0.16, W * 1.01, TRIM);
     for (const side of SIDES) {
       place(lamps, L * 0.5, side * W * 0.36, H * 0.16, L * 0.012, H * 0.08, W * 0.16, HEADLAMP);
-      place(lamps, -L * 0.5, side * W * 0.38, H * 0.2, L * 0.012, H * 0.08, W * 0.14, TAILLAMP);
+      place(lamps, -L * 0.5, side * W * 0.38, H * 0.2, L * 0.012, H * 0.08, W * 0.14, lamp.tail);
+      if (lamp.indicate === side) {
+        place(lamps, -L * 0.5, side * W * 0.46, H * 0.2, L * 0.012, H * 0.07, W * 0.07, INDICATOR);
+      }
     }
     placeWheels(plan, band);
     if (band < 2) return;
@@ -820,7 +870,10 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     place(trims, L * 0.1, 0, H * 0.2, L * 0.22, H * 0.06, W * 0.45, TRIM);
     for (const side of SIDES) {
       place(lamps, L * 0.49, side * W * 0.34, H * 0.26, L * 0.014, H * 0.09, W * 0.18, HEADLAMP);
-      place(lamps, -L * 0.49, side * W * 0.36, H * 0.34, L * 0.014, H * 0.08, W * 0.16, TAILLAMP);
+      place(lamps, -L * 0.49, side * W * 0.36, H * 0.34, L * 0.014, H * 0.08, W * 0.16, lamp.tail);
+      if (lamp.indicate === side) {
+        place(lamps, -L * 0.49, side * W * 0.44, H * 0.34, L * 0.014, H * 0.07, W * 0.07, INDICATOR);
+      }
     }
     placeWheels(plan, band);
     if (band < 2) return;
@@ -848,7 +901,7 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     placeWheels(plan, band);
     place(trims, L * 0.33, 0, H * 0.47, L * 0.05, H * 0.55, W * 0.16, CHROME, 0.22);
     place(lamps, L * 0.4, 0, H * 0.66, L * 0.03, H * 0.14, W * 0.3, HEADLAMP);
-    place(lamps, -L * 0.4, 0, H * 0.55, L * 0.025, H * 0.1, W * 0.22, TAILLAMP);
+    place(lamps, -L * 0.4, 0, H * 0.55, L * 0.025, H * 0.1, W * 0.22, lamp.tail);
     placeRider(plan, look, false);
     if (band < 2) return;
 
@@ -1025,6 +1078,9 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     return false;
   };
 
+  /** Refreshed for every vehicle, read by whichever body builder runs. */
+  const lamp: LampState = { tail: TAILLAMP, indicate: 0 };
+
   return {
     meshes,
     sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY) {
@@ -1046,6 +1102,16 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
         const plan = planOf(vehicle.archetype);
         const paintHex = hexOf(vehicle.color);
         const look = vehicleLook(vehicle.id, plan.seats);
+
+        // Brakes and indicators, straight off the simulation. `prev` is the
+        // previous step's kinematics, so the difference is this step's
+        // acceleration without storing anything new on the vehicle.
+        const decel = (vehicle.prev.v - vehicle.v) / DT;
+        lamp.tail = decel >= BRAKE_DECEL ? BRAKELAMP : TAILLAMP;
+        // `lateral` is the unfinished part of a lane change, signed towards
+        // the lane being left - so the vehicle is heading the other way.
+        lamp.indicate =
+          Math.abs(vehicle.lateral) > INDICATOR_LATERAL ? -Math.sign(vehicle.lateral) : 0;
         switch (plan.shape) {
           case 'bus':
             drawBus(plan, paintHex, look, band);
@@ -1090,10 +1156,27 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
         }
       }
 
+      // Upload only what was written this frame.
+      //
+      // `needsUpdate = true` with no range makes three re-send the WHOLE
+      // attribute, and these buffers are sized for the ceiling rather than for
+      // what is on screen: summing the part capacities gives 50 340 instances,
+      // which is 3.2 MB of matrices plus 0.6 MB of colours every frame - about
+      // 230 MB/s at 60 fps, paid in full on an empty map with no vehicles at
+      // all. The written prefix is usually a tiny fraction of that.
       for (const part of parts) {
         part.mesh.count = part.n;
-        part.mesh.instanceMatrix.needsUpdate = true;
-        if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
+        const matrix = part.mesh.instanceMatrix;
+        matrix.clearUpdateRanges();
+        if (part.n > 0) matrix.addUpdateRange(0, part.n * 16);
+        matrix.needsUpdate = true;
+
+        const colour = part.mesh.instanceColor;
+        if (colour) {
+          colour.clearUpdateRanges();
+          if (part.n > 0) colour.addUpdateRange(0, part.n * 3);
+          colour.needsUpdate = true;
+        }
       }
     },
     dispose() {
