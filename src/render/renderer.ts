@@ -1,6 +1,9 @@
 import {
   ACESFilmicToneMapping,
   Group,
+  Frustum,
+  Matrix4,
+  Sphere,
   PCFShadowMap,
   Scene,
   SRGBColorSpace,
@@ -151,6 +154,13 @@ export function createSceneRenderer(
   };
 
   const agents: AgentMeshes = createAgentMeshes(deckHeight);
+  const crowdFrustum = new Frustum();
+  const crowdProjection = new Matrix4();
+  const crowdBounds = new Sphere(new Vector3(), 8);
+  const pedestrianVisible = (x: number, y: number, height: number): boolean => {
+    crowdBounds.center.set(x, height + 3, -y);
+    return crowdFrustum.intersectsSphere(crowdBounds);
+  };
   scene.add(...agents.meshes);
   const signals: SignalHeads = createSignalHeads(scene, deckHeight);
 
@@ -276,7 +286,12 @@ export function createSceneRenderer(
       if (details) details.group.visible = true;
       for (const mesh of scenery?.meshes ?? []) mesh.visible = quality.detailProps && detailed;
 
-      agents.sync(sim, alpha, detailed, rig.viewport.zoom);
+      crowdProjection.multiplyMatrices(rig.camera.projectionMatrix, rig.camera.matrixWorldInverse);
+      crowdFrustum.setFromProjectionMatrix(crowdProjection);
+      agents.sync(sim, alpha, detailed, rig.viewport.zoom, {
+        pedestrianDetail: quality.pedestrianDetail,
+        pedestrianVisible,
+      });
       signals.sync(sim, detailed);
 
       target.copy(rig.target);

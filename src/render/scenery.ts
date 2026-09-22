@@ -187,7 +187,7 @@ export function buildScenery(
     for (let s = start; s < length - start; s += LAMP_SPACING) {
       const frame = ribbon.full.sampleAt(s);
       const side = (Math.floor(s / LAMP_SPACING) + ribbon.id) % 2 === 0 ? -1 : 1;
-      const out = ribbon.road.width / 2 + ribbon.road.sidewalk * 0.55;
+      const out = ribbon.road.width / 2 + ribbon.road.sidewalk * 0.95;
       const x = frame.p.x + frame.n.x * out * side;
       const y = frame.p.y + frame.n.y * out * side;
       const base = elevation.at(x, y) + 0.36;

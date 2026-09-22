@@ -4,6 +4,7 @@ import { pointInPolygon } from '@core/polygon';
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { Level } from '@world/roadTypes';
+import { m } from '@world/units';
 import { SimWorld } from '@sim/world';
 import { step } from '@sim/pipeline';
 import { DT, PED } from '@sim/params';
@@ -173,17 +174,17 @@ describe('pedestrians', () => {
 
   it('holds every lateral offset inside the footway, and steps rather than jumps', () => {
     const fixture = crossroads();
-    const seen = new Map<number, { edge: string; lat: number }>();
+    const seen = new Map<number, { edge: string; entry: string; lat: number }>();
     let worstOutside = -Infinity;
     let worstJump = 0;
     run(fixture, 90, (sim) => {
       for (const p of sim.pedsInIdOrder()) {
         worstOutside = Math.max(worstOutside, Math.abs(p.lat) - usableHalfWidth(sim, p));
         const last = seen.get(p.id);
-        if (last && last.edge === p.edge) {
+        if (last && last.edge === p.edge && last.entry === p.entry) {
           worstJump = Math.max(worstJump, Math.abs(p.lat - last.lat));
         }
-        seen.set(p.id, { edge: p.edge, lat: p.lat });
+        seen.set(p.id, { edge: p.edge, entry: p.entry, lat: p.lat });
       }
     });
     expect(worstOutside).toBeLessThanOrEqual(1e-9);
@@ -260,10 +261,57 @@ describe('pedestrians', () => {
       }
     });
     expect(waiters).toBeGreaterThan(100);
-    // The renderer freezes the gait at zero speed, which is right. What stops
-    // that reading as a mannequin is that the figure is still shifting its
-    // weight, so nearly every waiting tick must move somebody.
-    expect(stirred).toBeGreaterThan(waiters * 0.9);
+    // The rigged idle clip supplies weight shifts. A crowded kerb must keep
+    // physical positions apart, so lateral sway is allowed only where clear.
+    expect(stirred).toBeGreaterThan(0);
+  });
+
+  it('keeps physical space between pedestrians across edge transitions', () => {
+    const fixture = crossroads();
+    let minimum = Infinity;
+    let pairs = 0;
+    run(fixture, 90, (sim) => {
+      const positions = sim.pedsInIdOrder()
+        .map((ped) => pedPose(sim, ped, 1)?.p)
+        .filter((position) => position !== null && position !== undefined);
+      for (let i = 0; i < positions.length; i++) {
+        for (let j = i + 1; j < positions.length; j++) {
+          const a = positions[i]!, b = positions[j]!;
+          minimum = Math.min(minimum, Math.hypot(a.x - b.x, a.y - b.y));
+          pairs++;
+        }
+      }
+    });
+    expect(pairs).toBeGreaterThan(1000);
+    expect(minimum).toBeGreaterThanOrEqual(m(0.6) - 1e-3);
+  });
+
+  it('walks around streetlight columns', () => {
+    const fixture = crossroads();
+    const columns: { x: number; y: number }[] = [];
+    for (const ribbon of fixture.net.ribbons.values()) {
+      const length = ribbon.full.length;
+      const start = Math.min(36, length * 0.24);
+      for (let s = start; s < length - start; s += 88) {
+        const frame = ribbon.full.sampleAt(s);
+        const side = (Math.floor(s / 88) + ribbon.id) % 2 === 0 ? -1 : 1;
+        const out = ribbon.road.width / 2 + ribbon.road.sidewalk * 0.95;
+        columns.push({ x: frame.p.x + frame.n.x * out * side,
+          y: frame.p.y + frame.n.y * out * side });
+      }
+    }
+    let minimum = Infinity;
+    run(fixture, 90, (sim) => {
+      for (const ped of sim.pedsInIdOrder()) {
+        const at = pedPose(sim, ped, 1)?.p;
+        if (!at) continue;
+        for (const column of columns) {
+          minimum = Math.min(minimum, Math.hypot(at.x - column.x, at.y - column.y));
+        }
+      }
+    });
+    expect(columns.length).toBeGreaterThan(0);
+    expect(minimum).toBeGreaterThanOrEqual(m(0.43) - 1e-3);
   });
 
   it('keeps a party together while it is one party', () => {

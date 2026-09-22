@@ -26,6 +26,8 @@ export interface QualitySettings {
   readonly vegetation: number;
   /** Zoom below which markings, props and agents stop being drawn. */
   readonly detailCutoffZoom: number;
+  /** Crowd detail ceiling: silhouette, wardrobe, or full facial animation. */
+  readonly pedestrianDetail: 0 | 1 | 2;
 }
 
 export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
@@ -40,6 +42,7 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     detailProps: false,
     vegetation: 0,
     detailCutoffZoom: 0.5,
+    pedestrianDetail: 0,
   },
   medium: {
     pixelRatio: 1.25,
@@ -52,6 +55,7 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     detailProps: true,
     vegetation: 600,
     detailCutoffZoom: 0.34,
+    pedestrianDetail: 1,
   },
   high: {
     pixelRatio: 1.5,
@@ -64,6 +68,7 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     detailProps: true,
     vegetation: 1_400,
     detailCutoffZoom: 0.26,
+    pedestrianDetail: 2,
   },
   ultra: {
     pixelRatio: 2,
@@ -76,6 +81,7 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     detailProps: true,
     vegetation: 2_600,
     detailCutoffZoom: 0.2,
+    pedestrianDetail: 2,
   },
 };
 

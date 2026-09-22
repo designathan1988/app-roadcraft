@@ -20,82 +20,23 @@ import {
   type Archetype,
   type VehicleShape,
 } from '@sim/vehicles/archetypes';
-import type { Ped } from '@sim/peds/state';
 import type { SimWorld } from '@sim/world';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
 import { DT } from '@sim/params';
+import { createRiggedCitizens } from './riggedCitizens';
+import { FOOTWAY_RISE } from './roadSurfaces';
 
 /**
- * Traffic agents — vehicles, riders, pedestrians and their dogs — as instanced
- * meshes resynced every frame.
+ * Vehicles, riders and dogs use the original instanced batches. Citizens use
+ * rigged Rocketbox meshes with baked animation palettes in separate batches.
  *
- * ## One mesh per part, never per agent
+ * At the far band only vehicles are drawn. The middle band includes citizens;
+ * the near band adds dogs. Citizen stride follows distance travelled rather
+ * than a shared clock, so each gait has its own phase.
  *
- * Every visible feature of the whole fleet lives in one of twelve
- * `InstancedMesh`es, grouped by geometry and material rather than by what the
- * part happens to represent. A bumper, a wing mirror, a bus door and a bicycle
- * fork are all boxes of trim, so they are all instances of `trims`; a
- * pedestrian's arm, a dog's tail and a motorcyclist's shin are all instances of
- * `limbs`; a dog's body and a passenger's chest are both instances of `torsos`.
- * That grouping is the whole performance argument: a thousand vehicles and a
- * thousand pedestrians, each assembled from a dozen or more parts, still cost
- * twelve draw calls, and a new detail costs instances rather than batches.
- * Per-instance colour is what makes the sharing possible, so the materials are
- * left near-white and each instance carries its own paint — a material with a
- * colour of its own would bias everything sharing it.
- *
- * Nothing here allocates per agent. One `Object3D` composes every matrix, one
- * `Color` carries every tint, and the write cursors live in records built once.
- * Colour strings coming out of the simulation are resolved through a cache
- * keyed by the string, because the CSS parser allocates and the palettes hold
- * only a few dozen distinct values between them.
- *
- * ## Three levels of detail
- *
- * `sync` takes the `detailed` flag the renderer already computes plus an
- * optional zoom, and folds them into three bands:
- *
- *   band 0 (far)   silhouette only: a body and a solid cabin, two writes.
- *   band 1 (mid)   the greenhouse opens up — roof, glazing, wheels, bumpers,
- *                  lamps — and pedestrians appear with head, torso, hips and
- *                  legs.
- *   band 2 (close) occupants, mirrors, number plates, wheel hubs, pillars,
- *                  bus doors, and a pedestrian's hair, arms, shoes and dog.
- *
- * The solid cabin at band 0 is not laziness. From band 1 up the greenhouse is
- * a roof slab standing on glass, because an opaque box cannot have anyone
- * sitting in it; zoomed out, where nobody can see in, one box is both cheaper
- * and better silhouetted than a roof floating on four transparent panes.
- *
- * The bands bound the per-agent work: roughly 2 matrix writes per vehicle at
- * band 0, 14 at band 1 and 24 at band 2, and 5 then 12 per pedestrian. Riders
- * are the one exception to "occupants are band 2": a motorcycle with no rider
- * is not a cheaper motorcycle, it is a wrong one, so the rider arrives with the
- * wheels at band 1.
- *
- * ## Deterministic variation
- *
- * Every random-looking choice — whether a car carries a passenger, which
- * windows are down, a pedestrian's age, build, skin, hair and trousers, whether
- * they walk a dog — comes from `agentHash` of the agent's id. Nothing is stored
- * and nothing is drawn from a random source, because an agent re-rolled each
- * frame strobes, and one cached in a map needs eviction that has to agree with
- * despawn. A hash of the id is stable for the agent's whole life for free.
- *
- * The gait is the same idea applied to motion: leg and arm swing come from the
- * pedestrian's arc position `s`, never from a clock and never from stored
- * state, so a figure that stops moving stops swinging and one that resumes
- * picks its stride up exactly where it left it. Amplitude scales with the ratio
- * of current to free speed, which is what makes someone held at a kerb stand
- * still instead of marching on the spot.
- *
- * ## Budget
- *
- * The buffers are sized once, for the worst mix, and never grow: about 50,000
- * instances, near 4 MB of matrices and colours. `place` drops writes past a
- * part's capacity rather than reallocating, so an unexpected fleet shape sheds
- * detail instead of stalling the frame.
+ * Buffers are allocated once. Only their written prefixes are uploaded, and
+ * capacity overflow drops detail instead of allocating during a frame.
  */
 
 /** Fleet and crowd the buffers are sized for. Both sit under the sim ceilings. */
@@ -125,11 +66,6 @@ const MAX_RIDERS = 400;
  */
 const NEAR_DETAIL_ZOOM = 0.55;
 
-/** One full stride cycle per 1.5 m of ground covered. */
-const GAIT_PER_UNIT = (2 * Math.PI) / m(1.5);
-/** Peak leg swing, in radians, at free walking speed. */
-const LEG_SWING = 0.44;
-
 const SIDES = [1, -1] as const;
 
 /**
@@ -150,14 +86,19 @@ interface LampState {
   indicate: number;
 }
 
+export interface AgentRenderOptions {
+  readonly pedestrianDetail?: 0 | 1 | 2;
+  readonly pedestrianVisible?: (x: number, y: number, height: number) => boolean;
+}
+
 export interface AgentMeshes {
-  readonly meshes: readonly InstancedMesh[];
+  readonly meshes: readonly Object3D[];
   /**
    * @param zoom Viewport zoom, used only to pick the closest detail band. It
    *   defaults to fully zoomed in, so a caller that does not pass it gets the
    *   richest look rather than a silently stripped one.
    */
-  sync(world: SimWorld, alpha: number, detailed: boolean, zoom?: number): void;
+  sync(world: SimWorld, alpha: number, detailed: boolean, zoom?: number, options?: AgentRenderOptions): void;
   dispose(): void;
 }
 
@@ -507,8 +448,6 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
   const wheelGeometry = new CylinderGeometry(0.5, 0.5, 1, 10).rotateX(Math.PI / 2);
   const hubGeometry = new CylinderGeometry(0.5, 0.5, 1, 8).rotateX(Math.PI / 2);
   const headGeometry = new SphereGeometry(0.5, 7, 5);
-  // A cap rather than a second sphere: hair is only ever seen from above here.
-  const hairGeometry = new SphereGeometry(0.5, 7, 3, 0, Math.PI * 2, 0, Math.PI * 0.58);
 
   const bodies = instanced('vehicle-bodies', bodyGeometry, paint, MAX_VEHICLES + 300);
   const cabins = instanced('vehicle-cabins', cabinGeometry, paint, MAX_VEHICLES);
@@ -525,7 +464,6 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     MAX_PEDS + MAX_OCCUPANTS + MAX_DOGS,
     false,
   );
-  const hair = instanced('figure-hair', hairGeometry, cloth, MAX_PEDS, false);
   const hips = instanced('figure-hips', unitBox, cloth, MAX_PEDS + MAX_RIDERS, false);
   const limbs = instanced(
     'figure-limbs',
@@ -545,11 +483,11 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     lamps,
     torsos,
     heads,
-    hair,
     hips,
     limbs,
   ];
-  const meshes = parts.map((part) => part.mesh);
+  const pedestrians = createRiggedCitizens(['female_08', 'male_03', 'male_12']);
+  const meshes = [...parts.map((part) => part.mesh), pedestrians.group];
 
   const object = new Object3D();
   // Yaw outermost, so the third Euler component becomes a rotation about the
@@ -966,132 +904,14 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     }
   };
 
-  /**
-   * One pedestrian: head, hair, torso, hips, two arms, two legs and shoes.
-   *
-   * Returns whether a dog was drawn, so the caller can keep the dog count
-   * bounded without a second pass.
-   */
-  const drawPed = (ped: Ped, look: PedLook, shirt: number, band: number, dogsLeft: number): boolean => {
-    const H = look.height;
-    const girth = look.girth;
-    const shoulderY = H * 0.82;
-    const hipY = H * 0.5;
-    const across = H * 0.25 * girth;
-    const deep = H * 0.15 * girth;
-    const limb = H * 0.055 * girth;
-    const headSize = H * look.headFraction;
-
-    // Gait from arc position, so it is continuous, stateless, and frozen the
-    // moment the pedestrian stops moving. Amplitude follows the speed ratio,
-    // which is why someone held at a kerb stands still instead of marching.
-    const phase = ped.s * GAIT_PER_UNIT * look.stride;
-    const drive = clamp(ped.v / Math.max(ped.speed, 1e-3), 0, 1);
-    const swing = Math.sin(phase) * LEG_SWING * drive;
-    const bob = -Math.abs(Math.cos(phase)) * H * 0.014 * drive;
-    // Leaning the torso carries the head forward with it.
-    const leanAhead = Math.sin(look.stoop) * (shoulderY - hipY) * 0.5;
-    const skirt = look.skirt;
-
-    place(
-      hips,
-      0,
-      0,
-      hipY - (skirt ? H * 0.04 : 0) + bob,
-      deep * (skirt ? 1.05 : 1),
-      H * (skirt ? 0.22 : 0.16),
-      across * (skirt ? 0.95 : 0.86),
-      look.trousers,
-    );
-    place(
-      torsos,
-      leanAhead * 0.5,
-      0,
-      (hipY + shoulderY) * 0.5 + bob,
-      deep,
-      shoulderY - hipY,
-      across,
-      shirt,
-      -look.stoop,
-    );
-    place(heads, leanAhead, 0, H - headSize * 0.5 + bob, headSize, headSize, headSize, look.skin);
-
-    // Bare legs below a hem, trousers otherwise. It is the cheapest honest way
-    // to get more than one kind of person out of one set of parts.
-    const legTint = skirt ? look.skin : look.trousers;
-    const legLen = hipY - H * 0.035;
-    for (const side of SIDES) {
-      const angle = side * swing;
-      place(
-        limbs,
-        Math.sin(angle) * legLen * 0.5,
-        side * across * 0.24,
-        hipY - Math.cos(angle) * legLen * 0.5,
-        limb,
-        legLen,
-        limb,
-        legTint,
-        angle,
-      );
-    }
-    if (band < 2) return false;
-
-    // Hair sits on the skull; a hat is the same cap, flatter and wider.
-    place(
-      hair,
-      leanAhead,
-      0,
-      H - headSize * 0.5 + bob + (look.hat ? headSize * 0.16 : 0),
-      headSize * (look.hat ? 1.5 : 1.05),
-      headSize * (look.hat ? 0.4 : 0.95),
-      headSize * (look.hat ? 1.5 : 1.05),
-      look.hat ? look.trousers : look.hair,
-    );
-
-    const armLen = H * 0.34;
-    for (const side of SIDES) {
-      // Arms swing against the legs, which is what stops the walk reading as a
-      // shuffle.
-      const angle = -side * swing * 0.7;
-      place(
-        limbs,
-        Math.sin(angle) * armLen * 0.5,
-        side * across * 0.58,
-        shoulderY - Math.cos(angle) * armLen * 0.5 + bob,
-        limb * 0.85,
-        armLen,
-        limb * 0.85,
-        shirt,
-        angle,
-      );
-      // A shoe straddles the bottom of its leg, so the planted foot lands on
-      // the pavement rather than a finger's width above it.
-      const legAngle = side * swing;
-      place(
-        limbs,
-        Math.sin(legAngle) * legLen + H * 0.02,
-        side * across * 0.24,
-        hipY - Math.cos(legAngle) * legLen - H * 0.017,
-        H * 0.1 * girth,
-        H * 0.036,
-        limb * 1.2,
-        look.shoes,
-      );
-    }
-
-    if (look.dog && dogsLeft > 0) {
-      placeDog(phase, drive, from(DOG_COATS, agentHash(ped.id ^ 0x7f4a7c15), 3));
-      return true;
-    }
-    return false;
-  };
 
   /** Refreshed for every vehicle, read by whichever body builder runs. */
   const lamp: LampState = { tail: TAILLAMP, indicate: 0 };
 
   return {
     meshes,
-    sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY) {
+    sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY, options = {}) {
+      pedestrians.begin(options.pedestrianDetail ?? 2);
       for (const part of parts) part.n = 0;
       const band = !detailed ? 0 : zoom >= NEAR_DETAIL_ZOOM ? 2 : 1;
 
@@ -1151,27 +971,30 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
           const pose = pedPose(world, ped, alpha);
           if (!pose) continue;
           const edge = world.sidewalks.edges.get(ped.edge);
-          frameAt(
-            pose.p.x,
-            pose.p.y,
-            pose.angle,
-            elevationAt(world, pose.p.x, pose.p.y, edge?.segment),
-          );
-          // The shirt stays whatever the simulation drew at spawn; everything
-          // else comes from the id.
-          if (drawPed(ped, pedLook(ped.id), hexOf(ped.color), band, dogsLeft)) dogsLeft--;
+          const deck = elevationAt(world, pose.p.x, pose.p.y, edge?.segment) +
+            (edge?.kind === 'crossing' ? 0 : FOOTWAY_RISE);
+          if (options.pedestrianVisible && !options.pedestrianVisible(pose.p.x, pose.p.y, deck)) continue;
+          frameAt(pose.p.x, pose.p.y, pose.angle, deck);
+          const look = pedLook(ped.id);
+          pedestrians.draw(ped, pose.p.x, pose.p.y, pose.angle, deck, alpha);
+          const phase = ped.age * ped.v * 1.5;
+          if (band >= 2 && look.dog && dogsLeft > 0) {
+            placeDog(phase, clamp(ped.v / Math.max(ped.speed, 1e-3), 0, 1),
+              from(DOG_COATS, agentHash(ped.id ^ 0x7f4a7c15), 3));
+            dogsLeft--;
+          }
           pedCount++;
         }
       }
 
+      pedestrians.finish();
+
       // Upload only what was written this frame.
       //
       // `needsUpdate = true` with no range makes three re-send the WHOLE
-      // attribute, and these buffers are sized for the ceiling rather than for
-      // what is on screen: summing the part capacities gives 50 340 instances,
-      // which is 3.2 MB of matrices plus 0.6 MB of colours every frame - about
-      // 230 MB/s at 60 fps, paid in full on an empty map with no vehicles at
-      // all. The written prefix is usually a tiny fraction of that.
+      // attribute. These buffers are sized for the population ceiling, so
+      // uploading their entire capacity wastes bandwidth on unused instances.
+      // The written prefix is usually a tiny fraction of that.
       for (const part of parts) {
         part.mesh.count = part.n;
         const matrix = part.mesh.instanceMatrix;
@@ -1188,6 +1011,7 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
       }
     },
     dispose() {
+      pedestrians.dispose();
       for (const geometry of [
         unitBox,
         bodyGeometry,
@@ -1196,7 +1020,6 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
         wheelGeometry,
         hubGeometry,
         headGeometry,
-        hairGeometry,
       ]) {
         geometry.dispose();
       }

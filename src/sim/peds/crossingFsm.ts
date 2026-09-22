@@ -14,6 +14,10 @@ import {
 } from './behaviour';
 import { pedestrianSignalState, remainingProtectedTime } from '../signals/query';
 import { makeCrossingId } from '../signals/plan';
+import { PedestrianClearance } from './clearance';
+import { nextTowardGoal } from './route';
+
+const SPACES = new WeakMap<SimWorld, PedestrianClearance>();
 
 /**
  * The pedestrian crossing state machine.
@@ -34,6 +38,9 @@ import { makeCrossingId } from '../signals/plan';
 export function stepPedestrians(w: SimWorld): void {
   const peds = w.pedsInIdOrder();
   w.sidewalks.occupancy.rebuild(w.sidewalks, peds);
+  let space = SPACES.get(w);
+  if (!space) { space = new PedestrianClearance(); SPACES.set(w, space); }
+  space.begin(w);
   const remove: Ped[] = [];
 
   for (const p of peds) {
@@ -47,10 +54,11 @@ export function stepPedestrians(w: SimWorld): void {
 
     scanNeighbours(w, p, edge);
     const desired = desiredSpeed(w, p, edge);
+    steer(w, p, edge, desired, space);
 
     switch (p.state) {
       case 'Walking':
-        walk(w, p, edge, desired);
+        walk(w, p, edge, desired, space);
         break;
 
       case 'ApproachKerb':
@@ -66,17 +74,15 @@ export function stepPedestrians(w: SimWorld): void {
         const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
         if (!next) {
           // Nothing planned: pick any onward edge rather than stand forever.
-          if (!repath(w, p)) remove.push(p);
+          if (!repath(w, p, space)) remove.push(p);
           break;
         }
         if (next.kind !== 'crossing') {
-          p.state = 'Walking';
-          enterEdge(w, p, next);
+          if (enterEdge(w, p, next, space)) p.state = 'Walking';
           break;
         }
-        if (mayEnterCrossing(w, p, next)) {
+        if (mayEnterCrossing(w, p, next) && enterEdge(w, p, next, space)) {
           p.state = 'Crossing';
-          enterEdge(w, p, next);
           occupyCrossing(w, p, next);
         }
         break;
@@ -84,12 +90,16 @@ export function stepPedestrians(w: SimWorld): void {
 
       case 'Crossing': {
         p.v = followSpeed(Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge)));
-        p.s += p.v * DT;
+        const before = p.s;
+        p.s = space.safeStep(w, p, edge, Math.min(edge.length, p.s + p.v * DT));
+        p.v = (p.s - before) / DT;
         if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
         if (p.s >= edge.length) {
-          releaseCrossing(w, p);
-          p.state = 'Clearing';
-          if (!advance(w, p, edge)) remove.push(p);
+          if (!advance(w, p, edge, space)) remove.push(p);
+          else if (p.edge !== edge.id) {
+            releaseCrossing(w, p);
+            p.state = 'Clearing';
+          }
         }
         break;
       }
@@ -104,7 +114,11 @@ export function stepPedestrians(w: SimWorld): void {
     // edge's width to the new edge is how somebody ends up off the footway
     // for a frame after a turn.
     const settled = w.sidewalks.edges.get(p.edge);
-    if (settled) steer(p, settled, desired);
+    if (settled && settled !== edge) {
+      const usable = Math.max(0, settled.halfWidth - PED_BEHAVIOUR.lateralMargin);
+      p.lat = clamp(p.lat, -usable, usable);
+    }
+    space.update(w, p);
   }
 
   for (const p of remove) {
@@ -113,9 +127,11 @@ export function stepPedestrians(w: SimWorld): void {
   }
 }
 
-function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number): void {
+function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {
   p.v = followSpeed(desired);
-  p.s += p.v * DT;
+  const before = p.s;
+  p.s = space.safeStep(w, p, edge, p.s + p.v * DT);
+  p.v = (p.s - before) / DT;
   if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
 
   if (p.s < edge.length) return;
@@ -131,8 +147,8 @@ function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number): void {
     return;
   }
 
-  if (!advance(w, p, edge)) {
-    if (!repath(w, p)) {
+  if (!advance(w, p, edge, space)) {
+    if (!repath(w, p, space)) {
       p.s = edge.length;
       p.v = 0;
     }
@@ -140,16 +156,16 @@ function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number): void {
 }
 
 /** Moves onto the next routed edge, carrying the overshoot. */
-function advance(w: SimWorld, p: Ped, edge: SidewalkEdge): boolean {
+function advance(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClearance): boolean {
   const carried = Math.max(0, p.s - edge.length);
   const exit = w.sidewalks.other(edge, p.entry);
-  const nextId = p.route.shift();
+  const nextId = p.route[0];
   const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
 
-  if (!next) return repath(w, p);
+  if (!next) return repath(w, p, space);
 
-  p.entry = exit;
-  p.edge = next.id;
+  if (!transfer(w, p, edge, next, exit, space)) return true;
+  p.route.shift();
   p.s = Math.min(carried, next.length);
 
   // A crossing is never entered directly. Even arriving from another crossing
@@ -166,12 +182,31 @@ function advance(w: SimWorld, p: Ped, edge: SidewalkEdge): boolean {
   return true;
 }
 
-function enterEdge(w: SimWorld, p: Ped, next: SidewalkEdge): void {
+function enterEdge(w: SimWorld, p: Ped, next: SidewalkEdge, space: PedestrianClearance): boolean {
   const current = w.sidewalks.edges.get(p.edge);
-  if (current) p.entry = w.sidewalks.other(current, p.entry);
-  p.edge = next.id;
+  if (!current) return false;
+  const exit = w.sidewalks.other(current, p.entry);
+  if (!transfer(w, p, current, next, exit, space)) return false;
   p.s = 0;
   p.route.shift();
+  return true;
+}
+
+function transfer(w: SimWorld, p: Ped, current: SidewalkEdge, next: SidewalkEdge,
+  exit: string, space: PedestrianClearance): boolean {
+  const before = space.point(w, current, p.entry, current.length, p.lat);
+  const frame = w.sidewalks.orientedPath(next, exit).sampleAt(0);
+  const width = Math.max(0, next.halfWidth - PED_BEHAVIOUR.lateralMargin);
+  const lat = clamp((before.x - frame.p.x) * frame.n.x + (before.y - frame.p.y) * frame.n.y, -width, width);
+  if (!space.canEnter(w, p, next, exit, lat)) {
+    p.s = Math.min(current.length, p.prev.s);
+    p.v = 0;
+    return false;
+  }
+  p.entry = exit;
+  p.edge = next.id;
+  p.lat = lat;
+  return true;
 }
 
 /**
@@ -183,24 +218,25 @@ function enterEdge(w: SimWorld, p: Ped, next: SidewalkEdge): void {
  * walks has no direction at any scale: people drift back and forth past the
  * same corner and the street reads as Brownian motion rather than as a city.
  *
- * The choice is greedy against straight-line distance to the destination, with
- * a standing per-party preference added so that two parties at one corner do
- * not funnel onto the same edge, and a penalty on crossings so that a road is
- * crossed because it is on the way. There is no search: the work is bounded by
- * the degree of one node, which is the number of footways meeting at it.
+ * A* chooses the next edge on a connected route to the destination. The small
+ * per-party preference spreads routes without overruling the route length.
+ * Crossing cost prevents unnecessary road crossings.
  */
-function repath(w: SimWorld, p: Ped): boolean {
+function repath(w: SimWorld, p: Ped, space: PedestrianClearance): boolean {
   const edge = w.sidewalks.edges.get(p.edge);
   if (!edge) return false;
   const at = w.sidewalks.other(edge, p.entry);
   const goal = chooseGoal(w, p, w.sidewalks.nodes.get(at));
 
-  let best: SidewalkEdgeId | undefined;
+  let best: SidewalkEdgeId | undefined = goal
+    ? nextTowardGoal(w.sidewalks, at, goal.id, edge.id, p.party.id)
+    : undefined;
   let bestScore = Infinity;
   let fallback: SidewalkEdgeId | undefined;
 
   for (const id of w.sidewalks.edgesAt(at)) {
     if (fallback === undefined || id < fallback) fallback = id;
+    if (best !== undefined) continue;
     if (id === p.edge) continue;
     const candidate = w.sidewalks.edges.get(id);
     if (!candidate) continue;
@@ -235,8 +271,10 @@ function repath(w: SimWorld, p: Ped): boolean {
   }
 
   p.route = [];
-  p.entry = at;
-  p.edge = pick;
+  if (!transfer(w, p, edge, next, at, space)) {
+    p.route = [pick];
+    return true;
+  }
   p.s = 0;
   p.state = 'Walking';
   return true;
@@ -434,8 +472,7 @@ function followSpeed(desired: number): number {
 function desiredSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
   let v = Math.min(p.speed, p.party.pace);
 
-  // Nobody stops to look at anything in the middle of a road: the stroll term,
-  // which contains the pause, applies on a footway only.
+  // Individual pace variation applies on footways only.
   if (p.state === 'Walking') v *= strollFactor(p.id, p.age);
   if (edge.kind === 'corner') v *= PED_BEHAVIOUR.cornerFactor;
 
@@ -542,13 +579,14 @@ function crossingUrgency(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
  * against the edge's own half-width, which is what makes it structurally
  * impossible for steering to put anybody off a footway or off a zebra.
  */
-function steer(p: Ped, edge: SidewalkEdge, desired: number): void {
+function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {
   const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
   let target = formation(p, usable);
 
   if (p.state === 'WaitAtKerb' || p.state === 'ApproachKerb') {
     target += kerbSway(p.id, p.age);
   } else {
+    target += space.avoidance(w, p, edge, target);
     // Step around somebody slower, towards whichever side has more room.
     if (
       NEAR.leaderGap < PED_BEHAVIOUR.passLook &&
@@ -572,7 +610,13 @@ function steer(p: Ped, edge: SidewalkEdge, desired: number): void {
 
   const held = clamp(p.lat, -usable, usable);
   const limit = PED_BEHAVIOUR.lateralRate * DT;
-  p.lat = held + clamp(clamp(target, -usable, usable) - held, -limit, limit);
+  const change = clamp(clamp(target, -usable, usable) - held, -limit, limit);
+  const proposed = held + change;
+  if (space.canShift(w, p, edge, proposed)) p.lat = proposed;
+  else if (space.canShift(w, p, edge, clamp(held - change, -usable, usable))) {
+    p.lat = clamp(held - change, -usable, usable);
+  }
+  else p.lat = held;
 }
 
 /**

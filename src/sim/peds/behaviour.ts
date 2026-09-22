@@ -18,11 +18,8 @@ import { m } from '@world/units';
  *   despawn. A hash of the id is stable for the agent's whole life for free,
  *   and it cannot reshuffle a seeded stream that something else depends on.
  *
- *   PACE is the trait speed, capped to the party's pace, multiplied by a pair
- *   of sine terms in simulation time — a slow wander and a rare deep dip that
- *   reads as somebody stopping to look at something — and cut on the approach
- *   to a kerb or a corner. It is a product of scalars, so it can be evaluated
- *   in any state without a branch tree.
+ *   PACE is the trait speed, capped to the party's pace, with a small smooth
+ *   variation and a measured approach to a kerb or a corner.
  *
  *   LATERAL position is a target plus a rate limit. The target is the
  *   pedestrian's preferred file, their side-of-the-footway habit, their place
@@ -79,7 +76,7 @@ export const PED_BEHAVIOUR = {
    * stranger standing between them is a jam with a stationary head, and
    * everything behind the head — including the companion — is stuck on it.
    */
-  cohesionCrawl: m(0.12),
+  cohesionCrawl: m(0.6),
   /**
    * Lag at which a party gives up on a companion for good.
    *
@@ -93,19 +90,19 @@ export const PED_BEHAVIOUR = {
 
   // ---- lateral position -------------------------------------------------
   /** How fast a pedestrian may slide across the footway. */
-  lateralRate: m(0.55),
+  lateralRate: m(1.15),
   /** Clearance kept from the edge of the footway. */
   lateralMargin: m(0.25),
   /** Lateral separation at which two people no longer obstruct each other. */
   shoulder: m(0.52),
   /** How far ahead a slower person is worth stepping around. */
-  passLook: m(4.5),
-  passShift: m(0.6),
+  passLook: m(6.5),
+  passShift: m(0.85),
   /** Speed advantage that makes stepping around worth the effort. */
   passMargin: m(0.15),
   /** How far ahead an oncoming person is worth steering away from. */
-  oncomingLook: m(6.0),
-  oncomingShift: m(0.55),
+  oncomingLook: m(7.0),
+  oncomingShift: m(0.8),
   /** Weight of the pedestrian's spawned file in its preferred position. */
   fileBlend: 0.52,
   /** Weight of the per-pedestrian habit, so a file is not a painted lane. */
@@ -127,13 +124,9 @@ export const PED_BEHAVIOUR = {
   dawdleAmplitude: 0.09,
   /** Angular rate of the slow speed wander, in radians per second. */
   dawdleRate: [0.32, 0.66] as const,
-  /** Angular rate of the rare pause, in radians per second. */
-  pauseRate: [0.12, 0.26] as const,
-  /** Depth of the pause at its narrow peak. */
-  pauseDepth: 0.78,
   /** Distance over which someone slows for a kerb or a corner. */
-  kerbSlowDistance: m(4),
-  kerbSlowFactor: 0.52,
+  kerbSlowDistance: m(2.5),
+  kerbSlowFactor: 0.75,
   /** Corners are taken at a walk, not at a stride. */
   cornerFactor: 0.84,
   /** People cross a carriageway slightly faster than they walk a footway. */
@@ -222,10 +215,7 @@ export function preferredLateral(id: number, file: number, files: number): numbe
 /**
  * Speed multiplier for one pedestrian at one moment.
  *
- * A slow wander plus a narrow dip. The dip is a sine raised to the sixteenth
- * power, which is flat at one almost everywhere and falls to the floor for a
- * couple of seconds every half-minute or so — a pause, without a state to
- * enter or leave, and continuous at both ends so nobody jerks.
+ * A small pace variation, without artificial stops in open pavement.
  */
 export function strollFactor(id: number, age: number): number {
   const h = pedHash(id ^ 0x2c1b3c6d);
@@ -234,12 +224,7 @@ export function strollFactor(id: number, age: number): number {
     PED_BEHAVIOUR.dawdleAmplitude *
       Math.sin(age * span(PED_BEHAVIOUR.dawdleRate, frac(h, 0)) + frac(h, 8) * TAU);
 
-  const dip = age * span(PED_BEHAVIOUR.pauseRate, frac(h, 16)) + frac(h, 24) * TAU;
-  const x = Math.max(0, Math.sin(dip));
-  const x2 = x * x;
-  const x4 = x2 * x2;
-  const x8 = x4 * x4;
-  return wander * (1 - PED_BEHAVIOUR.pauseDepth * x8 * x8);
+  return wander;
 }
 
 /** Weight shift of somebody standing still, in world units. */

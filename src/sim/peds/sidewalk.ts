@@ -6,6 +6,7 @@ import type { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { Level, roadProfile } from '@world/roadTypes';
 import { CROSSWALK_DEPTH } from '@world/approach';
+import { m } from '@world/units';
 import { orientedPolyline } from '@world/geometry';
 import type { LaneletGraph, LaneletId } from '@world/lanelets';
 import { makeCrossingId, type CrossingId } from '../signals/plan';
@@ -183,7 +184,23 @@ export class SidewalkGraph {
         const from = this.nodes.get(kerbId(nodeId, a.segId, 1));
         const to = this.nodes.get(kerbId(nodeId, b.segId, -1));
         if (!from || !to || from.id === to.id) continue;
-        const path = Polyline.fromPoints([from.at, to.at]);
+        // The corner follows the outside of the junction. A chord, including
+        // one bent at a single point, still cuts across the junction plate.
+        const fromAngle = Math.atan2(from.at.y - node.y, from.at.x - node.x);
+        const toAngle = Math.atan2(to.at.y - node.y, to.at.x - node.x);
+        const sweep = ((toAngle - fromAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+        const fromRadius = dist(from.at, { x: node.x, y: node.y });
+        const toRadius = dist(to.at, { x: node.x, y: node.y });
+        const count = Math.max(2, Math.ceil(sweep / (Math.PI / 12)));
+        const points: Vec2[] = [from.at];
+        for (let j = 1; j < count; j++) {
+          const t = j / count;
+          const angle = fromAngle + sweep * t;
+          const radius = fromRadius + (toRadius - fromRadius) * t + Math.sin(Math.PI * t) * m(1);
+          points.push({ x: node.x + Math.cos(angle) * radius, y: node.y + Math.sin(angle) * radius });
+        }
+        points.push(to.at);
+        const path = Polyline.fromPoints(points);
         this.addEdge({
           id: `C:${from.id}|${to.id}`,
           kind: 'corner',
@@ -194,7 +211,7 @@ export class SidewalkGraph {
           // A corner chord cuts between two footways of possibly different
           // widths, so it gets the narrower of the two: the wider footway can
           // spare the room, the narrower one cannot.
-          halfWidth: Math.min(a.footway, b.footway) / 2,
+          halfWidth: Math.min(Math.min(a.footway, b.footway) / 2, m(0.25)),
         });
       }
     }
@@ -231,7 +248,11 @@ export class SidewalkGraph {
           const t = pl.sampleAt(s0 + ((s1 - s0) * i) / Math.max(1, middle.length - 1)).t;
           return addScaled(p, perp(t), lateral * side);
         });
-        const path = Polyline.fromPoints([from.at, ...offsetPts, to.at]);
+        const points: Vec2[] = [];
+        for (const point of [from.at, ...offsetPts, to.at]) {
+          if (!points.length || dist(points[points.length - 1]!, point) > 0.01) points.push(point);
+        }
+        const path = Polyline.fromPoints(points);
         this.addEdge({
           id: `W:${segId}:${side}`,
           kind: 'walk',
