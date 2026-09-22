@@ -1,5 +1,5 @@
 import { DIV_EPS, clamp } from '@core/scalar';
-import { type Vec2, addScaled, angleOf, lerpVec, perp } from '@core/vec2';
+import { type Vec2, addScaled, angleOf, dist, lerpVec, perp } from '@core/vec2';
 import type { SimWorld } from '@sim/world';
 import type { Vehicle } from '@sim/vehicles/state';
 import type { Ped } from '@sim/peds/state';
@@ -10,27 +10,74 @@ export interface Pose {
 }
 
 /**
+ * Largest gap, in world units, that two consecutive poses may be apart before
+ * the interpolation is abandoned.
+ *
+ * A topology rebuild can move a vehicle to a lanelet somewhere else entirely,
+ * and lerping across that would draw a car sliding over open ground. Ordinary
+ * motion is at most `v * DT` plus a lane width, so this is generous enough
+ * never to fire on a real step and tight enough to catch a re-seat.
+ */
+const POSE_JUMP_LIMIT = 60;
+
+/**
  * Pose of a vehicle, interpolated between the last two simulation steps.
  *
- * When the vehicle changed lanelet between the two snapshots there is no
- * meaningful world-space interpolation, so the current pose is used directly —
- * lerping between two disconnected positions would cut corners visibly.
+ * Two things here were making the traffic look mechanical, and both were
+ * reported as cars "jumping" or "bugging out" while driving.
+ *
+ * THE POSITION. This used to return the current pose outright whenever the
+ * vehicle had changed lanelet since the last snapshot, on the grounds that
+ * there is nothing meaningful to interpolate between two different lanes. But
+ * a lanelet change is not a discontinuity: entering a connector, leaving one,
+ * or transferring to a sibling lane all leave the vehicle within a metre or
+ * two of where it was. Refusing to interpolate meant that at every junction
+ * entry, every junction exit and every lane change - the three moments the eye
+ * is actually following - the car was drawn snapping to its new centreline.
+ * It now interpolates from wherever it actually was, and only gives up if the
+ * two poses are implausibly far apart, which means the topology was rebuilt
+ * underneath it.
+ *
+ * THE HEADING. The angle was never interpolated at all: it was read from the
+ * tangent at the current arc position, which only changes when the simulation
+ * steps. Between two ticks it is constant, so a turning car rotated in
+ * sixty-per-second increments rather than sweeping, and at 2x or 4x speed the
+ * stepping is plainly visible. It is now interpolated the short way round,
+ * which is the only way to interpolate an angle without a car occasionally
+ * spinning the long way through 359 degrees.
  */
 export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null {
   const lane = w.lanelet(v.lanelet);
   if (!lane) return null;
-  const frame = lane.centre.sampleAt(v.s);
-  const here: Pose = { p: frame.p, angle: angleOf(frame.t) };
+  const t = clamp(alpha, 0, 1);
 
-  if (v.prev.lanelet !== v.lanelet) return here;
+  const frame = lane.centre.sampleAt(v.s);
+  // `lateral` is the unfinished part of a lane change: the simulation has
+  // already moved the vehicle onto the new centreline, and this is how far it
+  // still has to slide across to get there visually.
+  const at = addScaled(frame.p, perp(frame.t), v.lateral);
+  const heading = angleOf(frame.t);
+  const here: Pose = { p: at, angle: heading };
+
   const prevLane = w.lanelet(v.prev.lanelet);
   if (!prevLane) return here;
+
   const before = prevLane.centre.sampleAt(v.prev.s);
+  const beforeAt = addScaled(before.p, perp(before.t), v.prev.lateral);
+  if (dist(beforeAt, at) > POSE_JUMP_LIMIT) return here;
 
   return {
-    p: lerpVec(before.p, frame.p, clamp(alpha, 0, 1)),
-    angle: angleOf(frame.t),
+    p: lerpVec(beforeAt, at, t),
+    angle: lerpAngle(angleOf(before.t), heading, t),
   };
+}
+
+/** Interpolates two headings the short way round. */
+function lerpAngle(from: number, to: number, t: number): number {
+  let delta = (to - from) % (2 * Math.PI);
+  if (delta > Math.PI) delta -= 2 * Math.PI;
+  if (delta < -Math.PI) delta += 2 * Math.PI;
+  return from + delta * t;
 }
 
 /**

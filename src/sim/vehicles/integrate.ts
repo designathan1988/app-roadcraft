@@ -5,8 +5,18 @@ import { desiredSpeed } from './driver';
 import { resolveSpeed } from './idm';
 import { planFrom } from '../routing/router';
 import { COARSE_EPS } from '@core/scalar';
+import { addScaled, dot, perp, sub } from '@core/vec2';
 
 const CLEARANCE_EPSILON = COARSE_EPS;
+/**
+ * How fast a lane change closes its sideways offset, in world units a second.
+ *
+ * At 0.4 m per unit this is about 3.4 m/s of lateral movement, so a 3-metre
+ * lane is crossed in a little under a second - brisk, but that is what a
+ * deliberate lane change looks like, and anything slower leaves the vehicle
+ * visibly straddling two lanes.
+ */
+const LATERAL_CLOSE_RATE = 8.5;
 
 /**
  * The ONLY writer of `s`, `v` and `lanelet`.
@@ -54,6 +64,14 @@ export function integrateAll(w: SimWorld): void {
     v.v = next;
     v.s += ds;
     v.age += DT;
+
+    // The slide itself. A real lane change takes a couple of seconds; this is
+    // a rate limit rather than an ease, so however wide the lane the vehicle
+    // crosses it at a believable sideways speed and never snaps.
+    if (v.lateral !== 0) {
+      const shrink = LATERAL_CLOSE_RATE * DT;
+      v.lateral = Math.abs(v.lateral) <= shrink ? 0 : v.lateral - Math.sign(v.lateral) * shrink;
+    }
     // What "held up" means, for the driver who is about to decide whether to
     // look for another way round: crawling at less than a third of what they
     // wanted. Measured against their own target rather than against a fixed
@@ -157,6 +175,50 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
   // than trusting the stale answer.
   if (v.admittedConnector || v.clearingConnectors.length > 0) return undefined;
   if (v.s > lane.length) return undefined;
+
+  // Carry the SIDEWAYS distance the transfer just covered, so the renderer
+  // can slide the vehicle across instead of teleporting it.
+  //
+  // A lane change moves the vehicle between two parallel centrelines in a
+  // single tick. `vehiclePose` then had nothing to interpolate - its own
+  // guard skipped interpolation entirely whenever the lanelet changed - so a
+  // car crossed a full lane width in one frame. That instantaneous sideways
+  // jump is what reads as the vehicle "bugging out and skipping position".
+  //
+  // `lateral` has existed on the vehicle state all along for exactly this and
+  // was never written. It is a RENDER offset: the simulation still places the
+  // vehicle on the new centreline at the same arc position, so nothing about
+  // car-following, claims or conflict geometry changes.
+  const from = w.lanelet(v.lanelet);
+  if (from) {
+    const frame = from.centre.sampleAt(Math.min(v.s, from.length));
+    // Where the vehicle is actually DRAWN, which is the centreline plus
+    // whatever is left of a previous change. Anchoring to the bare centreline
+    // instead means a vehicle that changes lane twice in quick succession
+    // jumps by a full lane width: the first change leaves it rendered a lane
+    // away from its own centreline, and the second measures from the
+    // centreline as though it were already there.
+    const was = { p: addScaled(frame.p, perp(frame.t), v.lateral), t: frame.t };
+
+    // ANCHOR BY POSITION, NOT BY ARC LENGTH.
+    //
+    // The transfer used to keep `s` and hand it to the sibling lane. Sibling
+    // lanes are parallel but they are not the same curve: each is trimmed
+    // separately at each end by its own junction, and on a curve the inner and
+    // outer lanes have genuinely different lengths. The same `s` is therefore
+    // a different place along the road, and the vehicle jumped FORWARDS or
+    // BACKWARDS along its own street at the moment it changed lane. Measured
+    // here before this: 9.7 units in a single tick by a vehicle travelling at
+    // under 2 units a second.
+    //
+    // Taking the nearest point on the new lane instead keeps the vehicle
+    // physically where it already was, and leaves only the sideways part -
+    // which is what `lateral` then slides out.
+    const anchor = lane.centre.closestPoint(was.p);
+    v.s = anchor.s;
+    const now = lane.centre.sampleAt(anchor.s);
+    v.lateral = dot(sub(was.p, now.p), perp(now.t));
+  }
 
   w.exitLanelet(v, v.lanelet);
   v.lanelet = target;
