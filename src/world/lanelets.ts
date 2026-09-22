@@ -114,15 +114,35 @@ export const connectorId = (from: LaneletId, to: LaneletId): ConnectorId => `${f
 /**
  * Classifies a movement from its heading change.
  *
- * With +Y running down the map, the signed turn is measured clockwise on
- * screen, so a positive turn is a right turn.
+ * THIS WAS MIRRORED, and it is the whole of the "signals turn the wrong way"
+ * defect. It claimed +Y ran down the map; it does not. The renderer maps world
+ * `(x, y)` to three's `(x, h, -y)`, which puts +Y UP on screen - measured, not
+ * assumed: projecting `(0, 100)` lands 105 pixels ABOVE the origin. So the
+ * frame is right-handed on screen, a positive heading change is
+ * counter-clockwise, and counter-clockwise is a LEFT turn.
+ *
+ * Every other file already agreed with that. `laneOffset` pushes traffic onto
+ * `-perp` and calls it right-hand traffic; `render/signals.ts` puts the head
+ * on `-perp` and calls it the right-hand kerb. Only this function read the
+ * sign the other way, and because every rule downstream is keyed on the label
+ * it produces, all of them applied to the opposite movement:
+ *
+ *   - `laneIsPlausible` made left turns leave from the kerb lane and right
+ *     turns from the innermost lane, so both crossed their own approach's
+ *     through lanes;
+ *   - the right-on-red exemption in `sim/signals/permission.ts` was granted to
+ *     the turn that crosses oncoming traffic. Measured over 1500 s of traffic:
+ *     every one of the 11 entries on red was a real LEFT turn, 4 of them while
+ *     the crossing street had green;
+ *   - `CRITICAL_GAP` gave the left turn the shorter gap meant for the right,
+ *     and `turnSpeedFactor` the wrong speed.
  */
 export function classifyTurn(inDir: Vec2, outDir: Vec2): TurnKind {
   const delta = normalizeAngle(angleOf(outDir) - angleOf(inDir));
   const deg = (delta * 180) / Math.PI;
   if (Math.abs(deg) > 150) return 'uturn';
-  if (deg > 30) return 'right';
-  if (deg < -30) return 'left';
+  if (deg > 30) return 'left';
+  if (deg < -30) return 'right';
   return 'through';
 }
 
