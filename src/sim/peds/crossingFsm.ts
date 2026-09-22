@@ -1,0 +1,631 @@
+import { DIV_EPS, clamp, lerp } from '@core/scalar';
+import { dist } from '@core/vec2';
+import { DT, PED } from '../params';
+import type { SimWorld } from '../world';
+import type { Ped } from './state';
+import type { SidewalkEdge, SidewalkEdgeId, SidewalkNode } from './sidewalk';
+import {
+  PED_BEHAVIOUR,
+  edgePreference,
+  goalPick,
+  kerbSway,
+  preferredLateral,
+  strollFactor,
+} from './behaviour';
+import { pedestrianSignalState, remainingProtectedTime } from '../signals/query';
+import { makeCrossingId } from '../signals/plan';
+
+/**
+ * The pedestrian crossing state machine.
+ *
+ * `s` is monotone non-decreasing, exactly as for vehicles. There is deliberately
+ * NO anti-stall force-forward here. The V6 monolith needed one because its
+ * pedestrians parked inside the carriageway and had to be shoved out, and its
+ * shove had a unit bug that teleported them across the road in 0.4 seconds
+ * (defects 4.1 and 4.7). With the waiting position defined as a kerb node
+ * outside the carriageway, there is nothing to shove.
+ *
+ * The state machine decides where somebody may be. `behaviour.ts` decides what
+ * they look like getting there — pace, lateral position, who they are with and
+ * where they are going — and none of it is reachable from `mayEnterCrossing`
+ * or from gap acceptance, so no amount of character can put anybody in front
+ * of a car.
+ */
+export function stepPedestrians(w: SimWorld): void {
+  const peds = w.pedsInIdOrder();
+  w.sidewalks.occupancy.rebuild(w.sidewalks, peds);
+  const remove: Ped[] = [];
+
+  for (const p of peds) {
+    p.age += DT;
+    const edge = w.sidewalks.edges.get(p.edge);
+    if (!edge) {
+      releaseCrossing(w, p);
+      remove.push(p);
+      continue;
+    }
+
+    scanNeighbours(w, p, edge);
+    const desired = desiredSpeed(w, p, edge);
+
+    switch (p.state) {
+      case 'Walking':
+        walk(w, p, edge, desired);
+        break;
+
+      case 'ApproachKerb':
+        p.v = 0;
+        p.waited = 0;
+        p.state = 'WaitAtKerb';
+        break;
+
+      case 'WaitAtKerb': {
+        p.v = 0;
+        p.waited += DT;
+        const nextId = p.route[0];
+        const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
+        if (!next) {
+          // Nothing planned: pick any onward edge rather than stand forever.
+          if (!repath(w, p)) remove.push(p);
+          break;
+        }
+        if (next.kind !== 'crossing') {
+          p.state = 'Walking';
+          enterEdge(w, p, next);
+          break;
+        }
+        if (mayEnterCrossing(w, p, next)) {
+          p.state = 'Crossing';
+          enterEdge(w, p, next);
+          occupyCrossing(w, p, next);
+        }
+        break;
+      }
+
+      case 'Crossing': {
+        p.v = followSpeed(Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge)));
+        p.s += p.v * DT;
+        if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
+        if (p.s >= edge.length) {
+          releaseCrossing(w, p);
+          p.state = 'Clearing';
+          if (!advance(w, p, edge)) remove.push(p);
+        }
+        break;
+      }
+
+      case 'Clearing':
+        p.state = 'Walking';
+        break;
+    }
+
+    // The edge may have changed inside the switch, and steering belongs to
+    // the edge the pedestrian is on when the tick ends: applying the old
+    // edge's width to the new edge is how somebody ends up off the footway
+    // for a frame after a turn.
+    const settled = w.sidewalks.edges.get(p.edge);
+    if (settled) steer(p, settled, desired);
+  }
+
+  for (const p of remove) {
+    releaseCrossing(w, p);
+    w.peds.delete(p.id);
+  }
+}
+
+function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number): void {
+  p.v = followSpeed(desired);
+  p.s += p.v * DT;
+  if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
+
+  if (p.s < edge.length) return;
+
+  const nextId = p.route[0];
+  const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
+
+  if (next?.kind === 'crossing') {
+    // Stop at the kerb. The kerb is a graph node offset outside the
+    // carriageway, so this position is never in the road.
+    p.s = edge.length;
+    p.state = 'ApproachKerb';
+    return;
+  }
+
+  if (!advance(w, p, edge)) {
+    if (!repath(w, p)) {
+      p.s = edge.length;
+      p.v = 0;
+    }
+  }
+}
+
+/** Moves onto the next routed edge, carrying the overshoot. */
+function advance(w: SimWorld, p: Ped, edge: SidewalkEdge): boolean {
+  const carried = Math.max(0, p.s - edge.length);
+  const exit = w.sidewalks.other(edge, p.entry);
+  const nextId = p.route.shift();
+  const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
+
+  if (!next) return repath(w, p);
+
+  p.entry = exit;
+  p.edge = next.id;
+  p.s = Math.min(carried, next.length);
+
+  // A crossing is never entered directly. Even arriving from another crossing
+  // — the second half of a staged crossing — the pedestrian stops at the kerb
+  // and asks permission, because "may I start" is the only rule that keeps
+  // anyone from being caught in the road.
+  if (next.kind === 'crossing') {
+    p.s = 0;
+    p.state = 'WaitAtKerb';
+    p.waited = 0;
+  } else {
+    p.state = 'Walking';
+  }
+  return true;
+}
+
+function enterEdge(w: SimWorld, p: Ped, next: SidewalkEdge): void {
+  const current = w.sidewalks.edges.get(p.edge);
+  if (current) p.entry = w.sidewalks.other(current, p.entry);
+  p.edge = next.id;
+  p.s = 0;
+  p.route.shift();
+}
+
+/**
+ * Picks the onward edge that gets closest to where this pedestrian is going.
+ *
+ * A pedestrian always has somewhere to go; none of them ever freeze. What has
+ * changed is that "somewhere" is now a place rather than a coin toss. A
+ * uniform draw over the adjacent edges is a random walk, and a crowd of random
+ * walks has no direction at any scale: people drift back and forth past the
+ * same corner and the street reads as Brownian motion rather than as a city.
+ *
+ * The choice is greedy against straight-line distance to the destination, with
+ * a standing per-party preference added so that two parties at one corner do
+ * not funnel onto the same edge, and a penalty on crossings so that a road is
+ * crossed because it is on the way. There is no search: the work is bounded by
+ * the degree of one node, which is the number of footways meeting at it.
+ */
+function repath(w: SimWorld, p: Ped): boolean {
+  const edge = w.sidewalks.edges.get(p.edge);
+  if (!edge) return false;
+  const at = w.sidewalks.other(edge, p.entry);
+  const goal = chooseGoal(w, p, w.sidewalks.nodes.get(at));
+
+  let best: SidewalkEdgeId | undefined;
+  let bestScore = Infinity;
+  let fallback: SidewalkEdgeId | undefined;
+
+  for (const id of w.sidewalks.edgesAt(at)) {
+    if (fallback === undefined || id < fallback) fallback = id;
+    if (id === p.edge) continue;
+    const candidate = w.sidewalks.edges.get(id);
+    if (!candidate) continue;
+    const far = w.sidewalks.nodes.get(w.sidewalks.other(candidate, at));
+
+    let score = goal && far ? dist(far.at, goal.at) : 0;
+    if (candidate.kind === 'crossing') score += PED_BEHAVIOUR.crossingPenalty;
+    score += edgePreference(p.party.id, id);
+    if (score < bestScore) {
+      bestScore = score;
+      best = id;
+    }
+  }
+
+  // A dead end — a stub with one footway — is turned round on rather than
+  // stood on. Without the fallback the only edge available is the one just
+  // walked, which the loop above excludes by design.
+  const pick = best ?? fallback;
+  if (pick === undefined) return false;
+  const next = w.sidewalks.edges.get(pick);
+  if (!next) return false;
+
+  // A crossing is a requested *next* edge until permission is granted.  The
+  // old code installed it as both current edge and route[0], so after crossing
+  // it tried to enter the same edge again and could reverse or freeze.
+  if (next.kind === 'crossing') {
+    p.s = edge.length;
+    p.route = [pick];
+    p.state = 'WaitAtKerb';
+    p.waited = 0;
+    return true;
+  }
+
+  p.route = [];
+  p.entry = at;
+  p.edge = pick;
+  p.s = 0;
+  p.state = 'Walking';
+  return true;
+}
+
+/**
+ * The node this pedestrian is walking towards, re-chosen on arrival.
+ *
+ * Keyed on the party rather than the pedestrian, so everybody walking together
+ * wants the same thing and makes the same turns without any member having to
+ * look at another. The arrival radius matters as much as the destination: a
+ * kerb node on the far side of a road the party has no reason to cross would
+ * otherwise hold them circling it forever.
+ */
+function chooseGoal(w: SimWorld, p: Ped, here: SidewalkNode | undefined): SidewalkNode | undefined {
+  const pool = w.sidewalks.goalNodes;
+  if (!pool.length) return undefined;
+
+  let goal = p.goal === null ? undefined : w.sidewalks.nodes.get(p.goal);
+  const arrived =
+    !!goal && !!here && (goal.id === here.id || dist(goal.at, here.at) < PED_BEHAVIOUR.arriveRadius);
+  if (arrived) {
+    p.trip++;
+    goal = undefined;
+  }
+  if (!goal) {
+    const picked = pool[goalPick(p.party.id, p.trip, pool.length)];
+    goal = picked === undefined ? undefined : w.sidewalks.nodes.get(picked);
+    p.goal = goal ? goal.id : null;
+  }
+  return goal;
+}
+
+/**
+ * Whether a pedestrian may step off the kerb.
+ *
+ * A pedestrian may only start if it can FINISH. That single rule, combined with
+ * the plan-level clearance invariant and with crossing occupancy being a hard
+ * conflict resource for vehicles, is what guarantees nobody is ever caught in
+ * the road.
+ */
+export function mayEnterCrossing(w: SimWorld, p: Ped, crossing: SidewalkEdge): boolean {
+  const node = crossing.node;
+  const segment = crossing.segment;
+  if (node === undefined || segment === undefined) return true;
+
+  const need = crossing.length / PED.designSpeed + PED.startLag;
+  const controller = w.controller(node);
+  const junction = w.graph.junctions.get(node);
+  const id = makeCrossingId(node, segment);
+
+  // Connector admission is also a crossing reservation.  This closes the
+  // one-tick race where a car reserved a turn and a pedestrian stepped onto
+  // its zebra later in the same simulation tick.
+  if (crossingReservedByVehicle(w, node, segment)) return false;
+
+  if (controller && junction?.signalised) {
+    const state = pedestrianSignalState(controller, id, crossing.length);
+    if (state !== 'walk') return false;
+    void need;
+    return true;
+  }
+
+  // Uncontrolled: accept a gap in the lanes actually being crossed.
+  return pedGapAccepted(w, p, crossing);
+}
+
+function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): boolean {
+  for (const v of w.vehicles.values()) {
+    const lane = w.lanelet(v.lanelet);
+    const connectorIds = new Set(v.clearingConnectors.map((token) => token.connector));
+    if (v.admittedConnector) connectorIds.add(v.admittedConnector);
+    if (lane?.kind === 'connector') connectorIds.add(lane.id);
+
+    for (const connectorId of connectorIds) {
+      const connector = w.connector(connectorId);
+      if (!connector || connector.node !== node) continue;
+      if (connector.inSegment === segment || connector.outSegment === segment) return true;
+    }
+  }
+  return false;
+}
+
+/** Gap acceptance against approaching traffic on the lanes being crossed. */
+export function pedGapAccepted(w: SimWorld, p: Ped, crossing: SidewalkEdge): boolean {
+  const impatience = Math.min(1.5, 0.05 * p.waited);
+  const critical = Math.max(2.5, PED.criticalGap - impatience);
+  const crossTime = crossing.length / Math.max(p.speed, 0.2);
+
+  for (const laneId of crossing.lanes ?? []) {
+    const lane = w.lanelet(laneId);
+    if (!lane || lane.to !== crossing.node) continue;
+    const head = w.laneHead(laneId);
+    if (!head) continue;
+    const distance = lane.length - head.s;
+    const arrival = distance / Math.max(head.v, 0.5);
+    if (arrival < crossTime + critical) return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- neighbours
+
+/**
+ * The result of one neighbour scan.
+ *
+ * A single record, reused. The scan runs once per pedestrian per tick and its
+ * answer is consumed before the next scan begins, so a fresh object per
+ * pedestrian would be fifteen hundred allocations a tick to carry seven numbers
+ * a few lines.
+ *
+ * `leader` is the nearest person ahead going the same way whatever their line;
+ * `blocker` is the nearest one actually in the way. They differ exactly when
+ * somebody can be walked around, which is the whole point of having both.
+ */
+const NEAR = {
+  leaderGap: Infinity,
+  leaderSpeed: 0,
+  leaderLat: 0,
+  blockerGap: Infinity,
+  blockerSpeed: 0,
+  oncomingGap: Infinity,
+  oncomingLat: 0,
+};
+
+function scanNeighbours(w: SimWorld, p: Ped, edge: SidewalkEdge): void {
+  NEAR.leaderGap = Infinity;
+  NEAR.leaderSpeed = 0;
+  NEAR.leaderLat = 0;
+  NEAR.blockerGap = Infinity;
+  NEAR.blockerSpeed = 0;
+  NEAR.oncomingGap = Infinity;
+  NEAR.oncomingLat = 0;
+
+  const index = w.sidewalks.occupancy;
+  const slot = index.slotOf(p.id);
+  if (slot < 0) return;
+  const ids = index.occupants(edge.id);
+  const keys = index.positions(edge.id);
+  const mine = keys[slot];
+  if (mine === undefined) return;
+
+  // The index runs from the edge's `from` end; a pedestrian who entered from
+  // the other end walks down it, not up it.
+  const step = p.entry === edge.from ? 1 : -1;
+
+  let i = slot + step;
+  for (let n = 1; n <= PED_BEHAVIOUR.scanAhead && i >= 0 && i < ids.length; n++, i += step) {
+    const key = keys[i];
+    const id = ids[i];
+    if (key === undefined || id === undefined) break;
+    const ahead = (key - mine) * step;
+    if (ahead <= 0) continue;
+    const other = w.peds.get(id);
+    if (!other) continue;
+
+    if (other.entry === p.entry) {
+      if (ahead < NEAR.leaderGap) {
+        NEAR.leaderGap = ahead;
+        NEAR.leaderSpeed = other.v;
+        NEAR.leaderLat = other.lat;
+      }
+      if (ahead < NEAR.blockerGap && Math.abs(other.lat - p.lat) < PED_BEHAVIOUR.shoulder) {
+        NEAR.blockerGap = ahead;
+        NEAR.blockerSpeed = other.v;
+      }
+    } else if (ahead < NEAR.oncomingGap) {
+      NEAR.oncomingGap = ahead;
+      // Two people walking towards each other measure their offsets against
+      // opposite normals, so the sign has to be flipped to compare them.
+      NEAR.oncomingLat = -other.lat;
+    }
+  }
+}
+
+/** Speed reduced by whoever is genuinely in the way. */
+function followSpeed(desired: number): number {
+  const gap = NEAR.blockerGap;
+  if (gap === Infinity) return desired;
+  const target = PED.jamGap + desired * PED.headway;
+  if (gap <= PED.jamGap) return 0;
+  if (gap < target) return Math.min(desired, Math.max(0, NEAR.blockerSpeed));
+  return desired;
+}
+
+// ------------------------------------------------------------------- pace
+
+/**
+ * What this pedestrian would walk at right now with the footway to themselves.
+ *
+ * A product of independent scalars rather than a branch tree, so a person
+ * slowing for a corner while dawdling while waiting for a friend is all three
+ * at once instead of whichever case was tested first.
+ */
+function desiredSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
+  let v = Math.min(p.speed, p.party.pace);
+
+  // Nobody stops to look at anything in the middle of a road: the stroll term,
+  // which contains the pause, applies on a footway only.
+  if (p.state === 'Walking') v *= strollFactor(p.id, p.age);
+  if (edge.kind === 'corner') v *= PED_BEHAVIOUR.cornerFactor;
+
+  const remaining = edge.length - p.s;
+  if (edge.kind !== 'crossing' && remaining < PED_BEHAVIOUR.kerbSlowDistance) {
+    const nextId = p.route[0];
+    const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
+    // Anything that is not more footway straight ahead — a kerb, a corner, or
+    // a decision still to be made — is approached rather than walked into.
+    if (next?.kind !== 'walk') {
+      v *= lerp(
+        PED_BEHAVIOUR.kerbSlowFactor,
+        1,
+        clamp(remaining / PED_BEHAVIOUR.kerbSlowDistance, 0, 1),
+      );
+    }
+  }
+
+  v *= cohesion(w, p);
+  return Math.max(0, v);
+}
+
+/**
+ * Pacing for the companion directly behind, as a multiplier. Cuts the link when
+ * the two have parted, which is the only place a party ever breaks up.
+ *
+ * A party only holds together while its members are on the same footway going
+ * the same way. The moment a crossing releases part of a party the rest walk
+ * on, deliberately: waiting would park somebody at a kerb they are not queuing
+ * to cross, where the crossing rules have nothing to say about them, and would
+ * let one red signal hold a party still for a whole cycle. They re-form on
+ * their own, because the destination is the party's and not the walker's, so
+ * the ones ahead keep making the turns the ones behind will make.
+ */
+function cohesion(w: SimWorld, p: Ped): number {
+  if (p.trailing === null) return 1;
+  const mate = w.peds.get(p.trailing);
+  if (!mate) {
+    p.trailing = null;
+    return 1;
+  }
+  // A companion on another edge is mid-crossing or a turn behind: transient,
+  // and not something to pace for, because the lag is not measurable across
+  // two edges and a kerb is no place to be held. One on the SAME footway
+  // walking the other way is not a transient — they have parted.
+  if (mate.edge !== p.edge) return 1;
+  if (mate.entry !== p.entry) {
+    p.trailing = null;
+    return 1;
+  }
+
+  const lag = p.s - mate.s;
+  if (lag <= PED_BEHAVIOUR.cohesionSlack) return 1;
+  if (lag > PED_BEHAVIOUR.cohesionBreak) {
+    p.trailing = null;
+    return 1;
+  }
+
+  // Slower than the companion, not equal to them, so the gap actually closes;
+  // and never below the crawl, so a companion held up by a stranger cannot
+  // bring the footway to a halt.
+  const closing = clamp((lag - PED_BEHAVIOUR.cohesionSlack) / PED_BEHAVIOUR.cohesionSlack, 0, 1);
+  const cap = Math.max(
+    mate.v * lerp(1, PED_BEHAVIOUR.cohesionClose, closing),
+    PED_BEHAVIOUR.cohesionCrawl,
+  );
+  const own = Math.max(Math.min(p.speed, p.party.pace), DIV_EPS);
+  return clamp(cap / own, 0, 1);
+}
+
+/**
+ * Urgency while in the road.
+ *
+ * Everybody crosses a little faster than they walk, and faster still when the
+ * protected window is closing. This can only ever make somebody leave the road
+ * sooner: the decision to be there was taken at the kerb by `mayEnterCrossing`
+ * against the design speed, which is slower than anyone actually walks.
+ */
+function crossingUrgency(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
+  const node = edge.node;
+  const crossing = edge.crossing;
+  if (node === undefined || crossing === undefined) return PED_BEHAVIOUR.crossingUrgency;
+
+  const controller = w.controller(node);
+  if (!controller || !w.graph.junctions.get(node)?.signalised) {
+    return PED_BEHAVIOUR.crossingUrgency;
+  }
+
+  const left = remainingProtectedTime(controller, crossing);
+  const need = (edge.length - p.s) / Math.max(p.speed, DIV_EPS);
+  return left < need * PED_BEHAVIOUR.hurryMargin
+    ? PED_BEHAVIOUR.crossingUrgency * PED_BEHAVIOUR.hurryGain
+    : PED_BEHAVIOUR.crossingUrgency;
+}
+
+// ---------------------------------------------------------------- steering
+
+/**
+ * The only writer of `Ped.lat`.
+ *
+ * Target plus rate limit. Every term below moves the target, never the
+ * position, so however hard two of them disagree the pedestrian still walks
+ * from where they are to where they want to be at a walking pace. The clamp is
+ * against the edge's own half-width, which is what makes it structurally
+ * impossible for steering to put anybody off a footway or off a zebra.
+ */
+function steer(p: Ped, edge: SidewalkEdge, desired: number): void {
+  const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
+  let target = formation(p, usable);
+
+  if (p.state === 'WaitAtKerb' || p.state === 'ApproachKerb') {
+    target += kerbSway(p.id, p.age);
+  } else {
+    // Step around somebody slower, towards whichever side has more room.
+    if (
+      NEAR.leaderGap < PED_BEHAVIOUR.passLook &&
+      NEAR.leaderSpeed < desired - PED_BEHAVIOUR.passMargin &&
+      Math.abs(NEAR.leaderLat - target) < PED_BEHAVIOUR.shoulder
+    ) {
+      const room = NEAR.leaderLat <= 0 ? 1 : -1;
+      target += room * PED_BEHAVIOUR.passShift;
+    }
+
+    // And give way to anyone coming the other way. Both walkers shift to the
+    // same signed side, which in mirrored frames is the same hand, so the two
+    // corrections add up to a gap instead of cancelling into a dance.
+    if (
+      NEAR.oncomingGap < PED_BEHAVIOUR.oncomingLook &&
+      Math.abs(NEAR.oncomingLat - target) < PED_BEHAVIOUR.shoulder * 2
+    ) {
+      target += PED_BEHAVIOUR.keepSide * PED_BEHAVIOUR.oncomingShift;
+    }
+  }
+
+  const held = clamp(p.lat, -usable, usable);
+  const limit = PED_BEHAVIOUR.lateralRate * DT;
+  p.lat = held + clamp(clamp(target, -usable, usable) - held, -limit, limit);
+}
+
+/**
+ * Where across the footway this pedestrian wants to be, before anyone is in
+ * the way.
+ *
+ * A party is placed as one thing: its members share the habit, so they share
+ * the base offset and differ only by their place in the line. The line is then
+ * shifted whole to fit the footway rather than each member being clamped
+ * separately — clamping members separately piles the outside ones onto the same
+ * bound, which is a party walking through itself.
+ *
+ * No branch names a footway class. Where the width is there the members spread
+ * across it and walk side by side; where it is not they all want the same line
+ * and the following model puts them in a queue, which is what people do.
+ */
+function formation(p: Ped, usable: number): number {
+  const size = p.party.size;
+  if (size < 2) return preferredLateral(p.id, p.file, PED.files) * usable;
+
+  const base = preferredLateral(p.party.id, p.party.id % PED.files, PED.files) * usable;
+  const needed = (size - 1) * PED_BEHAVIOUR.abreastSpacing + PED_BEHAVIOUR.shoulder;
+  if (usable * 2 < needed) return base;
+
+  const half = ((size - 1) / 2) * PED_BEHAVIOUR.abreastSpacing;
+  const place = (p.rank - (size - 1) / 2) * PED_BEHAVIOUR.abreastSpacing;
+  return clamp(base, -(usable - half), usable - half) + place;
+}
+
+// --------------------------------------------------------------- occupancy
+
+function occupyCrossing(w: SimWorld, p: Ped, edge: SidewalkEdge): void {
+  if (edge.kind !== 'crossing' || !edge.crossing) return;
+  // The wait is over. Without this reset the stall detector would see the whole
+  // time spent at the kerb as time spent motionless in the road, and flag every
+  // pedestrian on the very tick it steps off.
+  p.lastMovedTick = w.clock.tick;
+  p.occupying = edge.crossing;
+  const list = w.pedOccupancy.get(edge.crossing);
+  if (list) {
+    if (!list.includes(p.id)) list.push(p.id);
+  } else {
+    w.pedOccupancy.set(edge.crossing, [p.id]);
+  }
+}
+
+export function releaseCrossing(w: SimWorld, p: Ped): void {
+  if (!p.occupying) return;
+  const list = w.pedOccupancy.get(p.occupying);
+  if (list) {
+    const i = list.indexOf(p.id);
+    if (i >= 0) list.splice(i, 1);
+    if (!list.length) w.pedOccupancy.delete(p.occupying);
+  }
+  p.occupying = null;
+}

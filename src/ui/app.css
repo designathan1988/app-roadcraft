@@ -1,0 +1,430 @@
+/* Compact game HUD: dark mineral glass, teal interaction color and warm
+   highlights. The world stays visually dominant while every control remains
+   readable over bright terrain. */
+
+:root {
+  --ui-bg: rgba(12, 25, 27, 0.82);
+  --ui-bg-solid: #112427;
+  --ui-border: rgba(187, 235, 224, 0.16);
+  --ui-hi: rgba(224, 255, 248, 0.075);
+  --text: #f4fbf8;
+  --muted: #9eb7b2;
+  --accent: #65e5c3;
+  --accent-2: #ffc864;
+  --danger: #ff756b;
+  --shadow: 0 16px 42px rgba(3, 12, 13, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+* { box-sizing: border-box; }
+
+button:focus-visible, canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+[hidden] { display: none !important; }
+
+html, body, #app {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  /* The page behind the canvas. A plain colour, because the scene fills the
+     viewport: this only ever shows for the one frame before the renderer's
+     first draw, and the image that used to be here does not exist. */
+  background: #1b2a22;
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+body { user-select: none; -webkit-user-select: none; }
+
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+#game[data-tool="move"] { cursor: move; }
+#game[data-tool="upgrade"],
+#game[data-tool="inspect"] { cursor: pointer; }
+#game[data-tool="bulldoze"] { cursor: not-allowed; }
+#game[data-tool="terrain"] { cursor: cell; }
+
+.glass {
+  background: linear-gradient(145deg, var(--ui-hi), transparent 42%), var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+}
+
+.topbar {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  pointer-events: none;
+}
+.top-actions { display: flex; gap: 8px; pointer-events: auto; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand strong { display: block; font-size: 14px; letter-spacing: 0.17em; text-shadow: 0 1px 12px rgba(101, 229, 195, 0.2); }
+.brand span { display: block; font-size: 10px; color: var(--muted); letter-spacing: 0.08em; }
+.brand-mark { width: 32px; height: 32px; padding: 5px; border-radius: 10px; background: rgba(101, 229, 195, 0.1); border: 1px solid rgba(101, 229, 195, 0.2); }
+.brand-mark svg { width: 100%; height: 100%; fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.brand-mark .cut { stroke: var(--text); opacity: 0.5; }
+
+.icon-button, .tiny-button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--ui-border);
+  background: rgba(7, 18, 20, 0.56);
+  color: var(--text);
+  cursor: pointer;
+}
+.icon-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.icon-button:hover:not(:disabled), .tiny-button:hover { border-color: rgba(101, 229, 195, 0.45); background: rgba(101, 229, 195, 0.08); }
+.icon-button.active { border-color: var(--accent); color: var(--accent); background: rgba(101, 229, 195, 0.13); box-shadow: 0 0 18px rgba(101, 229, 195, 0.08); }
+.icon-button:disabled { opacity: 0.28; cursor: default; }
+.tiny-button { width: 24px; height: 24px; font-size: 15px; line-height: 1; }
+
+.toolbar {
+  position: absolute;
+  left: 14px;
+  top: 86px;
+  width: 84px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tool {
+  min-height: 62px;
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.tool-icon svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tool:hover { color: var(--text); background: rgba(255, 255, 255, 0.035); }
+.tool.active { color: var(--accent); border-color: var(--accent); background: linear-gradient(145deg, rgba(101, 229, 195, 0.16), rgba(101, 229, 195, 0.055)); box-shadow: inset 0 0 16px rgba(101, 229, 195, 0.04); }
+.tool.danger.active { color: var(--danger); border-color: var(--danger); background: rgba(255, 111, 99, 0.12); }
+
+.road-palette, .terrain-palette {
+  position: absolute;
+  right: 14px;
+  top: 86px;
+  width: 244px;
+  padding: 12px;
+}
+.road-palette.hidden, .terrain-palette.hidden { display: none; }
+.simulation-controls { position: absolute; left: 112px; top: 86px; width: 244px; padding: 12px; }
+.speed-controls { display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); gap: 5px; margin-bottom: 9px; }
+.speed-controls button, .density-control output { border: 1px solid var(--ui-border); border-radius: 8px; background: rgba(5, 16, 18, 0.54); color: var(--muted); font: inherit; font-size: 10px; padding: 6px 4px; cursor: pointer; }
+.speed-controls button.active { color: #09241e; border-color: var(--accent); background: var(--accent); font-weight: 700; }
+.density-control { display: grid; grid-template-columns: 54px 1fr 38px; align-items: center; gap: 6px; margin-top: 7px; color: var(--muted); font-size: 10px; }
+.density-control input { accent-color: var(--accent); min-width: 0; }
+.density-control output { text-align: center; padding: 3px; }
+.panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.panel-title kbd {
+  font: inherit;
+  border: 1px solid var(--ui-border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.alignment-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.alignment-mode {
+  padding: 7px;
+  border-radius: 9px;
+  border: 1px solid var(--ui-border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.alignment-mode.active { color: var(--accent); border-color: var(--accent); }
+
+.structure-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 0 0 10px; }
+.structure-mode, .terrain-mode, .terrain-clear {
+  padding: 6px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border);
+  background: rgba(5, 16, 18, 0.34);
+  color: var(--muted);
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+.structure-mode.active, .terrain-mode.active { color: var(--accent); border-color: var(--accent); background: rgba(101, 229, 195, 0.1); }
+.terrain-mode.water.active { color: #73cfe7; border-color: #73cfe7; background: rgba(71, 158, 184, 0.14); }
+.terrain-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.terrain-mode { padding: 9px 5px; font-size: 10px; }
+.terrain-control { display: grid; grid-template-columns: 42px 1fr 34px; align-items: center; gap: 7px; margin-top: 10px; color: var(--muted); font-size: 10px; }
+.terrain-control input { min-width: 0; accent-color: var(--accent); }
+.terrain-control output { text-align: center; border: 1px solid var(--ui-border); border-radius: 6px; padding: 3px; }
+.terrain-clear { width: 100%; margin-top: 12px; padding: 9px; color: var(--danger); border-color: rgba(255, 117, 107, 0.36); }
+
+.road-types { display: grid; gap: 6px; }
+.road-type {
+  display: grid;
+  grid-template-columns: 46px 1fr 22px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.road-type:hover { background: rgba(255, 255, 255, 0.035); }
+.road-type.active { border-color: var(--accent); background: linear-gradient(135deg, rgba(101, 229, 195, 0.14), rgba(101, 229, 195, 0.04)); }
+.road-type strong { display: block; font-size: 11px; }
+.road-type small { display: block; font-size: 9px; color: var(--muted); }
+.road-swatch { position: relative; height: 20px; border-radius: 5px; }
+.road-swatch::after {
+  content: "";
+  position: absolute;
+  inset: 50% 5px auto;
+  height: 1.5px;
+  transform: translateY(-50%);
+  background: repeating-linear-gradient(90deg, #e1c45a 0 5px, transparent 5px 10px);
+}
+.road-swatch.no-line::after { display: none; }
+.shortcut { font-size: 9px; color: var(--muted); text-align: right; }
+
+.inspector { position: absolute; right: 18px; top: 372px; width: 244px; padding: 12px; transition: opacity 0.18s, transform 0.18s; }
+.inspector.hidden { opacity: 0; transform: translateX(12px); pointer-events: none; }
+/* The inspector has grown beyond the space between the palette and minimap.
+   It temporarily owns that column so every road and junction control remains
+   reachable at desktop heights as well as on narrow screens. */
+.inspector-open .road-palette,
+.inspector-open .terrain-palette,
+.inspector-open .minimap-panel { display: none; }
+.inspector-open .inspector {
+  top: 96px;
+  max-height: calc(100dvh - 150px);
+  overflow: auto;
+}
+.inspect-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.inspect-card { padding: 7px; border-radius: 9px; background: rgba(5, 16, 18, 0.55); border: 1px solid var(--ui-border); }
+.inspect-card span { display: block; font-size: 9px; color: var(--muted); letter-spacing: 0.08em; }
+.inspect-card strong { display: block; font-size: 13px; }
+.inspect-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.inspect-actions button {
+  padding: 8px;
+  border-radius: 9px;
+  border: 1px solid var(--ui-border);
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.inspect-actions button.danger { color: var(--danger); border-color: rgba(255, 111, 99, 0.4); }
+.inspect-select { display: grid; gap: 4px; margin-top: 8px; color: var(--muted); font-size: 10px; }
+.inspect-select select { width: 100%; border: 1px solid var(--ui-border); border-radius: 8px; background: rgba(20, 28, 23, 0.7); color: var(--text); padding: 7px; }
+.movement-controls { display: grid; gap: 5px; margin: 9px 0 0; padding: 8px; border: 1px solid var(--ui-border); border-radius: 8px; color: var(--muted); font-size: 10px; }
+.movement-controls legend { padding: 0 3px; color: var(--text); font-size: 10px; }
+.movement-controls label { display: flex; align-items: center; gap: 6px; }
+.movement-controls input { accent-color: var(--accent); }
+
+.hint, .mobile-hint {
+  position: absolute;
+  bottom: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.mobile-hint { display: none; }
+
+/* A transient answer to an action, shown in the hint bar rather than in a
+   second floating panel. Brightened and slightly enlarged so a glance at the
+   same place registers that something changed. */
+.hint.flash {
+  color: var(--accent, #7ee0b8);
+  font-weight: 600;
+  transform: translateX(-50%) scale(1.04);
+  transition: transform 120ms ease-out;
+}
+
+.statusbar {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  font-size: 11px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.statusbar i { width: 1px; height: 12px; background: var(--ui-border); }
+.statusbar .spacer { flex: 1; }
+#auditReadout.bad { color: var(--danger); }
+#auditReadout.good { color: var(--accent); }
+
+.minimap-panel { position: absolute; right: 14px; bottom: 54px; width: 218px; padding: 10px; }
+.minimap-head { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 6px; }
+.minimap-wrap { height: 126px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(101, 229, 195, 0.26); box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.25); }
+#minimap { width: 100%; height: 100%; display: block; cursor: pointer; }
+.minimap-note { font-size: 9px; color: var(--muted); margin-top: 6px; text-align: center; }
+
+@media (max-width: 780px) {
+  .topbar { top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; height: 54px; }
+  .toolbar {
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: max(46px, calc(env(safe-area-inset-bottom) + 40px));
+    width: auto;
+    height: 68px;
+    flex-direction: row;
+    justify-content: space-around;
+  }
+  .tool { flex: 1; min-height: 0; }
+  .road-palette, .terrain-palette { right: 10px; top: 74px; width: min(190px, calc(55vw - 15px)); padding: 9px; }
+  .inspector {
+    left: 10px;
+    right: 10px;
+    top: 74px;
+    width: auto;
+    max-height: calc(100dvh - 210px);
+    overflow: auto;
+  }
+  .simulation-controls { left: 10px; right: auto; top: 240px; width: min(154px, calc(45vw - 15px)); padding: 8px; }
+  .hint { display: none; }
+  .mobile-hint { display: block; bottom: max(122px, calc(env(safe-area-inset-bottom) + 116px)); }
+  .statusbar { left: 10px; right: 10px; bottom: max(8px, env(safe-area-inset-bottom)); }
+  .statusbar span:not(#zoomReadout):not(.spacer):not(#auditReadout), .statusbar i { display: none; }
+  /* Palette and minimap share the top row without intersecting even at the
+     narrowest supported viewport. The inspector temporarily replaces both. */
+  .minimap-panel {
+    left: 10px;
+    right: auto;
+    bottom: auto;
+    top: 74px;
+    width: min(154px, calc(45vw - 15px));
+    padding: 8px;
+  }
+  .minimap-wrap { height: 90px; }
+  .inspector-open .road-palette,
+  .inspector-open .terrain-palette,
+  .inspector-open .simulation-controls,
+  .inspector-open .minimap-panel { display: none; }
+}
+
+@media (max-width: 480px) {
+  .topbar { padding: 0 8px; }
+  .brand > div:last-child { display: none; }
+  .brand-mark { width: 26px; height: 26px; }
+  .top-actions { gap: 4px; }
+  .icon-button { width: 34px; height: 34px; }
+  .road-palette, .terrain-palette { width: min(172px, calc(55vw - 15px)); }
+  .shortcut { display: none; }
+  .toolbar { height: 64px; }
+  .minimap-panel { width: min(138px, calc(45vw - 15px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* --------------------------------------------------------------- selectors */
+/*
+ * The language and graphics-quality chips in the top bar.
+ *
+ * A bare `<select>` inherits none of the panel styling and looks like a form
+ * control dropped onto a game; wrapping it in a chip that carries the icon and
+ * the border, with the select itself transparent on top, keeps the control
+ * native (and therefore accessible and usable on touch) while it reads as part
+ * of the interface.
+ */
+.select-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 8px 0 9px;
+  border-radius: 10px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.select-chip:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.select-chip svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.select-chip select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  padding: 2px 2px;
+  cursor: pointer;
+  outline-offset: 3px;
+}
+
+.select-chip select option {
+  color: #0d1512;
+  background: #e8efe9;
+}
+
+@media (max-width: 900px) {
+  /* The top bar is tight on a phone; the icon alone still identifies each chip. */
+  .select-chip select {
+    max-width: 78px;
+  }
+}

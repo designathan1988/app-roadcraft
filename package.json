@@ -1,0 +1,43 @@
+{
+  "name": "roadcraft",
+  "version": "7.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Roadcraft \u2014 a 3D isometric road-building and traffic-simulation game for the browser",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check": "npm run lint && npm run typecheck && npm run test:coverage && npm run build",
+    "verify": "npm run check && npm run verify:visual",
+    "verify:visual": "npm run build && node scripts/verify-visual.mjs",
+    "screens": "npm run build && node scripts/verify-visual.mjs -- --shots"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
+    "@types/earcut": "^3.0.0",
+    "@types/node": "^24.13.3",
+    "@types/three": "^0.186.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.9.0",
+    "happy-dom": "^20.11.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "clipper2-js": "1.2.4",
+    "earcut": "^3.2.3",
+    "three": "^0.186.0"
+  }
+}

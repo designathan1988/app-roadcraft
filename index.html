@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#152119" />
+  <title data-i18n="app.title">Roadcraft — Road Builder</title>
+  <!-- Inline so the first paint never waits on a request, and so the build has
+       no stray asset to copy. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23152119'/%3E%3Cpath d='M6 22 16 5l10 17-10 5Z' fill='none' stroke='%237ee0b8' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/ui/app.css" />
+</head>
+<body>
+  <main id="app" data-i18n-label="app.region" aria-label="Roadcraft road builder">
+    <canvas id="game" tabindex="0" role="application" data-i18n-label="app.canvas" aria-label="Interactive city map" aria-describedby="hint mobileHint"></canvas>
+
+    <div class="topbar glass">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M6 22 16 5l10 17-10 5Z"/><path d="m11 20 5-8 5 8-5 2.8Z" class="cut"/></svg>
+        </div>
+        <div><strong data-i18n="app.name">ROADCRAFT</strong><span data-i18n="app.tagline">Road Builder</span></div>
+      </div>
+      <div class="top-actions">
+        <label class="select-chip" data-i18n-title="action.quality" title="Graphics quality">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><path d="M12 12h9"/></svg>
+          <select id="qualitySelect" data-i18n-label="action.quality" aria-label="Graphics quality">
+            <option value="auto" data-i18n="quality.auto" selected>Automatic</option>
+            <option value="low" data-i18n="quality.low">Low</option>
+            <option value="medium" data-i18n="quality.medium">Medium</option>
+            <option value="high" data-i18n="quality.high">High</option>
+            <option value="ultra" data-i18n="quality.ultra">Ultra</option>
+          </select>
+        </label>
+        <label class="select-chip" data-i18n-title="action.language" title="Language">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/></svg>
+          <select id="languageSelect" data-i18n-label="action.language" aria-label="Language"></select>
+        </label>
+        <button id="newMap" class="icon-button" data-i18n-title="action.newMap" data-i18n-label="action.newMap" title="New map" aria-label="New map">＋</button>
+        <button id="saveMap" class="icon-button" data-i18n-title="action.saveMap" data-i18n-label="action.saveMap" title="Save map" aria-label="Save map">⇩</button>
+        <button id="openMap" class="icon-button" data-i18n-title="action.openMap" data-i18n-label="action.openMap" title="Open map" aria-label="Open map">⇧</button>
+        <button id="undoAction" class="icon-button" data-i18n-title="action.undo" data-i18n-label="action.undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+          <svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"/><path d="M5 12h8a6 6 0 0 1 6 6"/></svg>
+        </button>
+        <button id="redoAction" class="icon-button" data-i18n-title="action.redo" data-i18n-label="action.redo" title="Redo (Ctrl+Y)" aria-label="Redo" disabled>
+          <svg viewBox="0 0 24 24"><path d="m15 7 5 5-5 5"/><path d="M19 12h-8a6 6 0 0 0-6 6"/></svg>
+        </button>
+        <button id="trafficToggle" class="icon-button active" data-i18n-title="action.traffic" data-i18n-label="action.traffic" title="Toggle traffic" aria-label="Toggle traffic" aria-pressed="true">
+          <svg viewBox="0 0 24 24"><path d="M4 14h16l-1.4-4.2A2 2 0 0 0 16.7 8H7.3a2 2 0 0 0-1.9 1.8L4 14Z"/><path d="M6 14v4m12-4v4M7 18h2m6 0h2"/></svg>
+        </button>
+        <button id="resetView" class="icon-button" data-i18n-title="action.resetView" data-i18n-label="action.resetView" title="Frame the camera" aria-label="Frame the camera">
+          <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8"/><path d="M4 4v4h4"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <section class="toolbar glass" role="toolbar" data-i18n-label="tools.label" aria-label="Editing tools">
+      <button class="tool active" data-tool="road" aria-pressed="true"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M7 20 10 4h4l3 16"/><path d="M12 7v2m0 3v2m0 3v2"/></svg></span><span data-i18n="tool.road">Road</span></button>
+      <button class="tool" data-tool="terrain" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="m3 18 6-9 4 6 3-4 5 7Z"/><path d="M3 21h18"/></svg></span><span data-i18n="tool.terrain">Terrain</span></button>
+      <button class="tool" data-tool="upgrade" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/><path d="m8 8 4-4 4 4"/></svg></span><span data-i18n="tool.upgrade">Upgrade</span></button>
+      <button class="tool" data-tool="move" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3m-6 12 3 3 3-3m3-9 3 3-3 3M6 9l-3 3 3 3"/></svg></span><span data-i18n="tool.move">Move</span></button>
+      <button class="tool" data-tool="split" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><path d="M12 3v18"/><path d="m9 10 3 3 3-3"/></svg></span><span data-i18n="tool.split">Split</span></button>
+      <button class="tool danger" data-tool="bulldoze" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="m5 9 8-5 5 8-8 5Z"/><path d="m7 15 5 5m4-8 3 5"/></svg></span><span data-i18n="tool.bulldoze">Bulldoze</span></button>
+      <button class="tool" data-tool="control" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="15" rx="2"/><path d="M12 18v3"/><circle cx="12" cy="7" r="1.4"/><circle cx="12" cy="10.6" r="1.4"/><circle cx="12" cy="14.2" r="1.4"/></svg></span><span data-i18n="tool.control">Control</span></button>
+      <button class="tool" data-tool="inspect" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></span><span data-i18n="tool.inspect">Inspect</span></button>
+    </section>
+
+    <section class="simulation-controls glass" data-i18n-label="sim.label" aria-label="Simulation controls">
+      <div class="panel-title"><span data-i18n="sim.title">SIMULATION</span><button id="congestionToggle" class="tiny-button" type="button" data-i18n-label="sim.congestion" aria-label="Toggle congestion map" aria-pressed="false">≈</button></div>
+      <div class="speed-controls" role="group" data-i18n-label="sim.speed" aria-label="Simulation speed">
+        <button type="button" data-speed="0" data-i18n="sim.pause">Pause</button><button type="button" data-speed="1" class="active">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button>
+      </div>
+      <label class="density-control"><span data-i18n="sim.traffic">Traffic</span> <input id="trafficIntensity" type="range" min="0" max="200" value="100" step="10" /><output id="trafficIntensityValue">100%</output></label>
+      <label class="density-control"><span data-i18n="sim.people">People</span> <input id="pedIntensity" type="range" min="0" max="200" value="100" step="10" /><output id="pedIntensityValue">100%</output></label>
+      <label class="density-control"><span data-i18n="sim.demand">Demand</span> <select id="demandLevel"><option value="0.55" data-i18n="sim.demand.low">Low</option><option value="1" selected data-i18n="sim.demand.normal">Normal</option><option value="1.55" data-i18n="sim.demand.peak">Peak</option></select></label>
+    </section>
+
+    <section class="road-palette glass" data-i18n-label="palette.label" aria-label="Road classes">
+      <div class="panel-title"><span data-i18n="palette.title">ROAD CLASS</span><kbd>1–4</kbd></div>
+      <div class="alignment-modes" role="group" data-i18n-label="palette.alignment" aria-label="Alignment">
+        <button type="button" class="alignment-mode active" data-alignment="straight" aria-pressed="true" data-i18n="palette.alignment.straight">Straight</button>
+        <button type="button" class="alignment-mode" data-alignment="curve" aria-pressed="false" data-i18n="palette.alignment.curve">Curve</button>
+      </div>
+      <div class="structure-modes" role="group" data-i18n-label="palette.structure" aria-label="Road structure">
+        <button type="button" class="structure-mode active" data-structure="ground" aria-pressed="true" data-i18n="structure.ground">At grade</button>
+        <button type="button" class="structure-mode" data-structure="elevated" aria-pressed="false" data-i18n="structure.elevated">Elevated</button>
+        <button type="button" class="structure-mode" data-structure="viaduct" aria-pressed="false" data-i18n="structure.viaduct">Viaduct</button>
+        <button type="button" class="structure-mode" data-structure="bridge" aria-pressed="false" data-i18n="structure.bridge">Bridge</button>
+        <button type="button" class="structure-mode" data-structure="tunnel" aria-pressed="false" data-i18n="structure.tunnel" data-i18n-title="structure.tunnel.help" title="Drive a road under a hill: draw it long enough for the ramps to reach depth">Tunnel</button>
+      </div>
+      <div id="roadTypes" class="road-types" role="group" data-i18n-label="palette.classes" aria-label="Road classes"></div>
+    </section>
+
+    <section id="terrainPalette" class="terrain-palette glass hidden" data-i18n-label="terrain.label" aria-label="Terrain editor" aria-hidden="true">
+      <div class="panel-title"><span data-i18n="terrain.title">GEOGRAPHY</span><kbd data-i18n="terrain.brush">Brush</kbd></div>
+      <div class="terrain-modes" role="group" data-i18n-label="terrain.operation" aria-label="Terrain operation">
+        <button type="button" class="terrain-mode active" data-terrain-mode="raise" aria-pressed="true" data-i18n="terrain.raise">Raise</button>
+        <button type="button" class="terrain-mode" data-terrain-mode="lower" aria-pressed="false" data-i18n="terrain.lower">Lower</button>
+        <button type="button" class="terrain-mode" data-terrain-mode="flatten" aria-pressed="false" data-i18n="terrain.flatten">Level</button>
+        <button type="button" class="terrain-mode water" data-terrain-mode="river" aria-pressed="false" data-i18n="terrain.river">River</button>
+      </div>
+      <label class="terrain-control"><span data-i18n="terrain.radius">Radius</span> <input id="terrainRadius" type="range" min="30" max="180" value="80" step="10" /><output id="terrainRadiusValue">80</output></label>
+      <label class="terrain-control"><span data-i18n="terrain.strength">Strength</span> <input id="terrainStrength" type="range" min="1" max="10" value="4" step="1" /><output id="terrainStrengthValue">4</output></label>
+      <button id="clearTerrain" class="terrain-clear" type="button" data-i18n="terrain.clear">Flatten the whole map</button>
+    </section>
+
+    <section id="inspector" class="inspector glass hidden" aria-live="polite" aria-hidden="true" aria-labelledby="inspectorTitle" hidden>
+      <div class="panel-title"><span id="inspectorTitle" data-i18n="inspector.title">INSPECT</span><button type="button" id="closeInspector" class="tiny-button" data-i18n-label="inspector.close" aria-label="Close inspector">×</button></div>
+      <div id="inspectorBody"></div>
+    </section>
+
+    <div id="hint" class="hint glass" data-i18n="hint.road">Drag to build · Wheel: zoom · Right button: camera</div>
+    <div id="mobileHint" class="mobile-hint glass" data-i18n="hint.mobile.road">1 finger: build · 2 fingers: camera</div>
+
+    <section id="minimapPanel" class="minimap-panel glass" data-i18n-label="minimap.label" aria-label="Minimap">
+      <div class="minimap-head"><span data-i18n="minimap.title">MAP</span><span id="coordReadout">X 0 · Y 0</span></div>
+      <div class="minimap-wrap"><canvas id="minimap" tabindex="0" role="button" data-i18n-label="minimap.move" aria-label="Move the camera from the minimap" aria-describedby="minimapNote"></canvas></div>
+      <div id="minimapNote" class="minimap-note" data-i18n="minimap.note">Tap, drag or use the arrow keys to move the camera</div>
+    </section>
+
+    <div class="statusbar glass">
+      <span id="roadCount">0 roads</span><i></i><span id="nodeCount">0 nodes</span><i></i><span id="vehicleCount">0 vehicles</span><i></i><span id="pedCount">0 people</span>
+      <span class="spacer"></span><span id="auditReadout"></span><i></i><span id="zoomReadout">100%</span>
+    </div>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

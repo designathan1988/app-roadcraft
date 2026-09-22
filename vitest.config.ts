@@ -1,0 +1,58 @@
+import { defineConfig } from 'vitest/config';
+import { fileURLToPath, URL } from 'node:url';
+
+const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      '@core': r('./src/core'),
+      '@world': r('./src/world'),
+      '@sim': r('./src/sim'),
+      '@render': r('./src/render'),
+      '@view': r('./src/view'),
+      '@editor': r('./src/editor'),
+      '@ui': r('./src/ui'),
+      '@': r('./src'),
+    },
+  },
+  test: {
+    globals: true,
+    // Headless by design: no DOM. Anything needing a canvas uses the FakeCtx recorder.
+    environment: 'node',
+    include: ['tests/**/*.spec.ts'],
+    // Same scratch pattern ESLint and git already ignore. Without it the
+    // stated invariant — a throwaway probe cannot break `npm run check` — was
+    // false through the runner even while it held through the linter.
+    exclude: ['tests/e2e/**', 'tests/_*/**'],
+    // Tests always run with invariant assertions armed.
+    env: { SIM_STRICT: '1' },
+    testTimeout: 60_000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      reportsDirectory: 'coverage',
+      // The layers that can be tested headlessly and deterministically: the
+      // document, the geometry, the height solver, the mesh builder and the
+      // simulation. WebGL, the DOM interface and the viewport seam are covered
+      // by `npm run verify:visual`, which drives the real application in a real
+      // browser; asking a node test runner to cover them would only measure how
+      // much of the renderer can be imported without a GPU.
+      include: [
+        'src/core/**/*.ts',
+        'src/world/**/*.ts',
+        'src/sim/**/*.ts',
+        'src/editor/**/*.ts',
+        'src/render/mesh/**/*.ts',
+        'src/ui/i18n/**/*.ts',
+      ],
+      // Set from the measured value, so they can only ever be raised.
+      thresholds: {
+        statements: 66,
+        branches: 54,
+        functions: 70,
+        lines: 69,
+      },
+    },
+  },
+});

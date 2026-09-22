@@ -1,0 +1,331 @@
+import { RoadDoc, type JunctionControl, type SegmentDirection, type SerializedDoc } from '@world/doc';
+import { ROAD_TYPES } from '@world/roadTypes';
+import { isRoadStructure } from '@world/structures';
+import { isTerrainMode } from '@world/terrain';
+
+const KEY = 'roadcraft.world.v7';
+/** Where storage the loader could not read is kept, rather than deleted. */
+export const QUARANTINE_KEY = 'roadcraft.world.v7.unreadable';
+const DEBOUNCE_MS = 700;
+
+export interface SavedSettings {
+  readonly camera: { readonly x: number; readonly y: number; readonly zoom: number };
+  readonly paused: boolean;
+  readonly speed: number;
+  readonly trafficIntensity: number;
+  readonly pedestrianIntensity: number;
+  readonly demandMultiplier?: number;
+  readonly congestionOverlay: boolean;
+}
+
+export interface SavedSession {
+  readonly document: SerializedDoc;
+  readonly settings: SavedSettings;
+}
+
+interface SerializedSession extends SavedSession {
+  readonly version: 2;
+}
+
+/**
+ * Autosave and file export.
+ *
+ * The V6 monolith had no persistence at all — not a single `localStorage` call
+ * in 1133 lines — so every reload dropped the entire map (defect 5.9). Only the
+ * authoring document is stored; everything else is derived.
+ */
+export class Persistence {
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(private readonly storageKey = KEY) {}
+
+  /**
+   * Set once this instance has rejected the stored entry.
+   *
+   * It exists so that KEEPING unreadable bytes on disk costs nothing: the
+   * loader answers from memory instead of parsing them again. That is what
+   * lets `quarantine` refuse to delete anything it could not copy.
+   *
+   * On the instance rather than the module because the app holds exactly one
+   * `Persistence`, so the lifetime is identical — while a module-level flag
+   * would leak between every instance in the same process, which is both wrong
+   * and untestable.
+   */
+  private rejected = false;
+
+  /**
+   * Stores the document, keeping whatever settings are already saved.
+   *
+   * This and `saveSession` write to the SAME key, so a bare-document write used
+   * to silently discard the user's camera, speed and traffic settings. Reading
+   * the current settings back first makes the two writers compatible instead of
+   * competing.
+   */
+  save(doc: RoadDoc): boolean {
+    return this.saveSession(doc, this.loadSession()?.settings ?? defaultSettings());
+  }
+
+  /** Coalesces rapid edits into one write. */
+  saveSoon(doc: RoadDoc): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.save(doc);
+    }, DEBOUNCE_MS);
+  }
+
+  saveSession(doc: RoadDoc, settings: SavedSettings): boolean {
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify({ version: 2, document: doc.toJSON(), settings }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  saveSessionSoon(doc: RoadDoc, settings: () => SavedSettings): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.saveSession(doc, settings());
+    }, DEBOUNCE_MS);
+  }
+
+  load(): SerializedDoc | null {
+    return this.loadSession()?.document ?? null;
+  }
+
+  /**
+   * Reads the autosave. Never throws, whatever storage does.
+   *
+   * `localStorage.getItem` can throw outright — Safari private mode, blocked
+   * cookies, a sandboxed frame — and not just on write. The previous shape put
+   * the read inside a `try` whose `catch` called `getItem` a SECOND time, so a
+   * hostile storage threw again from inside the handler and the exception
+   * escaped, taking the whole boot with it. Every storage call now sits in its
+   * own guard, and nothing in the recovery path touches storage again.
+   */
+  loadSession(): SavedSession | null {
+    // Already rejected once in this page's lifetime. The bytes may still be on
+    // disk — deliberately, so nothing the user made is destroyed — but there is
+    // nothing to gain from parsing them again.
+    if (this.rejected) return null;
+
+    let raw: string | null;
+    try {
+      raw = localStorage.getItem(this.storageKey);
+    } catch {
+      return null;
+    }
+    if (!raw) return null;
+
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (isSerializedDoc(parsed)) return { document: parsed, settings: defaultSettings() };
+      if (isSavedSession(parsed)) return parsed;
+    } catch {
+      // Unparseable. Fall through and set it aside rather than reread it.
+    }
+
+    this.rejected = true;
+    quarantine(
+      raw,
+      this.storageKey,
+      this.storageKey === KEY ? QUARANTINE_KEY : `${this.storageKey}.unreadable`,
+    );
+    return null;
+  }
+
+  clear(): void {
+    try {
+      localStorage.removeItem(this.storageKey);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Sets unreadable storage aside — and never destroys it to do so.
+ *
+ * Three shapes of this function have been wrong. Deleting outright lost the
+ * user's map on any schema bump. Copy-then-delete in one `try` meant a full
+ * quota skipped the delete, so the bad entry was re-read on every boot. Two
+ * independent guards fixed the loop but reintroduced the data loss: the copy
+ * failed, the delete ran anyway, and zero bytes survived.
+ *
+ * Quarantining doubles the stored bytes, so any map past roughly half the quota
+ * can never be copied — and a quota-truncated write is one of the causes of
+ * unreadability in the first place. So the removal is now conditional on the
+ * copy, and the boot loop is prevented in memory rather than by deletion.
+ * Nothing the user made is ever thrown away to keep the loader quiet.
+ */
+function quarantine(raw: string | null, sourceKey = KEY, quarantineKey = QUARANTINE_KEY): void {
+  if (!raw) return;
+
+  try {
+    localStorage.setItem(quarantineKey, raw);
+  } catch {
+    // No room for a copy. Leave the original exactly where it is: the session
+    // flag above already stops it being re-read, and a later save will replace
+    // it. Losing someone's map to make room for a copy of that same map is not
+    // a trade worth making.
+    return;
+  }
+
+  try {
+    localStorage.removeItem(sourceKey);
+  } catch {
+    /* The copy is safe; the original merely lingers. */
+  }
+}
+
+function defaultSettings(): SavedSettings {
+  return { camera: { x: 0, y: 0, zoom: 1 }, paused: false, speed: 1, trafficIntensity: 1, pedestrianIntensity: 1, congestionOverlay: false };
+}
+
+function isSavedSession(value: unknown): value is SavedSession {
+  if (!isRecord(value) || value.version !== 2 || !isSerializedDoc(value.document) || !isRecord(value.settings)) return false;
+  const settings = value.settings;
+  const camera = settings.camera;
+  return isRecord(camera) && isFiniteNumber(camera.x) && isFiniteNumber(camera.y) && isFiniteNumber(camera.zoom) &&
+    typeof settings.paused === 'boolean' && isFiniteNumber(settings.speed) && isFiniteNumber(settings.trafficIntensity) &&
+    isFiniteNumber(settings.pedestrianIntensity) && (settings.demandMultiplier === undefined || isFiniteNumber(settings.demandMultiplier)) &&
+    typeof settings.congestionOverlay === 'boolean';
+}
+
+/** Offers the current map as a downloadable JSON file. */
+export function exportToFile(
+  doc: RoadDoc,
+  settings?: SavedSettings,
+  filename = 'roadcraft-map.json',
+): void {
+  const saved: SerializedSession | SerializedDoc = settings
+    ? { version: 2, document: doc.toJSON(), settings }
+    : doc.toJSON();
+  const blob = new Blob([JSON.stringify(saved, null, 2)], {
+    type: 'application/json',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Reads a map file chosen by the user. */
+export async function importFromFile(): Promise<SavedSession | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    let settled = false;
+    const finish = (value: SavedSession | null): void => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        finish(null);
+        return;
+      }
+      try {
+        const parsed: unknown = JSON.parse(await file.text());
+        finish(readImportedSession(parsed));
+      } catch {
+        finish(null);
+      }
+    };
+    input.oncancel = () => finish(null);
+    input.click();
+  });
+}
+
+/** Accepts legacy geometry-only files while preserving complete session files. */
+function readImportedSession(value: unknown): SavedSession | null {
+  if (isSerializedDoc(value)) return { document: value, settings: defaultSettings() };
+  return isSavedSession(value) ? value : null;
+}
+
+/** Strict boundary validation for local storage and imported files. */
+export function isSerializedDoc(value: unknown): value is SerializedDoc {
+  if (!isRecord(value) || value.version !== 1) return false;
+  if (!Array.isArray(value.nodes) || !Array.isArray(value.segments)) return false;
+
+  const nodeIds = new Set<number>();
+  for (const node of value.nodes) {
+    if (!isRecord(node)) return false;
+    if (!isId(node.id) || nodeIds.has(node.id)) return false;
+    if (!isFiniteNumber(node.x) || !isFiniteNumber(node.y)) return false;
+    if (node.control !== undefined && !isJunctionControl(node.control)) return false;
+    if (node.blockedMovements !== undefined && (!Array.isArray(node.blockedMovements) ||
+      node.blockedMovements.some((movement) => typeof movement !== 'string'))) return false;
+    nodeIds.add(node.id);
+  }
+
+  const segmentIds = new Set<number>();
+  for (const segment of value.segments) {
+    if (!isRecord(segment)) return false;
+    if (!isId(segment.id) || segmentIds.has(segment.id)) return false;
+    if (!isId(segment.a) || !isId(segment.b) || segment.a === segment.b) return false;
+    if (!nodeIds.has(segment.a) || !nodeIds.has(segment.b)) return false;
+    if (
+      typeof segment.type !== 'number' ||
+      !Number.isInteger(segment.type) ||
+      segment.type < 0 ||
+      segment.type >= ROAD_TYPES.length
+    ) {
+      return false;
+    }
+    if (segment.dashOrigin !== undefined && !isFiniteNumber(segment.dashOrigin)) return false;
+    if (segment.direction !== undefined && !isSegmentDirection(segment.direction)) return false;
+    if (segment.structure !== undefined && !isRoadStructure(segment.structure)) return false;
+    if (segment.lanes !== undefined && segment.lanes !== null &&
+      (!isFiniteNumber(segment.lanes) || !Number.isInteger(segment.lanes) || segment.lanes < 1 || segment.lanes > 8)) return false;
+    if (segment.curve !== null) {
+      if (!isRecord(segment.curve)) return false;
+      if (!isFiniteNumber(segment.curve.t) || !isFiniteNumber(segment.curve.h)) return false;
+    }
+    segmentIds.add(segment.id);
+  }
+
+  if (value.terrain !== undefined) {
+    if (!Array.isArray(value.terrain)) return false;
+    const terrainIds = new Set<number>();
+    for (const stamp of value.terrain) {
+      if (!isRecord(stamp) || !isId(stamp.id) || terrainIds.has(stamp.id)) return false;
+      if (!isFiniteNumber(stamp.x) || !isFiniteNumber(stamp.y) ||
+        !isFiniteNumber(stamp.radius) || stamp.radius <= 0 ||
+        !isFiniteNumber(stamp.strength) || stamp.strength < 0 ||
+        !isTerrainMode(stamp.mode)) return false;
+      terrainIds.add(stamp.id);
+    }
+  }
+
+  return true;
+}
+
+function isJunctionControl(value: unknown): value is JunctionControl {
+  return value === 'auto' || value === 'signal' || value === 'stop' || value === 'yield' || value === 'priority' || value === 'none';
+}
+
+function isSegmentDirection(value: unknown): value is SegmentDirection {
+  return value === 'both' || value === 'aToB' || value === 'bToA';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isId(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) > 0;
+}
+
+export { RoadDoc };
