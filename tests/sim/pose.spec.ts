@@ -140,6 +140,36 @@ describe('rendered pose', () => {
     expect(sawSlide || worstLateral === 0).toBe(true);
   });
 
+  it('points a changing vehicle INTO its move, never away from it', () => {
+    // The heading during a change is the direction of travel: forward along
+    // the lane plus the sideways slide. The slide runs along perp(t) with the
+    // opposite sign of `lateral`, so the drawn angle must lean that way.
+    const { sim } = grid();
+    let checked = 0;
+    let wrong = 0;
+
+    sim.clock.run(Math.round(300 / DT), () => {
+      step(sim, { traffic: true, pedestrians: true });
+      for (const v of sim.vehicles.values()) {
+        // Only well inside a change, and on the same lanelet as the previous
+        // snapshot so the heading blend itself is not what is being measured.
+        if (Math.abs(v.lateral) < 3 || v.prev.lanelet !== v.lanelet || Math.abs(v.prev.lateral) < 3) continue;
+        const lane = sim.lanelet(v.lanelet);
+        const pose = vehiclePose(sim, v, 1);
+        if (!lane || !pose) continue;
+        const t = lane.centre.sampleAt(v.s).t;
+        let lean = (pose.angle - Math.atan2(t.y, t.x)) % (2 * Math.PI);
+        if (lean > Math.PI) lean -= 2 * Math.PI;
+        if (lean < -Math.PI) lean += 2 * Math.PI;
+        checked++;
+        if (Math.sign(lean) !== -Math.sign(v.lateral)) wrong++;
+      }
+    });
+
+    expect(checked).toBeGreaterThan(0);
+    expect(wrong).toBe(0);
+  });
+
   it('interpolates within a tick rather than holding the last pose', () => {
     const { sim } = grid();
     sim.clock.run(Math.round(60 / DT), () => step(sim, { traffic: true, pedestrians: true }));

@@ -1,4 +1,4 @@
-import { DT } from '../params';
+import { DT, LATERAL_CLOSE_RATE } from '../params';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import { desiredSpeed } from './driver';
@@ -8,15 +8,6 @@ import { COARSE_EPS } from '@core/scalar';
 import { addScaled, dot, perp, sub } from '@core/vec2';
 
 const CLEARANCE_EPSILON = COARSE_EPS;
-/**
- * How fast a lane change closes its sideways offset, in world units a second.
- *
- * At 0.4 m per unit this is about 3.4 m/s of lateral movement, so a 3-metre
- * lane is crossed in a little under a second - brisk, but that is what a
- * deliberate lane change looks like, and anything slower leaves the vehicle
- * visibly straddling two lanes.
- */
-const LATERAL_CLOSE_RATE = 8.5;
 
 /**
  * The ONLY writer of `s`, `v` and `lanelet`.

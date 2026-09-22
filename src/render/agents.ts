@@ -476,8 +476,16 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     roughness: 0.08,
     metalness: 0.1,
     transparent: true,
-    opacity: 0.58,
-    envMapIntensity: 1.6,
+    // Clear enough to see who is driving.
+    //
+    // The camera looks down at 48 degrees, so the roof covers most of the
+    // cabin and the occupants are read through the SIDE glass and the
+    // windscreen. At 0.58 that glass was carrying more reflection than
+    // transmission and the figures inside were a suggestion rather than
+    // people. This is the one material in the scene whose job is to let
+    // something behind it be seen.
+    opacity: 0.4,
+    envMapIntensity: 1.35,
   });
   const rubber = new MeshStandardMaterial({ roughness: 0.92, metalness: 0.05 });
   // Unlit, so a lamp stays bright inside a shadow — the only thing in the scene

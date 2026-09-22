@@ -15,6 +15,16 @@ export const MAX_SUBSTEPS = 5;
 /** Wall-clock time is clamped to this before being accumulated. */
 export const MAX_FRAME = 0.25;
 
+/**
+ * How fast a lane change closes its sideways offset, in world units a second.
+ *
+ * At 0.4 m per unit this is about 3.4 m/s of lateral movement, so a 3-metre
+ * lane is crossed in a little under a second - brisk, but that is what a
+ * deliberate lane change looks like, and anything slower leaves the vehicle
+ * visibly straddling two lanes.
+ */
+export const LATERAL_CLOSE_RATE = 8.5;
+
 /** Bumper-to-bumper spacing at a standstill. */
 export const JAM_GAP = m(2);
 /** Longest vehicle in the fleet, used to size link capacity. */
