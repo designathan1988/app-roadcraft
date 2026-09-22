@@ -3,7 +3,8 @@
 ```bash
 npm run check            # lint + typecheck + tests with coverage + build
 npm run verify:visual    # boot the real app in a browser and measure the scene
-npm run verify           # both
+npm run verify:citizens  # render all 80 citizens and repeated instances in production
+npm run verify           # all gates
 npm run screens          # verify:visual, writing docs/screenshots/*.jpg
 ```
 
@@ -15,6 +16,9 @@ seconds.
 | suite | what it pins |
 |---|---|
 | `tests/core/geometry.spec.ts` | vectors, polyline sampling and closest point, offsetting, Bézier flattening, the clipper wrapper |
+| `tests/core/polygonBoolean.spec.ts` | winding-independent holes, concavity, islands, coincident edges and set identities |
+| `tests/world/union.spec.ts` | full player-map surface coverage and input-order independence |
+| `tests/render/citizenAssets.spec.ts` | 80 unique content hashes, finite weighted geometry, valid skin indices, moving legs and distant LODs |
 | `tests/world/terrain.spec.ts` | base relief is deterministic, continuous, not flat, and inside the gradient a road can climb; brushes; levelling reaches its target, leaves the ground outside the brush alone, and reproduces the old rule exactly when a stamp carries no target; the stamp index answers exactly what a linear scan does and copies its input |
 | `tests/world/elevation.spec.ts` | the height field is continuous, flat across a junction, above the ground everywhere a surface is drawn, inside the gradient limits; ramps land exactly on the road they join; a short span lowers its deck instead of steepening its ramp; a tunnel dives under its hill, meets the ground at both portals, stays continuous, and becomes an open cutting when it is too short to reach depth |
 | `tests/world/surfaces.spec.ts` | levels nest, bands partition the casing exactly, classes carry keys rather than sentences |

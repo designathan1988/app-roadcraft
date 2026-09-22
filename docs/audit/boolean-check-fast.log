@@ -1,0 +1,49 @@
+
+> roadcraft@7.0.0 check
+> npm run lint && npm run typecheck && npm run test:coverage && npm run build
+
+
+> roadcraft@7.0.0 lint
+> eslint .
+
+
+> roadcraft@7.0.0 typecheck
+> tsc --noEmit
+
+
+> roadcraft@7.0.0 test:coverage
+> vitest run --coverage
+
+
+ RUN  v4.1.11 C:/Users/jonathanrodriguesti/Desktop/Road
+      Coverage enabled with v8
+
+ ❯ tests/sim/kerb.spec.ts (2 tests | 1 failed) 26388ms
+     × is never crossed by a vehicle, corner by corner, for a whole run 18986ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/sim/kerb.spec.ts > the kerb > is never crossed by a vehicle, corner by corner, for a whole run
+AssertionError: vehicle 1 (motorcycle) put a corner at 7.0,-422.3 off the carriageway: expected 6066 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 6066
+
+ ❯ tests/sim/kerb.spec.ts:135:27
+    133|
+    134|     expect(checked).toBeGreaterThan(10_000);
+    135|     expect(worst, detail).toBe(0);
+       |                           ^
+    136|   });
+    137|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 23 passed (24)
+      Tests  1 failed | 247 passed (248)
+   Start at  18:06:12
+   Duration  28.27s (transform 4.96s, setup 0ms, import 7.36s, tests 129.97s, environment 3ms)

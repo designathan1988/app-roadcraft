@@ -43,6 +43,13 @@ const LAUNCH_ARGS = [
  */
 const SCENARIOS = [
   {
+    name: 'player-grid-and-bends',
+    zoom: 0.24,
+    centre: { x: -61, y: 314 },
+    build: `D.replaceFromJSON(${JSON.stringify(JSON.parse(fs.readFileSync(
+      path.resolve('tests/fixtures/grid-and-bends.json'), 'utf8')).document)});`,
+  },
+  {
     name: 'crossroads-flat',
     zoom: 1.6,
     build: `
@@ -298,11 +305,11 @@ for (const scenario of SCENARIOS) {
     // its `expect` predicate, and a function cannot be sent over the protocol.
   }, { build: scenario.build });
   await page.waitForTimeout(scenario.settle ?? 400);
-  await page.evaluate(({ zoom }) => {
+  await page.evaluate(({ zoom, centre }) => {
     const v = window.__roadcraft.scene().viewport;
     v.zoomAt(640, 400, zoom / v.zoom);
-    v.moveTo({ x: 0, y: 0 });
-  }, { zoom: scenario.zoom });
+    v.moveTo(centre ?? { x: 0, y: 0 });
+  }, { zoom: scenario.zoom, centre: scenario.centre });
   // Wait for the rebuild to COMPLETE, rather than for a guessed interval.
   // Reading the scene graph too early measures the previous scenario, which is
   // a green run that proves nothing — and a city-sized rebuild can take a

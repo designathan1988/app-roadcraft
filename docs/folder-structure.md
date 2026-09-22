@@ -23,7 +23,7 @@ roadcraft/
 │   │   ├── fillet.ts       corner arcs between two lines
 │   │   ├── intersect.ts    segment and ray intersections
 │   │   ├── bezier.ts       quadratic curves and their flattening
-│   │   ├── clipper.ts      the clipper2 wrapper: union, difference, intersection
+│   │   ├── clipper.ts      polygon set operations: union, difference, intersection
 │   │   └── rng.ts          seeded xoshiro128** — the only randomness allowed
 │   │
 │   ├── world/              the model: the document and what is derived from it

@@ -5,7 +5,7 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
   root: '.',
-  publicDir: 'public',
+  publicDir: false,
   resolve: {
     alias: {
       '@core': r('./src/core'),

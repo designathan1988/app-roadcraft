@@ -89,6 +89,7 @@ export function createSceneRenderer(
   initialCentre: Vec2,
   initialZoom: number,
   initialQuality: QualityLevel | 'auto' = 'auto',
+  onAssetsReady: () => void = () => {},
 ): SceneHandle {
   const renderer = new WebGLRenderer({
     canvas,
@@ -153,7 +154,7 @@ export function createSceneRenderer(
     return segment === undefined ? elevation.at(x, y) : elevation.onSegment(segment, x, y);
   };
 
-  const agents: AgentMeshes = createAgentMeshes(deckHeight);
+  const agents: AgentMeshes = createAgentMeshes(deckHeight, onAssetsReady);
   const crowdFrustum = new Frustum();
   const crowdProjection = new Matrix4();
   const crowdBounds = new Sphere(new Vector3(), 8);

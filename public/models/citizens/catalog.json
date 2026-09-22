@@ -1,0 +1,2085 @@
+{
+  "sourceRevision": "0943055db6ec570bcef9f2c8b41c9e5467c808f9",
+  "models": [
+    {
+      "id": "business_female_01",
+      "source": "Business_Female_01",
+      "category": "Professions",
+      "bytes": 1746932,
+      "sha256": "86137bdbac29999b0bc7b5c2d07999f1daa46bcb38547716cf6f85fc1e7fe49d",
+      "verticesBefore": 26898,
+      "vertices": 5998,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8966,
+        2429,
+        800
+      ]
+    },
+    {
+      "id": "business_female_02",
+      "source": "Business_Female_02",
+      "category": "Professions",
+      "bytes": 2004460,
+      "sha256": "4c2b44ae71c1dd727255ab3024807cd4494ce98a0f95f229958ca041fbc2050e",
+      "verticesBefore": 25920,
+      "vertices": 5671,
+      "primitivesBefore": 12,
+      "primitives": 4,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8640,
+        2544,
+        938
+      ]
+    },
+    {
+      "id": "business_female_03",
+      "source": "Business_Female_03",
+      "category": "Professions",
+      "bytes": 1737448,
+      "sha256": "0490f6a0d7cdf5d987f04ced0fc3bc5e30b47b41e0f28d8b00777bf9ec9649c2",
+      "verticesBefore": 25314,
+      "vertices": 5682,
+      "primitivesBefore": 14,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8438,
+        2428,
+        888
+      ]
+    },
+    {
+      "id": "business_female_04",
+      "source": "Business_Female_04",
+      "category": "Professions",
+      "bytes": 1566664,
+      "sha256": "c87902eda7ae3bca4cb842c01b6642084efd2ec1b5f206652fa9a5d71ae14262",
+      "verticesBefore": 24810,
+      "vertices": 5180,
+      "primitivesBefore": 9,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8270,
+        2124,
+        1097
+      ]
+    },
+    {
+      "id": "business_male_01",
+      "source": "Business_Male_01",
+      "category": "Professions",
+      "bytes": 1697532,
+      "sha256": "d1282b61d2d3e2384311e261f21d30b4dfa2897e0039fb234b77d768d138f143",
+      "verticesBefore": 22305,
+      "vertices": 4622,
+      "primitivesBefore": 11,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7435,
+        1986,
+        636
+      ]
+    },
+    {
+      "id": "business_male_02",
+      "source": "Business_Male_02",
+      "category": "Professions",
+      "bytes": 1520612,
+      "sha256": "9534e7766a77e49bebdef55f3029daf7bf45c20b4f0875185b3e95ba0e948ea0",
+      "verticesBefore": 22344,
+      "vertices": 4587,
+      "primitivesBefore": 9,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7448,
+        2042,
+        624
+      ]
+    },
+    {
+      "id": "business_male_03",
+      "source": "Business_Male_03",
+      "category": "Professions",
+      "bytes": 1582024,
+      "sha256": "b91757cf7c42d216ba03b76d1cca84899b835fbe7c6274410493ecab01132199",
+      "verticesBefore": 23430,
+      "vertices": 4843,
+      "primitivesBefore": 9,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7810,
+        2139,
+        630
+      ]
+    },
+    {
+      "id": "business_male_04",
+      "source": "Business_Male_04",
+      "category": "Professions",
+      "bytes": 1278988,
+      "sha256": "12f7e30b93ce86cfb7c8e71eff2370dc9da2322db5ce1e98dbf8e2174030d631",
+      "verticesBefore": 21978,
+      "vertices": 4412,
+      "primitivesBefore": 11,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7326,
+        1947,
+        477
+      ]
+    },
+    {
+      "id": "business_male_05",
+      "source": "Business_Male_05",
+      "category": "Professions",
+      "bytes": 1286596,
+      "sha256": "af69d6dd65b6666e6e4892d0d1522176761a03dbfa4696567973fe4610fc870e",
+      "verticesBefore": 21492,
+      "vertices": 4450,
+      "primitivesBefore": 7,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7164,
+        1917,
+        506
+      ]
+    },
+    {
+      "id": "business_male_06",
+      "source": "Business_Male_06",
+      "category": "Professions",
+      "bytes": 1312000,
+      "sha256": "3a78d246ddec42dfc9f539568d0669088838f27fb109c060f27847a3399bc093",
+      "verticesBefore": 20850,
+      "vertices": 4150,
+      "primitivesBefore": 3,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6950,
+        1828,
+        469
+      ]
+    },
+    {
+      "id": "business_male_07",
+      "source": "Business_Male_07",
+      "category": "Professions",
+      "bytes": 1272296,
+      "sha256": "09c84917f17e3adfc861fd1e2a92d8b53bc8971508bb43ab5a2315987ea3aeb5",
+      "verticesBefore": 20166,
+      "vertices": 4004,
+      "primitivesBefore": 5,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6722,
+        1922,
+        449
+      ]
+    },
+    {
+      "id": "chef_female_01",
+      "source": "Chef_Female_01",
+      "category": "Professions",
+      "bytes": 1378364,
+      "sha256": "d38d0a6558ff7148486239e25b25f5b940c01f361abce4201373dd312898f7ec",
+      "verticesBefore": 22380,
+      "vertices": 4885,
+      "primitivesBefore": 5,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7460,
+        2172,
+        654
+      ]
+    },
+    {
+      "id": "construction_female_01",
+      "source": "Construction_Female_01",
+      "category": "Professions",
+      "bytes": 1474256,
+      "sha256": "ab0d173e1cad5d023cd069bc411a5bb7fd47157976bfde4aa635d83f1da91e59",
+      "verticesBefore": 25986,
+      "vertices": 5512,
+      "primitivesBefore": 8,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8662,
+        2219,
+        609
+      ]
+    },
+    {
+      "id": "construction_male_02",
+      "source": "Construction_Male_02",
+      "category": "Professions",
+      "bytes": 1360744,
+      "sha256": "c78bb191ac64cca97e4bac43c17cac3dbed758f7cbb9dfcdf51cad4ea61122bb",
+      "verticesBefore": 24456,
+      "vertices": 5042,
+      "primitivesBefore": 9,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8152,
+        2199,
+        563
+      ]
+    },
+    {
+      "id": "construction_male_03",
+      "source": "Construction_Male_03",
+      "category": "Professions",
+      "bytes": 1593328,
+      "sha256": "690df96de47f664d79db68cda17f90126f2de5a067d53d15a380992806c9711e",
+      "verticesBefore": 28128,
+      "vertices": 6469,
+      "primitivesBefore": 10,
+      "primitives": 4,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9376,
+        2578,
+        928
+      ]
+    },
+    {
+      "id": "construction_male_04",
+      "source": "Construction_Male_04",
+      "category": "Professions",
+      "bytes": 1641780,
+      "sha256": "ef28b703e2e6c4c1a5b3c4d6b33e1963fbf6eed6d77cefa82ff146332040cded",
+      "verticesBefore": 29964,
+      "vertices": 6831,
+      "primitivesBefore": 12,
+      "primitives": 4,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9988,
+        2631,
+        929
+      ]
+    },
+    {
+      "id": "construction_male_05",
+      "source": "Construction_Male_05",
+      "category": "Professions",
+      "bytes": 1340188,
+      "sha256": "a9ae158ec1e26a439810841f1a1285fd807a7a92d26052f8ff98ca76ad9bf47c",
+      "verticesBefore": 23544,
+      "vertices": 4792,
+      "primitivesBefore": 10,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7848,
+        2073,
+        538
+      ]
+    },
+    {
+      "id": "construction_male_06",
+      "source": "Construction_Male_06",
+      "category": "Professions",
+      "bytes": 1599828,
+      "sha256": "387c8e8117cdf9c1076fba6fd285a5ed0793e717254e31bf6082870c3f45bbd5",
+      "verticesBefore": 28494,
+      "vertices": 6518,
+      "primitivesBefore": 12,
+      "primitives": 4,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9498,
+        2566,
+        938
+      ]
+    },
+    {
+      "id": "construction_male_07",
+      "source": "Construction_Male_07",
+      "category": "Professions",
+      "bytes": 1420168,
+      "sha256": "c147e51a9fe951bb3b80be5bd0e2fd16f24bb28965ee630c1f8fab6135888363",
+      "verticesBefore": 24174,
+      "vertices": 4972,
+      "primitivesBefore": 8,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8058,
+        2179,
+        564
+      ]
+    },
+    {
+      "id": "construction_male_08",
+      "source": "Construction_Male_08",
+      "category": "Professions",
+      "bytes": 1465096,
+      "sha256": "11d2ebeb6146d65f99d8624832e0497d1b4ee69b520fe1a94d770ccf1c31190b",
+      "verticesBefore": 25422,
+      "vertices": 5394,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8474,
+        2236,
+        612
+      ]
+    },
+    {
+      "id": "delivery_male_01",
+      "source": "Delivery_Male_01",
+      "category": "Professions",
+      "bytes": 1355508,
+      "sha256": "6bfcebf2eafc29fc50c265e9fa5d1365d1bf01d3f08c375b2ad4c001817da282",
+      "verticesBefore": 20400,
+      "vertices": 4158,
+      "primitivesBefore": 3,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6800,
+        1824,
+        458
+      ]
+    },
+    {
+      "id": "female_01",
+      "source": "Female_Adult_01",
+      "category": "Adults",
+      "bytes": 1692384,
+      "sha256": "51282a97da94765cf4b0c8c7ccf4b2781391c0a334f425890f67ff75e8d0c355",
+      "verticesBefore": 26196,
+      "vertices": 5438,
+      "primitivesBefore": 14,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8732,
+        2184,
+        542
+      ]
+    },
+    {
+      "id": "female_02",
+      "source": "Female_Adult_02",
+      "category": "Adults",
+      "bytes": 1632932,
+      "sha256": "55420a575681111d7bedec7efbfc3665d71225cf7cdd211f0c440c9ac926a06b",
+      "verticesBefore": 26820,
+      "vertices": 5600,
+      "primitivesBefore": 8,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8940,
+        2341,
+        704
+      ]
+    },
+    {
+      "id": "female_03",
+      "source": "Female_Adult_03",
+      "category": "Adults",
+      "bytes": 1927292,
+      "sha256": "4fc3b42f7c1d119b2c55e286528d4c4dbab6d6581e290afd8cc056d918031fd6",
+      "verticesBefore": 27624,
+      "vertices": 6118,
+      "primitivesBefore": 12,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9208,
+        2557,
+        861
+      ]
+    },
+    {
+      "id": "female_04",
+      "source": "Female_Adult_04",
+      "category": "Adults",
+      "bytes": 1798032,
+      "sha256": "85c3e09a8c3b9c4f1538b50c95e13ab1c9550519ecc2cea00e421abd11d471ba",
+      "verticesBefore": 27852,
+      "vertices": 6029,
+      "primitivesBefore": 10,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9284,
+        2811,
+        988
+      ]
+    },
+    {
+      "id": "female_05",
+      "source": "Female_Adult_05",
+      "category": "Adults",
+      "bytes": 1789560,
+      "sha256": "c3e5870a37dd08a17fa0c81cc40e54baf8b5b7e77396ec143d0d24ea8e9b34b7",
+      "verticesBefore": 24864,
+      "vertices": 5571,
+      "primitivesBefore": 8,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8288,
+        2520,
+        967
+      ]
+    },
+    {
+      "id": "female_07",
+      "source": "Female_Adult_07",
+      "category": "Adults",
+      "bytes": 1720388,
+      "sha256": "e5a3efa2dd324fc36076a61c9bd8d4f5b48708f9a7634ccb6e31b27258bbfae4",
+      "verticesBefore": 24924,
+      "vertices": 5321,
+      "primitivesBefore": 15,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8308,
+        2451,
+        890
+      ]
+    },
+    {
+      "id": "female_08",
+      "source": "Female_Adult_08",
+      "category": "Adults",
+      "bytes": 1696352,
+      "sha256": "078a49bc403540c85ba9eaa3d4469f0cb82c38e7c5387c0f89896efd8fa120f5",
+      "verticesBefore": 24828,
+      "vertices": 5284,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8276,
+        2183,
+        603
+      ]
+    },
+    {
+      "id": "female_09",
+      "source": "Female_Adult_09",
+      "category": "Adults",
+      "bytes": 1745016,
+      "sha256": "9dbaf1a3710ae062d41cc0bd06f2088333bf6fe55744fb74239c734beeb2dec4",
+      "verticesBefore": 27096,
+      "vertices": 5712,
+      "primitivesBefore": 20,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9032,
+        2520,
+        710
+      ]
+    },
+    {
+      "id": "female_11",
+      "source": "Female_Adult_11",
+      "category": "Adults",
+      "bytes": 1740040,
+      "sha256": "ede55497f53d8dce3cfdc1ba4fd9abb0fe385ddaabb71cea6770338b500183ed",
+      "verticesBefore": 26688,
+      "vertices": 6184,
+      "primitivesBefore": 15,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8896,
+        2840,
+        1078
+      ]
+    },
+    {
+      "id": "female_12",
+      "source": "Female_Adult_12",
+      "category": "Adults",
+      "bytes": 1702304,
+      "sha256": "12c4c95264226b3c6e48a28997fcdc3fba9c109592f8a62639094d9faadadffe",
+      "verticesBefore": 26322,
+      "vertices": 5490,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8774,
+        2430,
+        616
+      ]
+    },
+    {
+      "id": "female_13",
+      "source": "Female_Adult_13",
+      "category": "Adults",
+      "bytes": 1753444,
+      "sha256": "292eb949fa2705a319cbafe7e7ed4b61756484081a6e3938157b09100cb80f9d",
+      "verticesBefore": 26124,
+      "vertices": 5661,
+      "primitivesBefore": 5,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8708,
+        2339,
+        703
+      ]
+    },
+    {
+      "id": "female_14",
+      "source": "Female_Adult_14",
+      "category": "Adults",
+      "bytes": 1824700,
+      "sha256": "169b5af903317f98048c0968234777cd452809d2efc17f6450324d28d65ba255",
+      "verticesBefore": 26172,
+      "vertices": 5671,
+      "primitivesBefore": 18,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8724,
+        2511,
+        795
+      ]
+    },
+    {
+      "id": "female_17",
+      "source": "Female_Adult_17",
+      "category": "Adults",
+      "bytes": 1744540,
+      "sha256": "b1fc03ef37a4dbb7f3a67a7dc5088daadfce0b6c982bfbcc827996e913999248",
+      "verticesBefore": 25548,
+      "vertices": 5211,
+      "primitivesBefore": 26,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8516,
+        2386,
+        724
+      ]
+    },
+    {
+      "id": "female_child_01",
+      "source": "Female_Child_01",
+      "category": "Children",
+      "bytes": 1335420,
+      "sha256": "5cc5e75d2d41c5d54aa3b4277c2e21f728c52106500e6f8c78f633198d2472eb",
+      "verticesBefore": 21306,
+      "vertices": 4224,
+      "primitivesBefore": 7,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7102,
+        1826,
+        424
+      ]
+    },
+    {
+      "id": "female_party_01",
+      "source": "Female_Party_01",
+      "category": "Adults",
+      "bytes": 1982236,
+      "sha256": "f719f222484dd2acf55eba60fc7281f577ea0892cde42b16947d18654c4cd5d2",
+      "verticesBefore": 30762,
+      "vertices": 7233,
+      "primitivesBefore": 15,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        10254,
+        2757,
+        772
+      ]
+    },
+    {
+      "id": "female_party_02",
+      "source": "Female_Party_02",
+      "category": "Adults",
+      "bytes": 1896140,
+      "sha256": "8120af17dd1c5720df707658ddd4c102e77c742a138855b65b26f3940746f065",
+      "verticesBefore": 29622,
+      "vertices": 6732,
+      "primitivesBefore": 12,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9874,
+        2541,
+        683
+      ]
+    },
+    {
+      "id": "gardener_male_01",
+      "source": "Gardener_Male_01",
+      "category": "Professions",
+      "bytes": 1693324,
+      "sha256": "6b29c05dbfa78e2154d5bb30ed503e7b4d582bf1bd1853af0cb435a6303631bf",
+      "verticesBefore": 22410,
+      "vertices": 4637,
+      "primitivesBefore": 9,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7470,
+        1949,
+        538
+      ]
+    },
+    {
+      "id": "male_01",
+      "source": "Male_Adult_01",
+      "category": "Adults",
+      "bytes": 1664748,
+      "sha256": "16e572f78393b554b8f36b815152a61928a95b1089d85b5853cab6416e19b226",
+      "verticesBefore": 22320,
+      "vertices": 4688,
+      "primitivesBefore": 11,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7440,
+        2080,
+        619
+      ]
+    },
+    {
+      "id": "male_02",
+      "source": "Male_Adult_02",
+      "category": "Adults",
+      "bytes": 1620328,
+      "sha256": "508ca5b85e6555879c5cc2a4527c912ae8ade36b6bb6d87ab8c4e4d0969e1f0b",
+      "verticesBefore": 21936,
+      "vertices": 4433,
+      "primitivesBefore": 9,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7312,
+        2053,
+        592
+      ]
+    },
+    {
+      "id": "male_03",
+      "source": "Male_Adult_03",
+      "category": "Adults",
+      "bytes": 1555368,
+      "sha256": "00324bce47f72069e777795344357509f72c2f406db3463fc4cd5a91f5381690",
+      "verticesBefore": 21600,
+      "vertices": 4427,
+      "primitivesBefore": 9,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7200,
+        1887,
+        522
+      ]
+    },
+    {
+      "id": "male_04",
+      "source": "Male_Adult_04",
+      "category": "Adults",
+      "bytes": 1688452,
+      "sha256": "19c15c4e42eb358f32a259855adef370492d24d455bd792b03ef41a202aad884",
+      "verticesBefore": 26052,
+      "vertices": 5448,
+      "primitivesBefore": 8,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8684,
+        2332,
+        641
+      ]
+    },
+    {
+      "id": "male_05",
+      "source": "Male_Adult_05",
+      "category": "Adults",
+      "bytes": 1724972,
+      "sha256": "0e23a47e23dc71f5284a867cb8532d3a692da79d29156764504c48c9123a574a",
+      "verticesBefore": 23508,
+      "vertices": 4883,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7836,
+        2103,
+        556
+      ]
+    },
+    {
+      "id": "male_06",
+      "source": "Male_Adult_06",
+      "category": "Adults",
+      "bytes": 1768868,
+      "sha256": "77a2dde8e667a81bf7cde84ce1d54c9db328ac5e4e773bcb9fda6cf7ffc41ebd",
+      "verticesBefore": 22368,
+      "vertices": 4585,
+      "primitivesBefore": 8,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7456,
+        1973,
+        576
+      ]
+    },
+    {
+      "id": "male_07",
+      "source": "Male_Adult_07",
+      "category": "Adults",
+      "bytes": 1489056,
+      "sha256": "344d853724c8f905bd780dd6ac10c0b5f2e669b88c7e7fe3d8abf2e97be8b1df",
+      "verticesBefore": 22764,
+      "vertices": 4633,
+      "primitivesBefore": 9,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7588,
+        2127,
+        614
+      ]
+    },
+    {
+      "id": "male_08",
+      "source": "Male_Adult_08",
+      "category": "Adults",
+      "bytes": 1634416,
+      "sha256": "19e2555252d6338992fed37c9c82116a7ee5d264fce444c4ea2a1cfe51f90711",
+      "verticesBefore": 22092,
+      "vertices": 4482,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7364,
+        1954,
+        544
+      ]
+    },
+    {
+      "id": "male_09",
+      "source": "Male_Adult_09",
+      "category": "Adults",
+      "bytes": 1454396,
+      "sha256": "130cdfed9c95cf50ee6e29e062db6a8dc2552de657c44d75cca68aef13d099e1",
+      "verticesBefore": 22284,
+      "vertices": 4479,
+      "primitivesBefore": 10,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7428,
+        1915,
+        523
+      ]
+    },
+    {
+      "id": "male_10",
+      "source": "Male_Adult_10",
+      "category": "Adults",
+      "bytes": 1578144,
+      "sha256": "0a6627716cfe3976131be4228acc0d630ac5fc0845b3db085295ffb31968b38a",
+      "verticesBefore": 20196,
+      "vertices": 4109,
+      "primitivesBefore": 4,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6732,
+        1885,
+        494
+      ]
+    },
+    {
+      "id": "male_11",
+      "source": "Male_Adult_11",
+      "category": "Adults",
+      "bytes": 1264144,
+      "sha256": "7d7086e919ece4700f8fdde2f14f70828acb5e1ab11b17604cd05d674514b972",
+      "verticesBefore": 20220,
+      "vertices": 3998,
+      "primitivesBefore": 7,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6740,
+        1807,
+        445
+      ]
+    },
+    {
+      "id": "male_12",
+      "source": "Male_Adult_12",
+      "category": "Adults",
+      "bytes": 1282420,
+      "sha256": "1fb44261ec1c78b75ab09f4372bfafb80a88357d8924a37c8a9636c96283c0ed",
+      "verticesBefore": 20166,
+      "vertices": 4043,
+      "primitivesBefore": 7,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6722,
+        1824,
+        458
+      ]
+    },
+    {
+      "id": "male_13",
+      "source": "Male_Adult_13",
+      "category": "Adults",
+      "bytes": 1268396,
+      "sha256": "8a98ba0e5ac8c0704a1548452d788a23d22439d01ed0bf913506f192768794ba",
+      "verticesBefore": 20130,
+      "vertices": 3949,
+      "primitivesBefore": 5,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6710,
+        1775,
+        415
+      ]
+    },
+    {
+      "id": "male_14",
+      "source": "Male_Adult_14",
+      "category": "Adults",
+      "bytes": 1272396,
+      "sha256": "b7a6110b4c1e010b3a734c84b8ee410d642167aaaf85a6faae79537f47ad542e",
+      "verticesBefore": 20526,
+      "vertices": 4090,
+      "primitivesBefore": 8,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6842,
+        1842,
+        438
+      ]
+    },
+    {
+      "id": "male_16",
+      "source": "Male_Adult_16",
+      "category": "Adults",
+      "bytes": 1341684,
+      "sha256": "eb574f8b3ecf7e3f938a8b235cf3fd753f143cfbf21a484e418a2bf958222af2",
+      "verticesBefore": 21192,
+      "vertices": 4237,
+      "primitivesBefore": 5,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7064,
+        1792,
+        445
+      ]
+    },
+    {
+      "id": "male_17",
+      "source": "Male_Adult_17",
+      "category": "Adults",
+      "bytes": 1294848,
+      "sha256": "e0dc70377f5c067db9898d24f7ebd2c470f8b85aead0139ea85b9c5a0cb22037",
+      "verticesBefore": 21252,
+      "vertices": 4341,
+      "primitivesBefore": 7,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7084,
+        1952,
+        454
+      ]
+    },
+    {
+      "id": "male_18",
+      "source": "Male_Adult_18",
+      "category": "Adults",
+      "bytes": 1237628,
+      "sha256": "14df452ca7800cb83a3259b56e7c6614191312c9c3ef36d70dfea985977d3f9b",
+      "verticesBefore": 19302,
+      "vertices": 4043,
+      "primitivesBefore": 5,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6434,
+        1759,
+        460
+      ]
+    },
+    {
+      "id": "male_20",
+      "source": "Male_Adult_20",
+      "category": "Adults",
+      "bytes": 1328332,
+      "sha256": "a3279139b7e162aa2e662f42dbb22e7fb6f9d9bccac246e869174a5dcd7ef4e8",
+      "verticesBefore": 21360,
+      "vertices": 4250,
+      "primitivesBefore": 7,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7120,
+        1901,
+        448
+      ]
+    },
+    {
+      "id": "male_child_01",
+      "source": "Male_Child_01",
+      "category": "Children",
+      "bytes": 1303192,
+      "sha256": "5db4b04b5cbf9b371f0751d6336e854d77ba3e4000420afc9013eb138d7616a5",
+      "verticesBefore": 19980,
+      "vertices": 3936,
+      "primitivesBefore": 5,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        6660,
+        1835,
+        416
+      ]
+    },
+    {
+      "id": "male_child_02",
+      "source": "Male_Child_02",
+      "category": "Children",
+      "bytes": 1340980,
+      "sha256": "f40dc7086a519ffbb36dd1532125602e7084d495c561024dbdf63207172b6b3f",
+      "verticesBefore": 21930,
+      "vertices": 4463,
+      "primitivesBefore": 10,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7310,
+        1937,
+        505
+      ]
+    },
+    {
+      "id": "medical_female_01",
+      "source": "Medical_Female_01",
+      "category": "Professions",
+      "bytes": 1657380,
+      "sha256": "fd9076b08a695eff5c58dead5fdc77aa83975e47c47fa4b8c03c7d5bc807da86",
+      "verticesBefore": 24984,
+      "vertices": 5274,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8328,
+        2232,
+        527
+      ]
+    },
+    {
+      "id": "medical_female_02",
+      "source": "Medical_Female_02",
+      "category": "Professions",
+      "bytes": 1650360,
+      "sha256": "eb312a2a831e723abb7dc177a47dad5d7c5133cce56637575bd8f1bd5f7818f5",
+      "verticesBefore": 27792,
+      "vertices": 5969,
+      "primitivesBefore": 5,
+      "primitives": 4,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9264,
+        2504,
+        1152
+      ]
+    },
+    {
+      "id": "medical_female_03",
+      "source": "Medical_Female_03",
+      "category": "Professions",
+      "bytes": 1662636,
+      "sha256": "ea7fac5c3a08497acaa5d2fefe172416f96c4d59ab5652d665af54f5f83e69c9",
+      "verticesBefore": 22608,
+      "vertices": 4695,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7536,
+        2270,
+        724
+      ]
+    },
+    {
+      "id": "medical_male_01",
+      "source": "Medical_Male_01",
+      "category": "Professions",
+      "bytes": 1786456,
+      "sha256": "fac7d5401eaea8fa422599854c1b766bbc78ce91dc99dcfa2bce3a6ce897c201",
+      "verticesBefore": 22743,
+      "vertices": 4776,
+      "primitivesBefore": 6,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7581,
+        2142,
+        694
+      ]
+    },
+    {
+      "id": "medical_male_02",
+      "source": "Medical_Male_02",
+      "category": "Professions",
+      "bytes": 1780900,
+      "sha256": "d868cd888a17ffb022b7e99e718a6b6de512fa06ff07cc609dc5aedc617ad177",
+      "verticesBefore": 22542,
+      "vertices": 4635,
+      "primitivesBefore": 4,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7514,
+        2093,
+        634
+      ]
+    },
+    {
+      "id": "medical_male_03",
+      "source": "Medical_Male_03",
+      "category": "Professions",
+      "bytes": 1420780,
+      "sha256": "ba26eb983030ed75cc7ef527e0af2e812cff5bc686eed7e2e47a0cc94e40425f",
+      "verticesBefore": 24378,
+      "vertices": 5214,
+      "primitivesBefore": 4,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8126,
+        2187,
+        578
+      ]
+    },
+    {
+      "id": "medical_male_04",
+      "source": "Medical_Male_04",
+      "category": "Professions",
+      "bytes": 1457288,
+      "sha256": "65e8622e85554826183cc86624c9544bbb25774418f5a53fcebc84f6182b9545",
+      "verticesBefore": 24720,
+      "vertices": 4980,
+      "primitivesBefore": 6,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8240,
+        2117,
+        524
+      ]
+    },
+    {
+      "id": "pilot_female_01",
+      "source": "Pilot_Female_01",
+      "category": "Professions",
+      "bytes": 1426440,
+      "sha256": "fdde438fe20bbc817048307d6e64e1a9d3e50b17f702733564ef432172a6eafe",
+      "verticesBefore": 24864,
+      "vertices": 5142,
+      "primitivesBefore": 6,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8288,
+        2077,
+        540
+      ]
+    },
+    {
+      "id": "pilot_female_02",
+      "source": "Pilot_Female_02",
+      "category": "Professions",
+      "bytes": 1439912,
+      "sha256": "d6fe1263550e93fbd3c2339166d33660d1cbf32fcfdf29e26823a01f4ff223d7",
+      "verticesBefore": 25374,
+      "vertices": 5291,
+      "primitivesBefore": 4,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8458,
+        2118,
+        548
+      ]
+    },
+    {
+      "id": "pilot_male_01",
+      "source": "Pilot_Male_01",
+      "category": "Professions",
+      "bytes": 1361632,
+      "sha256": "b652cf0a70b0073270d9e3cd0b21cd536fa746b47120eb4974c226c6cb4556c4",
+      "verticesBefore": 22992,
+      "vertices": 4964,
+      "primitivesBefore": 6,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7664,
+        2003,
+        550
+      ]
+    },
+    {
+      "id": "pilot_male_02",
+      "source": "Pilot_Male_02",
+      "category": "Professions",
+      "bytes": 1378292,
+      "sha256": "e53a3a9d27ef021ce666bd36093d0704b34db11fdd9ee22cb4de3925f869d33b",
+      "verticesBefore": 23394,
+      "vertices": 5063,
+      "primitivesBefore": 10,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7798,
+        2072,
+        574
+      ]
+    },
+    {
+      "id": "pilot_male_03",
+      "source": "Pilot_Male_03",
+      "category": "Professions",
+      "bytes": 1394448,
+      "sha256": "c953996d20dcc5eeb1d229f974ac2a6d808645f8f74a2b8766cb70aae65e2510",
+      "verticesBefore": 23448,
+      "vertices": 4887,
+      "primitivesBefore": 5,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7816,
+        1951,
+        476
+      ]
+    },
+    {
+      "id": "police_male_01",
+      "source": "Police_Male_01",
+      "category": "Professions",
+      "bytes": 1512840,
+      "sha256": "2f0cf08eeab9982ebe841b80674090e38dcbee0ec0148c9b4598f7109d48b282",
+      "verticesBefore": 26061,
+      "vertices": 5718,
+      "primitivesBefore": 12,
+      "primitives": 4,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8687,
+        2304,
+        722
+      ]
+    },
+    {
+      "id": "police_male_03",
+      "source": "Police_Male_03",
+      "category": "Professions",
+      "bytes": 1724696,
+      "sha256": "cdf5b23aacc5ebfa4b14683c263ef69f98d0ef033ec73e2e6c5ee6bfc92aa426",
+      "verticesBefore": 37335,
+      "vertices": 9141,
+      "primitivesBefore": 6,
+      "primitives": 4,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        12445,
+        3296,
+        1114
+      ]
+    },
+    {
+      "id": "police_male_06",
+      "source": "Police_Male_06",
+      "category": "Professions",
+      "bytes": 1303232,
+      "sha256": "b90482722064ab57414897874fed50040bba4a34dbcab7c59fc82ee55d8c309f",
+      "verticesBefore": 22476,
+      "vertices": 4526,
+      "primitivesBefore": 3,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7492,
+        1919,
+        494
+      ]
+    },
+    {
+      "id": "security_female_01",
+      "source": "Security_Female_01",
+      "category": "Professions",
+      "bytes": 1527944,
+      "sha256": "38133fc2dd9bbc537d53cde71f22405f00f29363d62b7f13d981d1aba61cf4af",
+      "verticesBefore": 26919,
+      "vertices": 5940,
+      "primitivesBefore": 10,
+      "primitives": 4,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8973,
+        2342,
+        751
+      ]
+    },
+    {
+      "id": "security_male_01",
+      "source": "Security_Male_01",
+      "category": "Professions",
+      "bytes": 1483356,
+      "sha256": "d4f44bbb238e870cd81632866d4780b9fb972719444c607786940b303aa0bd8c",
+      "verticesBefore": 28545,
+      "vertices": 6603,
+      "primitivesBefore": 10,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9515,
+        2547,
+        816
+      ]
+    },
+    {
+      "id": "sports_female_02",
+      "source": "Sports_Female_02",
+      "category": "Professions",
+      "bytes": 1677332,
+      "sha256": "0bd33f80bf6c6e2012c8bcf8a8eaac23f491cb3a329b97a80445d720ed4fb997",
+      "verticesBefore": 25740,
+      "vertices": 5369,
+      "primitivesBefore": 35,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8580,
+        2323,
+        690
+      ]
+    },
+    {
+      "id": "sports_male_02",
+      "source": "Sports_Male_02",
+      "category": "Professions",
+      "bytes": 1345992,
+      "sha256": "4f2b3e86ac8cd5e71ab2120b0f836b62cef4246ef3cf1ab4346a392046bf0194",
+      "verticesBefore": 24438,
+      "vertices": 5012,
+      "primitivesBefore": 5,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        8146,
+        2030,
+        502
+      ]
+    },
+    {
+      "id": "sports_male_03",
+      "source": "Sports_Male_03",
+      "category": "Professions",
+      "bytes": 1655272,
+      "sha256": "a1816e69775773bbbbde85f2d4d7e798ff9009697e062a10f1a63bafc1b706bf",
+      "verticesBefore": 28602,
+      "vertices": 6459,
+      "primitivesBefore": 7,
+      "primitives": 3,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        9534,
+        2541,
+        576
+      ]
+    },
+    {
+      "id": "sports_male_04",
+      "source": "Sports_Male_04",
+      "category": "Professions",
+      "bytes": 1358020,
+      "sha256": "645014b165f53dd5fd9f383103b67134146256312b0cc6fc48fc082cfdb3b8b4",
+      "verticesBefore": 22560,
+      "vertices": 4477,
+      "primitivesBefore": 7,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7520,
+        1969,
+        482
+      ]
+    },
+    {
+      "id": "wood_male_01",
+      "source": "Wood_Male_01",
+      "category": "Professions",
+      "bytes": 1303504,
+      "sha256": "31b18267c0e1cb6f94f114b444c339cd678132f77f4c7e5cb9d887d8b941828c",
+      "verticesBefore": 21324,
+      "vertices": 4282,
+      "primitivesBefore": 3,
+      "primitives": 2,
+      "clips": [
+        "Driving_Loop",
+        "Idle_Loop",
+        "Idle_Talking_Loop",
+        "Jog_Fwd_Loop",
+        "Sitting_Idle_Loop",
+        "Sitting_Talking_Loop",
+        "Walk_Formal_Loop",
+        "Walk_Loop"
+      ],
+      "lodTriangles": [
+        7108,
+        1851,
+        448
+      ]
+    }
+  ]
+}

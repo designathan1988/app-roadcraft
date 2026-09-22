@@ -317,7 +317,7 @@ canvas3d.id = 'game-scene';
 canvas3d.setAttribute('aria-hidden', 'true');
 canvas3d.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;';
 canvas.parentElement?.insertBefore(canvas3d, canvas);
-const scene: SceneHandle = createSceneRenderer(canvas3d, { x: camera.x, y: camera.y }, camera.zoom);
+const scene: SceneHandle = createSceneRenderer(canvas3d, { x: camera.x, y: camera.y }, camera.zoom, 'auto', requestDraw);
 view = scene.viewport;
 canvas.style.opacity = '0';
 

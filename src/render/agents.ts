@@ -24,7 +24,7 @@ import type { SimWorld } from '@sim/world';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
 import { DT } from '@sim/params';
-import { createRiggedCitizens } from './riggedCitizens';
+import { createRiggedCitizens, CITIZEN_MODELS } from './riggedCitizens';
 import { FOOTWAY_RISE } from './roadSurfaces';
 
 /**
@@ -409,7 +409,7 @@ function instanced(
   return { mesh, n: 0 };
 }
 
-export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
+export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () => void = () => {}): AgentMeshes {
   const paint = new MeshStandardMaterial({ roughness: 0.32, metalness: 0.16, envMapIntensity: 1.1 });
   const trim = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.35 });
   const glassMaterial = new MeshStandardMaterial({
@@ -486,7 +486,7 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
     hips,
     limbs,
   ];
-  const pedestrians = createRiggedCitizens(['female_08', 'male_03', 'male_12']);
+  const pedestrians = createRiggedCitizens(CITIZEN_MODELS, onAssetsReady);
   const meshes = [...parts.map((part) => part.mesh), pedestrians.group];
 
   const object = new Object3D();
@@ -911,7 +911,7 @@ export function createAgentMeshes(elevationAt: ElevationAt): AgentMeshes {
   return {
     meshes,
     sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY, options = {}) {
-      pedestrians.begin(options.pedestrianDetail ?? 2);
+      pedestrians.begin(options.pedestrianDetail ?? 2, zoom);
       for (const part of parts) part.n = 0;
       const band = !detailed ? 0 : zoom >= NEAR_DETAIL_ZOOM ? 2 : 1;
 

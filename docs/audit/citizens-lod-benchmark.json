@@ -1,0 +1,36 @@
+{
+  "bundle": [
+    "index-BseJrCr8.js",
+    "three-DOQcvLvt.js"
+  ],
+  "bootstrap": {
+    "available": 80,
+    "loaded": 3
+  },
+  "population": 80,
+  "verified": 0,
+  "errors": [],
+  "metrics": {
+    "activeFps": 59.97763545796484,
+    "lod": 2,
+    "citizenTriangles": 69506,
+    "repeated": 41,
+    "repeatedModel": "male_12",
+    "glError": 0,
+    "paletteBytes": 6804480,
+    "animationBytes": 114777600,
+    "costs": {
+      "draw": 454.4000000022352,
+      "simulation": 70.79999999701977,
+      "uploads": 15.499999970197678,
+      "uploadCalls": 10800,
+      "draws": 90,
+      "advances": 90
+    },
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "rebuilds": 3,
+    "gpuGeometries": 258,
+    "gpuTextures": 342
+  },
+  "samples": []
+}

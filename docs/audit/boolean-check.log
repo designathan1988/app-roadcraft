@@ -1,0 +1,63 @@
+
+> roadcraft@7.0.0 check
+> npm run lint && npm run typecheck && npm run test:coverage && npm run build
+
+
+> roadcraft@7.0.0 lint
+> eslint .
+
+
+> roadcraft@7.0.0 typecheck
+> tsc --noEmit
+
+
+> roadcraft@7.0.0 test:coverage
+> vitest run --coverage
+
+
+ RUN  v4.1.11 C:/Users/jonathanrodriguesti/Desktop/Road
+      Coverage enabled with v8
+
+ ❯ tests/render/tessellation.spec.ts (3 tests | 1 failed) 6867ms
+     × keeps a whole city grid inside the frame budget 6550ms
+ ❯ tests/sim/kerb.spec.ts (2 tests | 1 failed) 26325ms
+     × is never crossed by a vehicle, corner by corner, for a whole run 19029ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/render/tessellation.spec.ts > tessellation cost > keeps a whole city grid inside the frame budget
+AssertionError: expected 5635 to be less than 4000
+ ❯ tests/render/tessellation.spec.ts:103:34
+    101|     // Generous, because a cold JIT on a shared runner is not a frame …
+    102|     // it is here to catch a regression of the kind that took 2.7 seco…
+    103|     expect(Date.now() - started).toBeLessThan(4_000);
+       |                                  ^
+    104|   });
+    105| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/sim/kerb.spec.ts > the kerb > is never crossed by a vehicle, corner by corner, for a whole run
+AssertionError: vehicle 1 (motorcycle) put a corner at 7.0,-422.3 off the carriageway: expected 6066 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 6066
+
+ ❯ tests/sim/kerb.spec.ts:135:27
+    133|
+    134|     expect(checked).toBeGreaterThan(10_000);
+    135|     expect(worst, detail).toBe(0);
+       |                           ^
+    136|   });
+    137|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 22 passed (24)
+      Tests  2 failed | 246 passed (248)
+   Start at  17:55:44
+   Duration  29.02s (transform 5.56s, setup 0ms, import 8.42s, tests 146.40s, environment 3ms)

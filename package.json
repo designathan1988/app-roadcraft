@@ -3,7 +3,7 @@
   "version": "7.0.0",
   "private": true,
   "type": "module",
-  "description": "Roadcraft \u2014 a 3D isometric road-building and traffic-simulation game for the browser",
+  "description": "Roadcraft — a 3D isometric road-building and traffic-simulation game for the browser",
   "engines": {
     "node": ">=22.0.0"
   },
@@ -17,7 +17,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "check": "npm run lint && npm run typecheck && npm run test:coverage && npm run build",
-    "verify": "npm run check && npm run verify:visual",
+    "verify": "npm run check && npm run verify:visual && npm run verify:citizens",
+    "verify:citizens": "npm run build && node scripts/verify-citizens.mjs",
     "verify:visual": "npm run build && node scripts/verify-visual.mjs",
     "screens": "npm run build && node scripts/verify-visual.mjs -- --shots"
   },
@@ -30,14 +31,15 @@
     "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.9.0",
     "happy-dom": "^20.11.6",
+    "meshoptimizer": "1.2.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.67.0",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
   },
   "dependencies": {
-    "clipper2-js": "1.2.4",
     "earcut": "^3.2.3",
+    "polygon-clipping": "0.15.7",
     "three": "^0.186.0"
   }
 }

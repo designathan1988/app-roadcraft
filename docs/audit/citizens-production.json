@@ -1,0 +1,516 @@
+{
+  "bundle": [
+    "index-BseJrCr8.js",
+    "three-DOQcvLvt.js"
+  ],
+  "bootstrap": {
+    "available": 80,
+    "loaded": 3
+  },
+  "population": 80,
+  "verified": 80,
+  "errors": [],
+  "metrics": {
+    "activeFps": 59.983733224888255,
+    "lod": 2,
+    "citizenTriangles": 83186,
+    "repeated": 41,
+    "glError": 0,
+    "paletteBytes": 6804480,
+    "animationBytes": 114777600,
+    "costs": {
+      "draw": 433.69999998807907,
+      "simulation": 75.00000000745058,
+      "uploads": 15.900000002235174,
+      "uploadCalls": 10800,
+      "draws": 90,
+      "advances": 90
+    },
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "rebuilds": 3,
+    "gpuGeometries": 482,
+    "gpuTextures": 342
+  },
+  "samples": [
+    {
+      "id": "business_female_01",
+      "glError": 0,
+      "x": 520,
+      "y": 384
+    },
+    {
+      "id": "business_female_02",
+      "glError": 0,
+      "x": 520,
+      "y": 384
+    },
+    {
+      "id": "business_female_03",
+      "glError": 0,
+      "x": 520,
+      "y": 369
+    },
+    {
+      "id": "business_female_04",
+      "glError": 0,
+      "x": 520,
+      "y": 369
+    },
+    {
+      "id": "business_male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 345
+    },
+    {
+      "id": "business_male_02",
+      "glError": 0,
+      "x": 520,
+      "y": 345
+    },
+    {
+      "id": "business_male_03",
+      "glError": 0,
+      "x": 520,
+      "y": 382
+    },
+    {
+      "id": "business_male_04",
+      "glError": 0,
+      "x": 520,
+      "y": 382
+    },
+    {
+      "id": "business_male_05",
+      "glError": 0,
+      "x": 520,
+      "y": 378
+    },
+    {
+      "id": "business_male_06",
+      "glError": 0,
+      "x": 520,
+      "y": 378
+    },
+    {
+      "id": "business_male_07",
+      "glError": 0,
+      "x": 520,
+      "y": 363
+    },
+    {
+      "id": "chef_female_01",
+      "glError": 0,
+      "x": 520,
+      "y": 363
+    },
+    {
+      "id": "construction_female_01",
+      "glError": 0,
+      "x": 520,
+      "y": 381
+    },
+    {
+      "id": "construction_male_02",
+      "glError": 0,
+      "x": 520,
+      "y": 381
+    },
+    {
+      "id": "construction_male_03",
+      "glError": 0,
+      "x": 520,
+      "y": 381
+    },
+    {
+      "id": "construction_male_04",
+      "glError": 0,
+      "x": 520,
+      "y": 381
+    },
+    {
+      "id": "construction_male_05",
+      "glError": 0,
+      "x": 520,
+      "y": 372
+    },
+    {
+      "id": "construction_male_06",
+      "glError": 0,
+      "x": 520,
+      "y": 372
+    },
+    {
+      "id": "construction_male_07",
+      "glError": 0,
+      "x": 520,
+      "y": 378
+    },
+    {
+      "id": "construction_male_08",
+      "glError": 0,
+      "x": 520,
+      "y": 378
+    },
+    {
+      "id": "delivery_male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 375
+    },
+    {
+      "id": "female_01",
+      "glError": 0,
+      "x": 520,
+      "y": 375
+    },
+    {
+      "id": "female_02",
+      "glError": 0,
+      "x": 520,
+      "y": 368
+    },
+    {
+      "id": "female_03",
+      "glError": 0,
+      "x": 520,
+      "y": 368
+    },
+    {
+      "id": "female_04",
+      "glError": 0,
+      "x": 520,
+      "y": 375
+    },
+    {
+      "id": "female_05",
+      "glError": 0,
+      "x": 520,
+      "y": 375
+    },
+    {
+      "id": "female_07",
+      "glError": 0,
+      "x": 520,
+      "y": 364
+    },
+    {
+      "id": "female_08",
+      "glError": 0,
+      "x": 520,
+      "y": 364
+    },
+    {
+      "id": "female_09",
+      "glError": 0,
+      "x": 520,
+      "y": 358
+    },
+    {
+      "id": "female_11",
+      "glError": 0,
+      "x": 520,
+      "y": 358
+    },
+    {
+      "id": "female_12",
+      "glError": 0,
+      "x": 520,
+      "y": 372
+    },
+    {
+      "id": "female_13",
+      "glError": 0,
+      "x": 520,
+      "y": 372
+    },
+    {
+      "id": "female_14",
+      "glError": 0,
+      "x": 520,
+      "y": 350
+    },
+    {
+      "id": "female_17",
+      "glError": 0,
+      "x": 520,
+      "y": 350
+    },
+    {
+      "id": "female_child_01",
+      "glError": 0,
+      "x": 520,
+      "y": 344
+    },
+    {
+      "id": "female_party_01",
+      "glError": 0,
+      "x": 520,
+      "y": 344
+    },
+    {
+      "id": "female_party_02",
+      "glError": 0,
+      "x": 520,
+      "y": 364
+    },
+    {
+      "id": "gardener_male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 364
+    },
+    {
+      "id": "male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 334
+    },
+    {
+      "id": "male_02",
+      "glError": 0,
+      "x": 520,
+      "y": 334
+    },
+    {
+      "id": "male_03",
+      "glError": 0,
+      "x": 520,
+      "y": 332
+    },
+    {
+      "id": "male_04",
+      "glError": 0,
+      "x": 520,
+      "y": 332
+    },
+    {
+      "id": "male_05",
+      "glError": 0,
+      "x": 520,
+      "y": 357
+    },
+    {
+      "id": "male_06",
+      "glError": 0,
+      "x": 520,
+      "y": 357
+    },
+    {
+      "id": "male_07",
+      "glError": 0,
+      "x": 520,
+      "y": 321
+    },
+    {
+      "id": "male_08",
+      "glError": 0,
+      "x": 520,
+      "y": 321
+    },
+    {
+      "id": "male_09",
+      "glError": 0,
+      "x": 520,
+      "y": 323
+    },
+    {
+      "id": "male_10",
+      "glError": 0,
+      "x": 520,
+      "y": 323
+    },
+    {
+      "id": "male_11",
+      "glError": 0,
+      "x": 520,
+      "y": 351
+    },
+    {
+      "id": "male_12",
+      "glError": 0,
+      "x": 520,
+      "y": 351
+    },
+    {
+      "id": "male_13",
+      "glError": 0,
+      "x": 520,
+      "y": 314
+    },
+    {
+      "id": "male_14",
+      "glError": 0,
+      "x": 520,
+      "y": 314
+    },
+    {
+      "id": "male_16",
+      "glError": 0,
+      "x": 520,
+      "y": 315
+    },
+    {
+      "id": "male_17",
+      "glError": 0,
+      "x": 520,
+      "y": 315
+    },
+    {
+      "id": "male_18",
+      "glError": 0,
+      "x": 520,
+      "y": 346
+    },
+    {
+      "id": "male_20",
+      "glError": 0,
+      "x": 520,
+      "y": 346
+    },
+    {
+      "id": "male_child_01",
+      "glError": 0,
+      "x": 520,
+      "y": 309
+    },
+    {
+      "id": "male_child_02",
+      "glError": 0,
+      "x": 520,
+      "y": 309
+    },
+    {
+      "id": "medical_female_01",
+      "glError": 0,
+      "x": 520,
+      "y": 310
+    },
+    {
+      "id": "medical_female_02",
+      "glError": 0,
+      "x": 520,
+      "y": 310
+    },
+    {
+      "id": "medical_female_03",
+      "glError": 0,
+      "x": 520,
+      "y": 341
+    },
+    {
+      "id": "medical_male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 342
+    },
+    {
+      "id": "medical_male_02",
+      "glError": 0,
+      "x": 520,
+      "y": 301
+    },
+    {
+      "id": "medical_male_03",
+      "glError": 0,
+      "x": 520,
+      "y": 301
+    },
+    {
+      "id": "medical_male_04",
+      "glError": 0,
+      "x": 520,
+      "y": 311
+    },
+    {
+      "id": "pilot_female_01",
+      "glError": 0,
+      "x": 520,
+      "y": 311
+    },
+    {
+      "id": "pilot_female_02",
+      "glError": 0,
+      "x": 520,
+      "y": 337
+    },
+    {
+      "id": "pilot_male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 337
+    },
+    {
+      "id": "pilot_male_02",
+      "glError": 0,
+      "x": 520,
+      "y": 290
+    },
+    {
+      "id": "pilot_male_03",
+      "glError": 0,
+      "x": 520,
+      "y": 290
+    },
+    {
+      "id": "police_male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 316
+    },
+    {
+      "id": "police_male_03",
+      "glError": 0,
+      "x": 520,
+      "y": 316
+    },
+    {
+      "id": "police_male_06",
+      "glError": 0,
+      "x": 520,
+      "y": 332
+    },
+    {
+      "id": "security_female_01",
+      "glError": 0,
+      "x": 520,
+      "y": 332
+    },
+    {
+      "id": "security_male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 279
+    },
+    {
+      "id": "sports_female_02",
+      "glError": 0,
+      "x": 520,
+      "y": 279
+    },
+    {
+      "id": "sports_male_02",
+      "glError": 0,
+      "x": 520,
+      "y": 325
+    },
+    {
+      "id": "sports_male_03",
+      "glError": 0,
+      "x": 520,
+      "y": 325
+    },
+    {
+      "id": "sports_male_04",
+      "glError": 0,
+      "x": 520,
+      "y": 320
+    },
+    {
+      "id": "wood_male_01",
+      "glError": 0,
+      "x": 520,
+      "y": 321
+    }
+  ]
+}

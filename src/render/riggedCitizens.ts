@@ -1,7 +1,7 @@
 import {
-  AnimationMixer, DataTexture, DynamicDrawUsage, FloatType, Group, InstancedMesh,
+  AnimationMixer, BufferGeometry, DataTexture, DynamicDrawUsage, FloatType, Group, InstancedMesh,
   Matrix4, MeshDepthMaterial, MeshStandardMaterial, Object3D, RGBAFormat,
-  RGBADepthPacking, SkinnedMesh, Texture, Vector3,
+  RGBADepthPacking, SkinnedMesh, Texture, Vector3, type BufferAttribute,
 } from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
@@ -9,9 +9,10 @@ import { pedHash } from '@sim/peds/behaviour';
 import type { Ped } from '@sim/peds/state';
 import { DT } from '@sim/params';
 import { m } from '@world/units';
+import { CITIZEN_MODELS } from './citizenCatalog';
+import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
 
-export const CITIZEN_MODELS = ['female_01', 'female_02', 'female_03', 'female_08',
-  'female_13', 'female_17', 'male_01', 'male_03', 'male_09', 'male_12', 'male_14', 'male_18'] as const;
+export { CITIZEN_MODELS } from './citizenCatalog';
 const CLIPS = ['Idle_Loop', 'Idle_Talking_Loop', 'Walk_Loop', 'Walk_Formal_Loop', 'Jog_Fwd_Loop'];
 const CAPACITY = 1000;
 const FPS = 30;
@@ -19,6 +20,8 @@ interface ClipFrames { data: Float32Array; frames: number; duration: number; str
 interface CitizenBatch {
   meshes: InstancedMesh[]; local: Matrix4[]; clips: ClipFrames[];
   texture: DataTexture; pixels: Float32Array; width: number; count: number;
+  rows: number; uniform: { value: DataTexture };
+  lods: BufferGeometry[][];
 }
 interface Motion {
   time: number; heading: number; x: number; y: number; phase: number;
@@ -38,10 +41,10 @@ mat4 getBoneMatrix(const in float i) {
     texelFetch(citizenBones,ivec2(x+3,y),0));
 }`;
 
-function skinMaterial(material: MeshStandardMaterial | MeshDepthMaterial, texture: DataTexture, mesh: SkinnedMesh): void {
+function skinMaterial(material: MeshStandardMaterial | MeshDepthMaterial, uniform: { value: DataTexture }, mesh: SkinnedMesh): void {
   material.defines = { ...material.defines, USE_SKINNING: '' };
   material.onBeforeCompile = shader => {
-    shader.uniforms.citizenBones = { value: texture };
+    shader.uniforms.citizenBones = uniform;
     shader.uniforms.bindMatrix = { value: mesh.bindMatrix };
     shader.uniforms.bindMatrixInverse = { value: mesh.bindMatrixInverse };
     shader.vertexShader = shader.vertexShader.replace('#include <skinning_pars_vertex>', SKINNING);
@@ -89,23 +92,30 @@ function bake(asset: GLTF): ClipFrames[] {
   return clips;
 }
 
-export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS) {
+export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
+  onAssetsReady: () => void = () => {}) {
   const group = new Group();
   group.name = 'rigged-citizens';
-  const batches: CitizenBatch[] = [];
+  const batches = new Map<number, CitizenBatch>();
+  const loading = new Map<number, Promise<void>>();
+  const slots: Promise<void>[] = [Promise.resolve(), Promise.resolve(), Promise.resolve()];
+  let nextSlot = 0;
   const resources = new Set<{ dispose(): void }>();
   const motion = new WeakMap<Ped, Motion>();
   const transform = new Object3D();
   const matrix = new Matrix4();
   let disposed = false;
-  let ready = false;
-  let loading: Promise<void> | undefined;
   let detail = 2;
+  let lod = 0;
+  group.userData.availableModels = models.length;
+  group.userData.models = models;
+  group.userData.licenses = CITIZEN_LICENSES;
 
-  async function load(): Promise<void> {
+  async function load(index: number): Promise<void> {
     const loader = new GLTFLoader();
-    const assets = await Promise.all(models.map(name => loader.loadAsync(`${import.meta.env.BASE_URL}models/citizens/${name}.glb`)));
-    for (const asset of assets) {
+    const url = CITIZEN_ASSET_URLS[models[index]!];
+    if (!url) throw new Error(`Missing citizen asset: ${models[index]}`);
+    const asset = await loader.loadAsync(url);
       asset.scene.traverse(o => {
         if (!(o instanceof SkinnedMesh)) return;
         resources.add(o.geometry);
@@ -115,34 +125,49 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS)
           for (const value of Object.values(material)) if (value instanceof Texture) resources.add(value);
         }
       });
-    }
     if (disposed) { for (const resource of resources) resource.dispose(); return; }
-    for (const asset of assets) {
       const clips = bake(asset);
       let reference: SkinnedMesh | undefined;
       asset.scene.updateMatrixWorld(true);
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh && !reference) reference = o; });
       if (!reference) throw new Error('Citizen model has no mesh');
       const width = reference.skeleton.bones.length * 16;
-      const pixels = new Float32Array(CAPACITY * width);
-      const texture = new DataTexture(pixels, width / 4, CAPACITY, RGBAFormat, FloatType);
+      const rows = 16;
+      const pixels = new Float32Array(rows * width);
+      group.userData.paletteBytes = (group.userData.paletteBytes ?? 0) + pixels.byteLength;
+      const texture = new DataTexture(pixels, width / 4, rows, RGBAFormat, FloatType);
       texture.needsUpdate = true;
       resources.add(texture);
-      const batch: CitizenBatch = { meshes: [], local: [], clips, texture, pixels, width, count: 0 };
-      asset.scene.traverse(o => {
-        if (!(o instanceof SkinnedMesh)) return;
+      const uniform = { value: texture };
+      const batch: CitizenBatch = { meshes: [], local: [], clips, texture, pixels, width, rows, uniform, count: 0, lods: [] };
+      const parts: SkinnedMesh[] = [];
+      asset.scene.traverse(o => { if (o instanceof SkinnedMesh) parts.push(o); });
+      for (const o of parts) {
+        const variants = [o.geometry];
+        const lodIndices: unknown = o.geometry.userData['roadcraftLods'];
+        if (Array.isArray(lodIndices)) for (const accessor of lodIndices) {
+          const indices = await asset.parser.getDependency('accessor', accessor) as BufferAttribute;
+          const geometry = new BufferGeometry();
+          for (const name of Object.keys(o.geometry.attributes)) geometry.setAttribute(name, o.geometry.getAttribute(name));
+          geometry.setIndex(indices);
+          geometry.boundingBox = o.geometry.boundingBox;
+          geometry.boundingSphere = o.geometry.boundingSphere;
+          variants.push(geometry);
+          resources.add(geometry);
+        }
+        if (disposed) { for (const resource of resources) resource.dispose(); return; }
         const original = Array.isArray(o.material) ? o.material : [o.material];
         const materials = original.map(source => {
           const material = (source as MeshStandardMaterial).clone();
           material.color.setHex(0xffffff); // Preserve authored skin; never tint the whole citizen.
           material.roughness = 0.88;
           material.metalness = 0;
-          skinMaterial(material, texture, o);
+          skinMaterial(material, uniform, o);
           resources.add(material);
           return material;
         });
         const mesh = new InstancedMesh(o.geometry, Array.isArray(o.material) ? materials : materials[0]!, CAPACITY);
-        mesh.name = `citizen-${models[batches.length]}-${o.name}`;
+        mesh.name = `citizen-${models[index]}-${o.name}`;
         mesh.count = 0;
         mesh.frustumCulled = false;
         mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -152,41 +177,75 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS)
         const source = original[0] as MeshStandardMaterial;
         depth.map = source.map;
         depth.alphaTest = source.alphaTest;
-        skinMaterial(depth, texture, o);
+        skinMaterial(depth, uniform, o);
         mesh.customDepthMaterial = depth;
         resources.add(mesh); resources.add(depth);
         batch.meshes.push(mesh);
+        batch.lods.push(variants);
         batch.local.push(o.matrixWorld.clone());
         group.add(mesh);
-      });
-      batches.push(batch);
-    }
-    ready = true;
+      }
+      batches.set(index, batch);
+      group.userData.animationBytes = (group.userData.animationBytes ?? 0) + clips.reduce((sum, clip) => sum + clip.data.byteLength, 0);
     group.userData.ready = true;
+    group.userData.loadedModels = batches.size;
+    onAssetsReady();
+  }
+
+  function request(index: number): Promise<void> {
+    const pending = loading.get(index);
+    if (pending) return pending;
+    const slot = nextSlot++ % slots.length;
+    const work = slots[slot]!.then(() => disposed ? undefined : load(index));
+    slots[slot] = work.catch(() => {});
+    loading.set(index, work);
+    return work;
+  }
+
+  function grow(batch: CitizenBatch): void {
+    const rows = Math.min(CAPACITY, batch.rows * 2);
+    const pixels = new Float32Array(rows * batch.width);
+    pixels.set(batch.pixels);
+    group.userData.paletteBytes += pixels.byteLength - batch.pixels.byteLength;
+    const texture = new DataTexture(pixels, batch.width / 4, rows, RGBAFormat, FloatType);
+    texture.needsUpdate = true;
+    resources.delete(batch.texture);
+    batch.texture.dispose();
+    batch.rows = rows; batch.pixels = pixels; batch.texture = texture;
+    batch.uniform.value = texture;
+    resources.add(texture);
   }
 
   return {
     group,
     preload(): Promise<void> {
-      loading ??= load();
-      return loading;
+      return Promise.all(models.map((_, index) => request(index))).then(() => {});
     },
-    begin(level = 2) {
+    begin(level = 2, zoom = Infinity) {
       detail = level;
-      if (!loading) {
-        loading = load();
-        void loading.catch((error: unknown) => {
-          group.userData.error = String(error);
-          console.error('Citizen assets could not be loaded', error);
-        });
+      lod = zoom >= 8 ? 0 : zoom >= 2 ? 1 : 2;
+      group.userData.lod = lod;
+      for (const batch of batches.values()) {
+        batch.count = 0;
+        for (let i = 0; i < batch.meshes.length; i++) {
+          const variants = batch.lods[i]!;
+          batch.meshes[i]!.geometry = variants[Math.min(lod, variants.length - 1)]!;
+        }
       }
-      for (const batch of batches) batch.count = 0;
     },
     draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number) {
-      if (!ready) return;
       const hash = pedHash(ped.id);
-      const batch = batches[hash % batches.length]!;
+      const index = hash % models.length;
+      const batch = batches.get(index);
+      if (!batch) {
+        if (!loading.has(index)) void request(index).catch((error: unknown) => {
+          group.userData.error = String(error);
+          console.error('Citizen asset could not be loaded', models[index], error);
+        });
+        return;
+      }
       if (batch.count >= CAPACITY) return;
+      if (batch.count >= batch.rows) grow(batch);
       const time = Math.max(0, ped.age - (1 - alpha) * DT);
       const scale = 0.92 + ((hash >>> 8) & 255) / 255 * 0.17;
       let state = motion.get(ped);
@@ -236,7 +295,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS)
       batch.count++;
     },
     finish() {
-      for (const batch of batches) {
+      for (const batch of batches.values()) {
         if (batch.count > 0) {
           batch.texture.clearUpdateRanges();
           // three.js uploads each DataTexture update range as one image row.
@@ -249,7 +308,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS)
         }
         for (const mesh of batch.meshes) {
           mesh.count = batch.count;
-          mesh.castShadow = detail > 0;
+          mesh.castShadow = detail > 0 && lod < 2;
           mesh.instanceMatrix.clearUpdateRanges();
           if (batch.count > 0) mesh.instanceMatrix.addUpdateRange(0, batch.count * 16);
           mesh.instanceMatrix.needsUpdate = true;
@@ -259,7 +318,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS)
     dispose() {
       disposed = true;
       for (const resource of resources) resource.dispose();
-      resources.clear(); batches.length = 0; group.clear();
+      resources.clear(); batches.clear(); loading.clear(); group.clear();
     },
   };
 }
