@@ -1,6 +1,17 @@
 import type { Vec2 } from '@core/vec2';
 import type { CurveShape } from '@core/bezier';
-import { type NodeId, type SegmentId, IdAllocator, asNodeId, asSegmentId } from './ids';
+import {
+  type NodeId,
+  type PoleId,
+  type SegmentId,
+  type SpanId,
+  IdAllocator,
+  asNodeId,
+  asPoleId,
+  asSegmentId,
+  asSpanId,
+} from './ids';
+import type { UtilityPole, UtilitySpan } from './utilities';
 // Runtime imports, and safe: `geometry` and `legAngles` take `RoadDoc` as a
 // TYPE only, so nothing here is part of a runtime cycle.
 import { impossibleAmong, worsensAnyNode } from './legAngles';
@@ -66,8 +77,21 @@ export class RoadDoc {
   readonly nodes = new Map<NodeId, RoadNode>();
   readonly segments = new Map<SegmentId, RoadSegment>();
 
+  /**
+   * The overhead utility network: poles and the wire runs between them.
+   *
+   * A second drawable graph, and deliberately a much simpler one. A pole has
+   * no width, so none of the road machinery applies to it - no casing, no
+   * junction, no trim, no elevation solve. It stands on whatever the ground
+   * under it turns out to be.
+   */
+  readonly poles = new Map<PoleId, UtilityPole>();
+  readonly poleSpans = new Map<SpanId, UtilitySpan>();
+
   private nodeIds = new IdAllocator(1);
   private segIds = new IdAllocator(1);
+  private poleIds = new IdAllocator(1);
+  private spanIds = new IdAllocator(1);
   private nextTerrainId = 1;
 
   readonly terrainStamps: TerrainStamp[] = [];
@@ -97,6 +121,59 @@ export class RoadDoc {
     const s = this.segments.get(id);
     if (!s) throw new Error(`RoadDoc: missing segment ${id}`);
     return s;
+  }
+
+  pole(id: PoleId): UtilityPole | undefined {
+    return this.poles.get(id);
+  }
+
+  addPole(at: { x: number; y: number }, lamp = false): UtilityPole {
+    const id = asPoleId(this.poleIds.take());
+    const pole: UtilityPole = { id, x: at.x, y: at.y, lamp };
+    this.poles.set(id, pole);
+    this.revision++;
+    return pole;
+  }
+
+  /** Strings wire between two existing poles. Returns null for a degenerate run. */
+  addPoleSpan(a: PoleId, b: PoleId): UtilitySpan | null {
+    if (a === b) return null;
+    if (!this.poles.has(a) || !this.poles.has(b)) return null;
+    for (const existing of this.poleSpans.values()) {
+      const same = existing.a === a && existing.b === b;
+      const reversed = existing.a === b && existing.b === a;
+      if (same || reversed) return existing;
+    }
+    const id = asSpanId(this.spanIds.take());
+    const span: UtilitySpan = { id, a, b };
+    this.poleSpans.set(id, span);
+    this.revision++;
+    return span;
+  }
+
+  /** Removes a pole and every wire that reached it. */
+  removePole(id: PoleId): void {
+    if (!this.poles.delete(id)) return;
+    for (const [spanId, span] of [...this.poleSpans]) {
+      if (span.a === id || span.b === id) this.poleSpans.delete(spanId);
+    }
+    this.revision++;
+  }
+
+  /** The pole nearest a point, within `radius`, or null. */
+  poleNear(at: { x: number; y: number }, radius: number): UtilityPole | null {
+    let best: UtilityPole | null = null;
+    let bestSq = radius * radius;
+    for (const pole of this.poles.values()) {
+      const dx = pole.x - at.x;
+      const dy = pole.y - at.y;
+      const d = dx * dx + dy * dy;
+      if (d <= bestSq) {
+        bestSq = d;
+        best = pole;
+      }
+    }
+    return best;
   }
 
   degree(id: NodeId): number {
@@ -398,6 +475,8 @@ export class RoadDoc {
     const copy = RoadDoc.fromJSON(this.toJSON());
     copy.nodeIds = new IdAllocator(this.nodeIds.peek);
     copy.segIds = new IdAllocator(this.segIds.peek);
+    copy.poleIds = new IdAllocator(this.poleIds.peek);
+    copy.spanIds = new IdAllocator(this.spanIds.peek);
     copy.nextTerrainId = this.nextTerrainId;
     copy.revision = this.revision;
     copy.terrainRevision = this.terrainRevision;
@@ -434,11 +513,18 @@ export class RoadDoc {
         curve: segment.curve ? { ...segment.curve } : null,
       });
     }
+    this.poles.clear();
+    this.poleSpans.clear();
+    for (const [id, pole] of source.poles) this.poles.set(id, { ...pole });
+    for (const [id, span] of source.poleSpans) this.poleSpans.set(id, { ...span });
+
     this.terrainStamps.length = 0;
     this.terrainStamps.push(...source.terrainStamps.map((stamp) => ({ ...stamp })));
 
     this.nodeIds = new IdAllocator(source.nodeIds.peek);
     this.segIds = new IdAllocator(source.segIds.peek);
+    this.poleIds = new IdAllocator(source.poleIds.peek);
+    this.spanIds = new IdAllocator(source.spanIds.peek);
     this.nextTerrainId = source.nextTerrainId;
     this.terrainRevision = nextTerrainRevision;
     this.clearDirty();
@@ -473,6 +559,8 @@ export class RoadDoc {
         structure: s.structure,
       })),
       terrain: this.terrainStamps.map((stamp) => ({ ...stamp })),
+      poles: [...this.poles.values()].map((p) => ({ id: p.id, x: p.x, y: p.y, lamp: p.lamp })),
+      poleSpans: [...this.poleSpans.values()].map((s) => ({ id: s.id, a: s.a, b: s.b })),
     };
   }
 
@@ -533,6 +621,24 @@ export class RoadDoc {
       doc.terrainStamps.push({ ...stamp });
       doc.nextTerrainId = Math.max(doc.nextTerrainId, stamp.id + 1);
     }
+
+    // The utility network, if the map has one. A map saved before poles
+    // existed simply has no such key, and must load exactly as it did before.
+    for (const p of data.poles ?? []) {
+      const id = asPoleId(p.id);
+      doc.poles.set(id, { id, x: p.x, y: p.y, lamp: p.lamp ?? false });
+      doc.poleIds.reserve(p.id);
+    }
+    for (const s of data.poleSpans ?? []) {
+      const a = asPoleId(s.a);
+      const b = asPoleId(s.b);
+      // A span whose poles did not survive is dropped rather than restored as
+      // a wire hanging off nothing.
+      if (!doc.poles.has(a) || !doc.poles.has(b)) continue;
+      const id = asSpanId(s.id);
+      doc.poleSpans.set(id, { id, a, b });
+      doc.spanIds.reserve(s.id);
+    }
     for (const id of doc.nodes.keys()) doc.dirtyNodes.add(id);
     for (const id of doc.segments.keys()) doc.dirtySegments.add(id);
     doc.revision = 1;
@@ -565,6 +671,13 @@ export interface SerializedDoc {
     structure?: RoadStructure;
   }[];
   readonly terrain?: readonly TerrainStamp[];
+  /**
+   * The utility network. OPTIONAL, and it has to stay that way: every map
+   * saved before poles existed has no such key, and loading one must not
+   * fail or silently drop the roads around it.
+   */
+  readonly poles?: readonly { id: number; x: number; y: number; lamp?: boolean }[];
+  readonly poleSpans?: readonly { id: number; a: number; b: number }[];
 }
 
 function detach(n: RoadNode | undefined, id: SegmentId): void {

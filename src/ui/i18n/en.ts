@@ -35,6 +35,7 @@ export const EN: Dictionary = {
   'tool.bulldoze': 'Bulldoze',
   'tool.control': 'Control',
   'tool.inspect': 'Inspect',
+  'tool.pole': 'Poles',
 
   // ------------------------------------------------------------- simulation
   'sim.title': 'SIMULATION',
@@ -184,10 +185,13 @@ export const EN: Dictionary = {
   'hint.bulldoze': 'Click a road to demolish it',
   'hint.control': 'Click a junction to change its control · Shift: go back',
   'hint.control.miss': 'No junction there — click where two or more roads meet',
+  'hint.pole': 'Drag to run a pole line · Poles carry wires and lighting',
+  'hint.pole.removed': 'Pole removed',
   'hint.control.notJunction': 'That node joins only two roads, so it needs no control',
   'hint.inspect': 'Click a road or node to inspect it',
 
   'hint.mobile.road': '1 finger: build · 2 fingers: camera',
+  'hint.mobile.pole': '1 finger: run poles · 2 fingers: camera',
   'hint.mobile.road.tunnel': '1 finger: drag through the hill · 2 fingers: camera',
   'hint.mobile.road.curve': '1 finger: draw a curve · 2 fingers: camera',
   'hint.mobile.terrain.raise': '1 finger: raise the land · 2 fingers: camera',

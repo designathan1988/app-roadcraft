@@ -83,6 +83,18 @@ const LAMP_ARM_THICK = m(0.12);
 export const TREE_MIN_HEIGHT = m(6);
 export const TREE_HEIGHT_RANGE = m(8);
 
+/** Street bins, at real size: a 1.0 m drum on a 0.5 m footprint. */
+const BIN_HEIGHT = m(1.0);
+const BIN_WIDE = m(0.46);
+/**
+ * How often a bin appears, as a multiple of the lamp spacing.
+ *
+ * Bins go beside lamp columns because that is where they go in a real street -
+ * on the furniture line, out of the walking width - and every third column
+ * keeps them from reading as decoration.
+ */
+const BIN_EVERY = 3;
+
 const LAMP_SPACING = 88;
 /** Nothing is planted closer than this to the edge of a road's casing. */
 const PLANT_CLEARANCE = 16;
@@ -128,6 +140,8 @@ export function buildScenery(
   const poles: Placement[] = [];
   const arms: Placement[] = [];
   const lamps: Placement[] = [];
+  const bins: Placement[] = [];
+  let column = 0;
 
   for (const ribbon of net.ribbons.values()) {
     const length = ribbon.full.length;
@@ -161,6 +175,22 @@ export function buildScenery(
         sy: LAMP_HEAD_TALL,
         sz: LAMP_HEAD_WIDE,
       });
+
+      // A bin beside every third column, set a little further from the kerb
+      // than the column so the two do not occupy the same spot.
+      if (column % BIN_EVERY === 0) {
+        const outward = m(0.9);
+        bins.push({
+          x: x + frame.n.x * side * outward,
+          y: y + frame.n.y * side * outward,
+          z: base + BIN_HEIGHT / 2,
+          yaw: inwardYaw,
+          sx: BIN_WIDE,
+          sy: BIN_HEIGHT,
+          sz: BIN_WIDE,
+        });
+      }
+      column++;
     }
   }
 
@@ -240,6 +270,13 @@ export function buildScenery(
   const bark = new MeshStandardMaterial({ color: 0x5a4632, roughness: 0.95, metalness: 0 });
   const leaf = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
 
+  const binMaterial = new MeshStandardMaterial({
+    color: 0x35413c,
+    roughness: 0.72,
+    metalness: 0.2,
+  });
+  const binGeometry = new CylinderGeometry(0.5, 0.42, 1, 10);
+
   const poleGeometry = new CylinderGeometry(
     LAMP_TOP_RADIUS,
     LAMP_BASE_RADIUS,
@@ -255,6 +292,7 @@ export function buildScenery(
     build('street-light-poles', poleGeometry, metal, poles),
     build('street-light-arms', boxGeometry, metal, arms),
     build('street-light-lamps', boxGeometry, glow, lamps),
+    build('street-bins', binGeometry, binMaterial, bins),
     build('tree-trunks', trunkGeometry, bark, trunks),
     build('tree-canopies', canopyGeometry, leaf, canopies),
     build('bushes', bushGeometry, leaf, bushes),
@@ -266,8 +304,15 @@ export function buildScenery(
     triangles += ((mesh.geometry.index?.count ?? position.count) / 3) * mesh.count;
   }
 
-  const geometries = [poleGeometry, boxGeometry, trunkGeometry, canopyGeometry, bushGeometry];
-  const materials = [metal, glow, bark, leaf];
+  const geometries = [
+    poleGeometry,
+    boxGeometry,
+    binGeometry,
+    trunkGeometry,
+    canopyGeometry,
+    bushGeometry,
+  ];
+  const materials = [metal, glow, bark, leaf, binMaterial];
 
   return {
     meshes,

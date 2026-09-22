@@ -25,6 +25,7 @@ import { buildRoadSurfaces, type RoadSurfaces } from './roadSurfaces';
 import { buildScenery, type Scenery } from './scenery';
 import { createSignalHeads, type SignalHeads } from './signals';
 import { buildStructureDetails, type StructureDetails } from './structures';
+import { buildUtilities, type Utilities } from './utilities';
 import { createTerrainSurface, type TerrainSurface } from './terrain';
 import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } from './quality';
 
@@ -130,6 +131,7 @@ export function createSceneRenderer(
   let roads: RoadSurfaces | null = null;
   let details: StructureDetails | null = null;
   let scenery: Scenery | null = null;
+  let utilities: Utilities | null = null;
   let elevation: RoadElevation | null = null;
 
   let networkRevision = -1;
@@ -161,6 +163,7 @@ export function createSceneRenderer(
     roads?.dispose();
     details?.dispose();
     scenery?.dispose();
+    utilities?.dispose();
     for (const mesh of scenery?.meshes ?? []) world.remove(mesh);
     world.clear();
 
@@ -187,7 +190,14 @@ export function createSceneRenderer(
     scenery = buildScenery(net, elevation, terrain.renderedHeightAt, quality.vegetation);
     for (const mesh of scenery.meshes) world.add(mesh);
 
-    builtTriangles = roads.triangles + details.triangles + scenery.triangles;
+    // The overhead utility network. It is drawn from the document directly
+    // rather than from the Network, because a pole line is not derived from
+    // the roads - it can be drawn across open ground with no road near it.
+    utilities = buildUtilities(net.doc, terrain.renderedHeightAt);
+    world.add(utilities.group);
+
+    builtTriangles =
+      roads.triangles + details.triangles + scenery.triangles + utilities.triangles;
     rebuildMs = performance.now() - started;
     rebuilds++;
   };

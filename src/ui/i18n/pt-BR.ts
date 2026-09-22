@@ -30,6 +30,7 @@ export const PT_BR: Dictionary = {
   'tool.bulldoze': 'Demolir',
   'tool.control': 'Controle',
   'tool.inspect': 'Inspecionar',
+  'tool.pole': 'Postes',
 
   'sim.title': 'SIMULAÇÃO',
   'sim.label': 'Controles de simulação',
@@ -174,10 +175,13 @@ export const PT_BR: Dictionary = {
   'hint.bulldoze': 'Clique numa via para demolir',
   'hint.control': 'Clique num cruzamento para mudar o controle · Shift: voltar',
   'hint.control.miss': 'Nenhum cruzamento aí — clique onde duas ou mais vias se encontram',
+  'hint.pole': 'Arraste para traçar uma linha de postes · Eles levam fiação e iluminação',
+  'hint.pole.removed': 'Poste removido',
   'hint.control.notJunction': 'Esse ponto liga só duas vias, então não precisa de controle',
   'hint.inspect': 'Clique para inspecionar via ou nó',
 
   'hint.mobile.road': '1 dedo: construir · 2 dedos: câmera',
+  'hint.mobile.pole': '1 dedo: traçar postes · 2 dedos: câmera',
   'hint.mobile.road.tunnel': '1 dedo: arraste atravessando o morro · 2 dedos: câmera',
   'hint.mobile.road.curve': '1 dedo: desenhar curva · 2 dedos: câmera',
   'hint.mobile.terrain.raise': '1 dedo: elevar o terreno · 2 dedos: câmera',

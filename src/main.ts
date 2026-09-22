@@ -6,7 +6,8 @@ import { Network } from '@world/network';
 import { ROAD_TYPES, roadType } from '@world/roadTypes';
 import type { RoadStructure } from '@world/structures';
 import type { TerrainMode } from '@world/terrain';
-import type { NodeId, SegmentId } from '@world/ids';
+import type { NodeId, PoleId, SegmentId } from '@world/ids';
+import { polePositions, poleCarriesLamp } from '@world/utilities';
 
 import { Camera } from '@ui/overlay/camera';
 import { type Viewport, flatViewport } from '@view/viewport';
@@ -45,7 +46,8 @@ type Tool =
   | 'split'
   | 'bulldoze'
   | 'control'
-  | 'inspect';
+  | 'inspect'
+  | 'pole';
 type Alignment = 'straight' | 'curve';
 
 interface RoadDraft {
@@ -53,6 +55,19 @@ interface RoadDraft {
   snap: SnapResult;
   readonly samples: Vec2[];
   curve: CurveShape | null;
+}
+
+/**
+ * A pole run being dragged.
+ *
+ * Deliberately far simpler than a road draft: a pole has no width, no class
+ * and no structure, so there is nothing to snap it to and nothing to reconcile
+ * against. It is two points, and the poles are dropped along the line between
+ * them when the drag ends.
+ */
+interface PoleDraft {
+  readonly from: Vec2;
+  to: Vec2;
 }
 
 // The interface language is resolved and applied BEFORE anything reads a label,
@@ -197,6 +212,7 @@ function sessionSettings(): SavedSettings {
 }
 
 let draft: RoadDraft | null = null;
+let poleDraft: PoleDraft | null = null;
 let hoverAnchor: Anchor | null = null;
 let selectedSegment: SegmentId | null = null;
 let selectedNode: NodeId | null = null;
@@ -576,6 +592,23 @@ canvas.addEventListener('pointerdown', (e) => {
       beginTerrainStroke(e.pointerId, world);
       break;
 
+    case 'pole':
+      // Clicking an existing pole removes it, which is the same verb the
+      // bulldoze tool uses on a road and needs no second tool of its own.
+      {
+        const hit = doc.poleNear(world, 22 / view.zoom);
+        if (hit) {
+          mutate(() => {
+            doc.removePole(hit.id);
+            return true;
+          });
+          flashHint('hint.pole.removed');
+        } else {
+          poleDraft = { from: world, to: world };
+        }
+      }
+      break;
+
     case 'move':
       if (anchor.kind === 'node' && anchor.node !== undefined) {
         const node = doc.node(anchor.node);
@@ -678,6 +711,12 @@ canvas.addEventListener('pointermove', (e) => {
     return;
   }
 
+  if (poleDraft) {
+    poleDraft.to = world;
+    requestDraw();
+    return;
+  }
+
   if (moving) {
     doc.moveNode(moving.node, world);
     requestDraw();
@@ -702,6 +741,39 @@ canvas.addEventListener('pointermove', (e) => {
       : hovered;
   requestDraw();
 });
+
+/**
+ * Drops a run of poles along a drag and strings wire between them.
+ *
+ * A run that starts on an existing pole CONTINUES it rather than building a
+ * second pole on top of the first: extending a line is the commonest thing
+ * anyone does with this tool, and a duplicate pole at the join would show as
+ * a doubled mast and a zero-length span.
+ */
+function commitPoleRun(from: Vec2, to: Vec2): boolean {
+  const positions = polePositions(from, to);
+  if (positions.length < 2) return false;
+
+  const reach = 22 / view.zoom;
+  const placed: PoleId[] = [];
+  positions.forEach((at, index) => {
+    const existing = doc.poleNear(at, reach);
+    if (existing) {
+      placed.push(existing.id);
+      return;
+    }
+    placed.push(doc.addPole(at, poleCarriesLamp(index)).id);
+  });
+
+  let built = false;
+  for (let i = 1; i < placed.length; i++) {
+    const a = placed[i - 1];
+    const b = placed[i];
+    if (a === undefined || b === undefined) continue;
+    if (doc.addPoleSpan(a, b)) built = true;
+  }
+  return built;
+}
 
 function endPointer(e: PointerEvent): void {
   const cancelled = e.type === 'pointercancel';
@@ -728,6 +800,14 @@ function endPointer(e: PointerEvent): void {
           structureMode,
         ).committed,
       );
+    }
+  }
+
+  if (poleDraft) {
+    const run = poleDraft;
+    poleDraft = null;
+    if (!cancelled && !wasPinching) {
+      mutate(() => commitPoleRun(run.from, run.to));
     }
   }
 
@@ -862,6 +942,7 @@ window.addEventListener('keydown', (e) => {
     c: 'control',
     t: 'terrain',
     i: 'inspect',
+    p: 'pole',
   };
   const next = shortcuts[e.key.toLowerCase()];
   if (next) setTool(next);
@@ -1441,6 +1522,33 @@ function drawOverlayScreen(): void {
   // editor was about to build.
   const at = (p: Vec2): Vec2 => view.toScreen(p, w, h, sceneHeightAt(p));
 
+  // The pole run being dragged: the line, and a ring where each pole will
+  // land. Showing where they LAND rather than only the line is the whole
+  // point - the spacing is decided by the tool, so a player who cannot see it
+  // has no way to aim a span at anything.
+  if (poleDraft) {
+    const positions = polePositions(poleDraft.from, poleDraft.to);
+    ctx.save();
+    ctx.strokeStyle = SELECTION;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    positions.forEach((p, index) => {
+      const s = at(p);
+      if (index === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const p of positions) {
+      const s = at(p);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   const strokeScreen = (
     points: readonly Vec2[],
     colour: string | CanvasGradient | CanvasPattern,
@@ -1970,6 +2078,8 @@ qualitySelect.onchange = () => {
       worldAtScreen(x, y),
       view.zoom,
     ),
+  // Pole helpers, so the browser harness can build a run the way the tool does.
+  utilities: { polePositions, poleCarriesLamp },
   audit: () => [...sim.issues],
   /** The live three.js scene handle, for browser-driven checks. */
   scene: () => scene,
