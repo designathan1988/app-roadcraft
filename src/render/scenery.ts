@@ -17,6 +17,7 @@ import { Rng } from '@core/rng';
 import type { Network } from '@world/network';
 import type { RoadElevation } from '@world/elevation';
 import { GROUND_ONLY } from '@world/elevation';
+import { TERRAIN_HALF } from './terrain';
 
 /**
  * Everything standing on the ground that is not a road: lamp columns and
@@ -57,6 +58,8 @@ interface Placement {
 const LAMP_SPACING = 88;
 /** Nothing is planted closer than this to the edge of a road's casing. */
 const PLANT_CLEARANCE = 16;
+/** Keeps a canopy from overhanging the edge of the terrain plate. */
+const PLANT_EDGE_MARGIN = 24;
 
 function build(
   name: string,
@@ -139,11 +142,19 @@ export function buildScenery(
     const rng = new Rng(0x517a);
     const bounds = networkBounds(net);
     const spread = Math.max(900, Math.max(bounds.w, bounds.h) * 0.85);
-    const attempts = vegetationCount * 3;
+    // The scatter window, clipped to the terrain plate. A margin keeps a
+    // canopy from overhanging the edge even when its trunk is just inside.
+    const limit = TERRAIN_HALF - PLANT_EDGE_MARGIN;
+    const minX = Math.max(-limit, bounds.cx - spread);
+    const maxX = Math.min(limit, bounds.cx + spread);
+    const minY = Math.max(-limit, bounds.cy - spread);
+    const maxY = Math.min(limit, bounds.cy + spread);
+    // A network pushed entirely off the plate leaves no window to plant in.
+    const attempts = maxX > minX && maxY > minY ? vegetationCount * 3 : 0;
     let planted = 0;
     for (let i = 0; i < attempts && planted < vegetationCount; i++) {
-      const x = bounds.cx + (rng.float() - 0.5) * spread * 2;
-      const y = bounds.cy + (rng.float() - 0.5) * spread * 2;
+      const x = minX + rng.float() * (maxX - minX);
+      const y = minY + rng.float() * (maxY - minY);
       // Nothing grows on the carriageway or its verge.
       if (Math.abs(elevation.at(x, y, GROUND_ONLY) - terrainAt(x, y)) < 40) {
         const road = elevation.roadAt(x, y);

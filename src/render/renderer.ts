@@ -1,7 +1,7 @@
 import {
   ACESFilmicToneMapping,
   Group,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   Scene,
   SRGBColorSpace,
   Vector3,
@@ -97,7 +97,11 @@ export function createSceneRenderer(
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  // PCFSoftShadowMap was REMOVED in three r186. Asking for it logged
+  // "PCFSoftShadowMap has been removed. Using PCFShadowMap instead." on every
+  // boot and silently gave us the hard filter anyway, so the softness the
+  // scene was tuned for never existed. Name what we actually get.
+  renderer.shadowMap.type = PCFShadowMap;
 
   let requested: QualityLevel | 'auto' = initialQuality;
   const governor = new QualityGovernor(requested === 'auto' ? 'high' : requested);

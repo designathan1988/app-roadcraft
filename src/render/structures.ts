@@ -43,6 +43,23 @@ export interface StructureDetails {
 
 /** Bearing inset: the deck rests ON the pier, so its top stops just under it. */
 const BEARING = 0.2;
+/**
+ * How slender a column is allowed to be: height divided by width.
+ *
+ * Column width used to be one number per structure, so on rolling ground a
+ * bent whose feet sat in a dip got a column nearly three times longer than its
+ * neighbour at exactly the same width. Measured on one 1200-unit viaduct,
+ * column length ran from 10.3 to 27.3 units at a fixed radius of 1.8 - the
+ * short ones read as stumps and the tall ones as sticks, and a row of them
+ * read as a mistake rather than as a structure.
+ *
+ * A real pier is sized for what it carries, so its proportions stay roughly
+ * constant however far it has to reach. Width therefore grows with height and
+ * the structure's own base radius becomes a FLOOR rather than the answer.
+ */
+const PIER_SLENDERNESS = 11;
+/** Nothing gets fatter than this, however tall the deck. */
+const PIER_MAX_WIDTH_FACTOR = 2.1;
 /** Shortest pier worth building. Below this the deck is on the ground. */
 const MIN_SUPPORT = 0.9;
 /**
@@ -227,15 +244,26 @@ export function buildStructureDetails(
       }
       if (feet.length === 0) return;
 
+      // One width for the whole bent, from the TALLEST of its feet.
+      //
+      // Sizing each column against its own height would make the two legs of a
+      // single bent different widths wherever the ground slopes across the
+      // deck, which is the same inconsistency one step smaller.
+      const tallest = feet.reduce((mx, foot) => Math.max(mx, beam - foot.ground), 0);
+      const width = Math.min(
+        radius * PIER_MAX_WIDTH_FACTOR,
+        Math.max(radius, tallest / PIER_SLENDERNESS),
+      );
+
       for (const foot of feet) {
         const height = beam - foot.ground;
         piers.push({
           x: foot.x,
           y: foot.y,
           yaw,
-          sx: radius,
+          sx: width,
           sy: height,
-          sz: radius,
+          sz: width,
           cy: foot.ground + height / 2,
         });
       }
@@ -243,7 +271,9 @@ export function buildStructureDetails(
         x: frame.p.x,
         y: frame.p.y,
         yaw,
-        sx: radius * CAP_DEPTH,
+        // Follows the columns it rests on, or a tall bent grows a beam
+        // narrower than the legs under it.
+        sx: width * CAP_DEPTH,
         sy: CAP_HEIGHT,
         sz: spread * 2 + CAP_OVERHANG * 2,
         cy: beam + CAP_HEIGHT / 2,

@@ -57,7 +57,16 @@ export const TERRAIN_CELL = TERRAIN_SIZE / TERRAIN_SEGMENTS;
 
 /** Corners per side of the terrain grid — one more than its cells. */
 const GRID = TERRAIN_SEGMENTS + 1;
-const TERRAIN_HALF = TERRAIN_SIZE / 2;
+/**
+ * Half the terrain plate's extent. Nothing may be placed outside it.
+ *
+ * The ground is a finite 4800-unit plate. Anything scattered beyond it hangs
+ * in the void with no surface under it, which is exactly what happened to the
+ * vegetation: it was spread over `max(900, networkBounds * 0.85)` about the
+ * network centre with no reference to the terrain at all, so a network near an
+ * edge planted trees off the end of the world.
+ */
+export const TERRAIN_HALF = TERRAIN_SIZE / 2;
 
 export interface TerrainSurface {
   readonly meshes: readonly Mesh[];
@@ -328,7 +337,17 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
   const ground = new Mesh(geometry, material);
   ground.name = 'terrain-ground';
   ground.receiveShadow = true;
-  ground.castShadow = true;
+  // The ground does NOT cast.
+  //
+  // It is a single 301x301 heightfield - 180 000 triangles - and casting meant
+  // rasterising every one of them a second time into the shadow map each
+  // frame. What that bought was self-shadowing across one wide cascade whose
+  // texels are around a world unit across at play zoom, which does not resolve
+  // a hillside; what it actually produced was acne, the irregular dark
+  // diagonal banding on open grass that has nothing casting it. Roads,
+  // structures, props and agents all still cast onto the ground, which is
+  // every shadow the player is actually looking at.
+  ground.castShadow = false;
   ground.matrixAutoUpdate = false;
   ground.updateMatrix();
 

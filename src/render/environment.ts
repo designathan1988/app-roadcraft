@@ -169,8 +169,19 @@ export function createEnvironment(
   sun.name = 'sun';
   sun.castShadow = quality.shadows;
   sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
-  sun.shadow.bias = -0.0002;
-  sun.shadow.normalBias = 0.6;
+  // Shadow bias: enough to kill acne on the terrain, not enough to detach a
+  // shadow from the thing casting it.
+  //
+  // normalBias was 0.6 world units. That is 24 cm at this scale, and it is
+  // applied along the receiver's normal BEFORE the depth comparison, so every
+  // shadow was shifted off its caster - classic peter-panning. On a viaduct
+  // it is at its most obvious, because the deck is thin, high above its
+  // receiver and casts the longest shadow in the scene: the dark band on the
+  // grass detached from the piers holding it up and read as a separate,
+  // broken smear. A pier 1.8 units across cast a shadow offset by a third of
+  // its own width.
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.05;
   sun.shadow.camera.near = 20;
   sun.shadow.camera.far = SUN_DISTANCE * 2.4;
   scene.add(sun, sun.target);
