@@ -17,6 +17,7 @@ import { Rng } from '@core/rng';
 import type { Network } from '@world/network';
 import type { RoadElevation } from '@world/elevation';
 import { GROUND_ONLY } from '@world/elevation';
+import { m } from '@world/units';
 import { TERRAIN_HALF } from './terrain';
 
 /**
@@ -54,6 +55,33 @@ interface Placement {
   sz: number;
   tint?: Color;
 }
+
+/**
+ * Street furniture, written from real-world figures.
+ *
+ * `units.ts` says the metre helper exists so that derived constants can be
+ * written from real figures AND CHECKED, and these had drifted a long way
+ * from anything checkable. A lamp column was 11.8 world units, which at
+ * 0.4 m per unit is 4.7 m - shorter than a double-decker bus, about head
+ * height for the lamp itself. Against a 8.8 m carriageway and correctly-sized
+ * 1.5-to-1.9 m pedestrians, the whole roadside read as a model village: the
+ * people looked tiny because everything beside them was built half-size.
+ *
+ * Real values: a residential lighting column is 8 to 10 m with a 1.5 to 2.5 m
+ * outreach; street trees are 6 to 14 m.
+ */
+export const LAMP_HEIGHT = m(9);
+const LAMP_TOP_RADIUS = m(0.08);
+const LAMP_BASE_RADIUS = m(0.13);
+/** How far the arm reaches out over the carriageway. */
+export const LAMP_OUTREACH = m(2.1);
+const LAMP_HEAD_LONG = m(0.62);
+const LAMP_HEAD_TALL = m(0.16);
+const LAMP_HEAD_WIDE = m(0.32);
+const LAMP_ARM_THICK = m(0.12);
+
+export const TREE_MIN_HEIGHT = m(6);
+export const TREE_HEIGHT_RANGE = m(8);
 
 const LAMP_SPACING = 88;
 /** Nothing is planted closer than this to the edge of a road's casing. */
@@ -112,24 +140,26 @@ export function buildScenery(
       const y = frame.p.y + frame.n.y * out * side;
       const base = elevation.at(x, y) + 0.36;
       const inwardYaw = angleOf({ x: -frame.n.x * side, y: -frame.n.y * side });
-      poles.push({ x, y, z: base + 5.9, yaw: 0, sx: 1, sy: 1, sz: 1 });
+      // The column is drawn from its centre, so half its height above base.
+      poles.push({ x, y, z: base + LAMP_HEIGHT / 2, yaw: 0, sx: 1, sy: 1, sz: 1 });
+      // The arm spans from the column to the head, so it is centred half way.
       arms.push({
-        x: x - frame.n.x * side * 2.4,
-        y: y - frame.n.y * side * 2.4,
-        z: base + 11.4,
+        x: x - frame.n.x * side * (LAMP_OUTREACH / 2),
+        y: y - frame.n.y * side * (LAMP_OUTREACH / 2),
+        z: base + LAMP_HEIGHT - LAMP_ARM_THICK,
         yaw: inwardYaw,
-        sx: 5.2,
-        sy: 0.3,
-        sz: 0.3,
+        sx: LAMP_OUTREACH,
+        sy: LAMP_ARM_THICK,
+        sz: LAMP_ARM_THICK,
       });
       lamps.push({
-        x: x - frame.n.x * side * 4.8,
-        y: y - frame.n.y * side * 4.8,
-        z: base + 11.1,
+        x: x - frame.n.x * side * LAMP_OUTREACH,
+        y: y - frame.n.y * side * LAMP_OUTREACH,
+        z: base + LAMP_HEIGHT - LAMP_ARM_THICK - LAMP_HEAD_TALL / 2,
         yaw: inwardYaw,
-        sx: 1.3,
-        sy: 0.38,
-        sz: 0.8,
+        sx: LAMP_HEAD_LONG,
+        sy: LAMP_HEAD_TALL,
+        sz: LAMP_HEAD_WIDE,
       });
     }
   }
@@ -182,7 +212,7 @@ export function buildScenery(
         });
         continue;
       }
-      const height = 9 + rng.float() * 9;
+      const height = TREE_MIN_HEIGHT + rng.float() * TREE_HEIGHT_RANGE;
       trunks.push({
         x,
         y,
@@ -210,7 +240,12 @@ export function buildScenery(
   const bark = new MeshStandardMaterial({ color: 0x5a4632, roughness: 0.95, metalness: 0 });
   const leaf = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 });
 
-  const poleGeometry = new CylinderGeometry(0.2, 0.32, 11.8, 8);
+  const poleGeometry = new CylinderGeometry(
+    LAMP_TOP_RADIUS,
+    LAMP_BASE_RADIUS,
+    LAMP_HEIGHT,
+    8,
+  );
   const boxGeometry = new BoxGeometry(1, 1, 1);
   const trunkGeometry = new CylinderGeometry(0.7, 1, 1, 6);
   const canopyGeometry = new ConeGeometry(1, 1, 7);

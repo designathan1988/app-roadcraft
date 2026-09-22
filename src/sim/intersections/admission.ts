@@ -350,15 +350,45 @@ export function compactReservationChain(
   }
 }
 
-/** Same-movement occupancy is a resource even when it has zero conflict points. */
+/**
+ * Whether a connector with no conflict points is already spoken for.
+ *
+ * Some movements genuinely cross nothing - a right turn out of a leg usually
+ * crosses no other vehicle path at all - so there is no conflict point to
+ * arbitrate them and this is the only thing standing between two vehicles
+ * trying to occupy the same piece of road.
+ *
+ * It used to answer "is ANYBODY on this connector", which made the easiest
+ * movement at the junction the most restricted one: a right turn was
+ * serialised to ONE VEHICLE AT A TIME along its whole length, however long
+ * that connector was and however far down it the leader had already gone.
+ * Measured on a four-leg signalised cross, right turns were the most blocked
+ * movement of the three - 136 stalls against 97 for both left and through -
+ * which is the exact opposite of the order a real junction produces.
+ *
+ * What is actually required is that two vehicles never occupy the same space.
+ * That is a HEADWAY question, and it is the same one car-following answers
+ * everywhere else: a follower may enter once the vehicle ahead has travelled
+ * far enough along the connector to leave room for it.
+ *
+ * A vehicle that has been ADMITTED but has not yet entered still holds the
+ * movement outright. It was granted first and it is entitled to the space it
+ * is about to use; letting a second vehicle in front of it is how a grant
+ * becomes worthless.
+ */
 function movementReservedByOther(w: SimWorld, v: Vehicle, conn: Connector): boolean {
   // Real conflict points already protect a same-path convoy. Only a connector
   // with no point resource needs this explicit occupancy token.
   if (w.conflicts.refs(conn.id).length > 0) return false;
+
+  const need = v.archetype.length + Math.max(JAM_GAP, v.driver.s0);
   for (const other of w.vehicles.values()) {
     if (other.id === v.id) continue;
-    if (other.lanelet === conn.id) return true;
+    // Granted, but still on its approach: the movement is theirs.
     if (other.admittedConnector === conn.id) return true;
+    if (other.lanelet !== conn.id) continue;
+    // Already on it: only room decides.
+    if (other.s < need) return true;
   }
   return false;
 }
