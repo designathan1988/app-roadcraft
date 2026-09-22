@@ -1,5 +1,6 @@
 import { type Vec2, addScaled } from '@core/vec2';
 import { m } from '@world/units';
+import { vehiclePose } from '../pose';
 import type { SimWorld } from '../world';
 import type { Ped } from './state';
 import type { SidewalkEdge } from './sidewalk';
@@ -39,15 +40,13 @@ export class PedestrianClearance {
     // Vehicles retain their own lane physics, but pedestrians also need their
     // physical footprint while entering a zebra or clearing a junction.
     for (const vehicle of w.vehiclesInIdOrder()) {
-      const lane = w.lanelet(vehicle.lanelet);
-      if (!lane) continue;
-      const frame = lane.centre.sampleAt(vehicle.s);
-      const centre = frame.p;
+      const pose = vehiclePose(w, vehicle, 1);
+      if (!pose) continue;
       const archetype = vehicle.archetype;
       const halfLength = archetype.length / 2, halfWidth = archetype.width / 2;
       const radius = Math.hypot(halfLength, halfWidth);
-      this.insert({ id: -vehicle.id, x: centre.x, y: centre.y, radius, cell: '',
-        forward: frame.t, halfLength, halfWidth });
+      this.insert({ id: -vehicle.id, x: pose.p.x, y: pose.p.y, radius, cell: '',
+        forward: { x: Math.cos(pose.angle), y: Math.sin(pose.angle) }, halfLength, halfWidth });
     }
   }
 

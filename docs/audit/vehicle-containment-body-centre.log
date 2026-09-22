@@ -1,0 +1,32 @@
+
+ RUN  v4.1.11 C:/Users/jonathanrodriguesti/Desktop/Road
+
+ ❯ tests/sim/kerb.spec.ts (3 tests | 1 failed | 2 skipped) 8327ms
+     × is never crossed by a vehicle, corner by corner, for a whole run 8326ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/sim/kerb.spec.ts > the kerb > is never crossed by a vehicle, corner by corner, for a whole run
+AssertionError: vehicle 7 (hatch) put a corner at -26.0,-14.7 off the carriageway: expected 196 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 196
+
+ ❯ tests/sim/kerb.spec.ts:179:27
+    177|       }, null, 2) + '\n');
+    178|     }
+    179|     expect(worst, detail).toBe(0);
+       |                           ^
+    180|   });
+    181|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 skipped (3)
+   Start at  18:50:53
+   Duration  8.72s (transform 234ms, setup 0ms, import 289ms, tests 8.33s, environment 0ms)

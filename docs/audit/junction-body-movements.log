@@ -1,0 +1,168 @@
+
+ RUN  v4.1.11 C:/Users/jonathanrodriguesti/Desktop/Road
+
+ ❯ tests/world/connectorFootprints.spec.ts (1 test | 1 failed) 217ms
+     × records complete body clearance across mixed junction shapes 216ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/world/connectorFootprints.spec.ts > physical junction movements > records complete body clearance across mixed junction shapes
+AssertionError: expected [ …(15) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "archetype": "bus",
++     "configuration": "skewed",
++     "connector": "1:2>1:0->2:1>3:1",
++     "firstOutside": {
++       "x": 30.41907405164409,
++       "y": 14.951901890463146,
++     },
++   },
++   {
++     "archetype": "truck",
++     "configuration": "skewed",
++     "connector": "1:2>1:0->2:1>3:1",
++     "firstOutside": {
++       "x": 29.908655277274036,
++       "y": 15.79789351792397,
++     },
++   },
++   {
++     "archetype": "bus",
++     "configuration": "skewed",
++     "connector": "2:3>1:1->3:1>4:1",
++     "firstOutside": {
++       "x": -7.702115553251707,
++       "y": 29.345863712590525,
++     },
++   },
++   {
++     "archetype": "truck",
++     "configuration": "skewed",
++     "connector": "2:3>1:1->3:1>4:1",
++     "firstOutside": {
++       "x": -9.093430829335869,
++       "y": 28.13880851804011,
++     },
++   },
++   {
++     "archetype": "hatch",
++     "configuration": "skewed",
++     "connector": "4:5>1:1->1:1>2:0",
++     "firstOutside": {
++       "x": 14.33267097246314,
++       "y": -19.34241060129518,
++     },
++   },
++   {
++     "archetype": "sedan",
++     "configuration": "skewed",
++     "connector": "4:5>1:1->1:1>2:0",
++     "firstOutside": {
++       "x": 13.98695434281775,
++       "y": -19.415484062269655,
++     },
++   },
++   {
++     "archetype": "suv",
++     "configuration": "skewed",
++     "connector": "4:5>1:1->1:1>2:0",
++     "firstOutside": {
++       "x": 13.670739800214193,
++       "y": -20.441484346549085,
++     },
++   },
++   {
++     "archetype": "van",
++     "configuration": "skewed",
++     "connector": "4:5>1:1->1:1>2:0",
++     "firstOutside": {
++       "x": 14.01096396912153,
++       "y": -19.845284564655152,
++     },
++   },
++   {
++     "archetype": "bus",
++     "configuration": "skewed",
++     "connector": "4:5>1:1->1:1>2:0",
++     "firstOutside": {
++       "x": 15.334533284796048,
++       "y": -16.77308876491793,
++     },
++   },
++   {
++     "archetype": "truck",
++     "configuration": "skewed",
++     "connector": "4:5>1:1->1:1>2:0",
++     "firstOutside": {
++       "x": 14.576881754601956,
++       "y": -18.59974410328935,
++     },
++   },
++   {
++     "archetype": "motorcycle",
++     "configuration": "skewed",
++     "connector": "4:5>1:1->1:1>2:0",
++     "firstOutside": {
++       "x": 14.984244686199206,
++       "y": -16.721120871239325,
++     },
++   },
++   {
++     "archetype": "bicycle",
++     "configuration": "skewed",
++     "connector": "4:5>1:1->1:1>2:0",
++     "firstOutside": {
++       "x": 15.23934054332782,
++       "y": -15.939232498180422,
++     },
++   },
++   {
++     "archetype": "bus",
++     "configuration": "five-leg",
++     "connector": "1:2>1:1->2:1>3:0",
++     "firstOutside": {
++       "x": 29.85813456044841,
++       "y": 18.36175048379772,
++     },
++   },
++   {
++     "archetype": "truck",
++     "configuration": "five-leg",
++     "connector": "1:2>1:1->2:1>3:0",
++     "firstOutside": {
++       "x": 29.298048493470088,
++       "y": 18.589976882321213,
++     },
++   },
++   {
++     "archetype": "van",
++     "configuration": "five-leg",
++     "connector": "2:3>1:0->3:1>4:1",
++     "firstOutside": {
++       "x": -3.599025803787096,
++       "y": 34.16079403869826,
++     },
++   },
++ ]
+
+ ❯ tests/world/connectorFootprints.spec.ts:100:23
+     98|       configuration: finding.configuration, connector: finding.connect…
+     99|       archetype: finding.archetype, firstOutside: finding.firstOutside,
+    100|     })).slice(0, 15)).toEqual([]);
+       |                       ^
+    101|   });
+    102| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  18:54:49
+   Duration  476ms (transform 123ms, setup 0ms, import 154ms, tests 217ms, environment 0ms)

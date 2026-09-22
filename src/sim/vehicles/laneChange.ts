@@ -1,4 +1,4 @@
-import type { LaneletId } from '@world/lanelets';
+import { laneletId, type LaneletId } from '@world/lanelets';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import { JAM_GAP } from '../params';
@@ -97,6 +97,11 @@ export function stepLaneChange(w: SimWorld): void {
     const lane = w.lanelet(v.lanelet);
     if (!lane || lane.kind !== 'link') continue;
 
+    // The body still occupies the space between lanes until the previous
+    // manoeuvre finishes. Starting another transfer here compounds the lateral
+    // offset and can put the entire vehicle beyond the carriageway edge.
+    if (Math.abs(v.lateral) > 0.02) continue;
+
     // A granted movement pins the lane: the claim was arbitrated for this
     // lanelet's connector, and moving would abandon it mid-transaction. A rear
     // still inside a junction pins it for the same reason.
@@ -104,7 +109,7 @@ export function stepLaneChange(w: SimWorld): void {
 
     const target = v.desiredLane;
     if (target !== null && target !== lane.id) {
-      if (mandatory(w, v, target)) v.laneChange = target;
+      v.laneChange = mandatory(w, v, target);
       continue;
     }
     if (target === lane.id) continue;
@@ -118,23 +123,35 @@ export function stepLaneChange(w: SimWorld): void {
 }
 
 /** The change the route asked for, executed as soon as there is a gap. */
-function mandatory(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
+function mandatory(w: SimWorld, v: Vehicle, target: LaneletId): LaneletId | null {
   const lane = w.lanelet(v.lanelet);
   const to = w.lanelet(target);
-  if (!lane || !to || to.kind !== 'link' || w.rt(target).ghost || to.length < v.s) {
+  if (!lane || !to || to.kind !== 'link' || w.rt(target).ghost || to.length < v.s ||
+      lane.segment !== to.segment || lane.from !== to.from || lane.to !== to.to ||
+      lane.laneIndex === undefined || to.laneIndex === undefined) {
     v.desiredLane = null;
-    return false;
+    v.movementIntent = null;
+    return null;
   }
 
-  const room = Math.max(LANE_CHANGE_MIN_ROOM, v.v * LANE_CHANGE_TIME);
+  const steps = Math.abs(to.laneIndex - lane.laneIndex);
+  const adjacent = laneletId(lane.segment!, lane.from!, lane.to!,
+    lane.laneIndex + Math.sign(to.laneIndex - lane.laneIndex));
+  if (steps === 0 || !w.lanelet(adjacent) || w.rt(adjacent).ghost) {
+    v.desiredLane = null;
+    v.movementIntent = null;
+    return null;
+  }
+  const room = Math.max(LANE_CHANGE_MIN_ROOM, v.v * LANE_CHANGE_TIME) * steps;
   if (lane.length - v.s < room) {
     v.desiredLane = null;
-    return false;
+    v.movementIntent = null;
+    return null;
   }
 
-  if (!gapIsSafe(w, v, target)) return false;
+  if (!gapIsSafe(w, v, adjacent)) return null;
   v.lastLaneChangeAge = v.age;
-  return true;
+  return adjacent;
 }
 
 /**

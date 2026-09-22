@@ -80,6 +80,55 @@ const SCENARIOS = [
     `,
   },
   {
+    name: 'junction-mixed-T', zoom: 1.8,
+    build: `
+      const c = D.addNode({ x: 0, y: 0 });
+      [0, 90, 180].forEach((degrees, index) => {
+        const angle = degrees * Math.PI / 180;
+        const far = D.addNode({ x: Math.cos(angle) * 420, y: Math.sin(angle) * 420 });
+        D.addSegment(c.id, far.id, [2, 1, 3][index]);
+      });
+      D.setNodeControl(c.id, 'signal');
+    `,
+  },
+  {
+    name: 'junction-skewed', zoom: 1.8,
+    build: `
+      const c = D.addNode({ x: 0, y: 0 });
+      [0, 67, 175, 257].forEach((degrees, index) => {
+        const angle = degrees * Math.PI / 180;
+        const far = D.addNode({ x: Math.cos(angle) * 420, y: Math.sin(angle) * 420 });
+        D.addSegment(c.id, far.id, [1, 2, 3, 2][index]);
+      });
+      D.setNodeControl(c.id, 'signal');
+    `,
+  },
+  {
+    name: 'junction-five-leg', zoom: 1.8,
+    build: `
+      const c = D.addNode({ x: 0, y: 0 });
+      [0, 68, 145, 218, 293].forEach((degrees, index) => {
+        const angle = degrees * Math.PI / 180;
+        const far = D.addNode({ x: Math.cos(angle) * 420, y: Math.sin(angle) * 420 });
+        D.addSegment(c.id, far.id, [2, 1, 3, 2, 1][index]);
+      });
+      D.setNodeControl(c.id, 'signal');
+    `,
+  },
+  {
+    name: 'junction-one-way', zoom: 1.8,
+    build: `
+      const c = D.addNode({ x: 0, y: 0 });
+      [0, 90, 180, 270].forEach((degrees, index) => {
+        const angle = degrees * Math.PI / 180;
+        const far = D.addNode({ x: Math.cos(angle) * 420, y: Math.sin(angle) * 420 });
+        const leg = D.addSegment(c.id, far.id, [2, 3, 1, 2][index]);
+        if (index % 2 === 0) D.setSegmentDirection(leg.id, index === 0 ? 'aToB' : 'bToA');
+      });
+      D.setNodeControl(c.id, 'signal');
+    `,
+  },
+  {
     name: 'viaduct-over-road',
     zoom: 1.0,
     build: `
@@ -290,6 +339,7 @@ async function waitForRebuild(target, before, timeout = 30_000) {
 }
 
 const rows = [];
+const movementRecords = [];
 for (const scenario of SCENARIOS) {
   const rebuildsBefore = await page.evaluate(() => window.__roadcraft.scene().stats.rebuilds);
   await page.evaluate(({ build }) => {
@@ -339,6 +389,30 @@ for (const scenario of SCENARIOS) {
     // steps per frame and a software rasteriser runs at single-figure frames.
     await page.evaluate(() => window.__roadcraft.runSim(70));
     await page.waitForTimeout(600);
+    if (scenario.name.startsWith('junction-') || scenario.name === 'signalised-junction') {
+      movementRecords.push(await page.evaluate((name) => {
+        const R = window.__roadcraft, S = R.sim, scene = R.scene().scene;
+        return { scenario: name, tick: S.clock.tick, movements: [...S.graph.connectors.values()]
+          .map(connector => {
+            const from = S.lanelet(connector.fromLane), to = S.lanelet(connector.toLane);
+            const path = S.lanelet(connector.id);
+            const controller = S.controller(connector.node);
+            const head = `${connector.node}:${connector.inSegment}`;
+            const displayed = controller ? ['red', 'amber', 'green'].find(colour =>
+              scene.getObjectByName(`signal-lamp-${colour}-${head}`)?.userData.active) ?? 'none' : 'uncontrolled';
+            const live = [...S.vehicles.values()].filter(vehicle => vehicle.lanelet === connector.id);
+            const conflicting = S.conflicts.refs(connector.id).map(ref => ref.other);
+            return { origin: String(connector.inSegment), fromLane: from?.laneIndex,
+              intent: connector.turn, connector: connector.id,
+              destination: String(connector.outSegment), toLane: to?.laneIndex,
+              trajectory: path?.centre.toPoints(), displayed,
+              conflicting, simultaneous: live.flatMap(vehicle =>
+                [...S.vehicles.values()].filter(other => other.id !== vehicle.id && conflicting.includes(other.lanelet))
+                  .map(other => ({ a: vehicle.id, b: other.id, otherMovement: other.lanelet }))),
+            };
+          }) };
+      }, scenario.name));
+    }
     // Traffic is paused for the capture. A canvas that redraws every frame makes
     // the screenshot compositor wait for a stable frame that never arrives, and
     // the capture times out rather than producing a blurred image.
@@ -355,6 +429,7 @@ for (const scenario of SCENARIOS) {
     await page.evaluate(() => window.__roadcraft.setTraffic(true));
   }
 }
+if (WRITE_SHOTS) fs.writeFileSync('docs/audit/junction-runtime-movements.json', JSON.stringify(movementRecords, null, 2) + '\n');
 
 // The editor must be able to AIM at a raised deck.
 //

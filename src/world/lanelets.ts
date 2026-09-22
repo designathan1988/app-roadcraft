@@ -14,11 +14,11 @@ import { TUNNELS_DRAWN } from './structures';
  * Bezier handle length for a turn path, as a fraction of the chord.
  *
  * Sets how far the curve holds its entry and exit headings before bending.
- * Larger opens the turn out; smaller tightens it toward the chord. 0.40 is
- * the value that keeps a right turn inside its own kerb radius at every
- * road class in `tests/world/connector-tangent.spec.ts`.
+ * A wider real centreline clears the full vehicle on tight mixed junctions.
+ * `tests/world/connectorFootprints.spec.ts` checks 544 body/movement pairs
+ * across mixed, skewed, five-leg and one-way junctions.
  */
-const CONNECTOR_HANDLE = 0.4;
+const CONNECTOR_HANDLE = 0.65;
 
 /**
  * Samples per turn path, cosine-spaced. Built once per network rebuild, never
@@ -543,9 +543,8 @@ function fallbackTurnRank(turn: TurnKind): number {
 }
 
 /**
- * Quadratic through the node, from the end of the inbound lane to the start of
- * the outbound one. The node itself is the control point, which gives a natural
- * turning arc without any extra parameters.
+ * Tangent-matched cubic between the inbound stop line and outgoing lane.
+ * Its control points bow into the intersection to clear the physical body.
  */
 function connectorPath(inCentre: Polyline, outCentre: Polyline): Polyline {
   const a = inCentre.sampleAt(inCentre.length).p;

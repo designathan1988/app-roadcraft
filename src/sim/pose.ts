@@ -1,8 +1,9 @@
 import { DIV_EPS, clamp, lerp } from '@core/scalar';
 import { LATERAL_CLOSE_RATE } from '@sim/params';
 import { type Vec2, addScaled, angleOf, dist, lerpVec, perp } from '@core/vec2';
+import type { Frame } from '@core/polyline';
 import type { SimWorld } from '@sim/world';
-import type { Vehicle } from '@sim/vehicles/state';
+import type { Kinematics, Vehicle } from '@sim/vehicles/state';
 import type { Ped } from '@sim/peds/state';
 
 export interface Pose {
@@ -81,11 +82,12 @@ function laneChangeYaw(lateral: number, speed: number): number {
  * spinning the long way through 359 degrees.
  */
 export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null {
-  const lane = w.lanelet(v.lanelet);
-  if (!lane) return null;
+  const frame = bodyFrame(w, v, v.archetype.length / 2);
+  if (!frame) return null;
   const t = clamp(alpha, 0, 1);
 
-  const frame = lane.centre.sampleAt(v.s);
+  // Simulation arc position is the FRONT of the vehicle. The visible body
+  // centre can still be on the previous lanelet after the front enters a turn.
   // `lateral` is the unfinished part of a lane change: the simulation has
   // already moved the vehicle onto the new centreline, and this is how far it
   // still has to slide across to get there visually.
@@ -93,10 +95,8 @@ export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null
   const heading = angleOf(frame.t);
   const here: Pose = { p: at, angle: heading };
 
-  const prevLane = w.lanelet(v.prev.lanelet);
-  if (!prevLane) return here;
-
-  const before = prevLane.centre.sampleAt(v.prev.s);
+  const before = bodyFrame(w, v.prev, v.archetype.length / 2);
+  if (!before) return here;
   const beforeAt = addScaled(before.p, perp(before.t), v.prev.lateral);
   if (dist(beforeAt, at) > POSE_JUMP_LIMIT) return here;
 
@@ -107,6 +107,20 @@ export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null
     p: lerpVec(beforeAt, at, t),
     angle: lerpAngle(angleOf(before.t), heading, t) + yaw,
   };
+}
+
+function bodyFrame(w: SimWorld, kinematics: Kinematics, behindFront: number): Frame | null {
+  let lane = w.lanelet(kinematics.lanelet);
+  if (!lane) return null;
+  let s = kinematics.s - behindFront;
+  if (s >= 0) return lane.centre.sampleAt(s);
+  for (const id of kinematics.rearPath) {
+    lane = w.lanelet(id);
+    if (!lane) return null;
+    s += lane.length;
+    if (s >= 0) return lane.centre.sampleAt(s);
+  }
+  return null;
 }
 
 /** Interpolates two headings the short way round. */

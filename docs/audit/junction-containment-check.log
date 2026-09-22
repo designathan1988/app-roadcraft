@@ -1,0 +1,42 @@
+
+> roadcraft@7.0.0 check
+> npm run lint && npm run typecheck && npm run test:coverage && npm run build
+
+
+> roadcraft@7.0.0 lint
+> eslint .
+
+
+> roadcraft@7.0.0 typecheck
+> tsc --noEmit
+
+
+> roadcraft@7.0.0 test:coverage
+> vitest run --coverage
+
+
+ RUN  v4.1.11 C:/Users/jonathanrodriguesti/Desktop/Road
+      Coverage enabled with v8
+
+ ❯ tests/sim/drivers.spec.ts (11 tests | 1 failed) 11319ms
+     × lets faster vehicles pass slower ones instead of queueing behind them 1437ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/sim/drivers.spec.ts > overtaking > lets faster vehicles pass slower ones instead of queueing behind them
+AssertionError: expected 0 to be greater than 0
+ ❯ tests/sim/drivers.spec.ts:165:23
+    163|       }
+    164|     }
+    165|     expect(overtakes).toBeGreaterThan(0);
+       |                       ^
+    166|
+    167|     // And the fleet is mixed, so the speeds on an open road must be m…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 26 passed (27)
+      Tests  1 failed | 256 passed (257)
+   Start at  19:11:36
+   Duration  29.29s (transform 6.41s, setup 0ms, import 9.35s, tests 136.78s, environment 3ms)

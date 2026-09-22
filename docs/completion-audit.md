@@ -18,9 +18,9 @@ fixes do not change a block to verified.
 | Block | Full scope to verify | Status | Evidence |
 | --- | --- | --- | --- |
 | 1. Roads and meshes | Missing asphalt; holes, deformation, overlap, indices, triangulation, normals, UVs; road connections, snapping and alignment; curves, junctions and connectors; edited terrain; ramps, elevated roads, viaducts, bridges and tunnels, including every transition; affected-only rebuilds; pier dimensions and shadows; bounds; vehicle bodies stay on carriageways | Open | Pending union change and player-map fixture found in the worktree |
-| 2. Junctions | Running four-way, T, skewed, 5+ leg, mixed class, one/two-way and mixed lane-count scenarios; a record for every movement with origin, lane, intent, connector, destination lane, geometry, displayed signal and simultaneous conflicts; lane order; valid left/right/U-turn paths; physical volume conflicts; buses/trucks; admission, priority, yield, spillback and realistic deadlock handling | Open | Existing tests are not accepted as the complete movement audit |
+| 2. Junctions | Running four-way, T, skewed, 5+ leg, mixed class, one/two-way and mixed lane-count scenarios; a record for every movement with origin, lane, intent, connector, destination lane, geometry, displayed signal and simultaneous conflicts; lane order; valid left/right/U-turn paths; physical volume conflicts; buses/trucks; admission, priority, yield, spillback and realistic deadlock handling | In progress | Five production layouts and 544 body/movement pairs verified; physical conflict regions and admission still open |
 | 3. Signals | Displayed light agrees with actual permission; protected conflicts excluded; compatible opposite movements; yielding permissive lefts and exclusive phases; queue discharge and cycle length; demand includes queue length, wait, arrival rate, distance, desired movement and downstream capacity; corridor offsets from distance/speed; every phase checked against actual conflicts | Open | Requires runtime movement records |
-| 4. Vehicle behavior | Natural speed, acceleration/braking/headway and reaction delay; independent driver traits; adjacent, physical lane changes with intermediate occupancy; weaving, early positioning and missed turns; merges and cooperation; complete passing maneuvers and passing side; persistent route intentions and bounded congestion knowledge; curvature/lateral-acceleration speed; physical dimensions, truck off-tracking, bus stops, distinct motorcycles/bicycles; continuous pose and carriageway containment | Open | Existing full-run vehicle containment test fails |
+| 4. Vehicle behavior | Natural speed, acceleration/braking/headway and reaction delay; independent driver traits; adjacent, physical lane changes with intermediate occupancy; weaving, early positioning and missed turns; merges and cooperation; complete passing maneuvers and passing side; persistent route intentions and bounded congestion knowledge; curvature/lateral-acceleration speed; physical dimensions, truck off-tracking, bus stops, distinct motorcycles/bicycles; continuous pose and carriageway containment | In progress | Body anchor, adjacent transfers and persistent next-turn intent improved; full dual-lane occupancy and remaining behavior open |
 | 5. Traffic generation | Coherent scalable demand and distribution; no congestion-balanced spawn shortcut; independent entry demand without a single global fixed attempt | Open | Not yet audited |
 | 6. Vehicle visuals and functions | Preserve mirrors, plates, wheels/hubs, pillars and interior; visible human drivers/passengers with correct poses; glass; functioning doors/windows/headlights/tails/brakes/indicators; spinning and steering wheels; every function driven by simulation state | Open | Not yet audited |
 | 7. Pedestrians | Target 80 distinct human characters (user increased the earlier minimum of 30); convincing proportional humans; natural start/walk/turn/stop/idle/wait, limbs, gaze and posture; body/appearance/speed/posture variety; no arbitrary pauses, jitter, sliding, overlap or sharp spins; physical obstacle avoidance, personal space and queues; correct footways/zebras, kerb waiting, signals, traffic reactions and persistent destinations | Open | Commit 753a309 is a partial implementation requiring broader validation; expanded variety requested on 2026-09-22 |
@@ -30,7 +30,7 @@ fixes do not change a block to verified.
 | 11. Graphics | Improved viaduct-safe shadows; emissive bloom; day/night with matching lamps/headlights; cascaded shadows; vegetation wind; water reflections; AO; materials and lighting within performance budgets | Open | Not yet audited |
 | 12. Performance | Cached static shadows; local vegetation and road/terrain work; avoid full 90,601-vertex shape scans; efficient water rebuilds; stable materials/shaders; instance disposal; anisotropy; fewer per-frame sorts/allocations; large traffic and crowds | Open | Needs measured before/after workloads |
 | 13. Architecture and cleanup | Reduce main.ts; terrain brush, overlay and panels extraction; no world/UI cycle; enforced layers and deterministic RNG; dead exports and Portuguese comments; shared scenery/structure and water/texture code; valid tsconfig; remove specified probes | In progress | Temporary diagnostic config found; named probe files absent at initial inventory |
-| 14. Required tests | Complete movement/phase table; protected conflicts; adjacent physical lane changes; vehicle footprint collisions and heavy turns; curvature; full-run kerb safety; meshes/terrain transitions; universal bounds; pedestrian avoidance; pole workflow; all vehicle lighting/doors/windows/occupants | Open | Coverage must match each individual requirement |
+| 14. Required tests | Complete movement/phase table; protected conflicts; adjacent physical lane changes; vehicle footprint collisions and heavy turns; curvature; full-run kerb safety; meshes/terrain transitions; universal bounds; pedestrian avoidance; pole workflow; all vehicle lighting/doors/windows/occupants | In progress | New movement-footprint, signal-matrix, lane-intent and full-run containment tests pass; remaining gates still open |
 
 ## Work order
 
@@ -108,3 +108,32 @@ Create local commits for completed changes; do not push without instruction.
   safely moved to the local temporary archive `roadcraft-legacy-assets-20260922`.
   They are no longer in the project or production output; the source files
   were preserved outside the worktree rather than deleted.
+
+## Vehicle containment and junction checkpoint
+
+- The recorded baseline checked 3,764,556 visible body corners and found 6,066
+  outside the carriageway/kerb. The simulation tracked the vehicle front,
+  while rendering used that position as the body centre. Starting with the
+  complete body inside the entry and locating the centre along traversed
+  lanelets reduced the count to 196 right-turn corners.
+- Five configurations (four-way, T, skewed, five-leg and one-way) generated
+  544 movement/archetype combinations. Candidate curve handles of 0.50,
+  0.55 and 0.60 left 35, 14 and 4 failing combinations. At 0.65 all
+  318,240 sampled body points were on asphalt or kerb.
+- A residual live violation exposed a stale target from a different street.
+  The target is now checked against the current carriageway, mandatory
+  changes proceed one adjacent lane at a time, and the chosen movement
+  survives the required transfers. The final 200-second seeded run checked
+  3,879,832 body corners with zero footway invasions and zero excessive
+  lateral-offset events.
+- The initial overtaking regression counted order swaps in only one direction.
+  Diagnostics recorded 17 actual passes by later-spawned vehicles. The test
+  now counts either direction of a physical longitudinal order reversal.
+- `junction-containment-final-check.log`: lint, typecheck, 258 tests with
+  coverage, and build pass. `junction-visual.log`: 15 production scenarios
+  pass, including the saved player map and four new junction layouts.
+- Connector records include lane, intention, destination, geometry, displayed
+  light and simultaneous holders at the observed instant. Coverage of all
+  phases and physical body-volume conflicts remains open. Lane-change
+  occupancy is still keyed to the new lane before the lateral manoeuvre
+  finishes. Do not mark junctions, signals or vehicle behavior complete.

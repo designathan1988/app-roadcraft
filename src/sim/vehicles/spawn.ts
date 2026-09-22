@@ -87,7 +87,11 @@ export function spawnVehicle(w: SimWorld): boolean {
     const lane = w.lanelet(id);
     if (!lane) continue;
     const tail = w.laneTail(id);
-    const needed = arch.length + JAM_GAP;
+    const entryClearance = Math.max(0.5, Math.min(1.5, arch.width / 4));
+    // `s` is the front of the vehicle. Its rear must be on the authored road
+    // at birth; the entry node has no lanelet behind it to carry the body.
+    if (lane.length <= arch.length + entryClearance) continue;
+    const needed = arch.length + entryClearance + JAM_GAP;
     if (tail && tail.s - tail.archetype.length < needed) continue;
 
     // The driver is drawn BEFORE the free-flow speed and from the same stream,
@@ -107,6 +111,7 @@ export function spawnVehicle(w: SimWorld): boolean {
     const color = palette[Math.floor(w.rng.spawnVehicles.float() * palette.length)] as string;
 
     const vehicle = createVehicle(w.nextVehicleId++, arch, driver, color, id, v0, w.clock.tick);
+    vehicle.s = arch.length + entryClearance;
     vehicle.v = Math.min(v0 * 0.4, lane.speedLimit * 0.4);
     vehicle.prev = snapshot(vehicle);
 

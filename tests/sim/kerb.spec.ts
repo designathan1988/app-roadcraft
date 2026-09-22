@@ -7,6 +7,10 @@ import { SimWorld } from '@sim/world';
 import { step } from '@sim/pipeline';
 import { pedPose, vehiclePose } from '@sim/pose';
 import { DT } from '@sim/params';
+import { spawnVehicle } from '@sim/vehicles/spawn';
+import { stepLaneChange } from '@sim/vehicles/laneChange';
+import { integrateAll } from '@sim/vehicles/integrate';
+import { snapshot } from '@sim/vehicles/state';
 import { Level } from '@world/roadTypes';
 import { levelPolygons } from '@world/surfaces';
 import { pointInPolygon } from '@core/polygon';
@@ -86,6 +90,63 @@ function onSurface(mp: MultiPoly, p: Vec2): boolean {
 }
 
 describe('the kerb', () => {
+  it('rejects a stale lane-change target on a different street', () => {
+    const sim = city();
+    expect(spawnVehicle(sim)).toBe(true);
+    const vehicle = sim.vehicles.get(1)!;
+    const lane = sim.lanelet(vehicle.lanelet)!;
+    const elsewhere = [...sim.graph.lanelets.values()].find(candidate =>
+      candidate.kind === 'link' && candidate.segment !== lane.segment && candidate.length > vehicle.s + 20)!;
+    vehicle.desiredLane = elsewhere.id;
+    stepLaneChange(sim);
+    expect(vehicle.laneChange).toBeNull();
+    expect(vehicle.desiredLane).toBeNull();
+    expect(vehicle.lanelet).toBe(lane.id);
+  });
+
+  it('drops an old approach-lane request when entering the next street', () => {
+    const sim = city();
+    expect(spawnVehicle(sim)).toBe(true);
+    const vehicle = sim.vehicles.get(1)!;
+    const connectorId = sim.graph.exitsOf(vehicle.lanelet)[0]!;
+    const connector = sim.connector(connectorId)!;
+    const path = sim.lanelet(connectorId)!;
+    sim.exitLanelet(vehicle, vehicle.lanelet);
+    vehicle.lanelet = connectorId;
+    vehicle.s = path.length - 0.05;
+    vehicle.v = path.speedLimit;
+    vehicle.route = [connectorId, connector.toLane];
+    vehicle.desiredLane = connector.fromLane;
+    vehicle.prev = snapshot(vehicle);
+    sim.enterLanelet(vehicle, connectorId);
+    integrateAll(sim);
+    expect(vehicle.lanelet).toBe(connector.toLane);
+    expect(vehicle.desiredLane).toBeNull();
+  });
+
+  it('spawns the full body on the road with its front at the physical arc position', () => {
+    const sim = city();
+    expect(spawnVehicle(sim)).toBe(true);
+    const vehicle = sim.vehicles.get(1)!;
+    const lane = sim.lanelet(vehicle.lanelet)!;
+    const pose = vehiclePose(sim, vehicle, 1)!;
+    const front = lane.centre.sampleAt(vehicle.s);
+    const bodyFront = {
+      x: pose.p.x + Math.cos(pose.angle) * vehicle.archetype.length / 2,
+      y: pose.p.y + Math.sin(pose.angle) * vehicle.archetype.length / 2,
+    };
+    expect(vehicle.s - vehicle.archetype.length).toBeGreaterThan(0);
+    expect(Math.hypot(bodyFront.x - front.p.x, bodyFront.y - front.p.y)).toBeLessThan(1e-6);
+    const asphalt = levelPolygons(sim.net, Level.Asphalt);
+    for (const along of [-1, 1]) for (const across of [-1, 1]) {
+      const corner = { x: pose.p.x + along * vehicle.archetype.length / 2 * Math.cos(pose.angle)
+        - across * vehicle.archetype.width / 2 * Math.sin(pose.angle),
+      y: pose.p.y + along * vehicle.archetype.length / 2 * Math.sin(pose.angle)
+        + across * vehicle.archetype.width / 2 * Math.cos(pose.angle) };
+      expect(onSurface(asphalt, corner)).toBe(true);
+    }
+  });
+
   it('is never crossed by a vehicle, corner by corner, for a whole run', () => {
     const sim = city();
     // The surface never changes: nothing edits the network during the run.
@@ -96,11 +157,26 @@ describe('the kerb', () => {
     let detail = '';
     let checked = 0;
     const categories = new Map<string, { count: number; sample: unknown }>();
+    const lateralEvents: unknown[] = [];
+    const lateralReported = new Set<number>();
 
     sim.clock.run(Math.round(200 / DT), () => {
       step(sim, { traffic: true, pedestrians: true });
 
       for (const v of sim.vehiclesInIdOrder()) {
+        if (Math.abs(v.lateral) > 14 && !lateralReported.has(v.id)) {
+          lateralReported.add(v.id);
+          if (lateralEvents.length < 12) {
+            const lane = sim.lanelet(v.lanelet), before = sim.lanelet(v.prev.lanelet);
+            lateralEvents.push({ tick: sim.clock.tick, id: v.id, archetype: v.archetype.id,
+              previous: v.prev, current: { lane: v.lanelet, s: v.s, lateral: v.lateral },
+              from: before && { id: before.id, segment: before.segment, from: before.from,
+                to: before.to, laneIndex: before.laneIndex, point: before.centre.sampleAt(v.prev.s).p },
+              target: lane && { id: lane.id, segment: lane.segment, from: lane.from,
+                to: lane.to, laneIndex: lane.laneIndex, point: lane.centre.sampleAt(v.s).p },
+              desiredLane: v.desiredLane, route: v.route.slice(0, 5) });
+          }
+        }
         const pose = vehiclePose(sim, v, 1);
         if (!pose) continue;
 
@@ -149,7 +225,7 @@ describe('the kerb', () => {
     expect(checked).toBeGreaterThan(10_000);
     if (process.env['ROADCRAFT_RECORD_CONTAINMENT'] === '1') {
       writeFileSync('docs/audit/vehicle-containment-baseline.json', JSON.stringify({
-        checked, violations: worst, categories: Object.fromEntries(categories),
+        checked, violations: worst, categories: Object.fromEntries(categories), lateralEvents,
       }, null, 2) + '\n');
     }
     expect(worst, detail).toBe(0);

@@ -1,0 +1,8 @@
+
+ RUN  v4.1.11 C:/Users/jonathanrodriguesti/Desktop/Road
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 2 skipped (3)
+   Start at  18:53:30
+   Duration  8.65s (transform 262ms, setup 0ms, import 328ms, tests 8.22s, environment 0ms)

@@ -1,0 +1,25 @@
+
+ RUN  v4.1.11 C:/Users/jonathanrodriguesti/Desktop/Road
+
+ ❯ tests/sim/drivers.spec.ts (11 tests | 1 failed | 10 skipped) 453ms
+     × lets faster vehicles pass slower ones instead of queueing behind them 452ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/sim/drivers.spec.ts > overtaking > lets faster vehicles pass slower ones instead of queueing behind them
+AssertionError: expected 0 to be greater than 0
+ ❯ tests/sim/drivers.spec.ts:185:23
+    183|       }, null, 2) + '\n');
+    184|     }
+    185|     expect(overtakes).toBeGreaterThan(0);
+       |                       ^
+    186|
+    187|     // And the fleet is mixed, so the speeds on an open road must be m…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  19:14:44
+   Duration  845ms (transform 229ms, setup 0ms, import 278ms, tests 453ms, environment 0ms)

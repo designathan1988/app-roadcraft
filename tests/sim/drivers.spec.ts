@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { writeFileSync } from 'node:fs';
 
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
@@ -148,9 +149,19 @@ describe('overtaking', () => {
 
     // Short enough that the pairs sampled above are still on the road: the
     // avenue is 1800 units and a free-flowing car covers that in about a minute.
-    run(sim, 25);
+    let attemptedChanges = 0;
+    if (process.env['ROADCRAFT_RECORD_OVERTAKES'] === '1') {
+      for (let tick = 0; tick < Math.round(25 / DT); tick++) {
+        step(sim, { traffic: true, pedestrians: false });
+        for (const vehicle of sim.vehicles.values()) {
+          if (vehicle.prev.lanelet !== vehicle.lanelet &&
+              sim.lanelet(vehicle.lanelet)?.kind === 'link') attemptedChanges++;
+        }
+      }
+    } else run(sim, 25);
 
-    let overtakes = 0;
+    let olderOvertakes = 0;
+    let youngerOvertakes = 0;
     const after = [...sim.vehiclesInIdOrder()];
     for (const a of after) {
       const wasA = before.get(a.id);
@@ -159,10 +170,22 @@ describe('overtaking', () => {
         if (b.id <= a.id) continue;
         const wasB = before.get(b.id);
         if (!wasB || wasB.dir !== wasA.dir || direction(b.lanelet) !== wasA.dir) continue;
-        if (wasA.s < wasB.s && a.s > b.s) overtakes++;
+        if (wasA.s < wasB.s && a.s > b.s) olderOvertakes++;
+        if (wasA.s > wasB.s && a.s < b.s) youngerOvertakes++;
       }
     }
-    expect(overtakes).toBeGreaterThan(0);
+    if (process.env['ROADCRAFT_RECORD_OVERTAKES'] === '1') {
+      writeFileSync('docs/audit/overtaking-baseline.json', JSON.stringify({
+        before: before.size, after: after.length, attemptedChanges,
+        olderOvertakes, youngerOvertakes, overtakes: olderOvertakes + youngerOvertakes,
+        vehicles: after.map(vehicle => ({ id: vehicle.id, type: vehicle.archetype.id,
+          s: vehicle.s, speed: vehicle.v, lanelet: vehicle.lanelet, lateral: vehicle.lateral,
+          age: vehicle.age })),
+      }, null, 2) + '\n');
+    }
+    // IDs order spawn time, not driving order. A newly spawned faster car can
+    // pass an older slow one; both directions of an actual order swap count.
+    expect(olderOvertakes + youngerOvertakes).toBeGreaterThan(0);
 
     // And the fleet is mixed, so the speeds on an open road must be mixed too.
     const rolling = after.filter((v) => v.age > 20);

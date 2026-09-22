@@ -158,6 +158,7 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
   const target = v.laneChange;
   v.laneChange = null;
   if (target === null || target === v.lanelet) return undefined;
+  if (Math.abs(v.lateral) > 0.02) return undefined;
 
   const lane = w.lanelet(target);
   if (!lane || lane.kind !== 'link') return undefined;
@@ -176,11 +177,12 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
   // car crossed a full lane width in one frame. That instantaneous sideways
   // jump is what reads as the vehicle "bugging out and skipping position".
   //
-  // `lateral` has existed on the vehicle state all along for exactly this and
-  // was never written. It is a RENDER offset: the simulation still places the
-  // vehicle on the new centreline at the same arc position, so nothing about
-  // car-following, claims or conflict geometry changes.
+  // `lateral` places the body between lane centrelines while the transfer
+  // closes. The lanelet occupancy index changes immediately; complete dual-
+  // lane physical occupancy remains open in the completion audit.
   const from = w.lanelet(v.lanelet);
+  if (!from || from.segment !== lane.segment || from.from !== lane.from || from.to !== lane.to ||
+      Math.abs((from.laneIndex ?? 0) - (lane.laneIndex ?? 0)) !== 1) return undefined;
   if (from) {
     const frame = from.centre.sampleAt(Math.min(v.s, from.length));
     // Where the vehicle is actually DRAWN, which is the centreline plus
@@ -214,7 +216,7 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
   w.exitLanelet(v, v.lanelet);
   v.lanelet = target;
   w.enterLanelet(v, target, false);
-  v.desiredLane = null;
+  if (v.desiredLane === target) v.desiredLane = null;
   v.route = [target];
   planFrom(w, v);
   return lane;
@@ -318,6 +320,15 @@ function advanceTo(w: SimWorld, v: Vehicle, target: string, carried: number): bo
   if (!lane) return false;
 
   const current = w.lanelet(v.lanelet);
+  if (current?.kind === 'link' && lane.kind === 'connector') {
+    v.desiredLane = null;
+    v.movementIntent = null;
+  }
+  if (current?.kind === 'connector' && lane.kind === 'link') {
+    v.desiredLane = null;
+    v.movementIntent = null;
+  }
+  if (current) v.rearPath = [current.id, ...v.rearPath].slice(0, 32);
   if (
     current?.kind === 'connector' &&
     lane.kind === 'link'

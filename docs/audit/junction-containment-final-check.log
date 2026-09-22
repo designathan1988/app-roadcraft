@@ -1,0 +1,218 @@
+
+> roadcraft@7.0.0 check
+> npm run lint && npm run typecheck && npm run test:coverage && npm run build
+
+
+> roadcraft@7.0.0 lint
+> eslint .
+
+
+> roadcraft@7.0.0 typecheck
+> tsc --noEmit
+
+
+> roadcraft@7.0.0 test:coverage
+> vitest run --coverage
+
+
+ RUN  v4.1.11 C:/Users/jonathanrodriguesti/Desktop/Road
+      Coverage enabled with v8
+
+
+ Test Files  28 passed (28)
+      Tests  258 passed (258)
+   Start at  19:15:25
+   Duration  28.91s (transform 6.79s, setup 0ms, import 9.60s, tests 136.01s, environment 3ms)
+
+ % Coverage report from v8
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   76.67 |    64.72 |   78.84 |   80.06 |
+ core              |   76.81 |    59.92 |    71.9 |   79.22 |
+  aabb.ts          |   56.25 |    33.33 |      20 |   63.63 | 18-28,63,66
+  bezier.ts        |      75 |    72.72 |   66.66 |   77.41 | 53,99-115
+  clipper.ts       |   89.58 |    73.33 |     100 |   97.14 | 23
+  fillet.ts        |      80 |       70 |      60 |   90.47 | 117,120
+  intersect.ts     |   88.23 |       95 |   66.66 |   86.66 | 57-58,67-75
+  offset.ts        |   43.18 |    35.55 |      50 |   46.05 | ...27-130,151-191
+  polygon.ts       |      76 |     60.6 |      75 |   77.58 | 58-79
+  polyline.ts      |   91.26 |    72.72 |   88.88 |   90.99 | ...62-166,178-179
+  ring.ts          |      80 |       65 |   84.61 |   84.72 | 87-89,139,160-169
+  rng.ts           |   85.41 |    55.55 |      75 |   88.09 | 60-69,87
+  scalar.ts        |   87.87 |    72.72 |      50 |   86.66 | 87,99-100,105
+  vec2.ts          |   79.54 |       25 |      75 |   72.41 | 42-44,68-70,80,83
+ editor            |   31.79 |    21.62 |   39.18 |   33.69 |
+  commit.ts        |   35.05 |     26.8 |   57.69 |   36.84 | ...84-485,550-570
+  history.ts       |   54.16 |    42.85 |      50 |    61.9 | 20-24,42-50
+  persistence.ts   |       0 |        0 |       0 |       0 | 6-328
+  poles.ts         |    97.5 |    89.36 |     100 |     100 | ...91,237,259-260
+  repair.ts        |   53.84 |       25 |     100 |   62.06 | 30-35,52-57
+  snap.ts          |       0 |        0 |       0 |       0 | 30-281
+ render/mesh       |   76.84 |    80.59 |   70.37 |   79.23 |
+  surfaceMesh.ts   |   94.91 |    87.09 |   92.85 |   99.58 | 511
+  textureBaker.ts  |   28.82 |        0 |   46.15 |   29.29 | 75-202
+ sim               |    73.8 |    60.67 |   82.89 |   76.66 |
+  audit.ts         |   16.66 |        0 |       0 |      20 | 57-63
+  clock.ts         |    40.9 |        0 |      50 |    42.1 | 30-58
+  invariants.ts    |   35.65 |     36.2 |      50 |   37.86 | ...55-158,175-267
+  pipeline.ts      |   78.74 |    71.42 |   82.35 |      81 | ...18-421,434-438
+  pose.ts          |   87.93 |    73.07 |     100 |   97.82 | 123
+  snapshot.ts      |   96.77 |       50 |     100 |     100 | 44
+  world.ts         |   89.43 |    74.35 |   94.44 |   92.62 | ...25,250,304-305
+ sim/intersections |   84.76 |    76.41 |   84.48 |   88.69 |
+  admission.ts     |   86.64 |    76.25 |   94.28 |   91.76 | ...64-565,736,740
+  claims.ts        |   82.89 |    84.21 |      70 |   82.25 | ...10,136,157-166
+  spillback.ts     |   63.63 |    57.14 |   66.66 |   68.42 | 78-83
+ sim/peds          |   91.43 |    83.02 |   95.34 |   95.14 |
+  behaviour.ts     |      96 |       50 |     100 |     100 | 204-241
+  clearance.ts     |   95.95 |    89.87 |     100 |     100 | ...,84-91,124-128
+  crossingFsm.ts   |   88.28 |    83.93 |     100 |   91.66 | ...14-515,530-531
+  route.ts         |   92.59 |    88.37 |     100 |   97.61 | 37
+  sidewalk.ts      |   91.94 |    75.55 |   88.46 |   96.13 | 297-305,499-501
+  spawn.ts         |   92.42 |       75 |    87.5 |   96.22 | 23,77
+ sim/routing       |   78.08 |    77.95 |    90.9 |   85.71 |
+  router.ts        |   78.08 |    77.95 |    90.9 |   85.71 | ...33-237,251-253
+ sim/signals       |   79.48 |     70.1 |   80.39 |   82.22 |
+  fsm.ts           |    81.1 |    71.87 |      85 |   85.18 | ...73-274,317-318
+  permission.ts    |     100 |    71.42 |     100 |     100 | 40
+  plan.ts          |   74.33 |    59.25 |      76 |   74.72 | ...21,328,337-354
+  query.ts         |   88.88 |    85.18 |      80 |      95 | 76
+ sim/vehicles      |   86.24 |    81.08 |   91.89 |   91.52 |
+  idm.ts           |     100 |     90.9 |     100 |     100 | 93
+  integrate.ts     |      75 |    76.11 |   71.42 |      80 | ...92,306-311,359
+  laneChange.ts    |   92.51 |     87.5 |     100 |    97.6 | 141-143
+  leaderIndex.ts   |   94.11 |    79.16 |     100 |     100 | 28-40,62,74
+  obstacles.ts     |   95.23 |       88 |     100 |     100 | 31,43-44
+  spawn.ts         |   86.11 |    73.17 |    87.5 |   94.82 | 19,131-132
+ ui/i18n           |    12.3 |        0 |       0 |   15.68 |
+  index.ts         |    9.52 |        0 |       0 |   12.24 | 45-57,64-132
+ world             |   81.93 |    66.62 |   85.71 |    85.7 |
+  ...oachGroups.ts |   72.41 |    44.44 |   85.71 |   74.07 | 60-61,67-70,79
+  ...lictPoints.ts |   95.52 |    84.61 |     100 |     100 | 67,74,102,122
+  doc.ts           |   75.21 |    56.06 |   88.88 |   83.16 | ...58-462,597-604
+  elevation.ts     |   90.94 |    69.26 |   82.14 |   92.76 | ...1077-1078,1096
+  geometry.ts      |   82.14 |      100 |      70 |   85.18 | 86,102-107
+  ids.ts           |     100 |    66.66 |     100 |     100 | 39
+  lanelets.ts      |   94.38 |    80.99 |     100 |   98.79 | 400,542
+  legAngles.ts     |   58.97 |       55 |   66.66 |   63.49 | ...51-153,190-209
+  markings.ts      |    4.44 |        0 |       0 |    4.93 | 45-124,151-294
+  network.ts       |   86.73 |    77.65 |   95.23 |   93.06 | 204-214,542
+  roadTypes.ts     |   96.29 |     90.9 |   83.33 |     100 | 208-209
+  structures.ts    |     100 |       90 |     100 |     100 | 98
+  surfaces.ts      |   52.77 |     37.5 |   85.71 |   55.55 | 73-86
+  terrain.ts       |   98.59 |       80 |    87.5 |   98.38 | 194
+ world/junction    |   87.45 |    72.56 |   97.29 |      90 |
+  build.ts         |   78.08 |    72.34 |     100 |    80.7 | 209-228
+  corners.ts       |   85.45 |    59.09 |     100 |      88 | ...18-222,227-228
+  legs.ts          |   91.66 |    72.72 |   85.71 |   95.23 | 135
+  polygon.ts       |   92.64 |    82.69 |     100 |   94.73 | ...04-305,349-350
+  trim.ts          |   86.95 |       80 |     100 |   88.88 | 72-73
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 76.67% ( 5162/6732 )
+Branches     : 64.72% ( 2472/3819 )
+Functions    : 78.84% ( 630/799 )
+Lines        : 80.06% ( 4521/5647 )
+================================================================================
+
+> roadcraft@7.0.0 build
+> tsc --noEmit && vite build
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 210 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                     13.34 kB │ gzip:   3.42 kB
+dist/assets/male_18-C6mXF9QB.glb                 1,237.62 kB
+dist/assets/male_11-pzBTsV5o.glb                 1,264.14 kB
+dist/assets/male_13-CN1UYKka.glb                 1,268.39 kB
+dist/assets/business_male_07-Cd4GOJpf.glb        1,272.29 kB
+dist/assets/male_14-B3qtlbWd.glb                 1,272.39 kB
+dist/assets/business_male_04-BEenQ35a.glb        1,278.98 kB
+dist/assets/male_12-DSpessJJ.glb                 1,282.42 kB
+dist/assets/business_male_05-BeySYxMX.glb        1,286.59 kB
+dist/assets/male_17-tQMGeOe9.glb                 1,294.84 kB
+dist/assets/male_child_01-Bu1drOtr.glb           1,303.19 kB
+dist/assets/police_male_06-BZChlzE2.glb          1,303.23 kB
+dist/assets/wood_male_01-FQxy24fZ.glb            1,303.50 kB
+dist/assets/business_male_06-DSsa5wwL.glb        1,312.00 kB
+dist/assets/male_20-Bvpoi4tg.glb                 1,328.33 kB
+dist/assets/female_child_01-B7LhIHIc.glb         1,335.42 kB
+dist/assets/construction_male_05-DGa288IH.glb    1,340.18 kB
+dist/assets/male_child_02-CPqk4TyW.glb           1,340.98 kB
+dist/assets/male_16-CmzatEv0.glb                 1,341.68 kB
+dist/assets/sports_male_02-BhxHlcjG.glb          1,345.99 kB
+dist/assets/delivery_male_01-DHxFx_ML.glb        1,355.50 kB
+dist/assets/sports_male_04-BzJmfqEz.glb          1,358.02 kB
+dist/assets/construction_male_02-BrS1M0E0.glb    1,360.74 kB
+dist/assets/pilot_male_01-DcGWRjpq.glb           1,361.63 kB
+dist/assets/pilot_male_02-CR7XUpGE.glb           1,378.29 kB
+dist/assets/chef_female_01-G7XDdUev.glb          1,378.36 kB
+dist/assets/pilot_male_03-inTsfidi.glb           1,394.44 kB
+dist/assets/construction_male_07-DkgD1GuR.glb    1,420.16 kB
+dist/assets/medical_male_03-Df0-l3ZU.glb         1,420.78 kB
+dist/assets/pilot_female_01-BLS1qspn.glb         1,426.44 kB
+dist/assets/pilot_female_02-DObCFDQ5.glb         1,439.91 kB
+dist/assets/male_09-Cmfml2ke.glb                 1,454.39 kB
+dist/assets/medical_male_04-CYsEG95D.glb         1,457.28 kB
+dist/assets/construction_male_08-DtCirKHk.glb    1,465.09 kB
+dist/assets/construction_female_01-BRgCLe4f.glb  1,474.25 kB
+dist/assets/security_male_01-2w9H4l-x.glb        1,483.35 kB
+dist/assets/male_07-ohAjQZGP.glb                 1,489.05 kB
+dist/assets/police_male_01-D6lWHc97.glb          1,512.84 kB
+dist/assets/business_male_02-DzQJJYxH.glb        1,520.61 kB
+dist/assets/security_female_01-DSLM29VR.glb      1,527.94 kB
+dist/assets/male_03-oQApLBuD.glb                 1,555.36 kB
+dist/assets/business_female_04-Cf548McG.glb      1,566.66 kB
+dist/assets/male_10-Cife4J78.glb                 1,578.14 kB
+dist/assets/business_male_03-CWvD4Mq8.glb        1,582.02 kB
+dist/assets/construction_male_03-C7aIetaY.glb    1,593.32 kB
+dist/assets/construction_male_06-CbVR0I2d.glb    1,599.82 kB
+dist/assets/male_02-DZK1b8HK.glb                 1,620.32 kB
+dist/assets/female_02-82zomPtl.glb               1,632.93 kB
+dist/assets/male_08-BH3kIzuT.glb                 1,634.41 kB
+dist/assets/construction_male_04-D1KyIx4H.glb    1,641.78 kB
+dist/assets/medical_female_02-CG3J0IXC.glb       1,650.36 kB
+dist/assets/sports_male_03-BdSgZo-Q.glb          1,655.27 kB
+dist/assets/medical_female_01-SjQOfKAU.glb       1,657.38 kB
+dist/assets/medical_female_03-8RKzGvrp.glb       1,662.63 kB
+dist/assets/male_01-CiTv_uXn.glb                 1,664.74 kB
+dist/assets/sports_female_02-BmLZncTt.glb        1,677.33 kB
+dist/assets/male_04-B_6qohVv.glb                 1,688.45 kB
+dist/assets/female_01-Cxn-4izM.glb               1,692.38 kB
+dist/assets/gardener_male_01-DNcnd2jX.glb        1,693.32 kB
+dist/assets/female_08-CG1DKZf-.glb               1,696.35 kB
+dist/assets/business_male_01-CDpGxJ_z.glb        1,697.53 kB
+dist/assets/female_12-CvjsGSDF.glb               1,702.30 kB
+dist/assets/female_07-RPXk1lq_.glb               1,720.38 kB
+dist/assets/police_male_03-C0PCZ937.glb          1,724.69 kB
+dist/assets/male_05-KG_OeKa0.glb                 1,724.97 kB
+dist/assets/business_female_03-BL3PoAN3.glb      1,737.44 kB
+dist/assets/female_11-CqGvY_qY.glb               1,740.04 kB
+dist/assets/female_17-TDuZorjj.glb               1,744.54 kB
+dist/assets/female_09-DDOOPd9y.glb               1,745.01 kB
+dist/assets/business_female_01-BVYD98kg.glb      1,746.93 kB
+dist/assets/female_13-BxtRyoiI.glb               1,753.44 kB
+dist/assets/male_06-DIokc9C9.glb                 1,768.86 kB
+dist/assets/medical_male_02-D-2tKkfO.glb         1,780.90 kB
+dist/assets/medical_male_01-9lCU27cT.glb         1,786.45 kB
+dist/assets/female_05-BtuZdoDg.glb               1,789.56 kB
+dist/assets/female_04-BPB8NQG2.glb               1,798.03 kB
+dist/assets/female_14-DWStU9NP.glb               1,824.70 kB
+dist/assets/female_party_02-ZjQny0Dy.glb         1,896.14 kB
+dist/assets/female_03-CvFDBoUU.glb               1,927.29 kB
+dist/assets/female_party_01-Dj0yPiqJ.glb         1,982.23 kB
+dist/assets/business_female_02-8lWb0AYW.glb      2,004.46 kB
+dist/assets/index-BMrgq4pt.css                      11.42 kB │ gzip:   3.04 kB
+dist/assets/index-CR1bJxzJ.js                      315.64 kB │ gzip: 108.33 kB │ map: 1,618.75 kB
+dist/assets/three-DOQcvLvt.js                      730.97 kB │ gzip: 206.18 kB │ map: 3,235.18 kB
+
+✓ built in 310ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 700 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

@@ -10,6 +10,8 @@ export interface Kinematics {
   readonly s: number;
   readonly v: number;
   readonly lateral: number;
+  /** Most recently left lanelets, needed to locate the body behind its front. */
+  readonly rearPath: readonly LaneletId[];
 }
 
 export interface ConnectorClearance {
@@ -44,6 +46,8 @@ export interface Vehicle {
 
   /** Planned lanelet sequence ahead, current lanelet first. */
   route: LaneletId[];
+  /** Lanelets still occupied by the body after its front has crossed a boundary. */
+  rearPath: LaneletId[];
 
   /** Conflict points currently held by this vehicle. */
   claims: number[];
@@ -117,6 +121,8 @@ export interface Vehicle {
    * ticks while a gap is sought, and dropped when the room runs out.
    */
   desiredLane: LaneletId | null;
+  /** Chosen next movement, retained while moving through adjacent lanes. */
+  movementIntent: ConnectorId | null;
 
   /**
    * This vehicle's own age at its last lane change, in seconds.
@@ -151,7 +157,7 @@ export interface Vehicle {
 }
 
 export function snapshot(v: Vehicle): Kinematics {
-  return { lanelet: v.lanelet, s: v.s, v: v.v, lateral: v.lateral };
+  return { lanelet: v.lanelet, s: v.s, v: v.v, lateral: v.lateral, rearPath: v.rearPath };
 }
 
 export function createVehicle(
@@ -163,7 +169,7 @@ export function createVehicle(
   v0: number,
   tick: number,
 ): Vehicle {
-  const base: Kinematics = { lanelet, s: 0, v: 0, lateral: 0 };
+  const base: Kinematics = { lanelet, s: 0, v: 0, lateral: 0, rearPath: [] };
   return {
     id,
     archetype,
@@ -175,6 +181,7 @@ export function createVehicle(
     lateral: 0,
     v0,
     route: [lanelet],
+    rearPath: [],
     claims: [],
     admittedConnector: null,
     reservedConnectors: [],
@@ -188,6 +195,7 @@ export function createVehicle(
     greenStall: 0,
     greenDenied: 0,
     desiredLane: null,
+    movementIntent: null,
     lastLaneChangeAge: 0,
     heldUp: 0,
     laneChange: null,

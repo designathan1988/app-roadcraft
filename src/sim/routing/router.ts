@@ -37,8 +37,13 @@ export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
     ? [...own, ...siblings.flatMap((id: LaneletId) => w.graph.exitsOf(id))]
     : own;
 
-  const wanted = union.length ? chooseExit(w, union, new Set([v.lanelet])) : null;
+  const existingIntent = v.movementIntent ? w.connector(v.movementIntent) : undefined;
+  const wanted = existingIntent &&
+      (existingIntent.fromLane === v.lanelet || siblings.includes(existingIntent.fromLane))
+    ? existingIntent.id
+    : union.length ? chooseExit(w, union, new Set([v.lanelet])) : null;
   const wantedConnector = wanted === null ? null : w.connector(wanted);
+  v.movementIntent = wantedConnector?.id ?? null;
   if (wantedConnector && wantedConnector.fromLane !== v.lanelet) {
     v.desiredLane = wantedConnector.fromLane;
   } else {
@@ -49,7 +54,8 @@ export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
   // change lands, `planFrom` runs again from the new lane and picks the wanted
   // movement then; if it never lands, this fallback is what the vehicle drives.
   if (!own.length) return null;
-  const best = chooseExit(w, own, new Set([v.lanelet]));
+  const best = wantedConnector?.fromLane === v.lanelet
+    ? wantedConnector.id : chooseExit(w, own, new Set([v.lanelet]));
   if (!best) return null;
 
   const conn = w.connector(best);
@@ -208,6 +214,7 @@ export function reconsiderRoute(w: SimWorld, v: Vehicle): void {
   // Too late to change anything: the movement is about to be requested.
   if (lane.length - v.s < v.archetype.length + v.driver.s0) return;
 
+  v.movementIntent = null;
   planFrom(w, v);
 }
 
