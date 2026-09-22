@@ -103,11 +103,11 @@ export function buildSignalPlan(
 
   const stages: Stage[] = [];
   const covered = new Set<CrossingId>();
-  for (const g of groups) {
+  for (const together of pairOpposingGroups(junction)) {
     const green = clamp(SIGNAL.baseGreen, SIGNAL.minGreen, SIGNAL.maxGreen);
-    const walk = crossingsCompatibleWith(junction, [g], crossings, connectorsOf);
+    const walk = crossingsCompatibleWith(junction, together, crossings, connectorsOf);
     for (const crossing of walk) covered.add(crossing);
-    stages.push(stage({ green: [g], pedWalk: walk, target: green }));
+    stages.push(stage({ green: together, pedWalk: walk, target: green }));
   }
 
   // A crossing that no vehicle stage can safely share still has to be served,
@@ -134,6 +134,79 @@ export function buildSignalPlan(
   const cycle = stages.reduce((s, st) => s + st.targetGreen + st.amber + st.allRed, 0);
   return validate({ stages, cycle, groups, crossings });
 }
+
+/**
+ * Groups that may take green together, as one entry per stage.
+ *
+ * Every group used to get a stage of its own. That is safe, and on a four-leg
+ * crossroads it is also close to unusable: four stages of 20 s plus 4.4 s of
+ * clearance is a 97.6 s cycle, so each approach is green for a fifth of the
+ * time and waits out three other stages to get there. A queue that discharges
+ * for twenty seconds in every ninety-eight does not look like a working
+ * junction to the person watching it.
+ *
+ * Opposing approaches are paired instead, which is how a real crossroads runs:
+ * north and south together, then east and west. Nothing about the safety
+ * argument changes, because the protection was never coming from the stage
+ * list:
+ *
+ *   - a THROUGH movement on green is protected, and two opposing through
+ *     movements do not cross each other;
+ *   - every TURN is `'yield'` in `rightOfWay` even on a full green, so a left
+ *     turn across the opposing through still has to find a gap;
+ *   - the conflict-point claims table serialises whatever is left.
+ *
+ * That is the definition of a permissive-left stage, and the pairing simply
+ * stops paying for a separate stage to express it.
+ *
+ * Groups are paired only when their mean approach directions are genuinely
+ * opposed, within `OPPOSED_TOLERANCE`. A skewed or five-leg junction keeps
+ * whatever groups have no partner in a stage of their own, so the degenerate
+ * cases behave exactly as before.
+ */
+const OPPOSED_TOLERANCE = (35 * Math.PI) / 180;
+
+function pairOpposingGroups(junction: JunctionTopology): GroupId[][] {
+  const pending = junction.groups.slice();
+  const stages: GroupId[][] = [];
+
+  while (pending.length) {
+    const head = pending.shift();
+    if (!head) break;
+
+    let bestIndex = -1;
+    let bestError = OPPOSED_TOLERANCE;
+    for (let i = 0; i < pending.length; i++) {
+      const candidate = pending[i];
+      if (!candidate) continue;
+      // How far from anti-parallel the two mean directions are.
+      const delta = Math.abs(
+        Math.abs(normaliseAngle(candidate.meanAngle - head.meanAngle)) - Math.PI,
+      );
+      if (delta < bestError) {
+        bestError = delta;
+        bestIndex = i;
+      }
+    }
+
+    if (bestIndex < 0) {
+      stages.push([head.id]);
+      continue;
+    }
+    const partner = pending.splice(bestIndex, 1)[0];
+    stages.push(partner ? [head.id, partner.id] : [head.id]);
+  }
+
+  return stages;
+}
+
+/** Wraps an angle into (-PI, PI]. */
+const normaliseAngle = (a: number): number => {
+  let x = a % (2 * Math.PI);
+  if (x > Math.PI) x -= 2 * Math.PI;
+  if (x <= -Math.PI) x += 2 * Math.PI;
+  return x;
+};
 
 interface StageInput {
   readonly green: readonly GroupId[];

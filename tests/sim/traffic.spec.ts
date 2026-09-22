@@ -93,6 +93,150 @@ describe('traffic', () => {
     expect(moving).toBeGreaterThan(0);
   });
 
+  /**
+   * The test above asserts that SOME vehicle SOMEWHERE is moving, which is
+   * satisfied by a junction with three of its four legs wedged solid. It
+   * passed throughout the period when a freshly built signalised crossroads
+   * froze in stage 0 for up to a minute and when cars sat at their own green
+   * for over ninety seconds. The tests below measure the thing the player
+   * actually sees: does MY approach get served, and how long do I wait.
+   *
+   * Two things are required to make them mean anything:
+   *
+   *   - the clock has to be DRIVEN (`clock.run`), because `clock.tick` and
+   *     `clock.time` advance nowhere else, and every wedge detector, the FIFO
+   *     fairness order and the signal starvation promotion are all keyed on
+   *     them. Calling `step` directly leaves them frozen at zero and the
+   *     whole diagnostic layer becomes unreachable;
+   *   - the audit has to be ENABLED, because `runAudit` is gated on
+   *     `auditEnabled` and nothing but `main.ts` ever set it. No test in this
+   *     repository had ever run it.
+   */
+  describe('a signalised junction serves every approach', () => {
+    const drive = (fixture: Fixture, seconds: number): void => {
+      fixture.sim.clock.run(Math.round(seconds / DT), () =>
+        step(fixture.sim, { traffic: true, pedestrians: true }),
+      );
+    };
+
+    it('admits traffic from every leg, not just one', () => {
+      const fixture = crossroads('signal');
+      fixture.sim.auditEnabled = true;
+
+      // Which inbound link each admission came from, counted over the run.
+      const servedBySegment = new Map<number, number>();
+      const seen = new Set<number>();
+
+      fixture.sim.clock.run(Math.round(240 / DT), () => {
+        step(fixture.sim, { traffic: true, pedestrians: true });
+        for (const v of fixture.sim.vehicles.values()) {
+          if (!v.admittedConnector || seen.has(v.id)) continue;
+          const conn = fixture.sim.connector(v.admittedConnector);
+          if (!conn) continue;
+          seen.add(v.id);
+          servedBySegment.set(conn.inSegment, (servedBySegment.get(conn.inSegment) ?? 0) + 1);
+        }
+      });
+
+      // All four legs of the cross must have been admitted at least once.
+      expect(servedBySegment.size).toBe(4);
+      for (const [segment, count] of servedBySegment) {
+        expect(count, `segment ${segment} was served ${count} times`).toBeGreaterThan(0);
+      }
+    });
+
+    it('does not leave a vehicle sitting at its own green', () => {
+      // `greenDenied` counts seconds spent at a green whose refusal was not
+      // one of the by-design ones. It must stay well inside a single cycle;
+      // the measured failure was 96 to 145 seconds.
+      const fixture = crossroads('signal');
+      fixture.sim.auditEnabled = true;
+      drive(fixture, 240);
+
+      let worst = 0;
+      for (const v of fixture.sim.vehicles.values()) {
+        worst = Math.max(worst, v.greenDenied);
+      }
+
+      const cycle = Math.max(
+        ...[...fixture.sim.controllers.values()].map((c) => c.plan.cycle),
+      );
+      expect(worst).toBeLessThan(cycle);
+    });
+
+    it('runs its state machine from the first second, never freezing', () => {
+      // The coordination offset used to be implemented by HOLDING the machine
+      // still for the length of the offset: `stepController` returned early
+      // while counting it down, so `elapsed` stayed at zero and every
+      // approach but the first sat on a hard red for up to sixty seconds. An
+      // offset is supposed to shift the PHASE, which is what it does now.
+      const fixture = crossroads('signal');
+
+      // `elapsed` restarts at every sub-phase boundary, so the instantaneous
+      // value proves nothing. What the freeze did was pin it at exactly zero
+      // for the whole offset, and never reach a boundary at all.
+      let peakElapsed = 0;
+      const phasesSeen = new Set<string>();
+      fixture.sim.clock.run(Math.round(12 / DT), () => {
+        step(fixture.sim, { traffic: true, pedestrians: true });
+        for (const c of fixture.sim.controllers.values()) {
+          peakElapsed = Math.max(peakElapsed, c.elapsed);
+          phasesSeen.add(`${c.stageIndex}:${c.sub}`);
+        }
+      });
+
+      expect(peakElapsed).toBeGreaterThan(1);
+      expect(phasesSeen.size).toBeGreaterThan(0);
+    });
+
+    it('visits every stage of its plan within two cycles', () => {
+      const fixture = crossroads('signal');
+      const seenStages = new Set<number>();
+
+      fixture.sim.clock.run(Math.round(200 / DT), () => {
+        step(fixture.sim, { traffic: true, pedestrians: true });
+        for (const c of fixture.sim.controllers.values()) seenStages.add(c.stageIndex);
+      });
+
+      const controller = [...fixture.sim.controllers.values()][0];
+      const stageCount = controller?.plan.stages.length ?? 0;
+      expect(stageCount).toBeGreaterThan(0);
+      expect(seenStages.size).toBe(stageCount);
+    });
+
+    it('pairs opposing approaches instead of giving each its own stage', () => {
+      // A four-leg cross has four approach groups. Serving them one at a time
+      // is a 97.6 s cycle in which each leg is green for a fifth of the time.
+      // Opposing approaches share a stage, as a real crossroads does, which
+      // halves the cycle and doubles each approach's share of it.
+      const fixture = crossroads('signal');
+      const controller = [...fixture.sim.controllers.values()][0];
+      expect(controller).toBeDefined();
+
+      const vehicleStages = (controller?.plan.stages ?? []).filter(
+        (s) => !s.exclusivePed && s.greenGroups.length > 0,
+      );
+      expect(controller?.plan.groups.length).toBe(4);
+      expect(vehicleStages.length).toBe(2);
+      for (const s of vehicleStages) expect(s.greenGroups.length).toBe(2);
+    });
+
+    it('reports no wedge from the audit it now actually runs', () => {
+      const fixture = crossroads('signal');
+      fixture.sim.auditEnabled = true;
+      drive(fixture, 240);
+
+      const blocking = [...fixture.sim.issues].filter(
+        (issue) =>
+          issue.code === 'greenBlocked' ||
+          issue.code === 'staleClaim' ||
+          issue.code === 'groupStarved' ||
+          issue.code === 'spillbackWedge',
+      );
+      expect(blocking.map((i) => `${i.code}`)).toEqual([]);
+    });
+  });
+
   it('never leaves the whole network stopped for a full minute', () => {
     const fixture = crossroads('auto');
     run(fixture, 60);

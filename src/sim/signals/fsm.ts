@@ -32,8 +32,21 @@ export interface SignalController {
   elapsed: number;
   /** Tick at which each group last received green. */
   lastServed: Map<GroupId, number>;
-  /** Coordination offset, counted down once at creation. */
-  offsetRemaining: number;
+  /**
+   * Coordination offset ALREADY APPLIED, in seconds. Diagnostics only.
+   *
+   * This used to be a countdown that `stepController` decremented while
+   * returning early, which did not shift the phase at all — it FROZE the
+   * junction. With a four-leg cycle of ~98 s and a seed of `node * 7.317 % 60`
+   * the modulo never bit, so a freshly drawn signalised crossroads sat in
+   * stage 0 with three legs on a hard red for up to a full minute. That is the
+   * "the light is green and nothing moves" report, and it recurred every time
+   * the player drew another junction.
+   *
+   * The offset is now applied by SEEKING the plan to that point in its cycle,
+   * which is what a coordination offset means.
+   */
+  readonly offsetApplied: number;
   /** Set when a plan failed validation and a fallback was substituted. */
   degraded: boolean;
 }
@@ -55,22 +68,57 @@ export function createController(
   junction: JunctionTopology,
   crossings: readonly CrossingId[],
   deps: SignalDeps,
-  offsetSeed: number,
+  offset: number,
 ): SignalController {
   const { plan, degraded } = safePlan(junction, crossings, deps);
   return {
     node: junction.node,
     plan,
-    stageIndex: 0,
-    sub: 'GREEN',
-    elapsed: 0,
+    // stageIndex / sub / elapsed come from the phase seek below.
+    ...seekPhase(plan, offset),
     lastServed: new Map(plan.groups.map((g) => [g, deps.tick()])),
     // Neighbouring junctions start out of phase so platoons do not all stop
     // together. The V6 monolith seeded this modulo 23 against a 34 second
     // cycle, so a third of the offset range was unreachable.
-    offsetRemaining: offsetSeed % Math.max(1, plan.cycle),
+    offsetApplied: offset,
     degraded,
   };
+}
+
+/**
+ * Where in its own cycle a plan sits `seconds` after the start of stage 0.
+ *
+ * A coordination offset shifts the PHASE. Holding the machine still for the
+ * length of the offset does the opposite of that: every junction still starts
+ * at stage 0, it just starts later, and in the meantime every approach except
+ * the first is held at red for the whole offset.
+ */
+function seekPhase(
+  plan: SignalPlan,
+  seconds: number,
+): { stageIndex: number; sub: SubPhase; elapsed: number } {
+  const total = plan.stages.reduce(
+    (sum, s) => sum + s.targetGreen + s.amber + s.allRed,
+    0,
+  );
+  if (!(total > 0) || !Number.isFinite(seconds) || seconds <= 0) {
+    return { stageIndex: 0, sub: 'GREEN', elapsed: 0 };
+  }
+
+  let left = seconds % total;
+  for (let index = 0; index < plan.stages.length; index++) {
+    const stage = plan.stages[index];
+    if (!stage) break;
+    for (const [sub, span] of [
+      ['GREEN', stage.targetGreen],
+      ['AMBER', stage.amber],
+      ['ALL_RED', stage.allRed],
+    ] as const) {
+      if (left < span) return { stageIndex: index, sub, elapsed: left };
+      left -= span;
+    }
+  }
+  return { stageIndex: 0, sub: 'GREEN', elapsed: 0 };
 }
 
 function safePlan(
@@ -102,11 +150,6 @@ const isStrict = (): boolean =>
  * `stageIndex`, `sub` or `elapsed`.
  */
 export function stepController(c: SignalController, deps: SignalDeps): void {
-  if (c.offsetRemaining > 0) {
-    c.offsetRemaining -= DT;
-    return;
-  }
-
   c.elapsed += DT;
   const st = c.plan.stages[c.stageIndex];
   if (!st) {

@@ -12,7 +12,7 @@ import { stepDespawn, stepDispatch } from './vehicles/spawn';
 import { stepLaneChange } from './vehicles/laneChange';
 import { releaseCrossing, stepPedestrians } from './peds/crossingFsm';
 import { stepPedDispatch } from './peds/spawn';
-import { reconsiderRoute, repairRoute } from './routing/router';
+import { planFrom, reconsiderRoute, repairRoute } from './routing/router';
 import { snapshot, type Vehicle } from './vehicles/state';
 import { pedSnapshot } from './peds/state';
 import { runAudit } from './invariants';
@@ -201,7 +201,17 @@ function updateStallCounters(w: SimWorld): void {
   for (const v of w.vehicles.values()) {
     const lane = w.lanelet(v.lanelet);
     if (!lane || lane.kind !== 'link' || !lane.controlled || v.v >= 0.1) {
+      // BOTH counters reset here.
+      //
+      // `greenDenied` used to be left untouched on this path, so a vehicle
+      // that accumulated a few seconds of denial and then drove away carried
+      // the number for the rest of its life. `invariants.ts` tests it with no
+      // speed guard of its own, so the stale value was reported as a vehicle
+      // blocked at a green while it was moving freely. The only detector for
+      // "held at a green" was therefore unreliable in both directions at once:
+      // false positives from here, false negatives from the exclusions below.
       v.greenStall = 0;
+      v.greenDenied = 0;
       continue;
     }
     const conn = nextConnector(w, v);
@@ -209,7 +219,8 @@ function updateStallCounters(w: SimWorld): void {
     const green = conn && c ? signalStateFor(c, conn.group) === 'green' : false;
     const impeded = v.constraints.obstacles.some(
       (o) =>
-        (o.kind === 'vehicle' && o.gap < v.archetype.s0 + 3) ||
+        // The driver's standstill gap, as everywhere else that reads s0.
+        (o.kind === 'vehicle' && o.gap < v.driver.s0 + 3) ||
         o.kind === 'yield' ||
         o.kind === 'conflict' ||
         o.kind === 'pedestrian' ||
@@ -307,6 +318,18 @@ function ensureVehicleRoutes(w: SimWorld): void {
         : w.connector(lane.id)?.toLane === next);
     if (!connected) {
       if (!pinReservedRoute(w, v)) repairRoute(w, v);
+      continue;
+    }
+
+    // A route that simply RAN OUT while the lane still has somewhere to go.
+    //
+    // `connected` is satisfied by a two-element route, so a vehicle whose plan
+    // ends at the current link was considered healthy and was never re-planned.
+    // It then drove to the stop line and stayed there for the rest of its life,
+    // holding the head of its lane. This is not a broken route - it is a short
+    // one - so it is extended rather than repaired.
+    if (v.route.length <= 1 && w.graph.exitsOf(lane.id).length > 0) {
+      planFrom(w, v);
     }
   }
 }
