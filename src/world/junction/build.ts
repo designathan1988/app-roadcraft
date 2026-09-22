@@ -1,14 +1,20 @@
 import { dot } from '@core/vec2';
 import type { Ring } from '@core/ring';
 import type { RoadDoc } from '../doc';
-import type { NodeId } from '../ids';
+import type { NodeId, SegmentId } from '../ids';
 import type { PolylineCache } from '../geometry';
-import { Level, type SurfaceLevel } from '../roadTypes';
+import {
+  Level,
+  SURFACE_LEVELS,
+  type SurfaceLevel,
+  halfWidth,
+  roadProfile,
+} from '../roadTypes';
 import { type Leg, buildLegs } from './legs';
 import { type Corner, computeCorners } from './corners';
 import { computeTrims } from './trim';
 import { buildJunctionRing, findSlabViolations } from './polygon';
-import { FINE_EPS } from '@core/scalar';
+import { COARSE_EPS, FINE_EPS } from '@core/scalar';
 
 /** How a node behaves geometrically. */
 export type SurfaceMode = 'none' | 'junction';
@@ -65,6 +71,21 @@ export function surfaceMode(doc: RoadDoc, cache: PolylineCache, nodeId: NodeId):
   if ((sp.structure ?? 'ground') !== (sq.structure ?? 'ground')) return 'junction';
   if (sp.type !== sq.type) return 'junction';
 
+  // A chain needs the same WIDTH, not merely the same class.
+  //
+  // Width is `roadProfile(type, lanes, direction)`, and both `lanes` and
+  // `direction` are per-segment overrides. Comparing only `type` merged a
+  // two-lane street into an eight-lane one-way of the same class and called it
+  // a bend in a chain: no junction, no trim and no taper, so a width step of
+  // more than thirty units was drawn as a butt joint with each ribbon's closed
+  // end sticking out of the other. The taper machinery in `corners.ts` exists
+  // for exactly this shape and could never be reached.
+  const wp = roadProfile(sp.type, sp.lanes, sp.direction);
+  const wq = roadProfile(sq.type, sq.lanes, sq.direction);
+  for (const level of SURFACE_LEVELS) {
+    if (Math.abs(halfWidth(wp, level) - halfWidth(wq, level)) >= COARSE_EPS) return 'junction';
+  }
+
   const legs = buildLegs(doc, cache, nodeId, Level.Asphalt);
   if (legs.length < 2) return 'none';
   // Directions point away from the node, so a straight-through node has them
@@ -109,20 +130,42 @@ export function buildJunction(
   const passes = opts.refinePasses ?? 2;
 
   let legs = buildLegs(doc, cache, nodeId, level);
-  const scale = legs.map((l) => opts.radiusScaleBySegment?.get(l.seg) ?? 1);
+
+  // EVERYTHING per-leg below is keyed by SEGMENT, never carried across a
+  // re-solve as a positional array.
+  //
+  // `buildLegs` reads the node's incident list in segment-id order and returns
+  // it sorted by ANGLE. Any array handed back to it, or reused after it runs
+  // again, is therefore indexed in a different order than it will be read in.
+  // Both `scale` and `trims` used to be positional and both were silently
+  // permuted on every refinement pass, so each leg was framed at another leg's
+  // trim distance — which is exactly the error the refinement loop exists to
+  // remove.
+  const scaleOf = (leg: Leg): number => opts.radiusScaleBySegment?.get(leg.seg) ?? 1;
   const capTrims = (values: readonly number[], currentLegs: readonly Leg[]): number[] =>
     values.map((value, i) =>
       Math.min(value, opts.maxTrimBySegment?.get((currentLegs[i] as Leg).seg) ?? Infinity),
     );
-  let corners = computeCorners(legs, scale);
+  /** Re-keys this pass's positional trims so the next pass cannot mis-index them. */
+  const bySegment = (
+    values: readonly number[],
+    currentLegs: readonly Leg[],
+  ): Map<SegmentId, number> => {
+    const out = new Map<SegmentId, number>();
+    currentLegs.forEach((leg, i) => out.set(leg.seg, values[i] as number));
+    return out;
+  };
+
+  let corners = computeCorners(legs, legs.map(scaleOf));
   let trims = capTrims(computeTrims(legs, corners), legs);
 
   // Curved legs: the mouth cut must be perpendicular to the tangent AT the trim
   // distance, not at the node. Re-frame the legs with the trims just found and
   // solve again. Converges in two passes for a quadratic.
   for (let pass = 0; pass < passes; pass++) {
-    legs = buildLegs(doc, cache, nodeId, level, { trims });
-    corners = computeCorners(legs, scale);
+    legs = buildLegs(doc, cache, nodeId, level, { trims: bySegment(trims, legs) });
+    // Re-derived from the NEW leg order rather than reused from the old one.
+    corners = computeCorners(legs, legs.map(scaleOf));
     trims = capTrims(computeTrims(legs, corners), legs);
   }
 
@@ -169,8 +212,14 @@ export function buildJunction(
       const leg = legs[i] as Leg;
       const limit = opts.maxTrimBySegment?.get(leg.seg) ?? Infinity;
       const bumped = Math.min((next[i] as number) * 1.25 + 0.5, bumpCap, limit);
-      if (bumped > (next[i] as number) + FINE_EPS) changed = true;
-      next[i] = bumped;
+      // Only ever GROW. This assignment used to be unconditional, so whenever
+      // `limit` or `bumpCap` bit, the loop named "bump" pushed the trim BELOW
+      // what `computeCorners` demanded and reintroduced the very mouth-inside-
+      // another-carriageway overlap it was invoked to remove.
+      if (bumped > (next[i] as number) + FINE_EPS) {
+        next[i] = bumped;
+        changed = true;
+      }
     }
     trims = next;
     // A length cap can make a slab violation geometrically unavoidable. The

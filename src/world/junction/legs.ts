@@ -45,8 +45,22 @@ export interface Leg {
 }
 
 export interface LegBuildOptions {
-  /** Per-leg trim guesses, indexed the same way as the returned array. */
-  readonly trims?: readonly number[];
+  /**
+   * Per-leg trim guesses, keyed by SEGMENT.
+   *
+   * It used to be a positional array, and that was a real defect: this builder
+   * consumes its input in segment-id order but returns the legs sorted by
+   * ANGLE, so the refinement pass in `build.ts` fed every leg the trim
+   * belonging to whichever leg happened to share its index in the other
+   * ordering. On any junction whose angular order differs from its id order —
+   * which is almost all of them — each leg was framed at the wrong arc
+   * distance, so the mouth cut was not perpendicular to the tangent at the
+   * mouth and `origin` was back-projected by the wrong amount. That is
+   * precisely the defect the refinement loop exists to remove.
+   *
+   * A map cannot be mis-indexed by a re-sort, so the bug cannot return.
+   */
+  readonly trims?: ReadonlyMap<SegmentId, number>;
 }
 
 /**
@@ -71,7 +85,7 @@ export function buildLegs(
   // Stable input order so cluster/leg indices are deterministic across rebuilds.
   const incident = node.incident.slice().sort((x, y) => x - y);
 
-  const legs: Leg[] = incident.map((segId, i) => {
+  const legs: Leg[] = incident.map((segId) => {
     const seg = doc.requireSegment(segId);
     const rt = roadProfile(seg.type, seg.lanes, seg.direction);
     const pl = cache.get(doc, segId);
@@ -80,7 +94,7 @@ export function buildLegs(
 
     // Initial guess: the leg's own half-width. Two refinement passes converge
     // for a single quadratic, which is all a segment can carry.
-    const guess = opts.trims?.[i] ?? hw;
+    const guess = opts.trims?.get(segId) ?? hw;
     const clamped = Math.max(0, Math.min(guess, pl.length * LEG_TRIM_CAP));
     const f = frameFromNode(pl, startsHere, clamped);
 

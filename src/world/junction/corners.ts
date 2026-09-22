@@ -96,11 +96,39 @@ function resolveCorner(
 
   const hit = lineLine(a0, a.dir, b0, b.dir, SIN_EPS);
 
-  // --- Collinear pair: no corner point exists. -----------------------------
+  // --- No corner point exists: the boundary lines are parallel. ------------
+  //
+  // `lineLine` rejects on |cross(a.dir, b.dir)| < SIN_EPS, and that test is
+  // SYMMETRIC: it is satisfied both when the legs are anti-parallel (psi near
+  // PI — one straight road through the node) and when they point the SAME way
+  // (psi near 0 — a hairpin fork). The two cases need opposite answers, and
+  // this branch used to give both of them the straight-road answer.
+  //
+  // Near PI a zero trim is right: a road running straight through needs no
+  // setback at all.
+  //
+  // Near 0 it is catastrophic. Two legs departing within three degrees of each
+  // other have carriageways that overlap almost completely, and a zero setback
+  // puts each one's mouth deep inside the other's. Worse, it was DISCONTINUOUS:
+  // at 2.99 degrees the trim was 0, and at 3.01 degrees `lineLine` started
+  // succeeding, the acute branch below took over and the trim jumped to roughly
+  // 428 units on an urban street. A five-hundredth of a degree of node nudge
+  // moved the mouth by four hundred units.
+  //
+  // Sending the near-zero side to the same `acuteSetback` the acute branch
+  // uses makes the two sides of the threshold agree, so the trim is now a
+  // continuous function of the angle across it — which is the property
+  // `tests/world/junction.spec.ts` measures by halving the sweep step.
   if (!hit) {
-    if (step < COARSE_EPS) return collinear(i, j, psi, 0);
-    const taperRun = step / Math.tan(TAPER_ANGLE) / 2;
-    return { i, j, mode: 'taper', x: null, psi, fillet: null, trimI: taperRun, trimJ: taperRun };
+    // Anti-parallel: one road through the node.
+    if (psi > Math.PI / 2) {
+      if (step < COARSE_EPS) return collinear(i, j, psi, 0);
+      const taperRun = step / Math.tan(TAPER_ANGLE) / 2;
+      return { i, j, mode: 'taper', x: null, psi, fillet: null, trimI: taperRun, trimJ: taperRun };
+    }
+    // Same direction: a hairpin fork. There is no miter point to fillet
+    // around, so the setback is taken exactly, as the acute branch does.
+    return collinear(i, j, psi, acuteSetback(psi, a.hw, b.hw));
   }
 
   const x = hit.point;
