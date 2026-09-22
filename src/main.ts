@@ -1,4 +1,4 @@
-import type { Vec2 } from '@core/vec2';
+import { type Vec2, dist } from '@core/vec2';
 import { COARSE_EPS, clamp } from '@core/scalar';
 import { flattenSegment, shapeFromControl, type CurveShape } from '@core/bezier';
 import { RoadDoc, type JunctionControl } from '@world/doc';
@@ -6,8 +6,14 @@ import { Network } from '@world/network';
 import { ROAD_TYPES, roadType } from '@world/roadTypes';
 import type { RoadStructure } from '@world/structures';
 import type { TerrainMode } from '@world/terrain';
-import type { NodeId, PoleId, SegmentId } from '@world/ids';
-import { polePositions, poleCarriesLamp } from '@world/utilities';
+import type { NodeId, SegmentId } from '@world/ids';
+import { POLE_HEIGHT, spanSag } from '@world/utilities';
+import {
+  POLE_PICK_PIXELS,
+  commitPoleRun,
+  planPoleRun,
+  type PoleRunPlan,
+} from '@editor/poles';
 
 import { Camera } from '@ui/overlay/camera';
 import { type Viewport, flatViewport } from '@view/viewport';
@@ -58,16 +64,21 @@ interface RoadDraft {
 }
 
 /**
- * A pole run being dragged.
+ * A pole run being drawn.
  *
- * Deliberately far simpler than a road draft: a pole has no width, no class
- * and no structure, so there is nothing to snap it to and nothing to reconcile
- * against. It is two points, and the poles are dropped along the line between
- * them when the drag ends.
+ * `from` is where the gesture started and `to` is the pointer. Neither is
+ * where anything is BUILT: `planPoleRun` snaps both and decides the poles,
+ * and the preview draws that plan rather than the raw drag, so what is under
+ * the pointer is what appears on release.
+ *
+ * `chained` marks a run whose start came from the previous run's last pole
+ * rather than from a fresh press, which is how a line is traced across a map
+ * in several straight stretches without restarting the tool at every corner.
  */
 interface PoleDraft {
   readonly from: Vec2;
   to: Vec2;
+  readonly chained: boolean;
 }
 
 // The interface language is resolved and applied BEFORE anything reads a label,
@@ -213,6 +224,15 @@ function sessionSettings(): SavedSettings {
 
 let draft: RoadDraft | null = null;
 let poleDraft: PoleDraft | null = null;
+/**
+ * The end of the last committed pole run, while the tool is still on it.
+ *
+ * A distribution line is drawn as a sequence of straight stretches, and
+ * finishing one is almost never finishing the line. Holding the last pole
+ * means the next press continues from it instead of starting a disconnected
+ * run a few units away. Escape, a different tool or an undo drops it.
+ */
+let poleChain: Vec2 | null = null;
 let hoverAnchor: Anchor | null = null;
 let selectedSegment: SegmentId | null = null;
 let selectedNode: NodeId | null = null;
@@ -337,8 +357,13 @@ function syncFlatCameraFromView(): void {
 
 // ------------------------------------------------------------- mutations
 function mutate(fn: () => boolean): void {
+  mutateBuilt(fn);
+}
+
+/** `mutate`, reporting whether the edit actually changed anything. */
+function mutateBuilt(fn: () => boolean): boolean {
   const before = doc.toJSON();
-  if (!fn()) return;
+  if (!fn()) return false;
   history.record(RoadDoc.fromJSON(before));
   net.rebuild();
   rebuildSimulationTopology();
@@ -346,6 +371,7 @@ function mutate(fn: () => boolean): void {
   updateHistoryButtons();
   refreshInspector();
   requestDraw();
+  return true;
 }
 
 function applySnapshot(data: ReturnType<RoadDoc['toJSON']> | null): void {
@@ -593,18 +619,25 @@ canvas.addEventListener('pointerdown', (e) => {
       break;
 
     case 'pole':
-      // Clicking an existing pole removes it, which is the same verb the
-      // bulldoze tool uses on a road and needs no second tool of its own.
+      // Shift-click removes, the way the bulldoze tool does on a road.
+      //
+      // Removal used to be what a plain click on a pole did, which made the
+      // commonest gesture in the tool - starting a run AT an existing pole -
+      // impossible: the press that should have begun the run deleted the pole
+      // it was aimed at. The radius is also the same one the snap uses, so
+      // anything the preview highlights can be hit.
       {
-        const hit = doc.poleNear(world, 22 / view.zoom);
-        if (hit) {
+        const hit = doc.poleNear(world, poleReach());
+        if (hit && e.shiftKey) {
           mutate(() => {
             doc.removePole(hit.id);
             return true;
           });
+          poleChain = null;
           flashHint('hint.pole.removed');
         } else {
-          poleDraft = { from: world, to: world };
+          const start = poleChain ?? world;
+          poleDraft = { from: start, to: world, chained: poleChain !== null };
         }
       }
       break;
@@ -638,6 +671,21 @@ canvas.addEventListener('pointerdown', (e) => {
       break;
 
     case 'bulldoze':
+      // A pole is a thing standing in the world, so the tool whose job is
+      // removing things has to be able to remove it. It is tried first: a
+      // pole stands ON the footway of a road, so the road under it would
+      // otherwise always win the click and the pole could never be hit.
+      {
+        const pole = doc.poleNear(world, poleReach());
+        if (pole) {
+          mutate(() => {
+            doc.removePole(pole.id);
+            return true;
+          });
+          flashHint('hint.pole.removed');
+          break;
+        }
+      }
       if (anchor.kind === 'segment' && anchor.segment !== undefined) {
         const id = anchor.segment;
         mutate(() => {
@@ -717,6 +765,12 @@ canvas.addEventListener('pointermove', (e) => {
     return;
   }
 
+  if (tool === 'pole' && poleChain) {
+    // A chained run has no button held, so the preview has to follow the bare
+    // pointer or the next stretch is aimed blind.
+    requestDraw();
+  }
+
   if (moving) {
     doc.moveNode(moving.node, world);
     requestDraw();
@@ -743,36 +797,24 @@ canvas.addEventListener('pointermove', (e) => {
 });
 
 /**
- * Drops a run of poles along a drag and strings wire between them.
+ * Pick radius for a pole, in WORLD units at the current zoom.
  *
- * A run that starts on an existing pole CONTINUES it rather than building a
- * second pole on top of the first: extending a line is the commonest thing
- * anyone does with this tool, and a duplicate pole at the join would show as
- * a doubled mast and a zero-length span.
+ * One definition, used by the snap, by the preview, by removal and by
+ * bulldoze. When these were separate numbers the preview highlighted a pole
+ * the commit then missed, which is the "does not attach to an existing line"
+ * complaint: the run looked joined and was built disconnected.
  */
-function commitPoleRun(from: Vec2, to: Vec2): boolean {
-  const positions = polePositions(from, to);
-  if (positions.length < 2) return false;
+function poleReach(): number {
+  return POLE_PICK_PIXELS / view.zoom;
+}
 
-  const reach = 22 / view.zoom;
-  const placed: PoleId[] = [];
-  positions.forEach((at, index) => {
-    const existing = doc.poleNear(at, reach);
-    if (existing) {
-      placed.push(existing.id);
-      return;
-    }
-    placed.push(doc.addPole(at, poleCarriesLamp(index)).id);
-  });
-
-  let built = false;
-  for (let i = 1; i < placed.length; i++) {
-    const a = placed[i - 1];
-    const b = placed[i];
-    if (a === undefined || b === undefined) continue;
-    if (doc.addPoleSpan(a, b)) built = true;
+/** What the current gesture would build, snapped. Drawn and committed alike. */
+function currentPolePlan(): PoleRunPlan | null {
+  if (poleDraft) return planPoleRun(doc, net, poleDraft.from, poleDraft.to, poleReach());
+  if (tool === 'pole' && poleChain && hoverAnchor) {
+    return planPoleRun(doc, net, poleChain, hoverAnchor.at, poleReach());
   }
-  return built;
+  return null;
 }
 
 function endPointer(e: PointerEvent): void {
@@ -805,9 +847,19 @@ function endPointer(e: PointerEvent): void {
 
   if (poleDraft) {
     const run = poleDraft;
+    const plan = planPoleRun(doc, net, run.from, run.to, poleReach());
     poleDraft = null;
     if (!cancelled && !wasPinching) {
-      mutate(() => commitPoleRun(run.from, run.to));
+      const last = plan.poles[plan.poles.length - 1];
+      const built = mutateBuilt(() => commitPoleRun(doc, plan));
+      // The line goes on from where it ended. A press that built nothing -
+      // a click in place - starts the chain instead, so tracing a line is
+      // click, click, click rather than a drag per stretch.
+      if (built && last) poleChain = { x: last.at.x, y: last.at.y };
+      else if (!run.chained) poleChain = { x: plan.from.at.x, y: plan.from.at.y };
+      else poleChain = null;
+    } else {
+      poleChain = null;
     }
   }
 
@@ -1080,6 +1132,8 @@ terrainStrengthInput.oninput = () => setTerrainStrength(Number(terrainStrengthIn
 function setTool(next: Tool): void {
   tool = next;
   draft = null;
+  poleDraft = null;
+  poleChain = null;
   endTerrainStroke();
   cancelMove();
   document.querySelectorAll<HTMLButtonElement>('.tool').forEach((b) => {
@@ -1380,6 +1434,18 @@ minimapCanvas.addEventListener('pointermove', (e) => {
 const arrowPan = (e: KeyboardEvent): void => {
   const target = e.target as HTMLElement | null;
   if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
+  // Escape ends whatever is being drawn. A pole line is traced in stretches,
+  // so there has to be a way to say "that is the end of this line" without
+  // switching tool and back.
+  if (e.key === 'Escape') {
+    if (poleDraft || poleChain) {
+      poleDraft = null;
+      poleChain = null;
+      requestDraw();
+      e.preventDefault();
+    }
+    return;
+  }
   const amount = (e.shiftKey ? 120 : 40) / Math.max(0.0001, view.zoom);
   const c = view.centre;
   if (e.key === 'ArrowLeft') view.moveTo({ x: c.x - amount, y: c.y });
@@ -1497,6 +1563,85 @@ function frame(now: number): void {
  * The flat canvas sits above the 3D one and is cleared to full transparency
  * every frame, so it contributes only these strokes.
  */
+/**
+ * Draws a planned pole run onto the overlay.
+ *
+ * Taken out of `drawOverlayScreen` because it is the only part of that
+ * function that has a model behind it, and because the preview and the commit
+ * now share one plan - keeping the drawing beside the rest of the hairlines
+ * hid that.
+ */
+function drawPolePlan(
+  plan: PoleRunPlan | null,
+  ctx: CanvasRenderingContext2D,
+  at: (p: Vec2) => Vec2,
+  w: number,
+  h: number,
+): void {
+  if (!plan || plan.poles.length === 0) return;
+
+  ctx.save();
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+
+  // Crown of each mast, in screen space, so the wires can be strung between
+  // the tops rather than along the ground.
+  const feet = plan.poles.map((pole) => at(pole.at));
+  const crowns = plan.poles.map((pole) =>
+    view.toScreen(pole.at, w, h, sceneHeightAt(pole.at) + POLE_HEIGHT),
+  );
+
+  // The wire, sagging, between consecutive crowns. Drawn first so the masts
+  // read in front of it.
+  ctx.strokeStyle = SELECTION;
+  ctx.globalAlpha = 0.65;
+  ctx.beginPath();
+  for (let i = 1; i < crowns.length; i++) {
+    const a = crowns[i - 1] as Vec2;
+    const b = crowns[i] as Vec2;
+    const span = dist(plan.poles[i - 1]!.at, plan.poles[i]!.at);
+    // The same sag the built wire will have, projected: the screen is a
+    // linear map of the world here, so a drop in world units below the chord
+    // is that drop times the vertical scale of one world unit.
+    const drop = spanSag(span) * Math.abs(crowns[i]!.y - feet[i]!.y) / Math.max(1, POLE_HEIGHT);
+    ctx.moveTo(a.x, a.y);
+    ctx.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2 + drop * 2, b.x, b.y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // The masts: a vertical stroke from the ground to the crown, and a short
+  // cross-arm at the top, which is what makes a preview of a pole look like a
+  // pole rather than like a tick on a line.
+  plan.poles.forEach((pole, index) => {
+    const foot = feet[index] as Vec2;
+    const crown = crowns[index] as Vec2;
+    // An existing pole is shown in the hover colour and a new one in the
+    // build colour, so "this run will join that line" is visible before the
+    // button is released - the single thing missing when a run silently
+    // failed to attach.
+    ctx.strokeStyle = pole.existing !== null ? HOVER : SELECTION;
+    ctx.beginPath();
+    ctx.moveTo(foot.x, foot.y);
+    ctx.lineTo(crown.x, crown.y);
+    ctx.stroke();
+
+    const arm = Math.max(4, Math.abs(crown.y - foot.y) * 0.16);
+    ctx.beginPath();
+    ctx.moveTo(crown.x - arm, crown.y + arm * 0.2);
+    ctx.lineTo(crown.x + arm, crown.y - arm * 0.2);
+    ctx.stroke();
+
+    if (pole.existing !== null) {
+      ctx.beginPath();
+      ctx.arc(foot.x, foot.y, 7, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  });
+
+  ctx.restore();
+}
+
 function drawOverlayScreen(): void {
   const w = overlayCanvas.clientWidth;
   const h = overlayCanvas.clientHeight;
@@ -1522,32 +1667,18 @@ function drawOverlayScreen(): void {
   // editor was about to build.
   const at = (p: Vec2): Vec2 => view.toScreen(p, w, h, sceneHeightAt(p));
 
-  // The pole run being dragged: the line, and a ring where each pole will
-  // land. Showing where they LAND rather than only the line is the whole
-  // point - the spacing is decided by the tool, so a player who cannot see it
-  // has no way to aim a span at anything.
-  if (poleDraft) {
-    const positions = polePositions(poleDraft.from, poleDraft.to);
-    ctx.save();
-    ctx.strokeStyle = SELECTION;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 5]);
-    ctx.beginPath();
-    positions.forEach((p, index) => {
-      const s = at(p);
-      if (index === 0) ctx.moveTo(s.x, s.y);
-      else ctx.lineTo(s.x, s.y);
-    });
-    ctx.stroke();
-    ctx.setLineDash([]);
-    for (const p of positions) {
-      const s = at(p);
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, 4, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
+  // The pole run being drawn.
+  //
+  // What was here before was a dashed line ON THE GROUND with a small ring at
+  // each pole, and it was useless for the one thing a preview has to do: a
+  // pole is nine metres of vertical mast, and a ground line says nothing
+  // about where the masts, the arms or the wires will be. It also disagreed
+  // with the commit, because it drew the RAW drag while the commit snapped.
+  //
+  // This draws the plan: every mast at its real height, the wire that will
+  // hang between them with its real sag, and a ring round any pole the run is
+  // about to tie into. If it looks right here it is right when built.
+  drawPolePlan(currentPolePlan(), ctx, at, w, h);
 
   const strokeScreen = (
     points: readonly Vec2[],
@@ -2078,8 +2209,17 @@ qualitySelect.onchange = () => {
       worldAtScreen(x, y),
       view.zoom,
     ),
-  // Pole helpers, so the browser harness can build a run the way the tool does.
-  utilities: { polePositions, poleCarriesLamp },
+  // The pole tool, as the tool itself runs it: plan from two raw points, then
+  // commit that plan. A harness that called the geometry directly would be
+  // testing something the player cannot reach.
+  utilities: {
+    plan: (from: Vec2, to: Vec2, reach = POLE_PICK_PIXELS / view.zoom) =>
+      planPoleRun(doc, net, from, to, reach),
+    run: (from: Vec2, to: Vec2, reach = POLE_PICK_PIXELS / view.zoom) => {
+      const plan = planPoleRun(doc, net, from, to, reach);
+      return mutateBuilt(() => commitPoleRun(doc, plan));
+    },
+  },
   audit: () => [...sim.issues],
   /** The live three.js scene handle, for browser-driven checks. */
   scene: () => scene,

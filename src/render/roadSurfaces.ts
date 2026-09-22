@@ -48,7 +48,7 @@ import { buildSurfaceMesh, disposeMesh, type HeightFn, type TintFn, type UvFn } 
 /** Height of the kerb face above the carriageway. */
 const KERB_RISE = 0.34;
 /** Height of the footway above the carriageway. */
-const FOOTWAY_RISE = 0.36;
+export const FOOTWAY_RISE = 0.36;
 /** Depth of the verge below the carriageway, where the grass starts. */
 const VERGE_DROP = 0.1;
 /**

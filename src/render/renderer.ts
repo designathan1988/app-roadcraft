@@ -25,7 +25,7 @@ import { buildRoadSurfaces, type RoadSurfaces } from './roadSurfaces';
 import { buildScenery, type Scenery } from './scenery';
 import { createSignalHeads, type SignalHeads } from './signals';
 import { buildStructureDetails, type StructureDetails } from './structures';
-import { buildUtilities, type Utilities } from './utilities';
+import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
 import { createTerrainSurface, type TerrainSurface } from './terrain';
 import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } from './quality';
 
@@ -193,7 +193,14 @@ export function createSceneRenderer(
     // The overhead utility network. It is drawn from the document directly
     // rather than from the Network, because a pole line is not derived from
     // the roads - it can be drawn across open ground with no road near it.
-    utilities = buildUtilities(net.doc, terrain.renderedHeightAt);
+    //
+    // But a pole that IS beside a road stands on the FOOTWAY, not on the
+    // ground beside it. The terrain is shaped to meet the road, so the two
+    // differ only by the kerb - and a pole sunk 0.36 into the pavement it is
+    // meant to stand on is exactly the "poles do not sit on the footway"
+    // complaint. The lamp columns in `scenery.ts` already do this; the poles
+    // were the one piece of street furniture reading the bare ground.
+    utilities = buildUtilities(net.doc, poleGroundAt(elevation, terrain.renderedHeightAt));
     world.add(utilities.group);
 
     builtTriangles =
