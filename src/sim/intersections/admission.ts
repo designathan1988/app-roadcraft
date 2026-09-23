@@ -10,6 +10,7 @@ import { hasDownstreamStorage } from './spillback';
 import { COARSE_EPS } from '@core/scalar';
 import { bodyClassOfArchetype } from '../vehicles/archetypes';
 import { type Claim, type HolderState, zoneShareable } from './claims';
+import { PED_MIN_PACE, PED_REACH_TIME, pedestrianInSpan } from './crossingSpans';
 
 export type RowClass = 'signalGreen' | 'priority' | 'stop' | 'yield' | 'none';
 
@@ -732,9 +733,11 @@ export function rightOfWay(
       )
     ) return 'none';
 
-    // Through movements on green or committed amber are protected; turns and
-    // right-on-red remain permissive and must pass the ordinary gap checks.
-    return state !== 'red' && conn.turn === 'through' ? 'signalGreen' : 'yield';
+    // A movement is protected when the current stage gives green to nothing
+    // that physically conflicts with it from another approach (`annotate` in
+    // signals/plan.ts). Everything else green is permissive and finds a gap.
+    const stage = controller.plan.stages[controller.stageIndex];
+    return state !== 'red' && stage?.protectedMovements.includes(conn.id) ? 'signalGreen' : 'yield';
   }
 
   // `RowClass 'none'` means "no right of way, stop" — it is what a red signal
@@ -820,7 +823,13 @@ export function hasAcceptableGap(w: SimWorld, r: Request): boolean {
     // treating it as an oncoming threat is how two waiting drivers block each
     // other forever. Whoever is actually admitted first is decided by the claim
     // table and the priority order, not here.
-    if (approach.v < 0.5 && !approach.admittedConnector) continue;
+    //
+    // EXCEPT a protected movement at its own green. It is standing only
+    // because the light has just changed, and it goes first by right: letting
+    // the permissive left read the stationary queue as "no traffic" put lefts
+    // into the box at every green onset and held the protected through behind
+    // them — measured, the commonest conflict stall at green on a four-way.
+    if (approach.v < 0.5 && !approach.admittedConnector && !protectedNow(w, other)) continue;
 
     const distance = lane.length - approach.s;
     const arrival = distance / Math.max(approach.v, 0.5);
@@ -846,6 +855,14 @@ function clearTime(w: SimWorld, r: Request): number {
   return (r.d + last) / speed;
 }
 
+/** True when this movement is green and protected in the current stage. */
+function protectedNow(w: SimWorld, conn: Connector): boolean {
+  const controller = w.controller(conn.node);
+  if (!controller || !w.graph.junctions.get(conn.node)?.signalised) return false;
+  if (signalStateFor(controller, conn.group) !== 'green') return false;
+  return controller.plan.stages[controller.stageIndex]?.protectedMovements.includes(conn.id) ?? false;
+}
+
 /** True when the other movement currently has permission to run. */
 function movementIsActive(w: SimWorld, other: Connector): boolean {
   const controller = w.controller(other.node);
@@ -854,11 +871,14 @@ function movementIsActive(w: SimWorld, other: Connector): boolean {
   return signalStateFor(controller, other.group) !== 'red';
 }
 
-/** True when a pedestrian occupies a crossing this movement drives over. */
+/**
+ * True when a pedestrian is on, or about to step onto, the stretch of a zebra
+ * this movement drives over (`CrossingSpans`). Somebody on the far half of the
+ * crossing, or who has already passed the vehicle's path, is no reason to wait.
+ */
 export function crossingBusy(w: SimWorld, conn: Connector): boolean {
   for (const segment of [conn.inSegment, conn.outSegment]) {
-    const id = `${conn.node}:${segment}`;
-    if ((w.pedOccupancy.get(id)?.length ?? 0) > 0) return true;
+    if (pedestrianInSpan(w, conn.id, `${conn.node}:${segment}`)) return true;
   }
   return false;
 }
@@ -880,9 +900,23 @@ function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
   const signalised = !!controller && !!w.graph.junctions.get(r.conn.node)?.signalised;
   for (const segment of [r.conn.inSegment, r.conn.outSegment]) {
     const id = `${r.conn.node}:${segment}`;
-    if (!w.pedWaiting.get(id)) continue;
-    if (!signalised || !controller) return true;
+    const waiting = w.pedWaiting.get(id);
+    if (!waiting) continue;
     const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(id) ?? '');
+    const span = w.crossingSpans.span(r.conn.id, id);
+    if (span === null) continue;
+    // Only people who would reach the vehicle's path soon after stepping off:
+    // somebody at the far kerb of a wide crossing lets the turn go first.
+    if (!signalised || !controller) {
+      // Uncontrolled zebra: give way to those who would soon be in the path;
+      // somebody at the far kerb of a wide crossing lets the turn go first.
+      if (edge && span) {
+        const reach = PED_MIN_PACE * PED_REACH_TIME;
+        const near = (waiting.from > 0 && span.s0 < reach) || (waiting.to > 0 && edge.length - span.s1 < reach);
+        if (!near) continue;
+      }
+      return true;
+    }
     if (edge && pedestrianSignalState(controller, id, edge.length) === 'walk') return true;
   }
   return false;

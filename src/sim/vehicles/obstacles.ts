@@ -1,10 +1,44 @@
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
-import type { ConstraintSet } from './idm';
+import type { ConstraintSet, Obstacle } from './idm';
+import { pedestrianInSpan } from '../intersections/crossingSpans';
 import { divergeObstacle, findLeader, shadowLeaderObstacle } from './leaderIndex';
 import { signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
 import { nextConnector } from '../intersections/admission';
+
+/** Stop short of a zebra span somebody is on; null when the path is clear. */
+function pedestrianAhead(w: SimWorld, v: Vehicle): Obstacle | null {
+  const lane = w.lanelet(v.lanelet);
+  if (!lane) return null;
+  let connectorId: string | undefined;
+  let offset: number;
+  if (lane.kind === 'connector') {
+    connectorId = lane.id;
+    offset = -v.s;
+  } else if (v.admittedConnector) {
+    connectorId = v.admittedConnector;
+    offset = lane.length - v.s;
+  } else {
+    return null;
+  }
+  const conn = w.connector(connectorId);
+  if (!conn) return null;
+  let best: Obstacle | null = null;
+  for (const segment of [conn.inSegment, conn.outSegment]) {
+    const span = pedestrianInSpan(w, conn.id, `${conn.node}:${segment}`);
+    if (!span) continue;
+    const gap = offset + span.along - PED_STOP_MARGIN;
+    // Already over the span: stopping there would park on the zebra. Carry on
+    // through; the walker's own clearance keeps them out of a moving body.
+    if (gap < 0) continue;
+    if (!best || gap < best.gap) best = { gap: Math.max(0, gap), speed: 0, kind: 'pedestrian' };
+  }
+  return best;
+}
+
+/** Space left in front of a person in the road. */
+const PED_STOP_MARGIN = 2;
 
 /**
  * Turns the world into constraints for one vehicle.
@@ -36,6 +70,12 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
   // into whatever is still there.
   const shadowLeader = shadowLeaderObstacle(w, v);
   if (shadowLeader) constraints.obstacles.push(shadowLeader);
+
+  // A person on the stretch of a zebra this movement is about to drive over.
+  // Admission only asks at the stop line; a walker who reaches the vehicle's
+  // path afterwards used to be driven through at full speed.
+  const walker = pedestrianAhead(w, v);
+  if (walker) constraints.obstacles.push(walker);
 
   const lane = w.lanelet(v.lanelet);
   if (!lane) return constraints;

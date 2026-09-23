@@ -7,6 +7,7 @@ import { spawnVehicle } from '@sim/vehicles/spawn';
 import { stepLaneChange } from '@sim/vehicles/laneChange';
 import { integrateAll } from '@sim/vehicles/integrate';
 import { snapshot } from '@sim/vehicles/state';
+import { createPed } from '@sim/peds/state';
 import { vehiclePose } from '@sim/pose';
 import { findLeader } from '@sim/vehicles/leaderIndex';
 import { BODY_CLASSES, BODY_ENVELOPE, bodyClassOf } from '@world/conflictPoints';
@@ -221,10 +222,19 @@ describe('zones reaching back over a stop line', () => {
     };
     const car = place(waiting.fromLane, waiting.id, 'sedan');
     const bus = place(turning.fromLane, turning.id, 'bus');
-    // The car is waiting for a pedestrian on the crossing it is about to
-    // drive over, which leaves it standing at its line with nothing admitted.
+    // The car is waiting for a pedestrian standing in its path on the crossing
+    // it is about to drive over, which leaves it at its line, not admitted.
     expect(waiting.outSegment).not.toBe(turning.outSegment);
-    sim.pedOccupancy.set(`${centre}:${waiting.outSegment}`, [999]);
+    const crossingId = `${centre}:${waiting.outSegment}`;
+    const zebra = sim.sidewalks.edges.get(sim.sidewalks.crossings.get(crossingId)!)!;
+    const span = sim.crossingSpans.span(waiting.id, crossingId)!;
+    expect(span).toBeTruthy();
+    const walker = createPed({ id: 999, color: '#fff', speed: 0, file: 0,
+      party: { id: 999, size: 1, pace: 0 }, rank: 0, edge: zebra.id, entry: zebra.from,
+      s: (span.s0 + span.s1) / 2, lat: 0, tick: 0 });
+    walker.state = 'Crossing';
+    sim.peds.set(walker.id, walker);
+    sim.pedOccupancy.set(crossingId, [walker.id]);
 
     step(sim, { traffic: true, pedestrians: false });
     expect(car.admittedConnector).toBeNull();

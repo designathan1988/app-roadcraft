@@ -190,18 +190,36 @@ describe('traffic', () => {
     });
 
     it('visits every stage of its plan within two cycles', () => {
+      // Exclusive turn stages exist only to serve turns that are permissive
+      // everywhere else, and run when those turns are queued. Every other
+      // stage is served unconditionally; a gated one must run whenever its
+      // turns have been waiting.
       const fixture = crossroads('signal');
       const seenStages = new Set<number>();
+      let longestTurnWait = 0;
 
       fixture.sim.clock.run(Math.round(200 / DT), () => {
         step(fixture.sim, { traffic: true, pedestrians: true });
-        for (const c of fixture.sim.controllers.values()) seenStages.add(c.stageIndex);
+        for (const c of fixture.sim.controllers.values()) {
+          seenStages.add(c.stageIndex);
+          const gated = new Set(c.plan.stages.flatMap((s) => s.demandMovements ?? []));
+          for (const lane of fixture.sim.graph.junctions.get(c.node)?.inbound ?? []) {
+            const head = fixture.sim.laneHead(lane);
+            if (head && gated.has(head.route[1] ?? '')) longestTurnWait = Math.max(longestTurnWait, head.waited);
+          }
+        }
       });
 
       const controller = [...fixture.sim.controllers.values()][0];
-      const stageCount = controller?.plan.stages.length ?? 0;
-      expect(stageCount).toBeGreaterThan(0);
-      expect(seenStages.size).toBe(stageCount);
+      const stages = controller?.plan.stages ?? [];
+      expect(stages.length).toBeGreaterThan(0);
+      stages.forEach((s, i) => {
+        if (!s.demandMovements) expect(seenStages.has(i), `stage ${i}`).toBe(true);
+      });
+      // A turn only an exclusive stage protects never waits beyond the
+      // starvation bound (1.5 cycles of the longest legal plan).
+      const bound = 1.5 * stages.reduce((t, s) => t + s.maxGreen + s.amber + s.allRed, 0);
+      expect(longestTurnWait).toBeLessThan(bound);
     });
 
     it('pairs opposing approaches instead of giving each its own stage', () => {
@@ -214,11 +232,17 @@ describe('traffic', () => {
       expect(controller).toBeDefined();
 
       const vehicleStages = (controller?.plan.stages ?? []).filter(
-        (s) => !s.exclusivePed && s.greenGroups.length > 0,
+        (s) => !s.exclusivePed && s.greenGroups.length > 0 && !s.demandMovements,
       );
       expect(controller?.plan.groups.length).toBe(4);
       expect(vehicleStages.length).toBe(2);
       for (const s of vehicleStages) expect(s.greenGroups.length).toBe(2);
+      // Exclusive turn stages: one approach each, gated on its own turns.
+      for (const s of controller?.plan.stages ?? []) {
+        if (!s.demandMovements) continue;
+        expect(s.greenGroups.length).toBe(1);
+        expect(s.demandMovements.length).toBeGreaterThan(0);
+      }
     });
 
     it('reports no wedge from the audit it now actually runs', () => {

@@ -12,6 +12,19 @@ import { type SignalController, type SignalDeps, createController, rebuildContro
 import { type CrossingId, makeCrossingId } from './signals/plan';
 import type { AuditIssue } from './audit';
 import { SidewalkGraph } from './peds/sidewalk';
+import { hasDownstreamStorage } from './intersections/spillback';
+import { CrossingSpans } from './intersections/crossingSpans';
+import { m } from '@world/units';
+
+/** A queue is counted this far back from the stop line. */
+const DEMAND_QUEUE_REACH = m(80);
+/** Moving vehicles are counted when they will arrive within this, seconds. */
+const DEMAND_HORIZON = 12;
+/** A head this close, or arriving within the passage time, keeps a green alive. */
+const DEMAND_AT_LINE = m(8);
+const DEMAND_PASSAGE = 3;
+/** Seconds of waiting that double a queued vehicle's weight. */
+const DEMAND_WAIT_WEIGHT = 30;
 
 /** Vehicles occupying one lanelet, kept sorted by ascending arc position. */
 export interface LaneletRuntime {
@@ -52,8 +65,13 @@ export class SimWorld {
 
   /** Pedestrians currently inside each crossing. */
   readonly pedOccupancy = new Map<CrossingId, PedId[]>();
-  /** Pedestrians waiting at a kerb for each crossing, rebuilt every tick. */
-  readonly pedWaiting = new Map<CrossingId, number>();
+  /**
+   * Pedestrians waiting at a kerb for each crossing, by the kerb they stand
+   * at (`from` or `to` end of the crossing edge). Rebuilt every tick.
+   */
+  readonly pedWaiting = new Map<CrossingId, { from: number; to: number }>();
+  /** Stretch of each zebra that each movement drives over. */
+  readonly crossingSpans = new CrossingSpans();
 
   /**
    * Tick at which each junction last admitted a vehicle.
@@ -167,6 +185,7 @@ export class SimWorld {
     this.graph.build(this.doc, this.net);
     this.conflicts.build(this.graph);
     this.sidewalks.build(this.doc, this.net, this.graph);
+    this.crossingSpans.build(this);
     this.claims.dropMissing(this.conflicts);
     this.syncControllers();
     for (const segment of [...this.segmentVolume.keys()]) {
@@ -190,19 +209,22 @@ export class SimWorld {
     return {
       tick: () => this.clock.tick,
       connectorsOf: (id: string) => this.graph.connectors.get(id),
+      conflictsOf: (id: string) => this.conflicts.refs(id).map((ref) => ref.other),
       pedestriansCrossing: (_node, crossings) =>
         crossings.some((x) => (this.pedOccupancy.get(x)?.length ?? 0) > 0),
-      demandOn: (node, groups) => {
-        const junction = this.graph.junctions.get(node);
-        for (const laneId of junction?.inbound ?? []) {
-          const lane = this.graph.lanelets.get(laneId);
-          const segment = lane?.segment;
-          if (segment === undefined) continue;
-          const group = junction?.groups.find((g) => g.segments.includes(segment));
-          if (!group || !groups.includes(group.id)) continue;
-          if (this.rt(laneId).order.length > 0) return true;
+      demandOn: (node, groups, movements) => this.signalDemand(node, groups, movements).score > 0,
+      demand: (node, groups, movements) => this.signalDemand(node, groups, movements),
+      pedestrianWait: (node, crossings) => {
+        let longest = 0;
+        if (!crossings.length) return 0;
+        for (const ped of this.peds.values()) {
+          if (ped.state !== 'WaitAtKerb') continue;
+          const edge = this.sidewalks.edges.get(ped.route[0] ?? '');
+          if (edge?.node === node && edge.crossing && crossings.includes(edge.crossing)) {
+            longest = Math.max(longest, ped.waited);
+          }
         }
-        return false;
+        return longest;
       },
       pedestrianDemandOn: (node, crossings) => {
         if (!crossings.length) return false;
@@ -236,6 +258,54 @@ export class SimWorld {
         return false;
       },
     };
+  }
+
+  /**
+   * What a green for these groups would actually serve right now.
+   *
+   * The detector used to be "is any vehicle anywhere on an approach link",
+   * which on a 400-unit block is true almost always: no stage ever gapped out,
+   * every stage ran to its target, and every cycle was the same length however
+   * light the traffic. This reads the queue the way a loop detector and a
+   * driver's eye do:
+   *
+   *   - `active`: the head of some lane is at the line or will reach it within
+   *     the passage time, wants a movement this green serves, and has room to
+   *     leave on the far side. While this is zero a green is wasted;
+   *   - `score`: queue length, time already waited, and arrivals weighted by how
+   *     soon they will be there. Used to pick which stage runs next.
+   *
+   * Vehicles whose exit is full do not count: a green for them discharges
+   * nobody (capacity after the junction).
+   */
+  signalDemand(node: NodeId, groups: readonly number[], movements?: readonly string[]): { active: number; score: number } {
+    const junction = this.graph.junctions.get(node);
+    let active = 0;
+    let score = 0;
+    for (const laneId of junction?.inbound ?? []) {
+      const lane = this.graph.lanelets.get(laneId);
+      const segment = lane?.segment;
+      if (!lane || segment === undefined) continue;
+      const group = junction?.groups.find((g) => g.segments.includes(segment));
+      if (!group || !groups.includes(group.id)) continue;
+      const order = this.rt(laneId).order;
+      for (let i = order.length - 1; i >= 0; i--) {
+        const v = this.vehicles.get(order[i] as number);
+        if (!v) continue;
+        const d = lane.length - v.s;
+        const arrival = d / Math.max(v.v, 0.5);
+        if (d > DEMAND_QUEUE_REACH && arrival > DEMAND_HORIZON) break;
+        const next = this.graph.connectors.get(v.route[1] ?? '');
+        if (!next || next.fromLane !== laneId) continue;
+        if (movements && !movements.includes(next.id)) continue;
+        if (i === order.length - 1) {
+          if (!hasDownstreamStorage(this, v, next)) break;
+          if (d <= DEMAND_AT_LINE || arrival <= DEMAND_PASSAGE) active++;
+        }
+        score += v.v < 0.5 ? 1 + v.waited / DEMAND_WAIT_WEIGHT : Math.max(0, 1 - arrival / DEMAND_HORIZON);
+      }
+    }
+    return { active, score };
   }
 
   private syncControllers(): void {

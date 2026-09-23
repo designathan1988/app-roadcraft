@@ -103,6 +103,8 @@ export const SIGNAL = {
   // amber/all-red guarantees that full protected window.
   baseGreen: 20,
   maxGreen: 34,
+  /** Target green of an exclusive stage serving turns that are otherwise permissive. */
+  exclusiveGreen: 10,
   amber: 3.2,
   minAllRed: 1.2,
   /** A group red for longer than this many cycles is promoted. */

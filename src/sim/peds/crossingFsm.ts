@@ -148,7 +148,13 @@ export function stepPedestrians(w: SimWorld): void {
   for (const p of peds) {
     if (p.state !== 'WaitAtKerb') continue;
     const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
-    if (next?.crossing) w.pedWaiting.set(next.crossing, (w.pedWaiting.get(next.crossing) ?? 0) + 1);
+    if (!next?.crossing) continue;
+    const here = w.sidewalks.edges.get(p.edge);
+    const kerb = here ? w.sidewalks.other(here, p.entry) : undefined;
+    const count = w.pedWaiting.get(next.crossing) ?? { from: 0, to: 0 };
+    if (kerb === next.from) count.from++;
+    else count.to++;
+    w.pedWaiting.set(next.crossing, count);
   }
 
   for (const p of remove) {
@@ -399,6 +405,9 @@ export function mayEnterCrossing(w: SimWorld, p: Ped, crossing: SidewalkEdge): b
   return pedGapAccepted(w, p, crossing);
 }
 
+/** Margin past the span a vehicle's rear must reach before it stops counting. */
+const CLEAR_PAST = 6;
+
 function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): boolean {
   for (const v of w.vehicles.values()) {
     const lane = w.lanelet(v.lanelet);
@@ -409,7 +418,19 @@ function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): 
     for (const connectorId of connectorIds) {
       const connector = w.connector(connectorId);
       if (!connector || connector.node !== node) continue;
-      if (connector.inSegment === segment || connector.outSegment === segment) return true;
+      if (connector.inSegment !== segment && connector.outSegment !== segment) continue;
+      const span = w.crossingSpans.span(connector.id, `${node}:${segment}`);
+      // Never drives over this zebra at all.
+      if (span === null) continue;
+      // Its whole body is already past the stretch it drives over. Counting a
+      // vehicle that has gone by held walkers at a WALK for as long as turns
+      // kept flowing behind it — nearly two minutes at a busy corner.
+      if (span && connectorId === lane?.id && v.s - v.archetype.length > span.along + CLEAR_PAST) continue;
+      if (span && connectorId !== lane?.id && connectorId !== v.admittedConnector) {
+        const token = v.clearingConnectors.find((t) => t.connector === connectorId);
+        if (token && connector.length + token.distanceBeyondExit - v.archetype.length > span.along + CLEAR_PAST) continue;
+      }
+      return true;
     }
   }
   return false;

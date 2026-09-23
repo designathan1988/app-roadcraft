@@ -33,6 +33,12 @@ export interface SignalController {
   /** Tick at which each group last received green. */
   lastServed: Map<GroupId, number>;
   /**
+   * Tick at which each stage last ended its green. A demand-gated exclusive
+   * stage shares its group with a paired stage, so the group's service time
+   * says nothing about how long the stage's own turns have waited.
+   */
+  stageServed: Map<number, number>;
+  /**
    * Coordination offset ALREADY APPLIED, in seconds. Diagnostics only.
    *
    * This used to be a countdown that `stepController` decremented while
@@ -54,10 +60,16 @@ export interface SignalController {
 export interface SignalDeps {
   readonly tick: () => number;
   readonly connectorsOf: (id: string) => Connector | undefined;
+  /** Movements that physically conflict with a connector (swept zones). */
+  readonly conflictsOf?: (id: string) => readonly string[];
   /** Pedestrians still inside a crossing that this stage released. */
   readonly pedestriansCrossing: (node: NodeId, crossings: readonly CrossingId[]) => boolean;
-  /** Whether any vehicle is waiting on the given groups. */
-  readonly demandOn: (node: NodeId, groups: readonly GroupId[]) => boolean;
+  /** Whether any vehicle is waiting on the given groups (and movements). */
+  readonly demandOn: (node: NodeId, groups: readonly GroupId[], movements?: readonly string[]) => boolean;
+  /** Weighted demand; see `SimWorld.signalDemand`. */
+  readonly demand?: (node: NodeId, groups: readonly GroupId[], movements?: readonly string[]) => { active: number; score: number };
+  /** Longest time anybody has waited at a kerb for one of these crossings, seconds. */
+  readonly pedestrianWait?: (node: NodeId, crossings: readonly CrossingId[]) => number;
   /** Whether a pedestrian is waiting to start one of these crossings. */
   readonly pedestrianDemandOn: (node: NodeId, crossings: readonly CrossingId[]) => boolean;
   /** Whether a physical compact-box holder needs this group next. */
@@ -77,6 +89,7 @@ export function createController(
     // stageIndex / sub / elapsed come from the phase seek below.
     ...seekPhase(plan, offset),
     lastServed: new Map(plan.groups.map((g) => [g, deps.tick()])),
+    stageServed: new Map(plan.stages.map((_, i) => [i, deps.tick()])),
     // Neighbouring junctions start out of phase so platoons do not all stop
     // together. The V6 monolith seeded this modulo 23 against a 34 second
     // cycle, so a third of the offset range was unreachable.
@@ -127,7 +140,7 @@ function safePlan(
   deps: SignalDeps,
 ): { plan: SignalPlan; degraded: boolean } {
   try {
-    return { plan: buildSignalPlan(junction, crossings, deps.connectorsOf), degraded: false };
+    return { plan: buildSignalPlan(junction, crossings, deps.connectorsOf, deps.conflictsOf), degraded: false };
   } catch (err) {
     if (!(err instanceof PlanValidationError)) throw err;
     if (isStrict()) throw err;
@@ -167,25 +180,36 @@ export function stepController(c: SignalController, deps: SignalDeps): void {
           !st.greenGroups.includes(group) &&
           deps.reservationDemandOn(c.node, [group]),
       );
-      const competingDemand = c.plan.groups.some(
-        (group) =>
-          !st.greenGroups.includes(group) &&
-          (deps.reservationDemandOn(c.node, [group]) || deps.demandOn(c.node, [group])),
-      ) || c.plan.stages.some(
-        (candidate, index) => index !== c.stageIndex && deps.pedestrianDemandOn(c.node, candidate.pedWalk),
+      const competingDemand = c.plan.stages.some(
+        (candidate, index) => index !== c.stageIndex && stageHasDemand(c, candidate, deps),
       );
       // A physical compact-box holder can depend on the next signal to release
       // its rear from the previous junction. Cut a conflicting green after its
       // guaranteed minimum, and keep the needed green alive to its target. The
       // soft future claim itself owns no connector and blocks no admission.
-      const currentDemand = reservedHere || deps.demandOn(c.node, st.greenGroups);
+      //
+      // Otherwise the green stays alive only while somebody can USE it: a head
+      // at the line or arriving within the passage time, with room to leave.
+      // That is the gap-out that ends a green the moment its queue has gone,
+      // instead of running every stage to its target whatever the traffic.
+      const currentDemand = reservedHere || (deps.demand
+        ? deps.demand(c.node, st.greenGroups, st.demandMovements).active > 0
+        : deps.demandOn(c.node, st.greenGroups));
       const gapOut = mayEnd && !currentDemand;
       const yieldAtTarget = mayEnd && competingDemand && c.elapsed >= st.targetGreen;
       if (gapOut || (mayEnd && reservedElsewhere) || yieldAtTarget) {
         for (const g of st.greenGroups) c.lastServed.set(g, deps.tick());
+        c.stageServed.set(c.stageIndex, deps.tick());
         c.sub = 'AMBER';
         c.elapsed = 0;
-      } else if (c.elapsed >= st.maxGreen) {
+      } else if (c.elapsed >= st.maxGreen && !pedestriansInside) {
+        c.stageServed.set(c.stageIndex, deps.tick());
+        // Never cut a green over people still on its crossings. The next stage
+        // gives protected green to movements that drive over those crossings,
+        // and a walker caught there held every one of them at a green light:
+        // measured on a four-way of avenues, the pedestrian obstacle was the
+        // commonest reason a queue head stood still at green. Walkers always
+        // finish, so the extension is bounded.
         for (const g of st.greenGroups) c.lastServed.set(g, deps.tick());
         c.sub = 'AMBER';
         c.elapsed = 0;
@@ -232,16 +256,19 @@ export function pickNextStage(c: SignalController, deps: SignalDeps): number {
     // approaching driver and to give another movement its minimum service.
     if (index === c.stageIndex) continue;
     const stage = stages[index]!;
-    const age = stageAge(c, stage.greenGroups, now);
-    const hasDemand =
-      deps.reservationDemandOn(c.node, stage.greenGroups) ||
-      deps.demandOn(c.node, stage.greenGroups) ||
-      deps.pedestrianDemandOn(c.node, stage.pedWalk);
+    const hasDemand = stageHasDemand(c, stage, deps);
+    // Age weighted by what is waiting: the longest-unserved stage still wins
+    // eventually, but a stage with a long queue is not made to wait behind one
+    // with a single car. An exclusive turn stage only ever runs on demand.
+    const waited = stage.demandMovements
+      ? now - (c.stageServed.get(index) ?? now)
+      : stageAge(c, stage.greenGroups, now);
+    const age = waited * (1 + stageScore(c, stage, deps) / DEMAND_PRIORITY);
 
     // A stage with no live demand may be bypassed, but never indefinitely.
     // This preserves signal-plan coverage and gives a newly busy approach a
     // bounded wait even if the detector missed its first frame.
-    if (stage.greenGroups.length && age >= deadline &&
+    if (stage.greenGroups.length && waited >= deadline && (!stage.demandMovements || hasDemand) &&
       betterCandidate(index, age, overdue, overdueAge, sequential, stages.length)) {
       overdue = index;
       overdueAge = age;
@@ -252,7 +279,42 @@ export function pickNextStage(c: SignalController, deps: SignalDeps): number {
     }
   }
 
-  return overdue >= 0 ? overdue : demanded >= 0 ? demanded : sequential;
+  if (overdue >= 0) return overdue;
+
+  // Somebody who has stood at a kerb for PED_WAIT_LIMIT is served next, ahead
+  // of vehicle demand: measured before this, walkers waited nearly two
+  // minutes at five-leg junctions while every vehicle stage won on queue size.
+  let walkers = -1;
+  let longest = PED_WAIT_LIMIT;
+  for (let index = 0; index < stages.length; index++) {
+    if (index === c.stageIndex) continue;
+    const wait = deps.pedestrianWait?.(c.node, stages[index]!.pedWalk) ?? 0;
+    if (wait >= longest) {
+      longest = wait;
+      walkers = index;
+    }
+  }
+  if (walkers >= 0) return walkers;
+  return demanded >= 0 ? demanded : sequential;
+}
+
+/** Kerb wait after which a crossing's stage is served next, seconds. */
+const PED_WAIT_LIMIT = 45;
+
+/** Queued vehicles that double a stage's claim to run next. */
+const DEMAND_PRIORITY = 6;
+
+function stageHasDemand(c: SignalController, stage: SignalPlan['stages'][number], deps: SignalDeps): boolean {
+  if (stage.demandMovements) {
+    return deps.demandOn(c.node, stage.greenGroups, stage.demandMovements);
+  }
+  return deps.reservationDemandOn(c.node, stage.greenGroups) ||
+    deps.demandOn(c.node, stage.greenGroups) ||
+    deps.pedestrianDemandOn(c.node, stage.pedWalk);
+}
+
+function stageScore(c: SignalController, stage: SignalPlan['stages'][number], deps: SignalDeps): number {
+  return deps.demand?.(c.node, stage.greenGroups, stage.demandMovements).score ?? 0;
 }
 
 function stageAge(c: SignalController, groups: readonly GroupId[], now: number): number {
@@ -322,6 +384,7 @@ export function rebuildController(
   for (const g of plan.groups) {
     if (!c.lastServed.has(g)) c.lastServed.set(g, now);
   }
+  c.stageServed = new Map(plan.stages.map((_, i) => [i, now]));
   for (const g of [...c.lastServed.keys()]) {
     if (!plan.groups.includes(g)) c.lastServed.delete(g);
   }

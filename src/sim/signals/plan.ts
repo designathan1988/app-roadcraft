@@ -16,6 +16,18 @@ export interface Stage {
   readonly amber: number;
   readonly allRed: number;
   readonly exclusivePed: boolean;
+  /**
+   * Movements green in this stage that no conflicting movement from another
+   * approach can meet: they proceed without yielding. Everything else green
+   * here is permissive and must find a gap.
+   */
+  readonly protectedMovements: readonly string[];
+  /**
+   * When set, this stage exists only to serve these movements — an exclusive
+   * stage for turns that are permissive everywhere else — and its demand is
+   * counted from them alone.
+   */
+  readonly demandMovements?: readonly string[];
 }
 
 export interface SignalPlan {
@@ -38,6 +50,84 @@ export class PlanValidationError extends Error {}
  * be built at all.
  */
 export function buildSignalPlan(
+  junction: JunctionTopology,
+  crossings: readonly CrossingId[],
+  connectorsOf: (id: string) => Connector | undefined,
+  conflictsOf?: (id: string) => readonly string[],
+): SignalPlan {
+  const raw = buildStages(junction, crossings, connectorsOf);
+  return validate(annotate(raw, junction, connectorsOf, conflictsOf));
+}
+
+/**
+ * Marks every stage's protected movements from the real conflict matrix and
+ * adds an exclusive stage for any approach whose turns are never protected.
+ *
+ * "A through movement on green is protected" used to be the whole rule. It is
+ * wrong twice over: on a skewed or five-leg junction two green throughs can
+ * cross, and a left turn opposite a through is permissive in EVERY stage, so on
+ * a busy corridor it only ever moved when the opposing queue happened to be
+ * empty — measured, the commonest reason a queue head stood still at green was
+ * a permissive left and a protected through blocking each other. Protection is
+ * now a property of the stage: a movement is protected when no movement from
+ * another approach that physically conflicts with it is green alongside it.
+ */
+function annotate(
+  plan: SignalPlan,
+  junction: JunctionTopology,
+  connectorsOf: (id: string) => Connector | undefined,
+  conflictsOf?: (id: string) => readonly string[],
+): SignalPlan {
+  const connectors = junction.connectors
+    .map(connectorsOf)
+    .filter((c): c is Connector => !!c);
+  const protectedIn = (green: readonly GroupId[]): string[] => connectors
+    .filter((c) => green.includes(c.group))
+    .filter((c) => {
+      if (!conflictsOf) return c.turn === 'through';
+      return conflictsOf(c.id).every((otherId) => {
+        const other = connectorsOf(otherId);
+        return !other || other.inSegment === c.inSegment || !green.includes(other.group);
+      });
+    })
+    .map((c) => c.id);
+
+  const stages: Stage[] = plan.stages.map((s) => ({ ...s, protectedMovements: protectedIn(s.greenGroups) }));
+
+  if (conflictsOf && junction.signalised && junction.groups.length > 1) {
+    for (const group of junction.groups) {
+      const mine = connectors.filter((c) => c.group === group.id);
+      const serving = stages.filter((s) => s.greenGroups.includes(group.id));
+      const neverProtected = mine.filter((c) =>
+        c.turn !== 'through' && serving.every((s) => !s.protectedMovements.includes(c.id)));
+      if (!neverProtected.length) continue;
+      const green = [group.id];
+      stages.push({
+        ...stage({
+          green,
+          // No WALK: a turn stage is too short for anybody to finish crossing,
+          // so its lamp would only ever flash, and listing it here made the
+          // signal's pedestrian-priority logic serve walkers with a stage that
+          // could never actually release them.
+          pedWalk: [],
+          target: SIGNAL.exclusiveGreen,
+        }),
+        // Short: it only serves the turns that could not find a gap, and a
+        // long exclusive stage was what stretched cycles past two minutes.
+        maxGreen: SIGNAL.exclusiveGreen * EXCLUSIVE_MAX_FACTOR,
+        protectedMovements: protectedIn(green),
+        demandMovements: neverProtected.map((c) => c.id),
+      });
+    }
+  }
+
+  const cycle = stages.reduce((sum, s) => sum + s.targetGreen + s.amber + s.allRed, 0);
+  return { ...plan, stages, cycle };
+}
+
+const EXCLUSIVE_MAX_FACTOR = 1.6;
+
+function buildStages(
   junction: JunctionTopology,
   crossings: readonly CrossingId[],
   connectorsOf: (id: string) => Connector | undefined,
@@ -225,6 +315,7 @@ function stage(input: StageInput): Stage {
     amber: SIGNAL.amber,
     allRed: SIGNAL.minAllRed,
     exclusivePed: input.exclusivePed ?? false,
+    protectedMovements: [],
   };
 }
 
