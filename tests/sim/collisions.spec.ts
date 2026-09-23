@@ -71,7 +71,9 @@ describe('vehicle bodies', () => {
     expect(ticks).toBeGreaterThan(50_000);
     expect(bodies).toBeGreaterThan(500_000);
     expect(offences).toEqual([]);
-  });
+    // Seven scenarios of 150 s each: about 30 s bare, and over 100 s under
+    // `npm run check`'s coverage instrumentation, past the 60 s default.
+  }, 240_000);
 
   it('keep the vehicle in BOTH lanes while it slides between them', () => {
     // The transfer moves the occupancy index at once; the body takes about a

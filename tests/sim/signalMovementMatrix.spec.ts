@@ -81,4 +81,59 @@ describe('complete signal movement matrix', () => {
     }
     expect(checked).toBeGreaterThan(5);
   });
+
+  it('gives right of way by the rule of the road, not to whoever conflicts', () => {
+    // A left turn gives way to the opposing through and the opposing right
+    // turn; a through never gives way to a left. Protection used to be taken
+    // away from BOTH sides of any conflicting pair, so throughs yielded to
+    // opposing lefts and 45 % of queue-head time at green was spent standing.
+    const rank = { through: 3, right: 2, left: 1, uturn: 0 } as const;
+    let opposingPairs = 0;
+    for (const config of cases) {
+      const doc = new RoadDoc();
+      const centre = doc.addNode({ x: 0, y: 0 });
+      config.angles.forEach((degrees, index) => {
+        const angle = degrees * Math.PI / 180;
+        const far = doc.addNode({ x: Math.cos(angle) * 420, y: Math.sin(angle) * 420 });
+        const segment = doc.addSegment(centre.id, far.id, config.types[index]!);
+        if ('oneWay' in config && config.oneWay && index % 2 === 0 && segment) {
+          doc.setSegmentDirection(segment.id, index === 0 ? 'aToB' : 'bToA');
+        }
+      });
+      doc.setNodeControl(centre.id, 'signal');
+      const net = new Network(doc); net.rebuild();
+      const sim = new SimWorld(doc, net, 0x392a); sim.rebuildTopology();
+      const controller = sim.controller(centre.id)!;
+      const connectors = [...sim.graph.connectors.values()].filter(c => c.node === centre.id);
+      for (const stage of controller.plan.stages) {
+        const green = connectors.filter(c => stage.greenGroups.includes(c.group));
+        for (const a of green) {
+          for (const b of green) {
+            if (a.inSegment === b.inSegment || a.id >= b.id) continue;
+            const ref = sim.conflicts.refs(a.id).find(r => r.other === b.id);
+            if (!ref) continue;
+            const aProtected = stage.protectedMovements.includes(a.id);
+            const bProtected = stage.protectedMovements.includes(b.id);
+            const label = `${config.name}: ${a.id} (${a.turn}) vs ${b.id} (${b.turn})`;
+            // Two crossing movements are never both protected.
+            expect(aProtected && bProtected, label).toBe(false);
+            // The lower-ranked one is never protected over the higher.
+            if (rank[a.turn] < rank[b.turn]) expect(aProtected, label).toBe(false);
+            if (rank[b.turn] < rank[a.turn]) expect(bProtected, label).toBe(false);
+            if (config.name === 'four-way' && (a.turn === 'left') !== (b.turn === 'left') &&
+              (a.turn === 'through' || b.turn === 'through')) {
+              opposingPairs++;
+              // The through keeps its protection against the opposing left
+              // unless something else it crosses outranks it.
+              const through = a.turn === 'through' ? a : b;
+              const outranked = green.some(c => c.inSegment !== through.inSegment &&
+                c.turn === 'through' && sim.conflicts.refs(through.id).some(r => r.other === c.id));
+              if (!outranked) expect(stage.protectedMovements.includes(through.id), label).toBe(true);
+            }
+          }
+        }
+      }
+    }
+    expect(opposingPairs).toBeGreaterThan(0);
+  });
 });

@@ -69,8 +69,18 @@ export function buildSignalPlan(
  * a busy corridor it only ever moved when the opposing queue happened to be
  * empty — measured, the commonest reason a queue head stood still at green was
  * a permissive left and a protected through blocking each other. Protection is
- * now a property of the stage: a movement is protected when no movement from
- * another approach that physically conflicts with it is green alongside it.
+ * now a property of the stage.
+ *
+ * It is not symmetric. Taking protection away from a movement merely because
+ * SOMETHING conflicting was green made both sides of every opposing pair
+ * permissive: on a four-way of avenues the through yielded to the opposing
+ * left exactly as the left yielded to it, and 45 % of queue-head time at green
+ * was spent standing, most of it a through waiting on a "conflict" it had
+ * right of way over. The rule of the road is a hierarchy — a left turn gives
+ * way to the opposing through and the opposing right turn, a U-turn to
+ * everybody — so a movement is protected unless a conflicting movement from
+ * another approach, green alongside it, ranks at least as high. Two equal
+ * ranks that cross (two throughs on a skewed junction) both remain permissive.
  */
 function annotate(
   plan: SignalPlan,
@@ -87,7 +97,8 @@ function annotate(
       if (!conflictsOf) return c.turn === 'through';
       return conflictsOf(c.id).every((otherId) => {
         const other = connectorsOf(otherId);
-        return !other || other.inSegment === c.inSegment || !green.includes(other.group);
+        return !other || other.inSegment === c.inSegment || !green.includes(other.group) ||
+          TURN_RANK[other.turn] < TURN_RANK[c.turn];
       });
     })
     .map((c) => c.id);
@@ -126,6 +137,9 @@ function annotate(
 }
 
 const EXCLUSIVE_MAX_FACTOR = 1.6;
+
+/** Who gives way to whom between two green movements that cross. */
+const TURN_RANK: Record<Connector['turn'], number> = { through: 3, right: 2, left: 1, uturn: 0 };
 
 function buildStages(
   junction: JunctionTopology,
