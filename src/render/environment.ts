@@ -55,6 +55,9 @@ const SUN_ELEVATION = (38 * Math.PI) / 180;
  */
 const SUN_AZIMUTH = (14 * Math.PI) / 180;
 const SUN_DISTANCE = 1_600;
+/** Smallest half-width of the shadow frustum, world units (16 m). */
+const SHADOW_SPAN_MIN = 40;
+const WORLD_UP = new Vector3(0, 1, 0);
 
 export interface EnvironmentQuality {
   /** Side of the sun's shadow map. */
@@ -187,6 +190,9 @@ export function createEnvironment(
   scene.add(sun, sun.target);
 
   let span = -1;
+  const lightRight = new Vector3();
+  const lightUp = new Vector3();
+  const snapped = new Vector3();
 
   return {
     sun,
@@ -194,13 +200,15 @@ export function createEnvironment(
     follow(target, halfWidth, halfHeight) {
       sky.position.copy(target);
       sky.scale.setScalar(9_000);
-      sun.position.copy(target).addScaledVector(sunDirection, SUN_DISTANCE);
-      sun.target.position.copy(target);
-      sun.target.updateMatrixWorld();
       // The shadow frustum is fitted to what the camera can see. Too wide and
       // every shadow is a blurred smear; too narrow and shadows pop in at the
       // edge of the screen.
-      const want = Math.max(220, Math.max(halfWidth, halfHeight) * 1.25);
+      //
+      // The floor used to be 220 units — a frustum 440 units across however
+      // far the camera zoomed in. At 2048 texels that is 8 cm a texel, wider
+      // than a person's leg, and the filtered shadow of a walking citizen
+      // dissolved into smoke. It now follows the view down to close zoom.
+      const want = Math.max(SHADOW_SPAN_MIN, Math.max(halfWidth, halfHeight) * 1.25);
       if (Math.abs(want - span) > span * 0.08) {
         span = want;
         sun.shadow.camera.left = -span;
@@ -209,6 +217,22 @@ export function createEnvironment(
         sun.shadow.camera.bottom = -span;
         sun.shadow.camera.updateProjectionMatrix();
       }
+      // Snap the frustum to whole shadow texels in light space. Following the
+      // view continuously slid every texel under the scene each frame, so
+      // small shadows crawled and flickered whenever the camera or the
+      // figure moved, and read as visible "only in motion".
+      const texel = (2 * span) / sun.shadow.mapSize.x;
+      lightRight.crossVectors(WORLD_UP, sunDirection).normalize();
+      lightUp.crossVectors(sunDirection, lightRight).normalize();
+      const u = Math.round(target.dot(lightRight) / texel) * texel;
+      const v = Math.round(target.dot(lightUp) / texel) * texel;
+      const w = target.dot(sunDirection);
+      snapped.copy(lightRight).multiplyScalar(u)
+        .addScaledVector(lightUp, v)
+        .addScaledVector(sunDirection, w);
+      sun.position.copy(snapped).addScaledVector(sunDirection, SUN_DISTANCE);
+      sun.target.position.copy(snapped);
+      sun.target.updateMatrixWorld();
     },
     setQuality(next) {
       sun.castShadow = next.shadows;
