@@ -121,6 +121,15 @@ export function stepPedestrians(w: SimWorld): void {
         break;
     }
 
+    // A blocked transfer can leave the body at the end of a zebra. Keep its
+    // crossing state and claim until it reaches the next edge, even when a
+    // route decision above has requested the next crossing.
+    const current = w.sidewalks.edges.get(p.edge);
+    if (current?.kind === 'crossing' && p.s > 0 && p.state !== 'Crossing') {
+      p.state = 'Crossing';
+      occupyCrossing(w, p, current);
+    }
+
     // The edge may have changed inside the switch, and steering belongs to
     // the edge the pedestrian is on when the tick ends: applying the old
     // edge's width to the new edge is how somebody ends up off the footway
@@ -130,7 +139,7 @@ export function stepPedestrians(w: SimWorld): void {
       const usable = Math.max(0, settled.halfWidth - PED_BEHAVIOUR.lateralMargin);
       p.lat = clamp(p.lat, -usable, usable);
     }
-    settlePose(w, p, false);
+    settlePose(w, p, false, space);
     const wantsToMove = p.state !== 'WaitAtKerb' && desired > 0.05;
     // Held-up time; a released walker keeps its release until it has
     // actually got clear, about a metre of travel at walking pace.
@@ -178,7 +187,7 @@ function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: P
   const nextId = p.route[0];
   const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
 
-  if (next?.kind === 'crossing') {
+  if (next?.kind === 'crossing' && edge.kind !== 'crossing') {
     // Stop at the kerb. The kerb is a graph node offset outside the
     // carriageway, so this position is never in the road.
     p.s = edge.length;
@@ -277,8 +286,12 @@ function repath(w: SimWorld, p: Ped, space: PedestrianClearance): boolean {
   if (next.kind === 'crossing') {
     p.s = edge.length;
     p.route = [next.id];
-    p.state = 'WaitAtKerb';
-    p.waited = 0;
+    // A person still on the previous crossing keeps its crossing state and
+    // occupancy claim until the transfer reaches the next kerb at s=0.
+    if (edge.kind !== 'crossing') {
+      p.state = 'WaitAtKerb';
+      p.waited = 0;
+    }
     return true;
   }
 
@@ -426,6 +439,14 @@ function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): 
       const span = w.crossingSpans.span(connector.id, `${node}:${segment}`);
       // Never drives over this zebra at all.
       if (span === null) continue;
+      // A token may be granted while its vehicle is still on the approach.
+      // When it can comfortably stop before this zebra, a waiting person may
+      // take the gap; pedestrianAhead then keeps the admitted vehicle behind
+      // the person. A vehicle already on the connector retains the hard gate.
+      if (span && lane?.kind === 'link' && connectorId === v.admittedConnector) {
+        const distance = Math.max(0, lane.length - v.s) + span.along;
+        if (distance > m(2) && canStopComfortably(v.driver, v.v, distance)) continue;
+      }
       // Its whole body is already past the stretch it drives over. Counting a
       // vehicle that has gone by held walkers at a WALK for as long as turns
       // kept flowing behind it — nearly two minutes at a busy corner.
@@ -609,7 +630,7 @@ function desiredSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
   let v = Math.min(p.speed, p.party.pace);
 
   // Individual pace variation applies on footways only.
-  if (p.state === 'Walking') v *= strollFactor(p.id, p.age);
+  if (p.state === 'Walking') v *= strollFactor(p.id, p.age, p.ageClass);
   if (edge.kind === 'corner') v *= PED_BEHAVIOUR.cornerFactor;
 
   const remaining = edge.length - p.s;
@@ -618,9 +639,12 @@ function desiredSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
     const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
     // Anything that is not more footway straight ahead — a kerb, a corner, or
     // a decision still to be made — is approached rather than walked into.
+    // An elder is more cautious about it than most; a child barely is.
     if (next?.kind !== 'walk') {
+      const kerbFactor = p.ageClass === 'elder' ? PED_BEHAVIOUR.elderKerbFactor
+        : p.ageClass === 'child' ? PED_BEHAVIOUR.childKerbFactor : PED_BEHAVIOUR.kerbSlowFactor;
       v *= lerp(
-        PED_BEHAVIOUR.kerbSlowFactor,
+        kerbFactor,
         1,
         clamp(remaining / PED_BEHAVIOUR.kerbSlowDistance, 0, 1),
       );
@@ -894,7 +918,7 @@ const PED_DECEL = m(2.4);
  * at a human rate. Standing still, a person keeps facing where they were
  * going, or turns to face the crossing they are waiting for.
  */
-function settlePose(w: SimWorld, p: Ped, first: boolean): void {
+function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianClearance): void {
   const edge = w.sidewalks.edges.get(p.edge);
   if (!edge) return;
   const path = w.sidewalks.orientedPath(edge, p.entry);
@@ -929,12 +953,23 @@ function settlePose(w: SimWorld, p: Ped, first: boolean): void {
     p.offX = p.x - pathX;
     p.offY = p.y - pathY;
     if (Math.hypot(p.offX, p.offY) > OFFSET_LIMIT) { p.offX = 0; p.offY = 0; }
-    // Close the gap at walking pace from here on, not in one tick.
-    p.offX *= keep;
-    p.offY *= keep;
-  } else {
-    p.offX *= keep;
-    p.offY *= keep;
+  }
+  p.offX *= keep;
+  p.offY *= keep;
+  // The catch-up sweep above is a straight line the physical clearance
+  // system never vetted (`PedestrianClearance.tooCloseToPerson`), and
+  // decaying it in a straight line can sweep the drawn body through whoever
+  // stands between its two ends — measured, gap 0.75 to 0.03 in under a
+  // second, entering a crossing right beside somebody queued at its own
+  // kerb. Holding the offset instead of closing it did not fix this: the
+  // logical walk (`p.s`, `p.lat`) is governed elsewhere and keeps going
+  // regardless, so a hold only lets the gap between drawn and logical
+  // position grow without bound while whoever it is avoiding stays put.
+  // Closing it to zero outright is a visible pop, but a rare, bounded one —
+  // and a pop is a far smaller defect than a body passing through a person.
+  if ((p.offX !== 0 || p.offY !== 0) && space.tooCloseToPerson(p.id, pathX + p.offX, pathY + p.offY)) {
+    p.offX = 0;
+    p.offY = 0;
   }
   const x = pathX + p.offX;
   const y = pathY + p.offY;
@@ -994,12 +1029,27 @@ function formation(p: Ped, usable: number): number {
   const size = p.party.size;
   if (size < 2) return preferredLateral(p.id, p.file, PED.files) * usable;
 
+  // A family keeps closer together than a party of adults would — a parent
+  // does not let a child drift a lane's width away — so it walks abreast at
+  // about half the spacing.
+  const spacing = Math.max(PED_BEHAVIOUR.shoulder,
+    PED_BEHAVIOUR.abreastSpacing *
+      (p.party.hasChild ? PED_BEHAVIOUR.familySpacingFactor : 1));
   const base = preferredLateral(p.party.id, p.party.id % PED.files, PED.files) * usable;
-  const needed = (size - 1) * PED_BEHAVIOUR.abreastSpacing + PED_BEHAVIOUR.shoulder;
-  if (usable * 2 < needed) return base;
+  const needed = (size - 1) * spacing + PED_BEHAVIOUR.shoulder;
+  if (usable * 2 < needed) {
+    // A narrow footway may fit a pair, though it cannot fit the whole party
+    // abreast. Keep pairs side by side and place the next pair behind them.
+    if (usable * 2 < spacing + PED_BEHAVIOUR.shoulder) return base;
+    const halfPair = spacing / 2;
+    const rows = Math.ceil(size / 2);
+    const rowShift = (Math.floor(p.rank / 2) - (rows - 1) / 2) * m(0.3);
+    return clamp(base + rowShift, -(usable - halfPair), usable - halfPair) +
+      (p.rank % 2 === 0 ? -halfPair : halfPair);
+  }
 
-  const half = ((size - 1) / 2) * PED_BEHAVIOUR.abreastSpacing;
-  const place = (p.rank - (size - 1) / 2) * PED_BEHAVIOUR.abreastSpacing;
+  const half = ((size - 1) / 2) * spacing;
+  const place = (p.rank - (size - 1) / 2) * spacing;
   return clamp(base, -(usable - half), usable - half) + place;
 }
 

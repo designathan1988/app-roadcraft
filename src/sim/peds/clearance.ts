@@ -2,7 +2,7 @@ import { type Vec2, addScaled } from '@core/vec2';
 import { m } from '@world/units';
 import { vehiclePose } from '../pose';
 import type { SimWorld } from '../world';
-import type { Ped } from './state';
+import type { Ped, PedId } from './state';
 import type { SidewalkEdge } from './sidewalk';
 
 interface Footprint {
@@ -120,6 +120,29 @@ export class PedestrianClearance {
     if (!current) return false;
     const at = this.point(w, edge, entry, 0, lat);
     return !this.blocker(p, at.x, at.y, current);
+  }
+
+  /**
+   * Whether a visible PERSON (not scenery, not a vehicle) is within shoulder
+   * distance of a raw world point, regardless of who was there before.
+   *
+   * For the physical safety checks above, "an old overlap may be repaired by
+   * moving away" is the right rule: it lets a genuinely stuck pair separate
+   * without deadlocking. It is the wrong rule for `settlePose`'s purely
+   * COSMETIC catch-up offset, which is not a physical step at all — it is a
+   * straight line drawn between two positions that were each independently
+   * clear. Decaying it in a straight line can sweep the drawn body through
+   * whoever stands between those two points, and "moving away" never fires
+   * because there was no real approach to measure. This is the strict check
+   * that stops the sweep the instant it would, without caring how it began.
+   */
+  tooCloseToPerson(id: PedId, x: number, y: number): boolean {
+    let found = false;
+    this.visit(x, y, m(2.5), (other) => {
+      if (found || other.id === id || other.id <= 0) return;
+      if (this.distance(other, x, y) < PERSON_RELEASED_SPACING) found = true;
+    });
+    return found;
   }
 
   canShift(w: SimWorld, p: Ped, edge: SidewalkEdge, lat: number): boolean {

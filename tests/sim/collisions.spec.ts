@@ -230,7 +230,8 @@ describe('zones reaching back over a stop line', () => {
     const span = sim.crossingSpans.span(waiting.id, crossingId)!;
     expect(span).toBeTruthy();
     const walker = createPed({ id: 999, color: '#fff', speed: 0, file: 0,
-      party: { id: 999, size: 1, pace: 0 }, rank: 0, edge: zebra.id, entry: zebra.from,
+      ageClass: 'adult', gender: 'f',
+      party: { id: 999, size: 1, pace: 0, hasChild: false }, rank: 0, edge: zebra.id, entry: zebra.from,
       s: (span.s0 + span.s1) / 2, lat: 0, tick: 0 });
     walker.state = 'Crossing';
     sim.peds.set(walker.id, walker);

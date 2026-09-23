@@ -3,7 +3,7 @@ import { DT, NARROW_SCREEN_SHARE, PED, PED_CEILING, PED_DENSITY } from '../param
 import type { SimWorld } from '../world';
 import { PED_BEHAVIOUR, preferredLateral } from './behaviour';
 import type { SidewalkEdge } from './sidewalk';
-import { createPed, pedSnapshot, type Ped, type PedParty } from './state';
+import { createPed, pedSnapshot, type Ped, type PedAgeClass, type PedParty } from './state';
 
 const SPAWN_INTERVAL = 0.7;
 const COLORS = [
@@ -92,44 +92,100 @@ function clearOfOthers(w: SimWorld, edge: SidewalkEdge, from: number, to: number
   return w.sidewalks.occupancy.nearestTo(edge, mid) > clearance + half;
 }
 
-function spawnParty(w: SimWorld, edge: SidewalkEdge, head: number, size: number): void {
-  // The pace is the slowest member's, so it has to be known before the first
-  // member exists. Drawing every speed up front is also what keeps the party
-  // consuming one contiguous run of the stream however large it is.
-  const speeds: number[] = [];
-  let pace = PED.maxSpeed;
-  for (let i = 0; i < size; i++) {
-    const speed = clamp(
-      w.rng.pedParams.normal(PED.meanSpeed, PED.speedSd),
-      PED.minSpeed,
+/**
+ * Age for each member of a new party.
+ *
+ * Independent rolls alone rarely put a child beside an adult in the same
+ * party — with a 9 % child share, a party of two draws one under 3 % of the
+ * time — so "a parent out with their children" would barely exist. A small
+ * party is instead sometimes DECLARED a family: one adult leading, the rest
+ * children, the adult's own pace pulled down to theirs by the ordinary
+ * cohesion rule once they are walking (`behaviour.ts`).
+ */
+function rollAgeClasses(w: SimWorld, size: number): PedAgeClass[] {
+  if (size >= 2 && size <= 3 && w.rng.pedParams.bool(PED_BEHAVIOUR.familyChance)) {
+    return Array.from({ length: size }, (_, i) => (i === 0 ? 'adult' : 'child'));
+  }
+  return Array.from({ length: size }, () => {
+    const roll = w.rng.pedParams.float();
+    if (roll < PED_BEHAVIOUR.childShare) return 'child';
+    if (roll < PED_BEHAVIOUR.childShare + PED_BEHAVIOUR.elderShare) return 'elder';
+    return 'adult';
+  });
+}
+
+/** Free-flow speed for one pedestrian, from the distribution their age draws. */
+function rollSpeed(w: SimWorld, ageClass: PedAgeClass): number {
+  if (ageClass === 'child') {
+    return clamp(
+      w.rng.pedParams.normal(PED_BEHAVIOUR.childSpeedMean, PED_BEHAVIOUR.childSpeedSd),
+      PED_BEHAVIOUR.childSpeedMin,
       PED.maxSpeed,
     );
+  }
+  if (ageClass === 'elder') {
+    return clamp(
+      w.rng.pedParams.normal(PED_BEHAVIOUR.elderSpeedMean, PED_BEHAVIOUR.elderSpeedSd),
+      PED_BEHAVIOUR.elderSpeedMin,
+      PED_BEHAVIOUR.elderSpeedMax,
+    );
+  }
+  return clamp(w.rng.pedParams.normal(PED.meanSpeed, PED.speedSd), PED.minSpeed, PED.maxSpeed);
+}
+
+function spawnParty(w: SimWorld, edge: SidewalkEdge, head: number, size: number): void {
+  // The pace is the slowest member's, so it has to be known before the first
+  // member exists. Drawing every trait up front is also what keeps the party
+  // consuming one contiguous run of each stream however large it is.
+  const ageClasses = rollAgeClasses(w, size);
+  const speeds: number[] = [];
+  let pace = PED.maxSpeed;
+  let hasChild = false;
+  for (let i = 0; i < size; i++) {
+    const ageClass = ageClasses[i] as PedAgeClass;
+    if (ageClass === 'child') hasChild = true;
+    const speed = rollSpeed(w, ageClass);
     speeds.push(speed);
     if (speed < pace) pace = speed;
   }
 
-  const party: PedParty = { id: w.nextPedId, size, pace };
+  const party: PedParty = { id: w.nextPedId, size, pace, hasChild };
   const members: Ped[] = [];
   const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
+  const spacing = Math.max(PED_BEHAVIOUR.shoulder,
+    PED_BEHAVIOUR.abreastSpacing * (hasChild ? PED_BEHAVIOUR.familySpacingFactor : 1));
+  const abreast = size > 1 && usable * 2 >= spacing + PED_BEHAVIOUR.shoulder;
+  const halfPair = spacing / 2;
+  const base = abreast ? clamp(
+    preferredLateral(party.id, party.id % PED.files, PED.files) * usable,
+    -usable + halfPair, usable - halfPair,
+  ) : 0;
 
   for (let i = 0; i < size; i++) {
     const color = COLORS[Math.floor(w.rng.spawnPeds.float() * COLORS.length)] as string;
     const file = Math.floor(w.rng.pedParams.float() * PED.files);
+    const gender = w.rng.pedParams.bool(0.5) ? 'f' : 'm';
     const id = w.nextPedId++;
+    const rows = Math.ceil(size / 2);
+    const rowShift = (Math.floor(i / 2) - (rows - 1) / 2) *
+      PED_BEHAVIOUR.abreastSpacing * 0.48;
+    const pairCenter = clamp(base + rowShift, -usable + halfPair, usable - halfPair);
     const ped = createPed({
       id,
       color,
       speed: speeds[i] as number,
       file,
+      ageClass: ageClasses[i] as PedAgeClass,
+      gender,
       party,
       rank: i,
       edge: edge.id,
       entry: edge.from,
-      s: Math.max(0, head - i * PED_BEHAVIOUR.partyStagger),
-      // Starting on the preferred offset rather than on the centreline: a
-      // party that spawns in a line and then fans out looks like it was
-      // dealt from a deck.
-      lat: preferredLateral(id, file, PED.files) * usable,
+      s: Math.max(0, head - (abreast ? Math.floor(i / 2) : i) * PED_BEHAVIOUR.partyStagger),
+      // Companions who fit across the footway begin beside each other, with
+      // enough room for both bodies. Narrow footways retain single file.
+      lat: abreast ? pairCenter + (i % 2 === 0 ? -halfPair : halfPair)
+        : preferredLateral(id, file, PED.files) * usable,
       tick: w.clock.tick,
     });
     const frame = w.sidewalks.orientedPath(edge, edge.from).sampleAt(ped.s);

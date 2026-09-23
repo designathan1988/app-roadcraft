@@ -4,6 +4,15 @@ import type { SidewalkEdgeId, SidewalkNodeId } from './sidewalk';
 export type PedId = number;
 
 /**
+ * Age and gender: drawn once at spawn and carried for life, the same way
+ * colour and preferred file already are. They drive which of the eighty
+ * rigged citizens a pedestrian is drawn as (`render/riggedCitizens.ts`) and
+ * how it moves — a child's pace and gait, an elder's, an adult's.
+ */
+export type PedAgeClass = 'child' | 'adult' | 'elder';
+export type PedGender = 'f' | 'm';
+
+/**
  * Explicit crossing states.
  *
  * The V6 monolith had none: a pedestrian's whole behaviour was "walk to a
@@ -32,6 +41,12 @@ export interface PedParty {
   readonly size: number;
   /** Walking pace of the slowest member. Nobody in a party outwalks it. */
   readonly pace: number;
+  /**
+   * Whether a child walks in this party. A family keeps closer together than
+   * a party of adults — a parent does not let a child drift a lane's width
+   * away — so this tightens the line-abreast spacing (`formation`).
+   */
+  readonly hasChild: boolean;
 }
 
 export interface PedKinematics {
@@ -51,6 +66,9 @@ export interface Ped {
   readonly speed: number;
   /** Preferred file across the footway; the seed of the lateral habit. */
   readonly file: number;
+  /** Drawn once at spawn from the population shares in `PED_BEHAVIOUR`. */
+  readonly ageClass: PedAgeClass;
+  readonly gender: PedGender;
   readonly party: PedParty;
   /** Place in the party, from the front. Drives the line abreast. */
   readonly rank: number;
@@ -132,6 +150,8 @@ export interface PedSpec {
   readonly color: string;
   readonly speed: number;
   readonly file: number;
+  readonly ageClass: PedAgeClass;
+  readonly gender: PedGender;
   readonly party: PedParty;
   readonly rank: number;
   readonly edge: SidewalkEdgeId;
@@ -147,6 +167,8 @@ export function createPed(spec: PedSpec): Ped {
     color: spec.color,
     speed: spec.speed,
     file: spec.file,
+    ageClass: spec.ageClass,
+    gender: spec.gender,
     party: spec.party,
     rank: spec.rank,
     trailing: null,

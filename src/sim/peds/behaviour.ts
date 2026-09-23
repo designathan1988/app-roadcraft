@@ -1,5 +1,6 @@
 import { TAU, clamp } from '@core/scalar';
 import { m } from '@world/units';
+import type { PedAgeClass } from './state';
 
 /**
  * How a pedestrian behaves between the rules that keep it safe.
@@ -57,6 +58,8 @@ export const PED_BEHAVIOUR = {
   partyStagger: m(1.2),
   /** Lateral spacing between members walking abreast. */
   abreastSpacing: m(0.62),
+  /** A family (see `familyChance`) walks abreast at this share of that spacing. */
+  familySpacingFactor: 0.55,
   /** Lag a companion may fall behind before the member ahead paces down. */
   cohesionSlack: m(2.0),
   /**
@@ -104,11 +107,11 @@ export const PED_BEHAVIOUR = {
   oncomingLook: m(10.0),
   oncomingShift: m(1.05),
   /** Weight of the pedestrian's spawned file in its preferred position. */
-  fileBlend: 0.52,
+  fileBlend: 0.68,
   /** Weight of the per-pedestrian habit, so a file is not a painted lane. */
-  jitterBlend: 0.24,
+  jitterBlend: 0.4,
   /** Weight of the keep-side habit. */
-  keepBlend: 0.3,
+  keepBlend: 0.2,
   /**
    * Which hand people keep to, as a sign on the lateral axis.
    *
@@ -157,6 +160,38 @@ export const PED_BEHAVIOUR = {
   crossingPenalty: m(14),
   /** Spread of the per-party preference that keeps a crowd from funnelling. */
   exploreSpan: m(13),
+
+  // ---- demographics -------------------------------------------------------
+  /**
+   * Population shares drawn at spawn (`spawnParty`). The remainder are
+   * adults. Loose defaults for an ordinary street, not a census.
+   */
+  childShare: 0.09,
+  elderShare: 0.15,
+  /**
+   * Chance that a new party of two or three is a family out together — one
+   * adult leading, the rest children — rather than everybody's age rolled
+   * independently. Independent rolls alone rarely put a child beside an
+   * adult in the same party, and "andando com os filhos" needs it to happen
+   * on purpose sometimes.
+   */
+  familyChance: 0.22,
+
+  /** Free-speed distribution for children: bursty — short legs, easily distracted. */
+  childSpeedMean: m(1.05),
+  childSpeedSd: m(0.34),
+  childSpeedMin: m(0.55),
+  /** Free-speed distribution for elders: slower, and far steadier than anyone. */
+  elderSpeedMean: m(0.92),
+  elderSpeedSd: m(0.14),
+  elderSpeedMin: m(0.5),
+  elderSpeedMax: m(1.15),
+  /** Multiplies `dawdleAmplitude`: children wander their pace far more, elders far less. */
+  childDawdleFactor: 1.8,
+  elderDawdleFactor: 0.45,
+  /** Elders slow for a kerb or corner more than the baseline; children barely do. */
+  childKerbFactor: 0.92,
+  elderKerbFactor: 0.6,
 
   // ---- neighbours -------------------------------------------------------
   /**
@@ -215,13 +250,18 @@ export function preferredLateral(id: number, file: number, files: number): numbe
 /**
  * Speed multiplier for one pedestrian at one moment.
  *
- * A small pace variation, without artificial stops in open pavement.
+ * A small pace variation, without artificial stops in open pavement. Its
+ * amplitude depends on who is walking: a child's pace wanders far more than
+ * an adult's, an elder's far less — the difference between skipping ahead
+ * and dawdling, and a steady, unhurried stride.
  */
-export function strollFactor(id: number, age: number): number {
+export function strollFactor(id: number, age: number, ageClass: PedAgeClass): number {
   const h = pedHash(id ^ 0x2c1b3c6d);
+  const amplitudeFactor = ageClass === 'child' ? PED_BEHAVIOUR.childDawdleFactor
+    : ageClass === 'elder' ? PED_BEHAVIOUR.elderDawdleFactor : 1;
   const wander =
     1 +
-    PED_BEHAVIOUR.dawdleAmplitude *
+    PED_BEHAVIOUR.dawdleAmplitude * amplitudeFactor *
       Math.sin(age * span(PED_BEHAVIOUR.dawdleRate, frac(h, 0)) + frac(h, 8) * TAU);
 
   return wander;
