@@ -1,7 +1,7 @@
 import { laneletId, type LaneletId } from '@world/lanelets';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
-import { JAM_GAP } from '../params';
+import { JAM_GAP, laneChangeLength } from '../params';
 import { desiredSpeed } from './driver';
 import { idmAccel, type Obstacle } from './idm';
 
@@ -50,7 +50,7 @@ import { idmAccel, type Obstacle } from './idm';
 
 /**
  * Seconds of travel needed to complete a change, floored for a standing car.
- * Matches the eased slide (`laneChangeDuration`, about three seconds a lane)
+ * Matches the eased change (`laneChangeLength`, about three seconds a lane)
  * so the body has settled before it reaches the stop line.
  */
 const LANE_CHANGE_TIME = 3.5;
@@ -146,7 +146,11 @@ function mandatory(w: SimWorld, v: Vehicle, target: LaneletId): LaneletId | null
     v.movementIntent = null;
     return null;
   }
-  const room = Math.max(LANE_CHANGE_MIN_ROOM, v.v * LANE_CHANGE_TIME) * steps;
+  // The change is driven over a length of road (`laneChangeLength`), so there
+  // must be at least that much left for every lane still to cross.
+  const here = lane.centre.sampleAt(Math.min(v.s, lane.length)).p;
+  const width = w.lanelet(adjacent)?.centre.closestPoint(here).distance ?? 0;
+  const room = Math.max(LANE_CHANGE_MIN_ROOM, v.v * LANE_CHANGE_TIME, laneChangeLength(width, v.v, v.archetype.length)) * steps;
   if (lane.length - v.s < room) {
     v.desiredLane = null;
     v.movementIntent = null;

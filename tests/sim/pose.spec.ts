@@ -153,7 +153,11 @@ describe('rendered pose', () => {
       for (const v of sim.vehicles.values()) {
         // Only well inside a change, and on the same lanelet as the previous
         // snapshot so the heading blend itself is not what is being measured.
+        // A change is driven, not timed: a car that committed to it while
+        // stopped in a queue has not started the curve yet and points
+        // straight, which is right — it is not moving sideways either.
         if (Math.abs(v.lateral) < 3 || v.prev.lanelet !== v.lanelet || Math.abs(v.prev.lateral) < 3) continue;
+        if (v.lateralSlope === 0) continue;
         const lane = sim.lanelet(v.lanelet);
         const pose = vehiclePose(sim, v, 1);
         if (!lane || !pose) continue;
@@ -168,6 +172,68 @@ describe('rendered pose', () => {
 
     expect(checked).toBeGreaterThan(0);
     expect(wrong).toBe(0);
+  });
+
+  it('drives a lane change along the body, never crabbing sideways', () => {
+    // The reported defect: cars "floating sideways" into the next lane. The
+    // offset used to be a timed slide, so a car creeping in a queue kept
+    // moving sideways at full rate while its heading, capped at a few
+    // degrees, could not follow. Measured before the change was driven in
+    // distance: the drawn body moved more than 45 degrees off the direction
+    // it pointed in on 5 % of lane-change ticks, and up to 88 degrees.
+    const { sim } = grid();
+    const last = new Map<number, { x: number; y: number }>();
+    let checked = 0;
+    let worst = 0;
+
+    sim.clock.run(Math.round(200 / DT), () => {
+      step(sim, { traffic: true, pedestrians: true });
+      for (const v of sim.vehicles.values()) {
+        const pose = vehiclePose(sim, v, 1);
+        if (!pose) continue;
+        // Measured at the REAR AXLE, which is what cannot slip sideways: the
+        // body is steered from it, so its middle swings very slightly as the
+        // heading changes, exactly as a real vehicle's does.
+        const back = 0.3 * v.archetype.length;
+        const axle = { x: pose.p.x - Math.cos(pose.angle) * back, y: pose.p.y - Math.sin(pose.angle) * back };
+        const before = last.get(v.id);
+        last.set(v.id, axle);
+        if (!before || v.lateral === 0 || v.prev.lanelet !== v.lanelet) continue;
+        const dx = axle.x - before.x;
+        const dy = axle.y - before.y;
+        if (Math.hypot(dx, dy) < 1e-3) continue;
+        let crab = Math.atan2(dy, dx) - pose.angle;
+        crab = Math.abs(Math.atan2(Math.sin(crab), Math.cos(crab)));
+        worst = Math.max(worst, crab);
+        checked++;
+      }
+    });
+
+    expect(checked).toBeGreaterThan(1000);
+    // A car goes where it points. Two degrees covers the curvature of the
+    // road between the body centre and the arc position it is sampled from.
+    expect(worst * 180 / Math.PI).toBeLessThan(2);
+  });
+
+  it('keeps a car stopped half way across a lane angled, not snapped straight', () => {
+    const { sim } = grid();
+    let angled = 0;
+    sim.clock.run(Math.round(200 / DT), () => {
+      step(sim, { traffic: true, pedestrians: true });
+      for (const v of sim.vehicles.values()) {
+        if (v.v > 0.05 || v.lateralSlope === 0) continue;
+        const lane = sim.lanelet(v.lanelet);
+        const pose = vehiclePose(sim, v, 1);
+        if (!lane || !pose) continue;
+        angled++;
+        // Standing still, it points exactly along the curve it was driving.
+        const along = lane.centre.sampleAt(Math.max(0, v.s - v.archetype.length / 2)).t;
+        let yaw = pose.angle - Math.atan2(along.y, along.x);
+        yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+        expect(Math.abs(yaw - Math.atan(v.lateralSlope))).toBeLessThan(1e-6);
+      }
+    });
+    expect(angled).toBeGreaterThan(0);
   });
 
   it('interpolates within a tick rather than holding the last pose', () => {

@@ -16,30 +16,55 @@ export const MAX_SUBSTEPS = 5;
 export const MAX_FRAME = 0.25;
 
 /**
- * Mean sideways speed of a lane change, world units a second (1.1 m/s).
+ * A lane change is a PATH, not a slide.
  *
- * This used to be a CONSTANT 3.4 m/s: the body started sliding at full speed
- * on the transfer tick and stopped dead in the new lane, so a lane change
- * read as a sideways jerk rather than a steered manoeuvre. The offset now
- * follows a minimum-jerk profile (`laneChangeOffset`): sideways speed builds
- * from zero, peaks at 1.875 times this mean and falls back to zero, and a
- * 3.4 m lane takes about three seconds, which is what drivers measure at.
+ * The offset used to follow a minimum-jerk profile in TIME: about three
+ * seconds a lane whatever the car was doing. At speed that is fine, but a car
+ * creeping in a queue kept moving sideways at the same rate while hardly
+ * moving forward, and the heading it points along, the direction of its real
+ * velocity, could not keep up: the body crabbed across, reported as cars
+ * "floating sideways" instead of steering into the lane. A car can only move
+ * sideways by driving forwards at an angle, so the offset is now a function
+ * of the DISTANCE driven since the transfer: stopped mid-change, it stays
+ * where it is, angled, and the body always points along the curve it traces.
+ *
+ * The length of that curve is set by the steering angle a driver uses: sharp
+ * at a crawl, where a lane is taken in little more than two car lengths, and
+ * shallow at speed, where the same lane takes four or five seconds. A long
+ * vehicle is steered more gently still: the curve is never shorter than a few
+ * of its own lengths, or a truck would pivot across the line like a car.
  */
-export const LANE_CHANGE_LATERAL_SPEED = m(1.1);
-/** Bounds on the duration of one lane change, seconds. */
+export const LANE_CHANGE_HEADING_SLOW = 0.42;
+export const LANE_CHANGE_HEADING_FAST = 0.1;
+/** Speed at which the shallow heading is reached, world units a second. */
+export const LANE_CHANGE_FAST_SPEED = kmh(45);
+/** Never quicker than this at any speed, seconds. */
 export const LANE_CHANGE_MIN_TIME = 2;
-export const LANE_CHANGE_MAX_TIME = 4.5;
+/** Shortest curve, in body lengths of the vehicle driving it. */
+const LANE_CHANGE_MIN_BODIES = 2.5;
+/** Peak slope of the quintic profile, as a multiple of its mean slope. */
+const PROFILE_PEAK = 1.875;
 
-/** Seconds one lane change takes to slide out an offset of `start`. */
-export const laneChangeDuration = (start: number): number =>
-  Math.min(LANE_CHANGE_MAX_TIME,
-    Math.max(LANE_CHANGE_MIN_TIME, Math.abs(start) / LANE_CHANGE_LATERAL_SPEED));
+/** Road length over which a lane change of offset `start` is driven at `speed`. */
+export function laneChangeLength(start: number, speed: number, bodyLength: number): number {
+  const t = Math.min(1, Math.max(0, speed / LANE_CHANGE_FAST_SPEED));
+  const heading = LANE_CHANGE_HEADING_SLOW + (LANE_CHANGE_HEADING_FAST - LANE_CHANGE_HEADING_SLOW) * t;
+  return Math.max(PROFILE_PEAK * Math.abs(start) / Math.tan(heading),
+    Math.max(0, speed) * LANE_CHANGE_MIN_TIME, bodyLength * LANE_CHANGE_MIN_BODIES, 1e-6);
+}
 
-/** Offset still to slide after `elapsed` seconds (quintic minimum-jerk). */
-export function laneChangeOffset(start: number, elapsed: number): number {
-  const u = Math.min(1, Math.max(0, elapsed / laneChangeDuration(start)));
+/** Offset still to cover after driving `travelled` of a `length` change (quintic). */
+export function laneChangeOffset(start: number, travelled: number, length: number): number {
+  const u = Math.min(1, Math.max(0, travelled / length));
   const done = u * u * u * (10 - 15 * u + 6 * u * u);
   return u >= 1 ? 0 : start * (1 - done);
+}
+
+/** Sideways offset gained per unit of road driven: the tangent of the body's heading. */
+export function laneChangeSlope(start: number, travelled: number, length: number): number {
+  const u = Math.min(1, Math.max(0, travelled / length));
+  if (u >= 1) return 0;
+  return (-start * 30 * u * u * (1 - u) * (1 - u)) / length;
 }
 
 /** Bumper-to-bumper spacing at a standstill. */

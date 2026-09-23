@@ -1,23 +1,15 @@
-import { DT, laneChangeOffset } from '../params';
+import { DT, laneChangeLength, laneChangeOffset, laneChangeSlope } from '../params';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import { desiredSpeed } from './driver';
 import { resolveSpeed } from './idm';
 import { planFrom } from '../routing/router';
 import { bodyClassOfArchetype } from './archetypes';
-import { BODY_ENVELOPE, HEAVY } from '@world/conflictPoints';
 import { COARSE_EPS } from '@core/scalar';
 import { addScaled, dot, perp, sub } from '@core/vec2';
 
 const CLEARANCE_EPSILON = COARSE_EPS;
 
-/**
- * Width of the widest vehicle that may be driving in the lane being left, and
- * the clearance kept to it: the shadow lasts until a heavy vehicle could pass
- * alongside the sliding body without touching it.
- */
-const SHADOW_OTHER_WIDTH = BODY_ENVELOPE[HEAVY]?.width ?? 0;
-const SHADOW_MARGIN = 0.3;
 
 /**
  * The ONLY writer of `s`, `v` and `lanelet`.
@@ -66,14 +58,15 @@ export function integrateAll(w: SimWorld): void {
     v.s += ds;
     v.age += DT;
 
-    // The slide itself, eased at both ends: see `laneChangeOffset`.
+    // The change itself, a curve in DISTANCE eased at both ends: see
+    // `laneChangeOffset`. A vehicle that stops mid-change stays put, angled.
     if (v.lateral !== 0) {
-      const before = v.lateral;
-      v.lateralElapsed += DT;
-      v.lateral = laneChangeOffset(v.lateralStart, v.lateralElapsed);
-      v.lateralRate = (v.lateral - before) / DT;
+      v.lateralTravelled += ds;
+      v.lateral = laneChangeOffset(v.lateralStart, v.lateralTravelled, v.lateralLength);
+      v.lateralSlope = v.lateral === 0 ? 0
+        : laneChangeSlope(v.lateralStart, v.lateralTravelled, v.lateralLength);
     } else {
-      v.lateralRate = 0;
+      v.lateralSlope = 0;
     }
     if (v.shadow && (v.lateral === 0 || Math.abs(v.lateral) < v.shadow.clearAt)) w.clearShadow(v);
     // What "held up" means, for the driver who is about to decide whether to
@@ -227,17 +220,24 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
     const now = lane.centre.sampleAt(anchor.s);
     v.lateral = dot(sub(was.p, now.p), perp(now.t));
     v.lateralStart = v.lateral;
-    v.lateralElapsed = 0;
+    v.lateralTravelled = 0;
+    v.lateralLength = laneChangeLength(v.lateral, v.v, v.archetype.length);
+    v.lateralSlope = 0;
 
     // DUAL OCCUPANCY. The body is still where it was, across the old lane, and
-    // will be for most of the slide. Leave a shadow there until the gap to
-    // the old centreline is wide enough for the widest vehicle to pass beside
-    // it. Measured before this existed: 84 body overlaps in seven seeded
-    // scenarios, nearly all a vehicle entering or driving on in the lane this
-    // one had "already" left.
-    const separation = (v.archetype.width + SHADOW_OTHER_WIDTH) / 2 + SHADOW_MARGIN;
-    const clearAt = Math.max(0, Math.abs(v.lateral) - separation);
-    w.addShadow(v, from.id, sOnOld - v.s, clearAt);
+    // will be for most of the change. Measured before this existed: 84 body
+    // overlaps in seven seeded scenarios, nearly all a vehicle entering or
+    // driving on in the lane this one had "already" left.
+    //
+    // The shadow lasts until the change is COMPLETE. It used to be released as
+    // soon as a heavy vehicle on the old CENTRELINE could pass beside, which
+    // assumed whoever was there was centred. Two vehicles swapping lanes are
+    // not: each is offset towards the other, both had released their shadows,
+    // and neither saw the other ahead. While the change was a timed slide that
+    // window closed within a second; now that it is driven (`laneChangeLength`)
+    // a car stopped half across the line stays there, and the second car drove
+    // into it. Until it is fully in its new lane, it is in both.
+    w.addShadow(v, from.id, sOnOld - v.s, 0);
   }
 
   w.exitLanelet(v, v.lanelet);

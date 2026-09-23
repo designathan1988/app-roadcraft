@@ -40,7 +40,7 @@ describe('mandatory lane-change intent', () => {
 
     let priorIndex = 0;
     let transfers = 0;
-    // Three eased transfers (~2 s of slide each, `laneChangeDuration`) plus
+    // Three eased transfers (each driven over `laneChangeLength`) plus
     // travel between them comfortably fit inside 1200 ticks (20 s).
     for (let tick = 0; tick < 1200 && vehicle.lanelet !== outer; tick++) {
       stepLaneChange(sim);

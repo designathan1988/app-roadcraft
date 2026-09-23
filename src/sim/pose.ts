@@ -22,29 +22,39 @@ export interface Pose {
 const POSE_JUMP_LIMIT = 60;
 
 /**
- * Largest angle a lane change may turn a vehicle by, in radians.
+ * Angle a vehicle points into its own lane change.
  *
- * A car changing lane points slightly into the move - that is what makes it
- * read as being DRIVEN across rather than sliding sideways on ice. About six
- * degrees is what a deliberate motorway lane change actually looks like, and
- * more than that reads as a swerve.
+ * The change is a curve in distance (`laneChangeOffset`), so the body points
+ * exactly along it: the heading is the arctangent of the offset gained per
+ * unit of road. It is zero at both ends of the curve, so the car turns into
+ * the move and straightens out of it, and it does not depend on speed — a car
+ * that stops half way across stays angled across the line, as a real one
+ * does, instead of snapping straight while its body is still in two lanes.
  */
-const MAX_LANE_CHANGE_YAW = 0.11;
-
+function laneChangeYaw(slope: number): number {
+  return slope === 0 ? 0 : Math.atan(slope);
+}
 
 /**
- * Angle a vehicle points into its own lane change: along its actual velocity,
- * forward speed plus the sideways speed of the slide.
- *
- * The slide is eased (`laneChangeOffset`), so its sideways speed is zero at
- * both ends and the body turns into the move and straightens out of it
- * smoothly. The simulation computes the rate once per step; taking the
- * difference of two snapshots here would be wrong on the transfer tick, where
- * `lateral` jumps by a lane width while the car itself barely moves.
+ * Distance from the rear axle to the middle of the body, as a share of its
+ * length: the axle sits about a fifth of the length in from the tail.
  */
-function laneChangeYaw(lateralRate: number, speed: number): number {
-  if (lateralRate === 0) return 0;
-  return clamp(Math.atan2(lateralRate, Math.max(speed, 0.5)), -MAX_LANE_CHANGE_YAW, MAX_LANE_CHANGE_YAW);
+const REAR_AXLE_TO_CENTRE = 0.3;
+
+/**
+ * Sideways offset of the body CENTRE during a lane change.
+ *
+ * `lateral` is the offset of the rear axle, which is what follows the curve.
+ * A body used to be rotated about its own centre instead, so a long vehicle
+ * swung its tail a metre or more back into the lane it was leaving — a truck
+ * pivoting across the line like a compass needle, and measured as body
+ * overlaps with whoever was beside it. Steered from the rear axle, the tail
+ * tracks the curve and it is the nose that leads into the new lane.
+ */
+function bodyOffset(k: Kinematics, length: number): number {
+  if (k.lateralSlope === 0) return k.lateral;
+  const sine = k.lateralSlope / Math.sqrt(1 + k.lateralSlope * k.lateralSlope);
+  return k.lateral + REAR_AXLE_TO_CENTRE * length * sine;
 }
 
 /**
@@ -83,17 +93,17 @@ export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null
   // `lateral` is the unfinished part of a lane change: the simulation has
   // already moved the vehicle onto the new centreline, and this is how far it
   // still has to slide across to get there visually.
-  const at = addScaled(frame.p, perp(frame.t), v.lateral);
+  const at = addScaled(frame.p, perp(frame.t), bodyOffset(v, v.archetype.length));
   const heading = angleOf(frame.t);
   const here: Pose = { p: at, angle: heading };
 
   const before = bodyFrame(w, v.prev, v.archetype.length / 2);
   if (!before) return here;
-  const beforeAt = addScaled(before.p, perp(before.t), v.prev.lateral);
+  const beforeAt = addScaled(before.p, perp(before.t), bodyOffset(v.prev, v.archetype.length));
   if (dist(beforeAt, at) > POSE_JUMP_LIMIT) return here;
 
   // Point into the change, blended across the tick like everything else.
-  const yaw = lerp(laneChangeYaw(v.prev.lateralRate, v.prev.v), laneChangeYaw(v.lateralRate, v.v), t);
+  const yaw = lerp(laneChangeYaw(v.prev.lateralSlope), laneChangeYaw(v.lateralSlope), t);
 
   return {
     p: lerpVec(beforeAt, at, t),
