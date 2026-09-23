@@ -66,6 +66,18 @@ describe('complete signal movement matrix', () => {
         expect(controller.plan.stages.some(stage => stage.greenGroups.includes(movement.group)),
           `${config.name}: no green for ${movement.id}`).toBe(true);
       }
+      // Every signal group serves traffic. A one-way leg LEAVING the junction
+      // used to get a group, a head facing an empty road and a stage of green
+      // for nobody.
+      const junction = sim.graph.junctions.get(centre.id)!;
+      for (const group of junction.groups) {
+        expect(connectors.some(c => c.group === group.id),
+          `${config.name}: group ${group.id} (${group.segments}) serves no movement`).toBe(true);
+      }
+      for (const stage of controller.plan.stages) {
+        if (stage.exclusivePed) continue;
+        expect(stage.greenGroups.length, `${config.name}: empty vehicle stage`).toBeGreaterThan(0);
+      }
     }
     expect(checked).toBeGreaterThan(5);
   });

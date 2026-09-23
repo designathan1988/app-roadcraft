@@ -260,8 +260,18 @@ export class LaneletGraph {
       const outbound = (this.outbound.get(nodeId) ?? []).slice().sort();
       if (!inbound.length || !outbound.length) continue;
 
+      // Only a leg that brings traffic INTO the node is an approach. A one-way
+      // road leaving the junction used to get a signal group of its own: a head
+      // facing an empty carriageway, and a whole stage of every cycle spent
+      // showing green to nobody while every real approach waited at red.
+      const approaching = new Set<SegmentId>();
+      for (const id of inbound) {
+        const segment = this.lanelets.get(id)?.segment;
+        if (segment !== undefined) approaching.add(segment);
+      }
       const legs = node.incident
         .slice()
+        .filter((segId) => approaching.has(segId))
         .sort((a, b) => a - b)
         .map((segId) => {
           const seg = doc.requireSegment(segId);
