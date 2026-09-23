@@ -180,3 +180,31 @@ Create local commits for completed changes; do not push without instruction.
   inflates heavy zones and produced the recorded
   `junction-queue-intrusions.json` cases. Both belong to the signals and
   vehicle-behaviour blocks and are not solved here.
+
+## Lane-change easing, pedestrian freezes and outbound-leg signals
+
+- Lane changes slid at a constant 3.4 m/s that started and stopped in one tick,
+  heading snapping on and off. The offset now follows a quintic minimum-jerk
+  profile (`laneChangeOffset`, about 3 s a lane) and the body points along its
+  real velocity. The longer slide exposed a vehicle driving its own body into a
+  queue still in the lane it was leaving; `shadowLeaderObstacle` brakes for it.
+  `tests/sim/collisions.spec.ts` stays at zero overlaps.
+- Pedestrians on the saved player map spent 27 % of their time standing while
+  wanting to walk (worst 151 s), and waited up to 189 s at kerbs, including at
+  WALK. Causes found and fixed: rigid personal discs deadlocking head-on
+  meetings; corners one person wide; walkers bound round a corner queueing
+  behind people waiting to cross (the next edge is now chosen before the
+  kerb); blocked transfers stepping back each tick (the twitch); waiters
+  boxing each other in at the kerb; uncontrolled gap acceptance treating a
+  stopped queue as arriving traffic; turning vehicles never giving way to
+  people waiting at a WALK or zebra kerb. After: 2.4 % held time, worst kerb
+  wait 47 s, person-person contacts under 0.2 m about 107 pair-ticks in 240 s
+  (was 0 while frozen). `tests/sim/pedFlow.spec.ts` guards it.
+- A one-way leg leaving a signalised junction got a signal group, a head facing
+  an empty road and a stage of green for nobody. Groups now come from legs
+  with inbound lanes only; `signalMovementMatrix.spec.ts` checks it. An audit of
+  every connector in seven layouts found turn labels matching geometry, no
+  crossing movements within one approach and correct group membership.
+- Still open here: permissive left turns share the green with opposing
+  through traffic by design; protected-left phasing, discharge rate and
+  person-person squeeze contacts need further work.
