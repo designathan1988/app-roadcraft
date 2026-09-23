@@ -505,6 +505,61 @@ if (afterEdit.belowTerrain > 0) {
   fail(`after-terrain-edit: ${afterEdit.belowTerrain} road vertices under the terrain (worst ${afterEdit.worstSink} at ${afterEdit.worstAt})`);
 }
 
+// People in vehicles: a close-up of traffic must draw seated citizens (the
+// driver at the wheel, passengers riding), not boxes, and they must be there
+// in the production bundle.
+{
+  await page.evaluate(() => {
+    const R = window.__roadcraft;
+    const D = R.doc;
+    for (const id of [...D.segments.keys()]) D.removeSegment(id);
+    for (const id of [...D.nodes.keys()]) D.removeNode(id);
+    D.clearTerrain();
+    const a = D.addNode({ x: -300, y: 0 });
+    const b = D.addNode({ x: 300, y: 0 });
+    D.addSegment(a.id, b.id, 3);
+    R.net.rebuild();
+    R.redraw();
+  });
+  await page.waitForTimeout(400);
+  const target = await page.evaluate(() => {
+    const R = window.__roadcraft;
+    R.sim.trafficIntensity = 2;
+    R.sim.pedestrianIntensity = 0;
+    R.runSim(25);
+    const S = R.sim;
+    const car = [...S.vehicles.values()].find((v) => ['sedan', 'suv', 'hatch', 'van'].includes(v.archetype.id));
+    if (!car) return null;
+    const lane = S.lanelet(car.lanelet);
+    const f = lane.centre.sampleAt(Math.max(0, car.s - car.archetype.length / 2));
+    const view = R.scene().viewport;
+    view.zoomAt(640, 400, 30 / view.zoom);
+    view.moveTo(f.p);
+    R.redraw();
+    return { archetype: car.archetype.id, vehicles: S.vehicles.size };
+  });
+  // Seated citizens are loaded on first sight, like the walking ones.
+  await page.waitForTimeout(4000);
+  await page.evaluate(() => window.__roadcraft.redraw());
+  await page.waitForTimeout(1200);
+  const seated = await page.evaluate(() => {
+    const group = window.__roadcraft.scene().scene.getObjectByName('rigged-citizens');
+    let drawn = 0;
+    group.traverse((o) => { if (o.isInstancedMesh) drawn = Math.max(drawn, o.count); });
+    let batches = 0;
+    group.traverse((o) => { if (o.isInstancedMesh && o.count > 0) batches++; });
+    return { drawn, batches, peds: window.__roadcraft.sim.peds.size };
+  });
+  if (WRITE_SHOTS) {
+    await page.screenshot({ path: path.join('docs', 'audit', 'vehicles-occupants-production.jpg'), quality: 88 });
+  }
+  rows.push({ scenario: 'vehicle-occupants', meshes: seated.batches, vertices: 0, triangles: 0,
+    nonFinite: 0, belowTerrain: 0, worstSink: 0, heaviest: `${target?.archetype ?? 'none'}`,
+    buried: 0, portalMeshes: 0, signalLamps: 0, litLamps: 0, rebuildMs: 0, fps: 0 });
+  if (!target) fail('vehicle-occupants: no car to look at');
+  else if (seated.peds === 0 && seated.batches === 0) fail('vehicle-occupants: nobody is seated in any vehicle');
+}
+
 if (pageErrors.length > 0) {
   fail(`page reported ${pageErrors.length} error(s): ${pageErrors.slice(0, 3).join(' | ')}`);
 }

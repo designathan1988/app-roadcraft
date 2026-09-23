@@ -257,6 +257,21 @@ describe('vehicleLook', () => {
     }
   });
 
+  it('gives a share of the fleet a glass roof, so the people inside read from above', () => {
+    let glass = 0;
+    let passengers = 0;
+    for (let id = 0; id < 1000; id++) {
+      const look = vehicleLook(id, 5);
+      if (look.glassRoof) glass++;
+      if (look.occupants > 1) passengers++;
+    }
+    // About two in five; never none and never all.
+    expect(glass).toBeGreaterThan(300);
+    expect(glass).toBeLessThan(500);
+    // Most cars carry somebody beside the driver.
+    expect(passengers).toBeGreaterThan(500);
+  });
+
   it('survives a degenerate seat count rather than producing a modulo by zero', () => {
     for (const seats of [0, -3, 0.4]) {
       const look = vehicleLook(7, seats);

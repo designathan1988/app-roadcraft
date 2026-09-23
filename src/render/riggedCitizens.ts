@@ -13,10 +13,22 @@ import { CITIZEN_MODELS } from './citizenCatalog';
 import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
 
 export { CITIZEN_MODELS } from './citizenCatalog';
-const CLIPS = ['Idle_Loop', 'Idle_Talking_Loop', 'Walk_Loop', 'Walk_Formal_Loop', 'Jog_Fwd_Loop'];
+const CLIPS = [
+  'Idle_Loop', 'Idle_Talking_Loop', 'Walk_Loop', 'Walk_Formal_Loop', 'Jog_Fwd_Loop',
+  // Seated: at the wheel, riding along, and riding along in conversation.
+  'Driving_Loop', 'Sitting_Idle_Loop', 'Sitting_Talking_Loop',
+];
+/** Indices into the baked clips for the seated poses. */
+export const SEAT_DRIVE = 5;
+export const SEAT_RIDE = 6;
+export const SEAT_TALK = 7;
 const CAPACITY = 1000;
 const FPS = 30;
-interface ClipFrames { data: Float32Array; frames: number; duration: number; stride: number }
+interface ClipFrames {
+  data: Float32Array; frames: number; duration: number; stride: number;
+  /** Height of the pelvis above the model origin in the first frame, metres. */
+  pelvisY: number;
+}
 interface CitizenBatch {
   meshes: InstancedMesh[]; local: Matrix4[]; clips: ClipFrames[];
   texture: DataTexture; pixels: Float32Array; width: number; count: number;
@@ -106,6 +118,7 @@ function bake(asset: GLTF): ClipFrames[] {
   const mixer = new AnimationMixer(rig);
   const left = rig.getObjectByName('Bip01_L_Foot');
   const right = rig.getObjectByName('Bip01_R_Foot');
+  const pelvis = rig.getObjectByName('Bip01_Pelvis');
   const position = new Vector3();
   const clips: ClipFrames[] = [];
   for (const name of CLIPS) {
@@ -117,11 +130,13 @@ function bake(asset: GLTF): ClipFrames[] {
     const width = skeleton.bones.length * 16;
     const data = new Float32Array((frames + 1) * width);
     let low = Infinity, high = -Infinity;
+    let pelvisY = 0;
     for (let i = 0; i <= frames; i++) {
       mixer.setTime((i % frames) * clip.duration / frames);
       rig.updateMatrixWorld(true);
       skeleton.update();
       data.set(skeleton.boneMatrices!, i * width);
+      if (i === 0 && pelvis) pelvisY = pelvis.getWorldPosition(position).y;
       for (const foot of [left, right]) {
         if (!foot) continue;
         foot.getWorldPosition(position);
@@ -129,7 +144,8 @@ function bake(asset: GLTF): ClipFrames[] {
         high = Math.max(high, position.z);
       }
     }
-    clips.push({ data, frames, duration: clip.duration, stride: Math.max(0.75, Math.min(2.8, (high - low) * 2)) });
+    clips.push({ data, frames, duration: clip.duration,
+      stride: Math.max(0.75, Math.min(2.8, (high - low) * 2)), pelvisY });
   }
   mixer.stopAllAction();
   mixer.uncacheRoot(rig);
@@ -249,6 +265,45 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     return work;
   }
 
+  /** Who may take which seat: any citizen rides along; only adults drive. */
+  const adults: number[] = [];
+  const everyone: number[] = [];
+  models.forEach((id, index) => {
+    everyone.push(index);
+    if (!id.includes('_child')) adults.push(index);
+  });
+  const seatedClips: ClipFrames[] = [];
+  const seatedPhases: number[] = [0];
+  const SEATED_WEIGHTS = [1];
+
+  /** Writes one citizen: blended bone palette plus instance transform. */
+  function emit(batch: CitizenBatch, clips: readonly ClipFrames[], phases: readonly number[],
+    weights: readonly number[], x: number, height: number, y: number, heading: number, scale: number): void {
+    const offset = batch.count * batch.width;
+    batch.pixels.fill(0, offset, offset + batch.width);
+    for (let c = 0; c < clips.length; c++) {
+      const weight = weights[c]!;
+      if (weight < 0.001) continue;
+      const clip = clips[c]!;
+      const f = phases[c]!;
+      const fraction = f % 1;
+      const start = Math.floor(f) * batch.width;
+      for (let k = 0; k < batch.width; k++) {
+        batch.pixels[offset + k] = batch.pixels[offset + k]! + weight *
+          (clip.data[start + k]! * (1 - fraction) + clip.data[start + batch.width + k]! * fraction);
+      }
+    }
+    transform.position.set(x, height, -y);
+    transform.rotation.set(0, heading + Math.PI / 2, 0);
+    transform.scale.set(scale, scale, scale);
+    transform.updateMatrix();
+    for (let i = 0; i < batch.meshes.length; i++) {
+      matrix.multiplyMatrices(transform.matrix, batch.local[i]!);
+      batch.meshes[i]!.setMatrixAt(batch.count, matrix);
+    }
+    batch.count++;
+  }
+
   function grow(batch: CitizenBatch): void {
     const rows = Math.min(CAPACITY, batch.rows * 2);
     const pixels = new Float32Array(rows * batch.width);
@@ -334,29 +389,36 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       const standing = 1 - state.blend + walking * gait.relaxed;
       const striding = walking * (1 - gait.relaxed);
       const weights = [standing, striding * (1 - gait.formal), striding * gait.formal, state.blend * state.run];
-      const offset = batch.count * batch.width;
-      batch.pixels.fill(0, offset, offset + batch.width);
-      for (let c = 0; c < 4; c++) {
-        const weight = weights[c]!;
-        if (weight < 0.001) continue;
-        const clip = clips[c]!;
-        const f = phases[c]!;
-        const fraction = f % 1;
-        const start = Math.floor(f) * batch.width;
-        for (let k = 0; k < batch.width; k++) {
-          batch.pixels[offset + k] = batch.pixels[offset + k]! + weight *
-            (clip.data[start + k]! * (1 - fraction) + clip.data[start + batch.width + k]! * fraction);
-        }
+      emit(batch, clips, phases, weights, x, deck, y, state.heading, m(scale));
+    },
+    /**
+     * A person seated in a vehicle: the driver at the wheel, passengers riding
+     * along, some of them talking. The same people who walk the streets, so a
+     * car is driven by somebody rather than by a painted box.
+     *
+     * `hipY` is the world height of the seat; the figure is lowered so its
+     * pelvis sits on it. `seed` picks the person and their timing, and a
+     * driver is always an adult.
+     */
+    drawSeated(seed: number, x: number, y: number, heading: number, hipY: number,
+      pose: number, time: number, adult: boolean) {
+      const hash = pedHash(seed);
+      const pool = adult ? adults : everyone;
+      if (!pool.length) return;
+      const index = pool[hash % pool.length]!;
+      const batch = batches.get(index);
+      if (!batch) {
+        if (!loading.has(index)) void request(index).catch(() => {});
+        return;
       }
-      transform.position.set(x, deck, -y);
-      transform.rotation.set(0, state.heading + Math.PI / 2, 0);
-      transform.scale.set(m(scale), m(scale), m(scale));
-      transform.updateMatrix();
-      for (let i = 0; i < batch.meshes.length; i++) {
-        matrix.multiplyMatrices(transform.matrix, batch.local[i]!);
-        batch.meshes[i]!.setMatrixAt(batch.count, matrix);
-      }
-      batch.count++;
+      if (batch.count >= CAPACITY) return;
+      if (batch.count >= batch.rows) grow(batch);
+      const clip = batch.clips[pose] ?? batch.clips[SEAT_RIDE]!;
+      const phase = ((time / clip.duration + (hash % 997) / 997) % 1) * clip.frames;
+      const scale = 0.96 + ((hash >>> 8) & 255) / 255 * 0.08;
+      seatedClips[0] = clip;
+      seatedPhases[0] = phase;
+      emit(batch, seatedClips, seatedPhases, SEATED_WEIGHTS, x, hipY - clip.pelvisY * m(scale), y, heading, m(scale));
     },
     finish() {
       for (const batch of batches.values()) {

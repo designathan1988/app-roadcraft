@@ -24,7 +24,7 @@ import type { SimWorld } from '@sim/world';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
 import { DT } from '@sim/params';
-import { createRiggedCitizens, CITIZEN_MODELS } from './riggedCitizens';
+import { createRiggedCitizens, CITIZEN_MODELS, SEAT_DRIVE, SEAT_RIDE, SEAT_TALK } from './riggedCitizens';
 import { FOOTWAY_RISE } from './roadSurfaces';
 
 /**
@@ -186,11 +186,8 @@ const INDICATOR_LATERAL = 0.15;
 const SIGN = 0xffe7a8;
 const BOX_BODY = 0xe6e8ea;
 
-/** Seated-figure proportions, in metres — a head is 0.23 m whatever it rides in. */
-const SEAT_TORSO_DEEP = m(0.32);
+/** Height of a seated torso, metres: the seat surface is half of it below `seatY`. */
 const SEAT_TORSO_TALL = m(0.5);
-const SEAT_TORSO_WIDE = m(0.44);
-const SEAT_HEAD = m(0.23);
 /** Height of a seated head above the middle of its torso. */
 const SEAT_HEAD_RISE = m(0.38);
 
@@ -283,6 +280,12 @@ export interface VehicleLook {
   readonly helmet: number;
   /** Second body colour, for a truck's box and a bus's roof. */
   readonly accent: number;
+  /**
+   * A panoramic glass roof. The camera looks down at 48 degrees, so on a car
+   * with a painted roof the people inside are only ever glimpsed through the
+   * side glass; on these the driver and passengers read from above.
+   */
+  readonly glassRoof: boolean;
 }
 
 /** Everything about how one vehicle's occupants and windows look, from its id. */
@@ -299,6 +302,7 @@ export function vehicleLook(id: number, seats: number): VehicleLook {
     passengerShirt: from(SHIRT_COLOURS, g, 12),
     helmet: from(HELMET_COLOURS, g, 18),
     accent: pick(g, 24, 3) === 0 ? BOX_BODY : from(SHIRT_COLOURS, g, 26),
+    glassRoof: pick(g, 28, 5) < 2,
   };
 }
 
@@ -413,9 +417,9 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   const paint = new MeshStandardMaterial({ roughness: 0.32, metalness: 0.16, envMapIntensity: 1.1 });
   const trim = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.35 });
   const glassMaterial = new MeshStandardMaterial({
-    color: 0x9cc6d6,
+    color: 0x55707a,
     roughness: 0.08,
-    metalness: 0.1,
+    metalness: 0.05,
     transparent: true,
     // Clear enough to see who is driving.
     //
@@ -425,8 +429,13 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     // transmission and the figures inside were a suggestion rather than
     // people. This is the one material in the scene whose job is to let
     // something behind it be seen.
-    opacity: 0.4,
-    envMapIntensity: 1.35,
+    //
+    // Real people are now seated inside, and at 0.4 with a strong reflection
+    // they were still only a hint of a face at close zoom. Glass here carries
+    // more transmission than reflection, as tinted car glass seen from above
+    // on an overcast-bright day does.
+    opacity: 0.18,
+    envMapIntensity: 0.6,
   });
   const rubber = new MeshStandardMaterial({ roughness: 0.92, metalness: 0.05 });
   // Unlit, so a lamp stays bright inside a shadow — the only thing in the scene
@@ -450,10 +459,10 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   const headGeometry = new SphereGeometry(0.5, 7, 5);
 
   const bodies = instanced('vehicle-bodies', bodyGeometry, paint, MAX_VEHICLES + 300);
-  const cabins = instanced('vehicle-cabins', cabinGeometry, paint, MAX_VEHICLES);
+  const cabins = instanced('vehicle-cabins', cabinGeometry, paint, MAX_VEHICLES * 5);
   const wheels = instanced('vehicle-wheels', wheelGeometry, rubber, MAX_VEHICLES * 6);
   const hubs = instanced('vehicle-hubs', hubGeometry, trim, MAX_VEHICLES * 4, false);
-  const glass = instanced('vehicle-glass', unitBox, glassMaterial, MAX_VEHICLES * 4, false);
+  const glass = instanced('vehicle-glass', unitBox, glassMaterial, MAX_VEHICLES * 6, false);
   const trims = instanced('vehicle-trims', unitBox, trim, MAX_VEHICLES * 6, false);
   const lamps = instanced('vehicle-lamps', unitBox, lampMaterial, MAX_VEHICLES * 5, false);
   const torsos = instanced('figure-torsos', torsoGeometry, cloth, MAX_PEDS + MAX_OCCUPANTS + MAX_DOGS);
@@ -512,6 +521,11 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
 
   // Frame of the agent currently being written. Held here rather than passed,
   // so `place` takes offsets in the agent's own frame and allocates nothing.
+  // The vehicle whose occupants are being placed, its age (animation clock)
+  // and the detail band it is drawn at.
+  let occupantVehicle = 0;
+  let occupantTime = 0;
+  let occupantBand = 0;
   let fx = 0;
   let fy = 0;
   let fdx = 1;
@@ -589,34 +603,27 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     }
   };
 
-  /** Seated figures, spread back along the seat rows the class declares. */
+  /**
+   * The people inside: real citizens, seated. The driver sits at the wheel in
+   * the driving pose, on the left where right-hand traffic puts them;
+   * passengers fill the rows behind and beside, riding along or talking.
+   *
+   * These used to be a coloured box with a cube for a head. The same rigged
+   * people who walk the footways are drawn here instead, in the seated
+   * animations their assets ship with, so what is visible through the glass is
+   * somebody driving. Only drawn close enough to be seen (`band` >= 1).
+   */
   const placeOccupants = (plan: BodyPlan, look: VehicleLook): void => {
+    if (occupantBand < 1) return;
+    const hipY = fdeck + plan.seatY - SEAT_TORSO_TALL / 2;
     for (let i = 0; i < look.occupants; i++) {
       const along = plan.seatAlong + plan.seatPitch * Math.floor(i / 2);
-      // The driver sits on the left, which is where right-hand traffic puts
-      // them; the second figure in each row takes the other side.
       const side = (i % 2 === 0 ? 1 : -1) * plan.seatSide;
       const driver = i === 0;
-      place(
-        torsos,
-        along,
-        side,
-        plan.seatY,
-        SEAT_TORSO_DEEP,
-        SEAT_TORSO_TALL,
-        SEAT_TORSO_WIDE,
-        driver ? look.driverShirt : look.passengerShirt,
-      );
-      place(
-        heads,
-        along,
-        side,
-        plan.headY,
-        SEAT_HEAD,
-        SEAT_HEAD,
-        SEAT_HEAD,
-        driver ? look.driverSkin : look.passengerSkin,
-      );
+      const seed = occupantVehicle * 16 + i;
+      const pose = driver ? SEAT_DRIVE : agentHash(seed ^ 0x5bd1e995) % 3 === 0 ? SEAT_TALK : SEAT_RIDE;
+      pedestrians.drawSeated(seed, fx + fdx * along - fdy * side, fy + fdy * along + fdx * side,
+        fyaw, hipY, pose, occupantTime, driver);
     }
   };
 
@@ -702,7 +709,17 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
 
     const nose = plan.cabinAlong + plan.cabinLength * 0.5;
     const tail = plan.cabinAlong - plan.cabinLength * 0.5;
-    place(cabins, plan.cabinAlong, 0, H * 0.9, plan.cabinLength * 0.96, H * 0.13, W * 0.85, paintHex);
+    if (look.glassRoof) {
+      // A painted frame round a glass panel.
+      for (const side of SIDES) {
+        place(cabins, plan.cabinAlong, side * W * 0.39, H * 0.9, plan.cabinLength * 0.96, H * 0.13, W * 0.07, paintHex);
+        place(cabins, plan.cabinAlong + side * plan.cabinLength * 0.44, 0, H * 0.9,
+          plan.cabinLength * 0.08, H * 0.13, W * 0.85, paintHex);
+      }
+      place(glass, plan.cabinAlong, 0, H * 0.94, plan.cabinLength * 0.82, H * 0.03, W * 0.72, -1);
+    } else {
+      place(cabins, plan.cabinAlong, 0, H * 0.9, plan.cabinLength * 0.96, H * 0.13, W * 0.85, paintHex);
+    }
     place(glass, nose - L * 0.03, 0, H * 0.72, L * 0.05, H * 0.3, W * 0.8, -1, 0.5);
     place(glass, tail + L * 0.03, 0, H * 0.72, L * 0.045, H * 0.28, W * 0.78, -1, -0.46);
     for (let i = 0; i < 2; i++) {
@@ -930,6 +947,9 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         const plan = planOf(vehicle.archetype);
         const paintHex = hexOf(vehicle.color);
         const look = vehicleLook(vehicle.id, plan.seats);
+        occupantVehicle = vehicle.id;
+        occupantTime = vehicle.age;
+        occupantBand = band;
 
         // Brakes and indicators, straight off the simulation. `prev` is the
         // previous step's kinematics, so the difference is this step's
