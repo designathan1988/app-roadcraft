@@ -23,7 +23,6 @@ export interface Vec2 {
   readonly y: number;
 }
 
-export const vec = (x: number, y: number): Vec2 => ({ x, y });
 export const ZERO: Vec2 = { x: 0, y: 0 };
 
 export const add = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + b.x, y: a.y + b.y });
@@ -78,6 +77,3 @@ export const addScaled = (a: Vec2, b: Vec2, k: number): Vec2 => ({
 
 export const equals = (a: Vec2, b: Vec2, tol = EPS): boolean =>
   Math.abs(a.x - b.x) <= tol && Math.abs(a.y - b.y) <= tol;
-
-export const isFiniteVec = (a: Vec2): boolean =>
-  Number.isFinite(a.x) && Number.isFinite(a.y);

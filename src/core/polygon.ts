@@ -70,15 +70,6 @@ export function distanceToBoundary(p: Vec2, points: readonly Vec2[]): number {
   return best;
 }
 
-/** True when `p` is inside the polygon by at least `margin`. */
-export function containsWithMargin(
-  p: Vec2,
-  points: readonly Vec2[],
-  margin: number,
-): boolean {
-  return pointInPolygon(p, points) && distanceToBoundary(p, points) >= margin;
-}
-
 /**
  * Monotone-chain convex hull, wound to positive signed area.
  *

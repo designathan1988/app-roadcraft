@@ -63,18 +63,6 @@ export function closestOnSegment(
   return { point, t, distSq: lenSq(sub(p, point)) };
 }
 
-export function pointSegDistance(p: Vec2, a: Vec2, b: Vec2): number {
-  return Math.sqrt(closestOnSegment(p, a, b).distSq);
-}
-
-/**
- * Signed perpendicular distance from `p` to the infinite line through `a0` with
- * unit direction `dir`. Positive means `p` lies on the `perp(dir)` side.
- */
-export function signedLineDistance(p: Vec2, a0: Vec2, dir: Vec2): number {
-  return cross(dir, sub(p, a0));
-}
-
 /**
  * Does `p` lie inside the slab centred on the ray (`origin`, unit `dir`) of
  * half-width `hw`, and ahead of the origin?

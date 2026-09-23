@@ -1,5 +1,5 @@
 import type { NodeId } from '@world/ids';
-import type { Connector, LaneletId } from '@world/lanelets';
+import type { Connector } from '@world/lanelets';
 import { CONVOY_ROLLING, CRITICAL_GAP, CRITICAL_GAP_FLOOR, IMPATIENCE_MAX, IMPATIENCE_RATE, JAM_GAP, REQUEST_MIN_DISTANCE, REQUEST_TIME, WAIT_CEILING } from '../params';
 import type { SimWorld } from '../world';
 import type { Vehicle } from '../vehicles/state';
@@ -931,6 +931,3 @@ export function nextConnector(w: SimWorld, v: Vehicle): Connector | undefined {
   }
   return undefined;
 }
-
-export const laneOf = (w: SimWorld, id: LaneletId): number =>
-  w.lanelet(id)?.laneIndex ?? 0;

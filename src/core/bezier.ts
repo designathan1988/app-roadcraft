@@ -49,12 +49,6 @@ export const quadPoint = (a: Vec2, c: Vec2, b: Vec2, t: number): Vec2 => {
   };
 };
 
-export const quadTangent = (a: Vec2, c: Vec2, b: Vec2, t: number): Vec2 =>
-  normalize({
-    x: 2 * ((1 - t) * (c.x - a.x) + t * (b.x - c.x)),
-    y: 2 * ((1 - t) * (c.y - a.y) + t * (b.y - c.y)),
-  });
-
 /**
  * Number of uniform steps needed to flatten a quadratic within `tol`.
  *
@@ -92,14 +86,6 @@ export function flattenSegment(
 ): Vec2[] {
   if (!shape || Math.abs(shape.h) < EPS) return [a, b];
   return flattenQuad(a, controlPoint(a, b, shape), b, tol);
-}
-
-/** Maximum distance from the curve to its chord — the sagitta. */
-export function maxSagitta(shape: CurveShape | null): number {
-  if (!shape) return 0;
-  // For a quadratic, the extreme deviation from the chord occurs at t = 1/2
-  // and equals half the control point's perpendicular offset.
-  return Math.abs(shape.h) / 2;
 }
 
 /** Splits a quadratic at `t`, returning both halves' control triples. */

@@ -199,11 +199,3 @@ export const DRIVER_NOISE = { lo: 0.92, hi: 1.08 } as const;
 
 /** Speed cap through curvature, expressed as lateral acceleration. */
 export const MAX_LATERAL_ACCEL = m(2.5);
-
-/** Nominal speed limits by class, mirrored here for readability. */
-export const SPEED_REFERENCE = {
-  local: kmh(30),
-  urban: kmh(50),
-  avenue: kmh(60),
-  boulevard: kmh(60),
-} as const;

@@ -171,8 +171,6 @@ export const ROAD_TYPES: readonly RoadType[] = [
   },
 ];
 
-export type RoadTypeIndex = 0 | 1 | 2 | 3;
-
 export const roadType = (i: number): RoadType =>
   ROAD_TYPES[Math.max(0, Math.min(ROAD_TYPES.length - 1, i))] as RoadType;
 
@@ -232,7 +230,6 @@ export function halfWidth(rt: RoadType, level: SurfaceLevel): number {
   }
 }
 
-export const asphaltHalf = (rt: RoadType): number => rt.width / 2;
 export const sidewalkHalf = (rt: RoadType): number => rt.width / 2 + rt.sidewalk;
 export const casingHalf = (rt: RoadType): number =>
   rt.width / 2 + rt.sidewalk + CASING_BAND;

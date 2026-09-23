@@ -129,7 +129,3 @@ export const mouthRight = (leg: Leg, t: number): Vec2 =>
 /** The mouth corner on the `+nrm` side of a leg, at distance `t`. */
 export const mouthLeft = (leg: Leg, t: number): Vec2 =>
   addScaled(addScaled(leg.origin, leg.dir, t), leg.nrm, leg.hw);
-
-/** Centre of the mouth cross-section at distance `t`. */
-export const mouthCentre = (leg: Leg, t: number): Vec2 =>
-  addScaled(leg.origin, leg.dir, t);

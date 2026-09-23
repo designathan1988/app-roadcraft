@@ -396,8 +396,6 @@ export const makeCrossingId = (node: NodeId, segment: number): CrossingId =>
 export const crossingSegment = (id: CrossingId): number =>
   Number(id.slice(id.indexOf(':') + 1));
 
-export const crossingNode = (id: CrossingId): number => Number(id.slice(0, id.indexOf(':')));
-
 function validate(plan: SignalPlan): SignalPlan {
   const covered = new Set<GroupId>();
   for (const s of plan.stages) for (const g of s.greenGroups) covered.add(g);

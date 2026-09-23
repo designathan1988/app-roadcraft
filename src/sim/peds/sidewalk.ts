@@ -517,5 +517,3 @@ function pushAdj(map: Map<string, string[]>, key: string, value: string): void {
   if (list) list.push(value);
   else map.set(key, [value]);
 }
-
-export const nodeDistance = (a: SidewalkNode, b: SidewalkNode): number => dist(a.at, b.at);

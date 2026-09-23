@@ -32,7 +32,6 @@ export const POLE_ARM_THICK = m(0.1);
 export const WIRE_COURSES: readonly number[] = [0, -m(0.45), -m(0.9)];
 /** Lateral position of each wire on the cross-arm, as a fraction of its half. */
 export const WIRE_OFFSETS: readonly number[] = [-0.8, 0, 0.8];
-export const WIRE_RADIUS = m(0.035);
 
 /** Lamp arm reach and head, for the poles that carry a light. */
 export const POLE_LAMP_REACH = m(1.6);

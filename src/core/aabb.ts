@@ -7,13 +7,6 @@ export interface Aabb {
   readonly maxY: number;
 }
 
-export const EMPTY_AABB: Aabb = {
-  minX: Infinity,
-  minY: Infinity,
-  maxX: -Infinity,
-  maxY: -Infinity,
-};
-
 export function fromPoints(points: readonly Vec2[]): Aabb {
   let minX = Infinity;
   let minY = Infinity;

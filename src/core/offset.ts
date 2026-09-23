@@ -177,16 +177,3 @@ export function pruneSelfIntersections(q: readonly Vec2[]): Vec2[] {
   }
   return out;
 }
-
-/** True when an open chain has no self-intersections (ignoring shared vertices). */
-export function isSimpleOpenChain(q: readonly Vec2[]): boolean {
-  const m = q.length;
-  for (let i = 0; i + 1 < m; i++) {
-    for (let j = i + 2; j + 1 < m; j++) {
-      if (segSeg(q[i] as Vec2, q[i + 1] as Vec2, q[j] as Vec2, q[j + 1] as Vec2)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}

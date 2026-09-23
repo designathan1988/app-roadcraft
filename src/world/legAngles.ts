@@ -24,17 +24,6 @@ import { PolylineCache } from './geometry';
 export const MIN_LEG_ANGLE = (25 * Math.PI) / 180;
 
 /**
- * Longest a leg tongue may run, in half-widths of its own road.
- *
- * DERIVED, never chosen. `scripts/probe-tongues.mjs` measures a healthy
- * four-leg cross and a healthy T at exactly 2.00 at every one of the four
- * surface levels; the ceiling of that, with no invented slack, is 3. It is
- * both the cap a hairpin junction is degraded to and the number the visual
- * audit fails on.
- */
-export const HAIRPIN_TRIM_LIMIT = 3;
-
-/**
  * Outgoing directions of a node's legs, in radians, sorted.
  *
  * Taken from each segment's own polyline one flattened step in from the node —

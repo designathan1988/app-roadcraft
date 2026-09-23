@@ -83,9 +83,6 @@ export const clamp = (v: number, lo: number, hi: number): number =>
 
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-export const approxEq = (a: number, b: number, tol = EPS): boolean =>
-  Math.abs(a - b) <= tol;
-
 /** Wraps an angle into (-PI, PI]. */
 export function normalizeAngle(a: number): number {
   let x = a % TAU;
@@ -93,13 +90,3 @@ export function normalizeAngle(a: number): number {
   else if (x <= -Math.PI) x += TAU;
   return x;
 }
-
-/** Counter-clockwise angular difference from `a` to `b`, always in [0, TAU). */
-export function ccwDiff(a: number, b: number): number {
-  const d = (b - a) % TAU;
-  return d < 0 ? d + TAU : d;
-}
-
-/** Quantize for hashing/snapshot comparison. */
-export const quantize = (v: number, step: number): number =>
-  Math.round(v / step) * step;

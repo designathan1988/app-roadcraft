@@ -74,8 +74,3 @@ export function pedestrianSignalState(
   if (remainingProtectedTime(c, crossing) < need) return 'flash';
   return c.sub === 'GREEN' ? 'walk' : 'flash';
 }
-
-/** Seconds a group has been red, for the starvation invariant. */
-export function isServed(c: SignalController, group: GroupId): boolean {
-  return signalStateFor(c, group) !== 'red';
-}

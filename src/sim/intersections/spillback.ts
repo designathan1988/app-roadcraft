@@ -72,13 +72,3 @@ export function hasDownstreamStorage(w: SimWorld, v: Vehicle, conn: Connector): 
   // previous junction forever.
   return free >= v.archetype.length + Math.max(JAM_GAP, v.driver.s0);
 }
-
-/** Free space at the entry of a lane, for diagnostics. */
-export function downstreamFreeSpace(w: SimWorld, laneId: string): number {
-  const rt = w.rt(laneId);
-  const out = w.lanelet(laneId);
-  if (!out) return 0;
-  const tailId = rt.order[0];
-  const tail = tailId === undefined ? undefined : w.veh(tailId);
-  return tail ? tail.s - tail.archetype.length : out.length;
-}

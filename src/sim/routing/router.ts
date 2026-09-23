@@ -90,24 +90,6 @@ export function extend(w: SimWorld, v: Vehicle): void {
   }
 }
 
-/**
- * Cost of the best route leaving this lane, or Infinity when it has none.
- *
- * Lane changing compares neighbouring lanes with it. It deliberately reuses the
- * SAME cost function the router chooses with, so a vehicle never moves across
- * to a lane the router would then refuse to use.
- */
-export function bestOnwardCost(w: SimWorld, laneId: LaneletId): number {
-  let best = Infinity;
-  for (const cid of w.graph.exitsOf(laneId)) {
-    const connector = w.connector(cid);
-    if (!connector) continue;
-    if (w.rt(connector.toLane).ghost) continue;
-    best = Math.min(best, routeCost(w, cid, new Set([laneId]), LOOKAHEAD));
-  }
-  return best;
-}
-
 function chooseExit(
   w: SimWorld,
   exits: readonly string[],

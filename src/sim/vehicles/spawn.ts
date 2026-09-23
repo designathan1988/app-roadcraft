@@ -15,10 +15,6 @@ import { planFrom } from '../routing/router';
 /** Seconds between spawn attempts. */
 const SPAWN_INTERVAL = 0.5;
 
-export function resetSpawnClock(w: SimWorld): void {
-  w.vehicleSpawnClock = 0;
-}
-
 /**
  * Target fleet size, from total road length.
  *

@@ -19,10 +19,6 @@ const COLORS = [
   '#dbe6ec',
 ];
 
-export function resetPedSpawnClock(w: SimWorld): void {
-  w.pedSpawnClock = 0;
-}
-
 export function pedTarget(w: SimWorld): number {
   let total = 0;
   for (const ribbon of w.net.ribbons.values()) total += ribbon.full.length;
