@@ -13,6 +13,40 @@ const CELL = m(4);
 const PERSON = m(0.3);
 const cell = (x: number, y: number): string => `${Math.floor(x / CELL)}:${Math.floor(y / CELL)}`;
 
+/**
+ * How much of their personal radius a pedestrian insists on, from 1 down to
+ * `SQUEEZE_FLOOR`.
+ *
+ * Personal space used to be a rigid disc, and two rigid discs meeting head on
+ * on a narrow footway, or a walker turning a corner into the people queued at
+ * its kerb, simply stopped for good: measured on the saved player map, 27 % of
+ * all pedestrian time was spent standing still while wanting to walk, some of
+ * it for over fifteen seconds, and people finishing a crossing were held IN
+ * the road by the queue on the far kerb. Real people turn a shoulder. The
+ * radius shrinks with the time spent held up, and at once for somebody
+ * clearing a carriageway, so the jam dissolves in about a second. The floor
+ * keeps centres 0.4 m apart — two people passing shoulder first. Only other
+ * PEOPLE are squeezed past; poles, furniture and vehicles keep their full
+ * clearance, or a figure would be drawn through them.
+ */
+const SQUEEZE_FLOOR = 2 / 3;
+export const PERSON_SQUEEZED_SPACING = 2 * PERSON * SQUEEZE_FLOOR;
+const SQUEEZE_SECONDS = 1.2;
+/**
+ * Seconds held up after which a pedestrian stops treating other people and
+ * street furniture as solid at all, until it has moved on. A last resort, not
+ * the mechanism: the squeeze above resolves nearly every jam first. What it
+ * guarantees is that nobody on a footway stands frozen for good behind a knot
+ * the steering cannot untie. Vehicles are never passed through.
+ */
+export const STUCK_RELEASE = 3;
+function squeezeOf(p: Ped): number {
+  // Clearing a carriageway, or stepping off a kerb together with the others
+  // who were waiting there: people go shoulder to shoulder.
+  if (p.state === 'Crossing' || p.state === 'WaitAtKerb') return SQUEEZE_FLOOR;
+  return Math.max(SQUEEZE_FLOOR, 1 - (1 - SQUEEZE_FLOOR) * Math.min(1, p.stuck / SQUEEZE_SECONDS));
+}
+
 /** World-space clearance shared across sidewalk edges and crossing nodes. */
 export class PedestrianClearance {
   private readonly grid = new Map<string, Footprint[]>();
@@ -67,7 +101,7 @@ export class PedestrianClearance {
     const current = this.point(w, edge, p.entry, p.s, p.lat);
     const free = (s: number): boolean => {
       const at = this.point(w, edge, p.entry, s, p.lat);
-      return !this.blocker(p.id, at.x, at.y, current);
+      return !this.blocker(p, at.x, at.y, current);
     };
     if (free(target)) return target;
     let lo = p.s, hi = target;
@@ -83,14 +117,14 @@ export class PedestrianClearance {
     const current = this.at(w, p);
     if (!current) return false;
     const at = this.point(w, edge, entry, 0, lat);
-    return !this.blocker(p.id, at.x, at.y, current);
+    return !this.blocker(p, at.x, at.y, current);
   }
 
   canShift(w: SimWorld, p: Ped, edge: SidewalkEdge, lat: number): boolean {
     const current = this.at(w, p);
     if (!current) return false;
     const at = this.point(w, edge, p.entry, p.s, lat);
-    return !this.blocker(p.id, at.x, at.y, current);
+    return !this.blocker(p, at.x, at.y, current);
   }
 
   /** A stable side to pass an obstruction before walking into it. */
@@ -131,11 +165,21 @@ export class PedestrianClearance {
     this.insert(footprint);
   }
 
-  private blocker(id: number, x: number, y: number, current: Vec2): boolean {
+  private blocker(p: Ped, x: number, y: number, current: Vec2): boolean {
     let blocked = false;
+    const squeeze = squeezeOf(p);
+    const released = p.stuck >= STUCK_RELEASE;
     this.visit(x, y, m(6.5), other => {
-      if (blocked || other.id === id) return;
-      const minimum = PERSON + (other.halfLength === undefined ? other.radius : 0);
+      if (blocked || other.id === p.id) return;
+      // Vehicles are never squeezed past. People and street furniture are:
+      // somebody held up long enough turns a shoulder and slips by.
+      const vehicle = other.halfLength !== undefined && other.id < 0 && other.id > -1_000_000;
+      if (released && !vehicle) return;
+      const minimum = vehicle
+        ? PERSON
+        : other.id > 0
+          ? (PERSON + other.radius) * squeeze
+          : PERSON + (other.halfLength === undefined ? other.radius : 0);
       const next = this.distance(other, x, y);
       if (next >= minimum) return;
       // An old overlap may be repaired by moving away, never by pushing in.

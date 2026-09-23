@@ -16,14 +16,31 @@ export const MAX_SUBSTEPS = 5;
 export const MAX_FRAME = 0.25;
 
 /**
- * How fast a lane change closes its sideways offset, in world units a second.
+ * Mean sideways speed of a lane change, world units a second (1.1 m/s).
  *
- * At 0.4 m per unit this is about 3.4 m/s of lateral movement, so a 3-metre
- * lane is crossed in a little under a second - brisk, but that is what a
- * deliberate lane change looks like, and anything slower leaves the vehicle
- * visibly straddling two lanes.
+ * This used to be a CONSTANT 3.4 m/s: the body started sliding at full speed
+ * on the transfer tick and stopped dead in the new lane, so a lane change
+ * read as a sideways jerk rather than a steered manoeuvre. The offset now
+ * follows a minimum-jerk profile (`laneChangeOffset`): sideways speed builds
+ * from zero, peaks at 1.875 times this mean and falls back to zero, and a
+ * 3.4 m lane takes about three seconds, which is what drivers measure at.
  */
-export const LATERAL_CLOSE_RATE = 8.5;
+export const LANE_CHANGE_LATERAL_SPEED = m(1.1);
+/** Bounds on the duration of one lane change, seconds. */
+export const LANE_CHANGE_MIN_TIME = 2;
+export const LANE_CHANGE_MAX_TIME = 4.5;
+
+/** Seconds one lane change takes to slide out an offset of `start`. */
+export const laneChangeDuration = (start: number): number =>
+  Math.min(LANE_CHANGE_MAX_TIME,
+    Math.max(LANE_CHANGE_MIN_TIME, Math.abs(start) / LANE_CHANGE_LATERAL_SPEED));
+
+/** Offset still to slide after `elapsed` seconds (quintic minimum-jerk). */
+export function laneChangeOffset(start: number, elapsed: number): number {
+  const u = Math.min(1, Math.max(0, elapsed / laneChangeDuration(start)));
+  const done = u * u * u * (10 - 15 * u + 6 * u * u);
+  return u >= 1 ? 0 : start * (1 - done);
+}
 
 /** Bumper-to-bumper spacing at a standstill. */
 export const JAM_GAP = m(2);

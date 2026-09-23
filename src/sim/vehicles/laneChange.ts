@@ -48,8 +48,12 @@ import { idmAccel, type Obstacle } from './idm';
  * safe right now, and `integrate` — the only writer of position — performs it.
  */
 
-/** Seconds of travel needed to complete a change, floored for a standing car. */
-const LANE_CHANGE_TIME = 2.0;
+/**
+ * Seconds of travel needed to complete a change, floored for a standing car.
+ * Matches the eased slide (`laneChangeDuration`, about three seconds a lane)
+ * so the body has settled before it reaches the stop line.
+ */
+const LANE_CHANGE_TIME = 3.5;
 
 /**
  * Least room a mandatory change needs, whatever the speed.

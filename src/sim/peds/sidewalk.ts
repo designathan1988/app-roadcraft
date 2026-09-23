@@ -26,6 +26,13 @@ export interface SidewalkNode {
 
 export type SidewalkEdgeKind = 'walk' | 'corner' | 'crossing';
 
+/**
+ * Share of the narrower footway a corner path may use. The path runs along the
+ * footway centreline with a slight outward bulge, so most of the width is
+ * real footway; the rest is kept as margin from the kerb on the inside.
+ */
+const CORNER_WIDTH_SHARE = 0.8;
+
 export interface SidewalkEdge {
   readonly id: SidewalkEdgeId;
   readonly kind: SidewalkEdgeKind;
@@ -208,10 +215,11 @@ export class SidewalkGraph {
           to: to.id,
           path,
           length: path.length,
-          // A corner chord cuts between two footways of possibly different
-          // widths, so it gets the narrower of the two: the wider footway can
-          // spare the room, the narrower one cannot.
-          halfWidth: Math.min(Math.min(a.footway, b.footway) / 2, m(0.25)),
+          // A corner joins two footways of possibly different widths, so it
+          // gets the narrower of the two. It used to be capped at 25 cm half
+          // width as well — one person wide — and every pair of people meeting
+          // on a corner stood nose to nose until one of them was removed.
+          halfWidth: Math.min(a.footway, b.footway) / 2 * CORNER_WIDTH_SHARE,
         });
       }
     }

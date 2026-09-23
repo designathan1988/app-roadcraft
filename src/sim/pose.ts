@@ -1,5 +1,4 @@
 import { DIV_EPS, clamp, lerp } from '@core/scalar';
-import { LATERAL_CLOSE_RATE } from '@sim/params';
 import { type Vec2, addScaled, angleOf, dist, lerpVec, perp } from '@core/vec2';
 import type { Frame } from '@core/polyline';
 import type { SimWorld } from '@sim/world';
@@ -32,27 +31,20 @@ const POSE_JUMP_LIMIT = 60;
  */
 const MAX_LANE_CHANGE_YAW = 0.11;
 
-/** Sideways offset, in world units, over which the lane-change angle fades out. */
-const LANE_CHANGE_SETTLE = 2.5;
 
 /**
- * Angle a vehicle points into its own lane change, from what is left of it.
+ * Angle a vehicle points into its own lane change: along its actual velocity,
+ * forward speed plus the sideways speed of the slide.
  *
- * `lateral` is the offset still to be slid out and it always closes TOWARDS
- * zero, so the vehicle is moving along `perp(t)` with the OPPOSITE sign of
- * `lateral`. Taking the difference of two snapshots instead gets the sign
- * backwards (the car pointed away from its move) and is wrong outright on the
- * transfer tick, where `lateral` jumps by a lane width while the car itself
- * barely moves.
- *
- * The last stretch fades the angle out, so the car straightens as it settles
- * into the lane rather than snapping square.
+ * The slide is eased (`laneChangeOffset`), so its sideways speed is zero at
+ * both ends and the body turns into the move and straightens out of it
+ * smoothly. The simulation computes the rate once per step; taking the
+ * difference of two snapshots here would be wrong on the transfer tick, where
+ * `lateral` jumps by a lane width while the car itself barely moves.
  */
-function laneChangeYaw(lateral: number, speed: number): number {
-  if (lateral === 0) return 0;
-  const sideways = -Math.sign(lateral) * LATERAL_CLOSE_RATE;
-  const yaw = clamp(Math.atan2(sideways, Math.max(speed, 0.5)), -MAX_LANE_CHANGE_YAW, MAX_LANE_CHANGE_YAW);
-  return yaw * Math.min(1, Math.abs(lateral) / LANE_CHANGE_SETTLE);
+function laneChangeYaw(lateralRate: number, speed: number): number {
+  if (lateralRate === 0) return 0;
+  return clamp(Math.atan2(lateralRate, Math.max(speed, 0.5)), -MAX_LANE_CHANGE_YAW, MAX_LANE_CHANGE_YAW);
 }
 
 /**
@@ -101,7 +93,7 @@ export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null
   if (dist(beforeAt, at) > POSE_JUMP_LIMIT) return here;
 
   // Point into the change, blended across the tick like everything else.
-  const yaw = lerp(laneChangeYaw(v.prev.lateral, v.prev.v), laneChangeYaw(v.lateral, v.v), t);
+  const yaw = lerp(laneChangeYaw(v.prev.lateralRate, v.prev.v), laneChangeYaw(v.lateralRate, v.v), t);
 
   return {
     p: lerpVec(beforeAt, at, t),

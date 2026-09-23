@@ -10,6 +10,8 @@ export interface Kinematics {
   readonly s: number;
   readonly v: number;
   readonly lateral: number;
+  /** Rate of change of `lateral`, world units a second. */
+  readonly lateralRate: number;
   /** Most recently left lanelets, needed to locate the body behind its front. */
   readonly rearPath: readonly LaneletId[];
 }
@@ -40,6 +42,11 @@ export interface Vehicle {
   v: number;
   /** Lateral render offset. Current lanelets keep this at zero. */
   lateral: number;
+  /** `lateral` at the transfer, and seconds of slide since: the profile's inputs. */
+  lateralStart: number;
+  lateralElapsed: number;
+  /** Rate of change of `lateral`, for the heading the body points along. */
+  lateralRate: number;
 
   /** Free-flow speed, already including this driver's personal factor. */
   v0: number;
@@ -168,7 +175,7 @@ export interface Vehicle {
 }
 
 export function snapshot(v: Vehicle): Kinematics {
-  return { lanelet: v.lanelet, s: v.s, v: v.v, lateral: v.lateral, rearPath: v.rearPath };
+  return { lanelet: v.lanelet, s: v.s, v: v.v, lateral: v.lateral, lateralRate: v.lateralRate, rearPath: v.rearPath };
 }
 
 export function createVehicle(
@@ -180,7 +187,7 @@ export function createVehicle(
   v0: number,
   tick: number,
 ): Vehicle {
-  const base: Kinematics = { lanelet, s: 0, v: 0, lateral: 0, rearPath: [] };
+  const base: Kinematics = { lanelet, s: 0, v: 0, lateral: 0, lateralRate: 0, rearPath: [] };
   return {
     id,
     archetype,
@@ -190,6 +197,9 @@ export function createVehicle(
     s: 0,
     v: 0,
     lateral: 0,
+    lateralStart: 0,
+    lateralElapsed: 0,
+    lateralRate: 0,
     v0,
     route: [lanelet],
     rearPath: [],

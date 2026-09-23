@@ -83,6 +83,12 @@ export interface Ped {
 
   /** Seconds spent in `WaitAtKerb`, driving gap-acceptance impatience. */
   waited: number;
+  /**
+   * Seconds spent unable to move while wanting to, outside a kerb wait.
+   * Drives how tightly this person is willing to squeeze past other people
+   * (`PedestrianClearance`); decays once they move again.
+   */
+  stuck: number;
   /** Tick at which it last advanced, for the stall detector. */
   lastMovedTick: number;
   age: number;
@@ -124,6 +130,7 @@ export function createPed(spec: PedSpec): Ped {
     trip: 0,
     occupying: null,
     waited: 0,
+    stuck: 0,
     lastMovedTick: spec.tick,
     age: 0,
     prev: { edge: spec.edge, s: spec.s, lat: spec.lat },

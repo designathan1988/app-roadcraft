@@ -1,4 +1,4 @@
-import { DT, LATERAL_CLOSE_RATE } from '../params';
+import { DT, laneChangeOffset } from '../params';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import { desiredSpeed } from './driver';
@@ -66,12 +66,14 @@ export function integrateAll(w: SimWorld): void {
     v.s += ds;
     v.age += DT;
 
-    // The slide itself. A real lane change takes a couple of seconds; this is
-    // a rate limit rather than an ease, so however wide the lane the vehicle
-    // crosses it at a believable sideways speed and never snaps.
+    // The slide itself, eased at both ends: see `laneChangeOffset`.
     if (v.lateral !== 0) {
-      const shrink = LATERAL_CLOSE_RATE * DT;
-      v.lateral = Math.abs(v.lateral) <= shrink ? 0 : v.lateral - Math.sign(v.lateral) * shrink;
+      const before = v.lateral;
+      v.lateralElapsed += DT;
+      v.lateral = laneChangeOffset(v.lateralStart, v.lateralElapsed);
+      v.lateralRate = (v.lateral - before) / DT;
+    } else {
+      v.lateralRate = 0;
     }
     if (v.shadow && (v.lateral === 0 || Math.abs(v.lateral) < v.shadow.clearAt)) w.clearShadow(v);
     // What "held up" means, for the driver who is about to decide whether to
@@ -224,6 +226,8 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
     v.s = anchor.s;
     const now = lane.centre.sampleAt(anchor.s);
     v.lateral = dot(sub(was.p, now.p), perp(now.t));
+    v.lateralStart = v.lateral;
+    v.lateralElapsed = 0;
 
     // DUAL OCCUPANCY. The body is still where it was, across the old lane, and
     // will be for most of the slide. Leave a shadow there until the gap to

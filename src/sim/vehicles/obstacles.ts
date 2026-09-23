@@ -1,7 +1,7 @@
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import type { ConstraintSet } from './idm';
-import { divergeObstacle, findLeader } from './leaderIndex';
+import { divergeObstacle, findLeader, shadowLeaderObstacle } from './leaderIndex';
 import { signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
 import { nextConnector } from '../intersections/admission';
@@ -31,6 +31,11 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
   // sweeping the start both movements share.
   const diverging = divergeObstacle(w, v);
   if (diverging) constraints.obstacles.push(diverging);
+
+  // A body still overlapping the lane it is sliding out of must not be driven
+  // into whatever is still there.
+  const shadowLeader = shadowLeaderObstacle(w, v);
+  if (shadowLeader) constraints.obstacles.push(shadowLeader);
 
   const lane = w.lanelet(v.lanelet);
   if (!lane) return constraints;

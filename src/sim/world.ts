@@ -52,6 +52,8 @@ export class SimWorld {
 
   /** Pedestrians currently inside each crossing. */
   readonly pedOccupancy = new Map<CrossingId, PedId[]>();
+  /** Pedestrians waiting at a kerb for each crossing, rebuilt every tick. */
+  readonly pedWaiting = new Map<CrossingId, number>();
 
   /**
    * Tick at which each junction last admitted a vehicle.

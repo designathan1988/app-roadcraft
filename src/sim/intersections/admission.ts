@@ -4,7 +4,7 @@ import { CONVOY_ROLLING, CRITICAL_GAP, CRITICAL_GAP_FLOOR, IMPATIENCE_MAX, IMPAT
 import type { SimWorld } from '../world';
 import type { Vehicle } from '../vehicles/state';
 import { canStopComfortably, type ObstacleKind } from '../vehicles/idm';
-import { signalStateFor } from '../signals/query';
+import { pedestrianSignalState, signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
 import { hasDownstreamStorage } from './spillback';
 import { COARSE_EPS } from '@core/scalar';
@@ -318,6 +318,9 @@ function evaluate(w: SimWorld, r: Request): Verdict {
   }
 
   if (crossingBusy(w, r.conn)) {
+    return { ok: false, reason: 'pedestrian' };
+  }
+  if (pedestrianHasPriority(w, r)) {
     return { ok: false, reason: 'pedestrian' };
   }
 
@@ -856,6 +859,31 @@ export function crossingBusy(w: SimWorld, conn: Connector): boolean {
   for (const segment of [conn.inSegment, conn.outSegment]) {
     const id = `${conn.node}:${segment}`;
     if ((w.pedOccupancy.get(id)?.length ?? 0) > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether somebody waiting at a kerb has the right to cross in front of this
+ * movement before it is admitted: at an uncontrolled zebra always, at a signal
+ * while their own lamp shows WALK.
+ *
+ * Pedestrians may only step off when no admitted vehicle uses that leg, and
+ * vehicles used to yield only to somebody already ON the crossing. With a
+ * steady stream of turning traffic in the same stage the two rules never let
+ * anyone go first: people stood at a WALK signal for three minutes while the
+ * turns kept flowing. A driver who can still stop comfortably now gives way.
+ */
+function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
+  if (!canStopComfortably(r.v.driver, r.v.v, r.d)) return false;
+  const controller = w.controller(r.conn.node);
+  const signalised = !!controller && !!w.graph.junctions.get(r.conn.node)?.signalised;
+  for (const segment of [r.conn.inSegment, r.conn.outSegment]) {
+    const id = `${r.conn.node}:${segment}`;
+    if (!w.pedWaiting.get(id)) continue;
+    if (!signalised || !controller) return true;
+    const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(id) ?? '');
+    if (edge && pedestrianSignalState(controller, id, edge.length) === 'walk') return true;
   }
   return false;
 }

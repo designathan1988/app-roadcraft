@@ -167,6 +167,35 @@ export function divergeObstacle(w: SimWorld, v: Vehicle): Obstacle | null {
   return best;
 }
 
+/**
+ * A vehicle mid-lane-change is itself an obstacle for its OWN forward motion
+ * against whatever it still overlaps in the lane it is leaving.
+ *
+ * The occupancy index switches lanes on the transfer tick, so from that
+ * instant `findLeader` only sees the NEW lane; nothing gated the vehicle's
+ * own acceleration against a body still sitting in the OLD lane, at the
+ * position the drawn body was still sweeping. That was invisible while the
+ * slide was near-instant (`LATERAL_CLOSE_RATE`), because the overlap window
+ * was under a second. Easing the slide to a believable three seconds
+ * (`laneChangeOffset`) widened that window enough for a vehicle to drive its
+ * own body into a leader — commonly a queued vehicle — it could no longer
+ * see, because its forward motion only ever looked at the lane it had
+ * already, administratively, left.
+ */
+export function shadowLeaderObstacle(w: SimWorld, v: Vehicle): Obstacle | null {
+  if (!v.shadow) return null;
+  const front = v.s + v.shadow.offset;
+  let best: Obstacle | null = null;
+  for (const body of w.bodiesIn(v.shadow.lanelet)) {
+    if (body.vehicle.id === v.id) continue;
+    const rear = body.s - body.vehicle.archetype.length;
+    const gap = rear - front;
+    if (gap < -v.archetype.length) continue; // already well behind: not a leader.
+    if (!best || gap < best.gap) best = { gap, speed: body.vehicle.v, kind: 'vehicle' };
+  }
+  return best;
+}
+
 /** The next `n` lanelets on the vehicle's route, excluding the current one. */
 export function upcomingLanelets(w: SimWorld, v: Vehicle, n: number): LaneletId[] {
   const out: LaneletId[] = [];
