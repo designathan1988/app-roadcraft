@@ -132,6 +132,10 @@ function spawnParty(w: SimWorld, edge: SidewalkEdge, head: number, size: number)
       lat: preferredLateral(id, file, PED.files) * usable,
       tick: w.clock.tick,
     });
+    const frame = w.sidewalks.orientedPath(edge, edge.from).sampleAt(ped.s);
+    ped.x = frame.p.x + frame.n.x * ped.lat;
+    ped.y = frame.p.y + frame.n.y * ped.lat;
+    ped.heading = Math.atan2(frame.t.y, frame.t.x);
     ped.prev = pedSnapshot(ped);
     members.push(ped);
     w.peds.set(ped.id, ped);

@@ -31,6 +31,8 @@ const cell = (x: number, y: number): string => `${Math.floor(x / CELL)}:${Math.f
  */
 const SQUEEZE_FLOOR = 2 / 3;
 export const PERSON_SQUEEZED_SPACING = 2 * PERSON * SQUEEZE_FLOOR;
+/** Closest two people ever get: shoulders brushing as one turns sideways (0.3 m). */
+export const PERSON_RELEASED_SPACING = m(0.3);
 const SQUEEZE_SECONDS = 1.2;
 /**
  * Seconds held up after which a pedestrian stops treating other people and
@@ -168,17 +170,21 @@ export class PedestrianClearance {
   private blocker(p: Ped, x: number, y: number, current: Vec2): boolean {
     let blocked = false;
     const squeeze = squeezeOf(p);
-    const released = p.stuck >= STUCK_RELEASE;
+    // Somebody still in the carriageway gets off it first: they may brush
+    // past people standing at the zebra's mouth at once rather than wait.
+    const released = p.stuck >= STUCK_RELEASE || p.state === 'Crossing';
     this.visit(x, y, m(6.5), other => {
       if (blocked || other.id === p.id) return;
       // Vehicles are never squeezed past. People and street furniture are:
       // somebody held up long enough turns a shoulder and slips by.
       const vehicle = other.halfLength !== undefined && other.id < 0 && other.id > -1_000_000;
-      if (released && !vehicle) return;
+      // Released: furniture no longer blocks, and people may brush shoulder to
+      // shoulder — but never pass through one another.
+      if (released && !vehicle && other.id <= 0) return;
       const minimum = vehicle
         ? PERSON
         : other.id > 0
-          ? (PERSON + other.radius) * squeeze
+          ? released ? PERSON_RELEASED_SPACING : (PERSON + other.radius) * squeeze
           : PERSON + (other.halfLength === undefined ? other.radius : 0);
       const next = this.distance(other, x, y);
       if (next >= minimum) return;

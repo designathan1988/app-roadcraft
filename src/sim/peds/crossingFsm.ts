@@ -100,7 +100,8 @@ export function stepPedestrians(w: SimWorld): void {
       }
 
       case 'Crossing': {
-        p.v = followSpeed(Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge)));
+        const want = followSpeed(Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge)));
+        p.v = eased(p.v, Math.min(want, approachSpeed(w, p, edge, space, want)));
         const before = p.s;
         p.s = space.safeStep(w, p, edge, Math.min(edge.length, p.s + p.v * DT));
         p.v = (p.s - before) / DT;
@@ -129,6 +130,7 @@ export function stepPedestrians(w: SimWorld): void {
       const usable = Math.max(0, settled.halfWidth - PED_BEHAVIOUR.lateralMargin);
       p.lat = clamp(p.lat, -usable, usable);
     }
+    settlePose(w, p, false);
     const wantsToMove = p.state !== 'WaitAtKerb' && desired > 0.05;
     // Held-up time; a released walker keeps its release until it has
     // actually got clear, about a metre of travel at walking pace.
@@ -164,7 +166,8 @@ export function stepPedestrians(w: SimWorld): void {
 }
 
 function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {
-  p.v = followSpeed(desired, p.stuck >= STUCK_RELEASE);
+  const command = followSpeed(desired, p.stuck >= STUCK_RELEASE);
+  p.v = eased(p.v, Math.min(command, approachSpeed(w, p, edge, space, command)));
   const before = p.s;
   p.s = space.safeStep(w, p, edge, p.s + p.v * DT);
   p.v = (p.s - before) / DT;
@@ -362,6 +365,7 @@ function chooseGoal(w: SimWorld, p: Ped, here: SidewalkNode | undefined): Sidewa
   if (arrived) {
     p.trip++;
     goal = undefined;
+    p.pause = arrivalPause(p);
   }
   if (!goal) {
     const picked = pool[goalPick(p.party.id, p.trip, pool.length)];
@@ -541,7 +545,12 @@ function scanNeighbours(w: SimWorld, p: Ped, edge: SidewalkEdge): void {
       if (ahead < NEAR.blockerGap && Math.abs(other.lat - p.lat) < PED_BEHAVIOUR.shoulder) {
         NEAR.blockerGap = ahead;
         NEAR.blockerSpeed = other.v;
-        NEAR.blockerQueue = other.state === 'WaitAtKerb';
+        // A queue for a crossing is everybody standing in line for it, not
+        // only the one at the kerb: a third person behind two others was
+        // counted as stuck and released through the line.
+        NEAR.blockerQueue = other.state === 'WaitAtKerb' ||
+          (other.v < 0.05 && other.route[0] !== undefined && other.route[0] === p.route[0] &&
+            w.sidewalks.edges.get(other.route[0])?.kind === 'crossing');
       }
     } else if (ahead < NEAR.oncomingGap) {
       NEAR.oncomingGap = ahead;
@@ -574,7 +583,29 @@ function followSpeed(desired: number, released = false): number {
  * slowing for a corner while dawdling while waiting for a friend is all three
  * at once instead of whichever case was tested first.
  */
+/**
+ * How long this person stops on reaching a destination. Keyed on the party
+ * and the trip, so companions stop together and for as long as each other;
+ * most people walk straight on, some pause briefly, groups stop to talk.
+ */
+function arrivalPause(p: Ped): number {
+  const roll = goalPick(p.party.id ^ 0x3c6ef372, p.trip, 1000) / 1000;
+  if (roll < PAUSE_SKIP) return 0;
+  const talk = p.party.size > 1 ? PAUSE_TALK : 0;
+  return PAUSE_MIN + (PAUSE_MAX - PAUSE_MIN + talk) * (roll - PAUSE_SKIP) / (1 - PAUSE_SKIP);
+}
+/** Share of arrivals with no pause, and the pause range in seconds. */
+const PAUSE_SKIP = 0.45;
+const PAUSE_MIN = 1.5;
+const PAUSE_MAX = 7;
+/** Extra time a group spends talking when it stops. */
+const PAUSE_TALK = 8;
+
 function desiredSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
+  if (p.pause > 0 && p.state === 'Walking') {
+    p.pause = Math.max(0, p.pause - DT);
+    return 0;
+  }
   let v = Math.min(p.speed, p.party.pace);
 
   // Individual pace variation applies on footways only.
@@ -687,8 +718,26 @@ function crossingUrgency(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
 function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {
   const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
   let target = formation(p, usable);
+  // Line up for a narrower next edge — a zebra is far narrower than a footway
+  // — before reaching it, so the entry is walked into rather than cut to.
+  const nextEdge = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+  const narrower = nextEdge ? Math.max(0, nextEdge.halfWidth - PED_BEHAVIOUR.lateralMargin) : usable;
+  const remaining = edge.length - p.s;
+  if (nextEdge && narrower < usable && remaining < LINE_UP_DISTANCE && p.state !== 'Crossing') {
+    const room = lerp(narrower, usable, clamp(remaining / LINE_UP_DISTANCE, 0, 1));
+    target = clamp(target, -room, room);
+  }
 
   if (p.state === 'WaitAtKerb' || p.state === 'ApproachKerb') {
+    // Wait BESIDE the mouth of the zebra, not in it: standing in the middle
+    // of it boxed in everybody coming off the crossing, and the people at the
+    // kerb could not step on until they had got off — a knot at every busy
+    // kerb. The side follows the walker's own habit, so a queue fans out.
+    if (nextEdge?.kind === 'crossing') {
+      const mouth = Math.max(0, nextEdge.halfWidth - PED_BEHAVIOUR.lateralMargin);
+      const flank = Math.min(usable, mouth + KERB_FLANK);
+      target = (target >= 0 ? 1 : -1) * Math.max(flank, Math.abs(target));
+    }
     target += kerbSway(p.id, p.age);
   } else {
     target += space.avoidance(w, p, edge, target);
@@ -713,16 +762,219 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
     }
   }
 
-  const held = clamp(p.lat, -usable, usable);
-  const limit = PED_BEHAVIOUR.lateralRate * DT;
-  const change = clamp(clamp(target, -usable, usable) - held, -limit, limit);
-  const proposed = held + change;
-  if (space.canShift(w, p, edge, proposed)) p.lat = proposed;
-  else if (space.canShift(w, p, edge, clamp(held - change, -usable, usable))) {
-    p.lat = clamp(held - change, -usable, usable);
+  // Held up: commit to the side with more room and go there.
+  if (p.stuck > DODGE_AFTER && p.state !== 'WaitAtKerb') {
+    if (p.dodge === 0) p.dodge = p.lat >= 0 ? -1 : 1;
+    target = p.dodge * usable;
+  } else if (p.stuck === 0) {
+    p.dodge = 0;
   }
-  else p.lat = held;
+  const held = clamp(p.lat, -usable, usable);
+  // Sideways speed wanted to close the offset, then eased: a step aside
+  // starts, carries and settles instead of switching on and off each tick.
+  const wanted = clamp((clamp(target, -usable, usable) - held) / LATERAL_SETTLE,
+    -PED_BEHAVIOUR.lateralRate, PED_BEHAVIOUR.lateralRate);
+  const step = LATERAL_ACCEL * DT;
+  p.latV = clamp(wanted, p.latV - step, p.latV + step);
+  const proposed = clamp(held + p.latV * DT, -usable, usable);
+  // Blocked sideways: hold the line. Stepping the other way instead, as this
+  // used to, made a boxed-in walker zigzag on the spot every tick.
+  if (space.canShift(w, p, edge, proposed)) p.lat = proposed;
+  else {
+    p.lat = held;
+    p.latV = 0;
+    // Committed side blocked too: take the other one next time.
+    if (p.dodge !== 0) p.dodge = -p.dodge;
+  }
 }
+
+/** Seconds held up before committing to a side. */
+const DODGE_AFTER = 0.6;
+
+/** Distance beyond the zebra's edge at which people wait. */
+const KERB_FLANK = m(0.45);
+
+/** Distance before a narrower edge over which walkers line up for it. */
+const LINE_UP_DISTANCE = m(4);
+
+/** Seconds over which a lateral offset is closed, and the sideways acceleration. */
+const LATERAL_SETTLE = 0.6;
+const LATERAL_ACCEL = PED_BEHAVIOUR.lateralRate * 2.2;
+
+/**
+ * Speed at which this person can still stop before whatever is blocking the
+ * way ahead.
+ *
+ * The clearance is a hard gate: it either allows a step or refuses it. Walking
+ * into it at full pace and being refused is an instantaneous stop — measured at
+ * 193 u/s of deceleration in a single tick, which is what a figure stopping
+ * dead in mid-stride looks like. Probing a braking distance ahead turns the
+ * same gate into a deceleration: people slow as they come up to a knot and
+ * stop short of it, as they do in a street.
+ */
+function approachSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClearance,
+  command: number): number {
+  if (command <= 0) return command;
+  // Braking distance plus a reaction: people see a knot coming and start
+  // slowing well before they reach it. The reaction term matters most for two
+  // people walking towards each other, who close at twice walking pace.
+  const brake = (p.v * p.v) / (2 * PED_DECEL);
+  const reach = Math.max(PED_PROBE_MIN, brake + p.v * PED_REACTION);
+  let limit = command;
+
+  // Whatever is in the way along this edge.
+  const probe = Math.min(edge.length, p.s + reach);
+  if (probe > p.s) {
+    const free = space.safeStep(w, p, edge, probe) - p.s;
+    if (free < probe - p.s - 1e-6) limit = Math.min(limit, stopWithin(free));
+  }
+
+  // The end of the edge itself, when it cannot be walked straight through: a
+  // kerb, or a next edge somebody is standing in the mouth of. Arriving at
+  // full pace and being refused is a stop from walking speed to nothing in a
+  // single tick — 193 u/s of deceleration, a figure halting in mid-stride.
+  const toEnd = edge.length - p.s;
+  if (toEnd <= reach && mustStopAtEndOf(w, p, edge, space)) {
+    limit = Math.min(limit, stopWithin(toEnd));
+  }
+  return limit;
+}
+
+/** Speed from which this person can still stop within a distance. */
+const stopWithin = (distance: number): number => Math.sqrt(Math.max(0, 2 * PED_DECEL * distance));
+
+/** Whether the next edge cannot simply be walked into right now. */
+function mustStopAtEndOf(
+  w: SimWorld,
+  p: Ped,
+  edge: SidewalkEdge,
+  space: PedestrianClearance,
+): boolean {
+  if (p.state === 'Crossing') return false;
+  const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+  // Nothing planned, or a crossing: both end at this kerb.
+  if (!next || next.kind === 'crossing') return true;
+  const exit = w.sidewalks.other(edge, p.entry);
+  const frame = w.sidewalks.orientedPath(next, exit).sampleAt(0);
+  const width = Math.max(0, next.halfWidth - PED_BEHAVIOUR.lateralMargin);
+  const here = space.point(w, edge, p.entry, edge.length, p.lat);
+  const lat = clamp(
+    (here.x - frame.p.x) * frame.n.x + (here.y - frame.p.y) * frame.n.y,
+    -width,
+    width,
+  );
+  return !space.canEnter(w, p, next, exit, lat);
+}
+/** Shortest look-ahead, so a standing walker still sees a body in front of it. */
+const PED_PROBE_MIN = 4;
+/**
+ * Seconds of travel looked ahead beyond the braking distance.
+ *
+ * Two people walking towards each other close at twice walking pace, and the
+ * clearance gate between them is 0.6 m wide, so the look-ahead has to cover
+ * the closing speed rather than this walker's own.
+ */
+const PED_REACTION = 2;
+
+/**
+ * Walking speed eased towards the target: people accelerate into a stride
+ * and slow out of it over a second or so. Braking is quicker than starting.
+ * A hard stop for somebody in the way is still enforced by the clearance.
+ */
+function eased(current: number, target: number): number {
+  const rise = PED_ACCEL * DT;
+  const fall = PED_DECEL * DT;
+  return target > current ? Math.min(target, current + rise) : Math.max(target, current - fall);
+}
+const PED_ACCEL = m(1.1);
+const PED_DECEL = m(2.4);
+
+/**
+ * World position, and a body heading turned towards the direction of travel
+ * at a human rate. Standing still, a person keeps facing where they were
+ * going, or turns to face the crossing they are waiting for.
+ */
+function settlePose(w: SimWorld, p: Ped, first: boolean): void {
+  const edge = w.sidewalks.edges.get(p.edge);
+  if (!edge) return;
+  const path = w.sidewalks.orientedPath(edge, p.entry);
+  const frame = path.sampleAt(p.s);
+  // The lateral offset is applied along a normal averaged over a short span.
+  // A corner is a polyline, and the per-segment normal turns through 15
+  // degrees or more at every vertex: somebody walking a metre off the line
+  // was drawn jumping sideways each time they passed one.
+  const before = path.sampleAt(Math.max(0, p.s - NORMAL_SPAN)).t;
+  const after = path.sampleAt(Math.min(path.length, p.s + NORMAL_SPAN)).t;
+  const tx = before.x + after.x;
+  const ty = before.y + after.y;
+  const tl = Math.hypot(tx, ty) || 1;
+  const nx = -ty / tl;
+  const ny = tx / tl;
+  const pathX = frame.p.x + nx * p.lat;
+  const pathY = frame.p.y + ny * p.lat;
+  // Changing edge can move the path position sideways: somebody waiting
+  // beside a zebra's mouth steps onto its centreline, a corner starts from a
+  // different offset. That gap is real and has to be WALKED, so it becomes an
+  // offset of the drawn body that closes over a third of a second instead of
+  // a 1-2 unit teleport in one frame.
+  //
+  // The same holds for a sharp vertex of a corner path: the offset line of a
+  // polyline has a gap on the outside of every kink. Any path jump longer
+  // than a step is absorbed the same way.
+  const keep = Math.exp(-DT / OFFSET_SETTLE);
+  const settledX = pathX + p.offX * keep;
+  const settledY = pathY + p.offY * keep;
+  const step = Math.hypot(settledX - p.x, settledY - p.y);
+  if (!first && (p.prev.edge !== p.edge || step > p.v * DT * 1.5 + PATH_JUMP)) {
+    p.offX = p.x - pathX;
+    p.offY = p.y - pathY;
+    if (Math.hypot(p.offX, p.offY) > OFFSET_LIMIT) { p.offX = 0; p.offY = 0; }
+    // Close the gap at walking pace from here on, not in one tick.
+    p.offX *= keep;
+    p.offY *= keep;
+  } else {
+    p.offX *= keep;
+    p.offY *= keep;
+  }
+  const x = pathX + p.offX;
+  const y = pathY + p.offY;
+  let face: number | null = null;
+  const dx = x - p.x;
+  const dy = y - p.y;
+  if (!first && Math.hypot(dx, dy) > TURN_MIN_TRAVEL) face = Math.atan2(dy, dx);
+  else if (first) face = Math.atan2(frame.t.y, frame.t.x);
+  else if (p.state === 'WaitAtKerb') {
+    const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+    if (next) {
+      const t = w.sidewalks.orientedPath(next, w.sidewalks.other(edge, p.entry)).sampleAt(0).t;
+      face = Math.atan2(t.y, t.x);
+    }
+  }
+  p.x = x;
+  p.y = y;
+  if (face === null) return;
+  if (first) {
+    p.heading = face;
+    return;
+  }
+  let delta = (face - p.heading) % (2 * Math.PI);
+  if (delta > Math.PI) delta -= 2 * Math.PI;
+  if (delta < -Math.PI) delta += 2 * Math.PI;
+  const limit = TURN_RATE * DT;
+  p.heading += clamp(delta, -limit, limit);
+}
+/** Half-length of the span a drawn lateral normal is averaged over. */
+const NORMAL_SPAN = 1.5;
+
+/** Seconds over which an edge-change offset closes, and the largest one bridged. */
+const OFFSET_SETTLE = 0.3;
+const OFFSET_LIMIT = 6;
+/** Path movement beyond a stride that counts as a discontinuity, world units. */
+const PATH_JUMP = 0.05;
+
+/** Human turning rate while walking, radians a second, and the travel that defines a direction. */
+const TURN_RATE = 2.6;
+const TURN_MIN_TRAVEL = 0.004;
 
 /**
  * Where across the footway this pedestrian wants to be, before anyone is in

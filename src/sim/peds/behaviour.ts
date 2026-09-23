@@ -101,8 +101,8 @@ export const PED_BEHAVIOUR = {
   /** Speed advantage that makes stepping around worth the effort. */
   passMargin: m(0.15),
   /** How far ahead an oncoming person is worth steering away from. */
-  oncomingLook: m(7.0),
-  oncomingShift: m(0.8),
+  oncomingLook: m(10.0),
+  oncomingShift: m(1.05),
   /** Weight of the pedestrian's spawned file in its preferred position. */
   fileBlend: 0.52,
   /** Weight of the per-pedestrian habit, so a file is not a painted lane. */

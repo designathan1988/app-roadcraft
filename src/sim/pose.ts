@@ -1,4 +1,4 @@
-import { DIV_EPS, clamp, lerp } from '@core/scalar';
+import { clamp, lerp } from '@core/scalar';
 import { type Vec2, addScaled, angleOf, dist, lerpVec, perp } from '@core/vec2';
 import type { Frame } from '@core/polyline';
 import type { SimWorld } from '@sim/world';
@@ -124,37 +124,22 @@ function lerpAngle(from: number, to: number, t: number): number {
 }
 
 /**
- * Largest angle a sidestep may turn a pedestrian by.
+ * Pose of a pedestrian, interpolated between the last two steps in WORLD
+ * space.
  *
- * Heading comes from the ratio of sideways to forward movement, which goes to a
- * right angle as forward movement goes to zero — so somebody shifting their
- * weight at a kerb would face across the footway. The cap, and the forward term
- * below it, are what keep a step aside a step aside.
+ * It used to be rebuilt from the edge and arc position each frame, which made
+ * every change of footway edge a hard cut to the new edge's centreline frame,
+ * and read the heading from the path tangent plus the tick-to-tick sideways
+ * step — 42,885 heading snaps of more than 8.6 degrees in one tick in two
+ * minutes on the saved player map, and a visible pop at every corner. The
+ * simulation now owns a world position and a heading turned at a human rate
+ * (`settlePose`), and this only blends them.
  */
-const MAX_SIDESTEP = 0.42;
-
 export function pedPose(w: SimWorld, p: Ped, alpha: number): Pose | null {
-  const edge = w.sidewalks.edges.get(p.edge);
-  if (!edge) return null;
-  const path = w.sidewalks.orientedPath(edge, p.entry);
-  const frame = path.sampleAt(p.s);
+  if (!w.sidewalks.edges.has(p.edge)) return null;
   const t = clamp(alpha, 0, 1);
-
-  // People do not walk on a centreline. The offset is the simulation's, held
-  // and steered there; this only projects it, so a step aside is continuous
-  // here because it was continuous where it was decided.
-  const at = addScaled(frame.p, perp(frame.t), p.lat);
-
-  if (p.prev.edge !== p.edge) return { p: at, angle: angleOf(frame.t) };
-
-  const before = path.sampleAt(p.prev.s);
-  const forward = p.s - p.prev.s;
-  const sideways = p.lat - p.prev.lat;
-  const turn =
-    forward > DIV_EPS ? clamp(Math.atan2(sideways, forward), -MAX_SIDESTEP, MAX_SIDESTEP) : 0;
-
-  return {
-    p: lerpVec(addScaled(before.p, perp(frame.t), p.prev.lat), at, t),
-    angle: angleOf(frame.t) + turn,
-  };
+  const now = { x: p.x, y: p.y };
+  const before = { x: p.prev.x, y: p.prev.y };
+  if (dist(before, now) > POSE_JUMP_LIMIT) return { p: now, angle: p.heading };
+  return { p: lerpVec(before, now, t), angle: lerpAngle(p.prev.heading, p.heading, t) };
 }

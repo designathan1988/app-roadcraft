@@ -32,6 +32,9 @@ export default defineConfig({
         '**/dist/**',
         '**/playwright-report/**',
         '**/test-results/**',
+        // Parallel agent worktrees live inside the project folder; an edit
+        // there must not reload the game being inspected here.
+        '**/.claude/**',
       ],
     },
   },

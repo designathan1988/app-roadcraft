@@ -43,7 +43,11 @@ export function remainingProtectedTime(c: SignalController, crossing: CrossingId
   const clearance = st.amber + st.allRed;
   switch (c.sub) {
     case 'GREEN':
-      return Math.max(0, st.targetGreen - c.elapsed) + clearance;
+      // A green is never cut while somebody it released is still crossing
+      // (`stepController`), so up to its maximum the window is guaranteed.
+      // Measuring from the target instead lit WALK for about a second on a
+      // boulevard crossing and held people through three cycles.
+      return Math.max(0, Math.max(st.targetGreen, st.maxGreen) - c.elapsed) + clearance;
     case 'AMBER':
       return Math.max(0, st.amber - c.elapsed) + st.allRed;
     case 'ALL_RED':

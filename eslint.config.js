@@ -61,6 +61,9 @@ export default tseslint.config(
       'dist/**',
       'node_modules/**',
       'docs/screenshots/**',
+      // Agent worktrees are full checkouts of the repository; they are linted
+      // in their own checkout, never from this one.
+      '.claude/**',
       // Scratch space for investigation. Never committed, never linted: a
       // throwaway probe must not be able to break `npm run check`. Matched at
       // ANY depth, because a probe is dropped beside what it probes.

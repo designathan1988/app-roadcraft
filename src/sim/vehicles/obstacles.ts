@@ -37,8 +37,8 @@ function pedestrianAhead(w: SimWorld, v: Vehicle): Obstacle | null {
   return best;
 }
 
-/** Space left in front of a person in the road. */
-const PED_STOP_MARGIN = 2;
+/** Extra space left in front of the zebra band (`CrossingSpan.along` already clears it). */
+const PED_STOP_MARGIN = 0.5;
 
 /**
  * Turns the world into constraints for one vehicle.

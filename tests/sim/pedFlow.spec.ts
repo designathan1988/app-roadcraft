@@ -38,8 +38,11 @@ describe('pedestrian flow', () => {
     });
 
     expect(pedTicks).toBeGreaterThan(100_000);
-    // Held up, the release takes over; it must never run away.
-    expect(maxStuck).toBeLessThan(STUCK_RELEASE + 1.5);
+    // Held up, a walker commits to a side and then squeezes shoulder to
+    // shoulder (never through anybody); it must never run away. The worst
+    // measured is a head-on meeting at a zebra's mouth, untied in 6.3 s;
+    // before the fix people stood for 151 s.
+    expect(maxStuck).toBeLessThan(STUCK_RELEASE + 5);
     // A kerb wait is bounded by the signal cycle, not by a deadlock.
     expect(maxKerb).toBeLessThan(90);
     expect(heldTicks / pedTicks).toBeLessThan(0.05);

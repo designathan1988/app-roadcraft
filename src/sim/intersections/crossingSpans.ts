@@ -1,6 +1,7 @@
 import { BODY_ENVELOPE, HEAVY } from '@world/conflictPoints';
 import type { ConnectorId } from '@world/lanelets';
 import { m } from '@world/units';
+import { CROSSWALK_DEPTH } from '@world/approach';
 import type { CrossingId } from '../signals/plan';
 import type { SimWorld } from '../world';
 
@@ -19,6 +20,8 @@ export interface CrossingSpan {
  */
 const REACH = (BODY_ENVELOPE[HEAVY]?.width ?? 0) / 2 + m(0.9);
 const SAMPLE = 0.5;
+/** A walker's clearance from a vehicle body (`PedestrianClearance`), plus margin. */
+const PERSON_CLEAR = m(0.6);
 
 /**
  * The part of each zebra a movement actually drives over.
@@ -45,14 +48,19 @@ export class CrossingSpans {
         if (!edge) continue;
         let s0 = Infinity;
         let s1 = -Infinity;
-        let along = Infinity;
+        let centre = Infinity;
         for (let s = 0; s <= edge.length; s += SAMPLE) {
           const hit = path.closestPoint(edge.path.sampleAt(s).p);
           if (hit.distance > REACH) continue;
           s0 = Math.min(s0, s);
           s1 = Math.max(s1, s);
-          along = Math.min(along, Math.max(0, hit.s - (REACH - hit.distance)));
+          centre = Math.min(centre, hit.s);
         }
+        // Where the FRONT must stop: before the near edge of the painted band
+        // and a person standing on it. Stopping by the zebra centreline put the
+        // bumper inside a walker's clearance; the walker could not pass and the
+        // vehicle would not move until they had — a mutual wait in the box.
+        const along = Math.max(0, centre - CROSSWALK_DEPTH / 2 - PERSON_CLEAR);
         this.spans.set(key(connector.id, crossing), s0 <= s1 ? { s0, s1, along } : null);
       }
     }

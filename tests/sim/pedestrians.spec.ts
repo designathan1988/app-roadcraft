@@ -11,7 +11,7 @@ import { DT, PED } from '@sim/params';
 import { hashSim } from '@sim/snapshot';
 import { pedPose } from '@sim/pose';
 import { PED_BEHAVIOUR } from '@sim/peds/behaviour';
-import { PERSON_SQUEEZED_SPACING } from '@sim/peds/clearance';
+import { PERSON_RELEASED_SPACING } from '@sim/peds/clearance';
 import type { Ped } from '@sim/peds/state';
 
 /**
@@ -284,9 +284,11 @@ describe('pedestrians', () => {
       }
     });
     expect(pairs).toBeGreaterThan(1000);
-    // Two people held up may pass shoulder first (`PERSON_SQUEEZED_SPACING`),
-    // never closer: rigid 0.6 m discs deadlocked every head-on meeting.
-    expect(minimum).toBeGreaterThanOrEqual(PERSON_SQUEEZED_SPACING - 1e-3);
+    // Two people held up may pass shoulder first (`PERSON_SQUEEZED_SPACING`);
+    // the last-resort release lets them brush shoulders
+    // (`PERSON_RELEASED_SPACING`), and nothing ever puts one inside another.
+    // Rigid 0.6 m discs deadlocked every head-on meeting.
+    expect(minimum).toBeGreaterThanOrEqual(PERSON_RELEASED_SPACING - 1e-3);
   });
 
   it('walks around streetlight columns', () => {

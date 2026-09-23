@@ -28,6 +28,50 @@ interface Motion {
   blend: number; run: number;
 }
 
+/**
+ * How one person walks, fixed for life from their id.
+ *
+ * Every citizen used to play one of two walk cycles, chosen by a single bit,
+ * at a cadence set by one shared stride: a crowd marching in step, stiff and
+ * identical, the reported "hard, angry" gait. The cycles are now MIXED per
+ * person, continuously: how formal the stride is, how much of the relaxed
+ * standing pose rides on the upper body (looser arms, softer posture), how
+ * long the stride is (which sets the cadence at a given speed), and a phase
+ * of their own. None of it is re-rolled; it is who they are.
+ */
+interface Gait {
+  /** Share of the formal walk cycle in the stride, 0..0.65. */
+  readonly formal: number;
+  /** Share of the standing pose blended into walking, 0..0.2: arm swing and posture. */
+  readonly relaxed: number;
+  /** Stride length relative to the clip's, 0.87..1.13. */
+  readonly stride: number;
+  /** Speed at which this person breaks into a jog, m/s. */
+  readonly jogAt: number;
+}
+
+function gaitOf(hash: number): Gait {
+  const byte = (shift: number): number => ((hash >>> shift) & 255) / 255;
+  return {
+    formal: 0.65 * byte(3) * byte(11),
+    relaxed: 0.2 * byte(17),
+    stride: 0.87 + 0.26 * byte(25),
+    jogAt: 1.65 + 0.35 * byte(9),
+  };
+}
+
+/** Speeds (m/s) between which the stride fades in from standing. */
+const WALK_FADE_LOW = 0.06;
+const WALK_FADE_HIGH = 0.45;
+/** Seconds over which a figure settles into, or out of, walking. */
+const BLEND_TIME = 0.35;
+const RUN_TIME = 0.6;
+
+const smoothstep = (lo: number, hi: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
+};
+
 const SKINNING = `
 uniform sampler2D citizenBones;
 uniform mat4 bindMatrix;
@@ -172,7 +216,10 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         mesh.frustumCulled = false;
         mesh.instanceMatrix.setUsage(DynamicDrawUsage);
         mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        // Small animated figures do not receive shadow maps: the depth test
+        // against their own moving limbs produced acne stripes that crawled
+        // and pulsed over every walking body.
+        mesh.receiveShadow = false;
         const depth = new MeshDepthMaterial({ depthPacking: RGBADepthPacking });
         const source = original[0] as MeshStandardMaterial;
         depth.map = source.map;
@@ -255,24 +302,41 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       }
       const elapsed = Math.max(0, time - state.time);
       const dt = Math.min(elapsed, 0.2);
-      const travel = elapsed > 0.5 ? ped.v * dt : Math.hypot(x - state.x, y - state.y);
-      const speed = dt > 0 ? travel / dt / m(1) : ped.v / m(1);
+      // Distance and speed come from the SIMULATION, not from the difference of
+      // two drawn positions: frame pacing, pauses and interpolation made that
+      // difference noisy, and the noise flipped figures between standing and
+      // walking poses from one frame to the next.
+      const speed = ped.v / m(1);
+      const travel = ped.v * dt;
       state.time = time; state.x = x; state.y = y;
+      // The simulation already turns the body at a human rate; this only
+      // absorbs frame-to-frame interpolation.
       const delta = Math.atan2(Math.sin(heading - state.heading), Math.cos(heading - state.heading));
-      state.heading += delta * (1 - Math.exp(-dt * 10));
-      state.blend += ((speed > 0.035 ? 1 : 0) - state.blend) * (1 - Math.exp(-dt * 14));
-      state.run += (Math.max(0, Math.min(1, (speed - 1.75) / 0.65)) - state.run) * (1 - Math.exp(-dt * 7));
-      const walk = batch.clips[(hash & 8) !== 0 ? 3 : 2]!;
+      state.heading += delta * (1 - Math.exp(-dt * 18));
+      const gait = gaitOf(hash);
+      state.blend += (smoothstep(WALK_FADE_LOW, WALK_FADE_HIGH, speed) - state.blend) * (1 - Math.exp(-dt / BLEND_TIME));
+      state.run += (smoothstep(gait.jogAt, gait.jogAt + 0.6, speed) - state.run) * (1 - Math.exp(-dt / RUN_TIME));
+      const walk = batch.clips[2]!;
+      const formal = batch.clips[3]!;
       const jog = batch.clips[4]!;
-      state.phase += travel / (m(scale) * (walk.stride * (1 - state.run) + jog.stride * state.run));
-      const idle = batch.clips[ped.party.size > 1 && (hash & 3) === 0 ? 1 : 0]!;
+      const stride = m(scale) * gait.stride *
+        ((walk.stride * (1 - gait.formal) + formal.stride * gait.formal) * (1 - state.run) + jog.stride * state.run);
+      state.phase += travel / stride;
+      // Companions who have stopped together talk; everybody else stands.
+      const idle = batch.clips[ped.party.size > 1 && (ped.pause > 0 || (hash & 3) === 0) ? 1 : 0]!;
       const idlePhase = (time * (0.88 + ((hash >>> 20) & 15) / 60) / idle.duration + (hash % 701) / 701) % 1;
-      const phases = [idlePhase * idle.frames, (state.phase % 1) * walk.frames, (state.phase % 1) * jog.frames];
-      const clips = [idle, walk, jog];
-      const weights = [1 - state.blend, state.blend * (1 - state.run), state.blend * state.run];
+      const cycle = state.phase % 1;
+      const phases = [idlePhase * idle.frames, cycle * walk.frames, cycle * formal.frames, cycle * jog.frames];
+      const clips = [idle, walk, formal, jog];
+      const walking = state.blend * (1 - state.run);
+      // The standing pose keeps a share of the upper body while walking: a
+      // looser, less drilled stride for the relaxed walkers.
+      const standing = 1 - state.blend + walking * gait.relaxed;
+      const striding = walking * (1 - gait.relaxed);
+      const weights = [standing, striding * (1 - gait.formal), striding * gait.formal, state.blend * state.run];
       const offset = batch.count * batch.width;
       batch.pixels.fill(0, offset, offset + batch.width);
-      for (let c = 0; c < 3; c++) {
+      for (let c = 0; c < 4; c++) {
         const weight = weights[c]!;
         if (weight < 0.001) continue;
         const clip = clips[c]!;

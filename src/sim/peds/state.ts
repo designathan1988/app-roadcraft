@@ -38,6 +38,10 @@ export interface PedKinematics {
   readonly edge: SidewalkEdgeId;
   readonly s: number;
   readonly lat: number;
+  /** World position and body heading: what is drawn, and what is interpolated. */
+  readonly x: number;
+  readonly y: number;
+  readonly heading: number;
 }
 
 export interface Ped {
@@ -81,6 +85,33 @@ export interface Ped {
   /** Crossing currently occupied, if any. */
   occupying: CrossingId | null;
 
+  /** World position at the end of the last step. */
+  x: number;
+  y: number;
+  /**
+   * Direction the body faces, radians. Turned towards the direction of travel
+   * at a human turning rate rather than read from the path tangent each tick:
+   * the tangent of a polyline corner and the tick-to-tick lateral steering
+   * made figures snap through tens of degrees in one frame.
+   */
+  heading: number;
+  /** Drawn-body offset from the path position, closing after an edge change. */
+  offX: number;
+  offY: number;
+  /** Sideways speed across the footway, eased rather than switched. */
+  latV: number;
+  /**
+   * Side committed to while squeezing past a knot: -1, 0 or +1. Chosen once
+   * when held up and kept until free, so a boxed-in walker steps decisively
+   * one way instead of hesitating on the spot.
+   */
+  dodge: number;
+  /**
+   * Seconds left of a pause at a place reached: stopping to talk, to look
+   * around, to check where next. Only ever set on arrival at a destination,
+   * so nobody stops for no reason on an open footway.
+   */
+  pause: number;
   /** Seconds spent in `WaitAtKerb`, driving gap-acceptance impatience. */
   waited: number;
   /**
@@ -133,8 +164,17 @@ export function createPed(spec: PedSpec): Ped {
     stuck: 0,
     lastMovedTick: spec.tick,
     age: 0,
-    prev: { edge: spec.edge, s: spec.s, lat: spec.lat },
+    x: 0,
+    y: 0,
+    heading: 0,
+    latV: 0,
+    offX: 0,
+    offY: 0,
+    dodge: 0,
+    pause: 0,
+    prev: { edge: spec.edge, s: spec.s, lat: spec.lat, x: 0, y: 0, heading: 0 },
   };
 }
 
-export const pedSnapshot = (p: Ped): PedKinematics => ({ edge: p.edge, s: p.s, lat: p.lat });
+export const pedSnapshot = (p: Ped): PedKinematics =>
+  ({ edge: p.edge, s: p.s, lat: p.lat, x: p.x, y: p.y, heading: p.heading });
