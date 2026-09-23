@@ -26,6 +26,7 @@ import { m } from '@world/units';
 import { DT } from '@sim/params';
 import { createRiggedCitizens, CITIZEN_MODELS, SEAT_DRIVE, SEAT_RIDE, SEAT_TALK } from './riggedCitizens';
 import { FOOTWAY_RISE } from './roadSurfaces';
+import { WheelOdometer, blinkOn, indicatorSide, steerAngle } from './vehicleSignals';
 
 /**
  * Vehicles, riders and dogs use the original instanced batches. Citizens use
@@ -82,8 +83,12 @@ const SIDES = [1, -1] as const;
  */
 interface LampState {
   tail: number;
-  /** Lit indicator side: +1 left, -1 right, 0 none. */
+  /** Lit indicator side: +1 left, -1 right, 0 none. Already includes the flash. */
   indicate: number;
+  /** Front-wheel steering angle, radians, positive to the left. */
+  steer: number;
+  /** Rolling angle of the wheels, radians. */
+  spin: number;
 }
 
 export interface AgentRenderOptions {
@@ -181,8 +186,6 @@ const INDICATOR = 0xffa11c;
  * see the nose dip.
  */
 const BRAKE_DECEL = 1.0;
-/** How far into a lane change the indicator stays lit, in world units. */
-const INDICATOR_LATERAL = 0.15;
 const SIGN = 0xffe7a8;
 const BOX_BODY = 0xe6e8ea;
 
@@ -560,10 +563,11 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     sz: number,
     tint: number,
     rake = 0,
+    yaw = 0,
   ): void => {
     if (part.n >= part.mesh.instanceMatrix.count) return;
     object.position.set(fx + fdx * along - fdy * side, fdeck + up, -(fy + fdy * along + fdx * side));
-    object.rotation.set(0, fyaw, rake);
+    object.rotation.set(0, fyaw + yaw, rake);
     object.scale.set(sx, sy, sz);
     object.updateMatrix();
     part.mesh.setMatrixAt(part.n, object.matrix);
@@ -577,16 +581,19 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   /** Road wheels, plus their hubs at the closest band. */
   const placeWheels = (plan: BodyPlan, band: number): void => {
     const d = plan.wheelRadius * 2;
-    for (const along of plan.axleAlong) {
+    plan.axleAlong.forEach((along, axle) => {
+      // Only the front axle steers; every hub turns with the distance driven,
+      // which is what makes a wheel read as rolling rather than sliding.
+      const steer = axle === 0 ? lamp.steer : 0;
       if (plan.axleSide === 0) {
-        place(wheels, along, 0, plan.wheelRadius, d, d, plan.tread, RUBBER);
+        place(wheels, along, 0, plan.wheelRadius, d, d, plan.tread, RUBBER, 0, steer);
         if (band >= 2) {
-          place(hubs, along, 0, plan.wheelRadius, d * 0.45, d * 0.45, plan.tread * 1.1, HUB);
+          place(hubs, along, 0, plan.wheelRadius, d * 0.45, d * 0.45, plan.tread * 1.1, HUB, lamp.spin, steer);
         }
-        continue;
+        return;
       }
       for (const side of SIDES) {
-        place(wheels, along, side * plan.axleSide, plan.wheelRadius, d, d, plan.tread, RUBBER);
+        place(wheels, along, side * plan.axleSide, plan.wheelRadius, d, d, plan.tread, RUBBER, 0, steer);
         if (band >= 2) {
           place(
             hubs,
@@ -597,10 +604,12 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
             d * 0.52,
             plan.tread * 0.5,
             HUB,
+            lamp.spin,
+            steer,
           );
         }
       }
-    }
+    });
   };
 
   /**
@@ -923,7 +932,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
 
 
   /** Refreshed for every vehicle, read by whichever body builder runs. */
-  const lamp: LampState = { tail: TAILLAMP, indicate: 0 };
+  const lamp: LampState = { tail: TAILLAMP, indicate: 0, steer: 0, spin: 0 };
+  const odometer = new WheelOdometer();
 
   return {
     meshes,
@@ -958,8 +968,14 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         lamp.tail = decel >= BRAKE_DECEL ? BRAKELAMP : TAILLAMP;
         // `lateral` is the unfinished part of a lane change, signed towards
         // the lane being left - so the vehicle is heading the other way.
-        lamp.indicate =
-          Math.abs(vehicle.lateral) > INDICATOR_LATERAL ? -Math.sign(vehicle.lateral) : 0;
+        // Indicators for a turn ahead, a lane change wanted or under way, and
+        // flashing (`vehicleSignals.ts`); the front wheels steer along the
+        // path and every wheel rolls with the distance driven.
+        const side = indicatorSide(world, vehicle);
+        lamp.indicate = side !== 0 && blinkOn(vehicle.age, vehicle.id) ? side : 0;
+        const axles = plan.axleAlong;
+        lamp.steer = steerAngle(world, vehicle, (axles[0] ?? 0) - (axles[axles.length - 1] ?? 0));
+        lamp.spin = -odometer.advance(vehicle) / Math.max(plan.wheelRadius, 1e-3);
         switch (plan.shape) {
           case 'bus':
             drawBus(plan, paintHex, look, band);
