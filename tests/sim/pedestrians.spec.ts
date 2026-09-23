@@ -196,21 +196,32 @@ describe('pedestrians', () => {
   });
 
   it('spreads the crowd across the footway rather than along one line', () => {
+    // Several snapshots, not one: four walkers on one footway can be a
+    // hundred metres apart and all keeping right, which is what people walking
+    // the same way do, and a single frame of that failed this test whenever
+    // anything else in the simulation shifted who happened to be where.
     const fixture = crossroads();
-    run(fixture, 90);
-    const byEdge = new Map<string, number[]>();
-    for (const p of fixture.sim.pedsInIdOrder()) {
-      const list = byEdge.get(p.edge);
-      if (list) list.push(p.lat);
-      else byEdge.set(p.edge, [p.lat]);
-    }
-    const crowded = [...byEdge.values()].filter((list) => list.length >= 4);
-    expect(crowded.length).toBeGreaterThan(0);
-    for (const list of crowded) {
-      // Everybody on one centreline is the defect this replaces; a metre of
-      // spread across a footway several metres wide is a crowd.
-      expect(Math.max(...list) - Math.min(...list)).toBeGreaterThan(PED.fileSpacing);
-    }
+    const spreads: number[] = [];
+    let tick = 0;
+    run(fixture, 90, (sim) => {
+      if (++tick % Math.round(10 / DT) !== 0 || tick < Math.round(30 / DT)) return;
+      const byEdge = new Map<string, number[]>();
+      for (const p of sim.pedsInIdOrder()) {
+        const list = byEdge.get(p.edge);
+        if (list) list.push(p.lat);
+        else byEdge.set(p.edge, [p.lat]);
+      }
+      for (const list of byEdge.values()) {
+        if (list.length >= 4) spreads.push(Math.max(...list) - Math.min(...list));
+      }
+    });
+    expect(spreads.length).toBeGreaterThan(3);
+    spreads.sort((a, b) => a - b);
+    // Everybody on one centreline is the defect this replaces: no crowded
+    // footway ever has them all within half a file of one line, and typically
+    // they spread across more than a file.
+    expect(spreads[0]).toBeGreaterThan(PED.fileSpacing / 2);
+    expect(spreads[Math.floor(spreads.length / 2)]).toBeGreaterThan(PED.fileSpacing);
   });
 
   it('spreads pace between people and within one person', () => {

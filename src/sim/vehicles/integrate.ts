@@ -1,4 +1,5 @@
 import { DT, laneChangeLength, laneChangeOffset, laneChangeSlope } from '../params';
+import { curveSpeedCap } from './curvature';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import { desiredSpeed } from './driver';
@@ -49,7 +50,12 @@ export function integrateAll(w: SimWorld): void {
     // only advances inside `SimClock.advance`/`run`, so a harness stepping the
     // pipeline directly would see a target that never wanders at all.
     const wanted = desiredSpeed(v.driver, v.v0, v.age);
-    const speedCap = Math.min(wanted, here.speedLimit);
+    // Bends ahead are taken at a comfortable lateral acceleration, braked for
+    // in advance (`curveSpeedCap`). The cap falls smoothly as a bend nears,
+    // but a route change can bring one into view suddenly, so a single step
+    // never demands more than an emergency stop's worth of braking.
+    const curveCap = Math.max(curveSpeedCap(w, v), v.v - v.driver.bEmergency * DT);
+    const speedCap = Math.min(wanted, here.speedLimit, curveCap);
     const next = resolveSpeed(v.driver, v.v, speedCap, v.constraints.obstacles, DT);
     const ds = Math.max(0, 0.5 * (v.v + next) * DT);
     const clearancesAtStart = new Set(v.clearingConnectors);
