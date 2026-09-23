@@ -19,10 +19,10 @@ fixes do not change a block to verified.
 | --- | --- | --- | --- |
 | 1. Roads and meshes | Missing asphalt; holes, deformation, overlap, indices, triangulation, normals, UVs; road connections, snapping and alignment; curves, junctions and connectors; edited terrain; ramps, elevated roads, viaducts, bridges and tunnels, including every transition; affected-only rebuilds; pier dimensions and shadows; bounds; vehicle bodies stay on carriageways | Open | Pending union change and player-map fixture found in the worktree |
 | 2. Junctions | Running four-way, T, skewed, 5+ leg, mixed class, one/two-way and mixed lane-count scenarios; a record for every movement with origin, lane, intent, connector, destination lane, geometry, displayed signal and simultaneous conflicts; lane order; valid left/right/U-turn paths; physical volume conflicts; buses/trucks; admission, priority, yield, spillback and realistic deadlock handling | In progress | Swept-footprint conflict zones for three body classes; zero body overlaps in 7 layouts x 4 seeds (up to intensity 3, 300 s); stop-line intrusion guards; saturated discharge still low and heavy off-tracking model open |
-| 3. Signals | Displayed light agrees with actual permission; protected conflicts excluded; compatible opposite movements; yielding permissive lefts and exclusive phases; queue discharge and cycle length; demand includes queue length, wait, arrival rate, distance, desired movement and downstream capacity; corridor offsets from distance/speed; every phase checked against actual conflicts | Open | Protected greens checked against swept zones (no crossing/merge, no car/car overlap). Measured: saturated discharge about half of a realistic rate (pre-existing); cycle/demand/offset work open |
-| 4. Vehicle behavior | Natural speed, acceleration/braking/headway and reaction delay; independent driver traits; adjacent, physical lane changes with intermediate occupancy; weaving, early positioning and missed turns; merges and cooperation; complete passing maneuvers and passing side; persistent route intentions and bounded congestion knowledge; curvature/lateral-acceleration speed; physical dimensions, truck off-tracking, bus stops, distinct motorcycles/bicycles; continuous pose and carriageway containment | In progress | Dual-lane occupancy during lane changes (shadows), diverge following and tail-aware lane-change gaps implemented and tested; rest of the block open |
+| 3. Signals | Displayed light agrees with actual permission; protected conflicts excluded; compatible opposite movements; yielding permissive lefts and exclusive phases; queue discharge and cycle length; demand includes queue length, wait, arrival rate, distance, desired movement and downstream capacity; corridor offsets from distance/speed; every phase checked against actual conflicts | In progress | Protected greens checked against swept zones; right of way between green movements is now a hierarchy (be65467). Queued saturation headway measured at 1.8 s (realistic); cycle/demand/offset work and permissive-left box waiting open |
+| 4. Vehicle behavior | Natural speed, acceleration/braking/headway and reaction delay; independent driver traits; adjacent, physical lane changes with intermediate occupancy; weaving, early positioning and missed turns; merges and cooperation; complete passing maneuvers and passing side; persistent route intentions and bounded congestion knowledge; curvature/lateral-acceleration speed; physical dimensions, truck off-tracking, bus stops, distinct motorcycles/bicycles; continuous pose and carriageway containment | In progress | Dual-lane occupancy during lane changes (shadows, now held until the change completes), diverge following and tail-aware gaps; lane changes driven as a curve in distance and steered from the rear axle (70bdf0a); rest of the block open |
 | 5. Traffic generation | Coherent scalable demand and distribution; no congestion-balanced spawn shortcut; independent entry demand without a single global fixed attempt | Open | Not yet audited |
-| 6. Vehicle visuals and functions | Preserve mirrors, plates, wheels/hubs, pillars and interior; visible human drivers/passengers with correct poses; glass; functioning doors/windows/headlights/tails/brakes/indicators; spinning and steering wheels; every function driven by simulation state | Open | Not yet audited |
+| 6. Vehicle visuals and functions | Preserve mirrors, plates, wheels/hubs, pillars and interior; visible human drivers/passengers with correct poses; glass; functioning doors/windows/headlights/tails/brakes/indicators; spinning and steering wheels; every function driven by simulation state | In progress | Rigged drivers/passengers seated (f14b0ab); brake lamps from real deceleration; indicators for turns ahead, wanted and running lane changes, flashing; front-wheel steering and rolling hubs (589c16f). Doors, headlights by time of day open |
 | 7. Pedestrians | Target 80 distinct human characters (user increased the earlier minimum of 30); convincing proportional humans; natural start/walk/turn/stop/idle/wait, limbs, gaze and posture; body/appearance/speed/posture variety; no arbitrary pauses, jitter, sliding, overlap or sharp spins; physical obstacle avoidance, personal space and queues; correct footways/zebras, kerb waiting, signals, traffic reactions and persistent destinations | Open | Commit 753a309 is a partial implementation requiring broader validation; expanded variety requested on 2026-09-22 |
 | 8. Utilities and furniture | Footway/terrain/existing-pole snapping, 15-degree alignment; actual vertical-pole/wire/connection preview; crossarm axis, capture radius and feedback; selection/deletion/demolition; chained runs; catenary, lighting, bins, benches, hydrants and postboxes | Open | Existing implementation must be exercised in production |
 | 9. Bounds | Roads, elevated roads, poles, wires, furniture and every creatable object; previews reject invalid creation | Open | Existing bounds tests require a coverage audit |
@@ -208,3 +208,28 @@ Create local commits for completed changes; do not push without instruction.
 - Still open here: permissive left turns share the green with opposing
   through traffic by design; protected-left phasing, discharge rate and
   person-person squeeze contacts need further work.
+
+## Lane changes as driven curves, right of way and vehicle signals
+
+- Reported: cars "float sideways" into the next lane. The lane-change offset was
+  a minimum-jerk profile in TIME, so a car creeping in a queue kept moving
+  sideways while barely moving forwards; its drawn body moved up to 88 degrees
+  off the direction it pointed in (over 45 degrees on 5 % of lane-change
+  ticks). The offset is now a curve in DISTANCE (`laneChangeLength`), steered
+  from the rear axle, with a shadow in the old lane until the change completes.
+  Rear-axle slip is now under 2 degrees (`tests/sim/pose.spec.ts`); body
+  overlaps stay at zero (70bdf0a).
+- A movement lost protection whenever anything conflicting was green, so a
+  through yielded to the opposing left exactly as the left yielded to it; queue
+  heads at green stood still 45 % of the time. Protection is now a hierarchy
+  (through > right > left > U-turn): through movements held on conflict at
+  green fell from 4,754 to 1,360 ticks; total throughput is within noise
+  (be65467). The queued saturation headway measures 1.8 s, which is realistic;
+  the remaining loss is permissive lefts that cannot wait inside the box.
+- Indicators now show turns ahead and wanted lane changes, and flash; front
+  wheels steer on the path's curvature and hubs roll (589c16f).
+- Pedestrians have an age and gender, families walk closer, and the cosmetic
+  catch-up offset can no longer sweep one body through another (3a5595e).
+- Known, seed-sensitive: `tests/sim/pedFlow.spec.ts` measured a 12.4 s knot at a
+  zebra mouth with 70bdf0a alone (a walker leaving a crossing into the queue
+  waiting at that kerb); it passes from 3a5595e on.
