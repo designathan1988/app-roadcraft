@@ -1,11 +1,18 @@
 import {
   BoxGeometry,
+  Color,
   CylinderGeometry,
+  DynamicDrawUsage,
   Group,
-  Mesh,
+  InstancedBufferAttribute,
+  InstancedMesh,
+  Matrix4,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  Quaternion,
   Scene,
+  Vector3,
+  type BufferGeometry,
   type Material,
 } from 'three';
 
@@ -87,18 +94,30 @@ const LAMPS: readonly Lamp[] = ['red', 'amber', 'green'];
 /** Which way each lens cluster looks, along the housing's local Z. */
 const FACES = [1, -1] as const;
 
-interface Head {
-  readonly root: Group;
-  /** Both faces' lenses for each colour, driven together. */
-  readonly lamps: Record<Lamp, Mesh[]>;
-  readonly halos: Record<Lamp, Mesh[]>;
-}
-
 export interface SignalHeads {
   readonly group: Group;
   sync(world: SimWorld, detailed: boolean): void;
   dispose(): void;
 }
+
+/**
+ * One kind of part, for every head on the map: a single instanced mesh.
+ *
+ * A head used to be a dozen meshes of its own - post, arm, housing, three
+ * visors, lenses and halos on both faces - and each was drawn once for the
+ * picture, once for the shadow map and once more for the ambient-occlusion
+ * pass. Forty heads were over a thousand draw calls a frame, more than the
+ * whole rest of the scene. Now every post is one draw, every visor another,
+ * and so on: nine for the whole map, however many junctions it has.
+ */
+interface Batch {
+  mesh: InstancedMesh;
+  /** Write cursor, reset at the top of every sync. */
+  n: number;
+}
+
+/** Heads the batches are first sized for; they double when a map needs more. */
+const INITIAL_HEADS = 64;
 
 /** Builds and updates the physical signal heads used by the Three.js renderer. */
 export function createSignalHeads(
@@ -123,96 +142,121 @@ export function createSignalHeads(
 
   const steel = new MeshStandardMaterial({ color: 0x2b302d, roughness: 0.7, metalness: 0.45 });
   const housing = new MeshStandardMaterial({ color: 0x15191a, roughness: 0.78, metalness: 0.1 });
-  // Lit lenses keep their hue at full brightness: basic and untone-mapped.
-  const lit: Record<Lamp, MeshBasicMaterial> = {
-    red: new MeshBasicMaterial({ color: 0xff4034, toneMapped: false }),
-    amber: new MeshBasicMaterial({ color: 0xffb219, toneMapped: false }),
-    green: new MeshBasicMaterial({ color: 0x3bf06a, toneMapped: false }),
+  // Lit lenses keep their hue at full brightness: basic and untone-mapped,
+  // white here and coloured per instance.
+  const lit = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+  const LIT: Record<Lamp, Color> = {
+    red: new Color(0xff4034),
+    amber: new Color(0xffb219),
+    green: new Color(0x3bf06a),
   };
-  // Off, but still obviously a coloured filter over a dark can.
+  // Off, but still obviously a coloured filter over a dark can. Each colour
+  // keeps its own faint emissive floor, so each is its own material.
   const dark: Record<Lamp, MeshStandardMaterial> = {
     red: lensMaterial(0x8d221c, 0x2a0705),
     amber: lensMaterial(0x8a6410, 0x281c04),
     green: lensMaterial(0x1d6b33, 0x07230f),
   };
-  const halo: Record<Lamp, MeshBasicMaterial> = {
-    red: haloMaterial(0xff5145),
-    amber: haloMaterial(0xffc850),
-    green: haloMaterial(0x59ff86),
+  const halo = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false, transparent: true, opacity: 0.28 });
+  const HALO: Record<Lamp, Color> = {
+    red: new Color(0xff5145),
+    amber: new Color(0xffc850),
+    green: new Color(0x59ff86),
   };
 
-  const heads = new Map<string, Head>();
-  const seen = new Set<string>();
-
-  const makeHead = (key: string): Head => {
-    const root = new Group();
-    root.name = `signal-head-${key}`;
-
-    const post = new Mesh(postGeometry, steel);
-    post.name = `signal-post-${key}`;
-    post.position.y = POST_HEIGHT / 2;
-
-    const arm = new Mesh(armGeometry, steel);
-    arm.name = `signal-arm-${key}`;
-    arm.rotation.z = -Math.PI / 2;
-    arm.position.set(ARM_LENGTH / 2, POST_HEIGHT - u(0.3), 0);
-
-    const box = new Mesh(housingGeometry, housing);
-    box.name = `signal-box-${key}`;
-    box.position.set(ARM_LENGTH, HEAD_CENTRE, 0);
-
-    for (const mesh of [post, arm, box]) {
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      root.add(mesh);
+  let capacity = INITIAL_HEADS;
+  const make = (name: string, geometry: BufferGeometry, material: Material, perHead: number,
+    shadows: { cast: boolean; receive: boolean }, coloured: boolean): Batch => {
+    const mesh = new InstancedMesh(geometry, material, capacity * perHead);
+    mesh.name = name;
+    mesh.count = 0;
+    mesh.castShadow = shadows.cast;
+    mesh.receiveShadow = shadows.receive;
+    // Rewritten every frame, so a bounding sphere computed once would be wrong.
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+    if (coloured) {
+      mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(capacity * perHead * 3).fill(1), 3);
+      mesh.instanceColor.setUsage(DynamicDrawUsage);
     }
-
-    const lamps: Record<Lamp, Mesh[]> = { red: [], amber: [], green: [] };
-    const halos: Record<Lamp, Mesh[]> = { red: [], amber: [], green: [] };
-    LAMPS.forEach((name, index) => {
-      const y = HEAD_CENTRE + LAMP_PITCH * (1 - index);
-      for (const face of FACES) {
-        const z = (HEAD_DEPTH / 2 + u(0.03)) * face;
-
-        const glow = new Mesh(haloGeometry, halo[name]);
-        glow.name = `signal-halo-${name}-${key}`;
-        glow.position.set(ARM_LENGTH, y, z * 0.96);
-        glow.visible = false;
-        root.add(glow);
-        halos[name].push(glow);
-
-        const lens = new Mesh(lensGeometry, dark[name]);
-        lens.name = `signal-lamp-${name}-${key}`;
-        lens.position.set(ARM_LENGTH, y, z);
-        root.add(lens);
-        lamps[name].push(lens);
-
-        // A hood over each lens. It is what stops three coloured discs on a
-        // black slab reading as a decal, and it shades the lens below it.
-        const visor = new Mesh(visorGeometry, housing);
-        visor.name = `signal-visor-${name}-${key}`;
-        visor.position.set(ARM_LENGTH, y + LAMP_RADIUS * 1.15, z + (VISOR_DEPTH / 2) * face);
-        visor.castShadow = true;
-        root.add(visor);
-      }
-    });
-
-    group.add(root);
-    return { root, lamps, halos };
+    group.add(mesh);
+    return { mesh, n: 0 };
   };
+  const solid = { cast: true, receive: true };
+  const shading = { cast: true, receive: false };
+  const glow = { cast: false, receive: false };
+  const specs = () => ({
+    posts: make('signal-posts', postGeometry, steel, 1, solid, false),
+    arms: make('signal-arms', armGeometry, steel, 1, solid, false),
+    boxes: make('signal-boxes', housingGeometry, housing, 1, solid, false),
+    visors: make('signal-visors', visorGeometry, housing, LAMPS.length * FACES.length, shading, false),
+    lit: make('signal-lamps-lit', lensGeometry, lit, FACES.length, glow, true),
+    halos: make('signal-halos', haloGeometry, halo, FACES.length, glow, true),
+    red: make('signal-lamps-red', lensGeometry, dark.red, FACES.length, glow, false),
+    amber: make('signal-lamps-amber', lensGeometry, dark.amber, FACES.length, glow, false),
+    green: make('signal-lamps-green', lensGeometry, dark.green, FACES.length, glow, false),
+  });
+  let batches = specs();
+  const all = (): Batch[] => Object.values(batches);
+
+  const grow = (heads: number): void => {
+    for (const batch of all()) {
+      group.remove(batch.mesh);
+      batch.mesh.dispose();
+    }
+    while (capacity < heads) capacity *= 2;
+    batches = specs();
+  };
+
+  // Where each part sits in its head, relative to the foot of the post.
+  const at = (x: number, y: number, z: number, rotateZ = 0): Matrix4 =>
+    new Matrix4().makeRotationZ(rotateZ).setPosition(x, y, z);
+  const POST = at(0, POST_HEIGHT / 2, 0);
+  const ARM = at(ARM_LENGTH / 2, POST_HEIGHT - u(0.3), 0, -Math.PI / 2);
+  const BOX = at(ARM_LENGTH, HEAD_CENTRE, 0);
+  const lens: Record<Lamp, Matrix4[]> = { red: [], amber: [], green: [] };
+  const halos: Record<Lamp, Matrix4[]> = { red: [], amber: [], green: [] };
+  const visors: Matrix4[] = [];
+  LAMPS.forEach((name, index) => {
+    const y = HEAD_CENTRE + LAMP_PITCH * (1 - index);
+    for (const face of FACES) {
+      const z = (HEAD_DEPTH / 2 + u(0.03)) * face;
+      halos[name].push(at(ARM_LENGTH, y, z * 0.96));
+      lens[name].push(at(ARM_LENGTH, y, z));
+      // A hood over each lens. It is what stops three coloured discs on a
+      // black slab reading as a decal, and it shades the lens below it.
+      visors.push(at(ARM_LENGTH, y + LAMP_RADIUS * 1.15, z + (VISOR_DEPTH / 2) * face));
+    }
+  });
+
+  const root = new Matrix4();
+  const place = new Matrix4();
+  const turn = new Quaternion();
+  const up = new Vector3(0, 1, 0);
+  const foot = new Vector3();
+  const one = new Vector3(1, 1, 1);
+  const put = (batch: Batch, local: Matrix4, colour?: Color): void => {
+    place.multiplyMatrices(root, local);
+    batch.mesh.setMatrixAt(batch.n, place);
+    if (colour) batch.mesh.setColorAt(batch.n, colour);
+    batch.n++;
+  };
+
+  /** What each head shows, by `node:segment`, for the verification harness. */
+  const shown = new Map<string, SignalState>();
+  group.userData.heads = shown;
 
   return {
     group,
     sync(world, detailed) {
       if (!detailed) {
-        if (group.visible) {
-          group.visible = false;
-          seen.clear();
-        }
+        group.visible = false;
         return;
       }
       group.visible = true;
-      seen.clear();
+      shown.clear();
+      type Placed = { x: number; height: number; y: number; yaw: number; state: SignalState; key: string };
+      const placed: Placed[] = [];
       for (const node of world.junctionNodesInOrder()) {
         const junction = world.graph.junctions.get(node);
         const controller = world.controller(node);
@@ -241,43 +285,66 @@ export function createSignalHeads(
           const left = perp(travel);
           const right = { x: -left.x, y: -left.y };
           const position = addScaled(frame.p, right, road.width / 2 + KERB_CLEARANCE);
-
           const key = `${node}:${segmentId}`;
-          seen.add(key);
-          let head = heads.get(key);
-          if (!head) {
-            head = makeHead(key);
-            heads.set(key, head);
-          }
-
-          head.root.visible = true;
-          head.root.position.set(
-            position.x,
-            elevationAt(world, position.x, position.y, segmentId),
-            -position.y,
-          );
-          // Local +X carries the arm inward over the road. Under the shared
-          // world-to-Three mapping, the world heading is also the Three yaw.
-          head.root.rotation.y = angleOf({ x: -right.x, y: -right.y });
-          setLamps(head, signalStateFor(controller, signalGroup.id), lit, dark);
+          const state = signalStateFor(controller, signalGroup.id);
+          placed.push({
+            x: position.x,
+            height: elevationAt(world, position.x, position.y, segmentId),
+            y: position.y,
+            // Local +X carries the arm inward over the road. Under the shared
+            // world-to-Three mapping, the world heading is also the Three yaw.
+            yaw: angleOf({ x: -right.x, y: -right.y }),
+            state,
+            key,
+          });
+          shown.set(key, state);
         }
       }
 
-      // A head whose junction is gone is REMOVED, not hidden. Hiding it left it
-      // in the scene graph for the rest of the session: every frame traversed
-      // it, every rebuild added more, and a long editing session ended up
-      // walking hundreds of invisible objects.
-      for (const [key, head] of heads) {
-        if (seen.has(key)) continue;
-        group.remove(head.root);
-        head.root.clear();
-        heads.delete(key);
+      if (placed.length > capacity) grow(placed.length);
+      for (const batch of all()) batch.n = 0;
+      let litLenses = 0;
+      for (const head of placed) {
+        root.compose(foot.set(head.x, head.height, -head.y), turn.setFromAxisAngle(up, head.yaw), one);
+        put(batches.posts, POST);
+        put(batches.arms, ARM);
+        put(batches.boxes, BOX);
+        for (const visor of visors) put(batches.visors, visor);
+        for (const name of LAMPS) {
+          const on = head.state === name;
+          for (let face = 0; face < FACES.length; face++) {
+            if (on) {
+              put(batches.lit, lens[name][face] as Matrix4, LIT[name]);
+              put(batches.halos, halos[name][face] as Matrix4, HALO[name]);
+              litLenses++;
+            } else {
+              put(batches[name], lens[name][face] as Matrix4);
+            }
+          }
+        }
       }
+      // Only the written prefix of each buffer goes to the GPU.
+      for (const batch of all()) {
+        const mesh = batch.mesh;
+        mesh.count = batch.n;
+        mesh.instanceMatrix.clearUpdateRanges();
+        if (batch.n > 0) mesh.instanceMatrix.addUpdateRange(0, batch.n * 16);
+        mesh.instanceMatrix.needsUpdate = true;
+        const colour = mesh.instanceColor;
+        if (colour) {
+          colour.clearUpdateRanges();
+          if (batch.n > 0) colour.addUpdateRange(0, batch.n * 3);
+          colour.needsUpdate = true;
+        }
+      }
+      group.userData.lamps = placed.length * LAMPS.length * FACES.length;
+      group.userData.litLamps = litLenses;
     },
     dispose() {
       scene.remove(group);
+      for (const batch of all()) batch.mesh.dispose();
       group.clear();
-      heads.clear();
+      shown.clear();
       for (const geometry of [
         postGeometry,
         armGeometry,
@@ -288,13 +355,7 @@ export function createSignalHeads(
       ]) {
         geometry.dispose();
       }
-      const materials: Material[] = [
-        steel,
-        housing,
-        ...Object.values(lit),
-        ...Object.values(dark),
-        ...Object.values(halo),
-      ];
+      const materials: Material[] = [steel, housing, lit, halo, ...Object.values(dark)];
       for (const material of materials) material.dispose();
     },
   };
@@ -309,25 +370,4 @@ function lensMaterial(color: number, emissive: number): MeshStandardMaterial {
     roughness: 0.35,
     metalness: 0,
   });
-}
-
-function haloMaterial(color: number): MeshBasicMaterial {
-  return new MeshBasicMaterial({ color, toneMapped: false, transparent: true, opacity: 0.28 });
-}
-
-function setLamps(
-  head: Head,
-  state: SignalState,
-  lit: Record<Lamp, MeshBasicMaterial>,
-  dark: Record<Lamp, MeshStandardMaterial>,
-): void {
-  for (const name of LAMPS) {
-    const on = state === name;
-    for (const lens of head.lamps[name]) {
-      lens.material = on ? lit[name] : dark[name];
-      lens.userData['active'] = on;
-    }
-    for (const glow of head.halos[name]) glow.visible = on;
-  }
-  head.root.userData['state'] = state;
 }

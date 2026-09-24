@@ -250,6 +250,13 @@ const PROBE = `(() => {
   let heaviestCount = 0;
   const terrainAt = (x, y) => S.terrainHeightAt(x, y);
 
+  // Signal lenses are instanced (render/signals.ts); their group counts them.
+  const signals = S.scene.getObjectByName('traffic-signals');
+  if (signals && signals.visible) {
+    report.signalLamps += signals.userData.lamps || 0;
+    report.litLamps += signals.userData.litLamps || 0;
+  }
+
   S.scene.traverse((o) => {
     if (!o.isMesh || !o.geometry || !o.geometry.getAttribute) return;
     const position = o.geometry.getAttribute('position');
@@ -266,10 +273,6 @@ const PROBE = `(() => {
       report.heaviest = o.name + ':' + heaviestCount;
     }
     if (o.name.startsWith('tunnel-')) report.portalMeshes++;
-    if (o.name.startsWith('signal-lamp-')) {
-      report.signalLamps++;
-      if (o.userData && o.userData.active) report.litLamps++;
-    }
     // A TUNNEL's bands are meant to be under the ground — that is what a tunnel
     // is — so they are counted separately instead of failing the surface check.
     const surface = /^(asphalt|kerb|footway|verge|markings)/.test(o.name);
@@ -398,8 +401,8 @@ for (const scenario of SCENARIOS) {
             const path = S.lanelet(connector.id);
             const controller = S.controller(connector.node);
             const head = `${connector.node}:${connector.inSegment}`;
-            const displayed = controller ? ['red', 'amber', 'green'].find(colour =>
-              scene.getObjectByName(`signal-lamp-${colour}-${head}`)?.userData.active) ?? 'none' : 'uncontrolled';
+            const displayed = controller
+              ? scene.getObjectByName('traffic-signals')?.userData.heads?.get(head) ?? 'none' : 'uncontrolled';
             const live = [...S.vehicles.values()].filter(vehicle => vehicle.lanelet === connector.id);
             const conflicting = S.conflicts.refs(connector.id).map(ref => ref.other);
             return { origin: String(connector.inSegment), fromLane: from?.laneIndex,
