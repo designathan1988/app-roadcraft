@@ -46,6 +46,9 @@ export function drawMinimap(
 ): void {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const rect = canvas.getBoundingClientRect();
+  // A folded minimap panel has no box. Sweeping every lanelet ten times a
+  // second for a canvas nobody can see is the whole cost of this function.
+  if (rect.width === 0 || rect.height === 0) return;
   const w = Math.max(1, Math.round(rect.width * dpr));
   const h = Math.max(1, Math.round(rect.height * dpr));
   if (canvas.width !== w || canvas.height !== h) {
