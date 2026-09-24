@@ -171,7 +171,7 @@ body { user-select: none; -webkit-user-select: none; }
 }
 .alignment-mode.active { color: var(--accent); border-color: var(--accent); }
 
-.structure-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 0 0 10px; }
+.structure-modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 0 0 10px; }
 .structure-mode, .terrain-mode, .terrain-clear {
   padding: 6px 4px;
   border-radius: 8px;

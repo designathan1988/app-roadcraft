@@ -54,7 +54,6 @@ export const PT_BR: Dictionary = {
 
   'structure.ground': 'Nível',
   'structure.elevated': 'Elevada',
-  'structure.viaduct': 'Viaduto',
   'structure.bridge': 'Ponte',
   'structure.tunnel': 'Túnel',
   'structure.tunnel.help':

@@ -1,6 +1,6 @@
 import { RoadDoc, type JunctionControl, type SegmentDirection, type SerializedDoc } from '@world/doc';
 import { ROAD_TYPES } from '@world/roadTypes';
-import { isRoadStructure } from '@world/structures';
+import { migrateStructure } from '@world/structures';
 import { isTerrainMode } from '@world/terrain';
 
 const KEY = 'roadcraft.world.v7';
@@ -282,7 +282,7 @@ export function isSerializedDoc(value: unknown): value is SerializedDoc {
     }
     if (segment.dashOrigin !== undefined && !isFiniteNumber(segment.dashOrigin)) return false;
     if (segment.direction !== undefined && !isSegmentDirection(segment.direction)) return false;
-    if (segment.structure !== undefined && !isRoadStructure(segment.structure)) return false;
+    if (segment.structure !== undefined && migrateStructure(segment.structure) === null) return false;
     if (segment.lanes !== undefined && segment.lanes !== null &&
       (!isFiniteNumber(segment.lanes) || !Number.isInteger(segment.lanes) || segment.lanes < 1 || segment.lanes > 8)) return false;
     if (segment.curve !== null) {

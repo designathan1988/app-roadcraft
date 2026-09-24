@@ -187,7 +187,7 @@ describe('road elevation over a hill', () => {
 });
 
 describe('raised structures', () => {
-  function elevatedChain(structure: 'elevated' | 'viaduct' | 'bridge', span: number) {
+  function elevatedChain(structure: 'elevated' | 'bridge', span: number) {
     const doc = new RoadDoc();
     const a = doc.addNode({ x: -span, y: 0 });
     const b = doc.addNode({ x: -span / 3, y: 0 });
@@ -203,7 +203,7 @@ describe('raised structures', () => {
   }
 
   it('lands exactly on the road at grade it connects to', () => {
-    const { net, landing } = elevatedChain('viaduct', 900);
+    const { net, landing } = elevatedChain('elevated', 900);
     const field = buildRoadElevation(net, flatGround());
     for (const node of landing) {
       expect(field.nodeHeight(node)).toBeCloseTo(ROAD_GROUND_CLEARANCE, 6);
@@ -211,9 +211,9 @@ describe('raised structures', () => {
   });
 
   it('reaches its design clearance when the span is long enough', () => {
-    const { net } = elevatedChain('viaduct', 1_400);
+    const { net } = elevatedChain('elevated', 1_400);
     const field = buildRoadElevation(net, flatGround());
-    const spec = roadStructure('viaduct');
+    const spec = roadStructure('elevated');
     expect(field.at(0, 0)).toBeGreaterThan(spec.clearance * 0.9);
   });
 
@@ -228,10 +228,10 @@ describe('raised structures', () => {
   });
 
   it('keeps the ground pass and the raised pass apart', () => {
-    const { net } = elevatedChain('viaduct', 1_400);
+    const { net } = elevatedChain('elevated', 1_400);
     const field = buildRoadElevation(net, flatGround());
     const ground = new Set(['ground' as const]);
-    const raised = new Set(['viaduct' as const]);
+    const raised = new Set(['elevated' as const]);
     expect(field.at(0, 0, raised)).toBeGreaterThan(field.at(0, 0, ground) + 5);
   });
 });

@@ -4,8 +4,9 @@ import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { bands, surfaces } from '@world/surfaces';
 import { Level, ROAD_TYPES, casingHalf, halfWidth, roadProfile, travelLanes } from '@world/roadTypes';
-import { ROAD_STRUCTURES, isRaised, isRoadStructure, roadStructure } from '@world/structures';
+import { ROAD_STRUCTURES, isRaised, isRoadStructure, migrateStructure, roadStructure } from '@world/structures';
 import type { MultiPoly } from '@core/clipper';
+import { isSerializedDoc } from '@editor/persistence';
 
 function area(polygons: MultiPoly): number {
   let total = 0;
@@ -79,14 +80,34 @@ describe('structures', () => {
   it('classify raised structures', () => {
     expect(ROAD_STRUCTURES.filter((s) => isRaised(s.id)).map((s) => s.id)).toEqual([
       'elevated',
-      'viaduct',
       'bridge',
     ]);
   });
 
   it('validate ids', () => {
-    expect(isRoadStructure('viaduct')).toBe(true);
+    expect(isRoadStructure('elevated')).toBe(true);
     expect(isRoadStructure('flyover')).toBe(false);
+  });
+
+  it('load a merged level as the one it became', () => {
+    // `viaduct` was a second raised level players could not tell from
+    // `elevated`; a map saved with one must load, as elevated.
+    expect(isRoadStructure('viaduct')).toBe(false);
+    expect(migrateStructure('viaduct')).toBe('elevated');
+    expect(migrateStructure('bridge')).toBe('bridge');
+    expect(migrateStructure('flyover')).toBeNull();
+    const doc = RoadDoc.fromJSON({
+      version: 1,
+      nodes: [{ id: 1, x: 0, y: 0 }, { id: 2, x: 400, y: 0 }],
+      segments: [{ id: 1, a: 1, b: 2, type: 1, curve: null, structure: 'viaduct' }],
+    });
+    expect(doc.segment(1 as never)?.structure).toBe('elevated');
+    expect(isSerializedDoc(doc.toJSON())).toBe(true);
+    expect(isSerializedDoc({
+      version: 1,
+      nodes: [{ id: 1, x: 0, y: 0 }, { id: 2, x: 400, y: 0 }],
+      segments: [{ id: 1, a: 1, b: 2, type: 1, curve: null, structure: 'viaduct' }],
+    })).toBe(true);
   });
 
   it('carry a translation key rather than a name', () => {

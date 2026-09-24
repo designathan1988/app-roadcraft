@@ -8,7 +8,28 @@
  * keeps over the ground it spans, so that is what is stored — see `clearance`,
  * and `world/elevation.ts` for the solver that turns it into a deck height.
  */
-export type RoadStructure = 'ground' | 'elevated' | 'viaduct' | 'bridge' | 'tunnel';
+export type RoadStructure = 'ground' | 'elevated' | 'bridge' | 'tunnel';
+
+/**
+ * Structure ids a saved map may still carry, and what each one loads as.
+ *
+ * `viaduct` was a second raised level beside `elevated`: the same deck on the
+ * same piers, four metres of clearance instead of six. Players could not tell
+ * them apart - photographed side by side the two differed only in a height the
+ * fixed camera flattens - and the lower one did not even clear a lorry: ten
+ * units of clearance to the deck SURFACE left 3.3 m under the soffit, against
+ * the 4.5 to 5.5 m a road under a structure needs. Two buttons for one thing,
+ * one of them unbuildable in reality, is one button too many. A segment saved
+ * as a viaduct loads as elevated, never as a failure.
+ */
+const LEGACY_STRUCTURES: Readonly<Record<string, RoadStructure>> = { viaduct: 'elevated' };
+
+/** The structure a stored id stands for today, or null when it is not one. */
+export function migrateStructure(value: unknown): RoadStructure | null {
+  if (isRoadStructure(value)) return value;
+  if (typeof value !== 'string') return null;
+  return LEGACY_STRUCTURES[value] ?? null;
+}
 
 export interface RoadStructureSpec {
   readonly id: RoadStructure;
@@ -86,7 +107,6 @@ export const TUNNEL_GRADE = 0.13;
 export const ROAD_STRUCTURES: readonly RoadStructureSpec[] = [
   { id: 'ground', key: 'structure.ground', clearance: 0, deck: 0.55, supports: false },
   { id: 'elevated', key: 'structure.elevated', clearance: 15, deck: 1.6, supports: true },
-  { id: 'viaduct', key: 'structure.viaduct', clearance: 10, deck: 1.35, supports: true },
   { id: 'bridge', key: 'structure.bridge', clearance: 7.5, deck: 1.15, supports: true },
   { id: 'tunnel', key: 'structure.tunnel', clearance: -TUNNEL_DEPTH, deck: 0.6, supports: false },
 ] as const;
@@ -100,13 +120,12 @@ export const roadStructure = (id: RoadStructure): RoadStructureSpec =>
 export const isRoadStructure = (value: unknown): value is RoadStructure =>
   value === 'ground' ||
   value === 'elevated' ||
-  value === 'viaduct' ||
   value === 'bridge' ||
   value === 'tunnel';
 
 /** True for the structures that stand clear of the ground on piers. */
 export const isRaised = (id: RoadStructure): boolean =>
-  id === 'elevated' || id === 'viaduct' || id === 'bridge';
+  id === 'elevated' || id === 'bridge';
 
 /**
  * True for the structures that run BELOW the ground.

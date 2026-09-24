@@ -208,7 +208,7 @@ export function buildStructureDetails(
     const structure = segment.structure as RoadStructure;
     const only: ReadonlySet<RoadStructure> = new Set([structure]);
     const spec = roadStructure(structure);
-    const spacing = structure === 'bridge' ? 108 : structure === 'viaduct' ? 58 : 74;
+    const spacing = structure === 'bridge' ? 108 : 74;
     const radius = structure === 'bridge' ? 2.6 : 1.8;
     const length = ribbon.full.length;
 
