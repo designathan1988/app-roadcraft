@@ -77,7 +77,14 @@ export function hasDownstreamStorage(w: SimWorld, v: Vehicle, conn: Connector): 
   const tailId = rt.order[0];
   const tail = tailId === undefined ? undefined : w.veh(tailId);
   let free = tail ? tail.s - tail.archetype.length : out.length;
-  if (endsAtSignal(w, out.to)) {
+  // Anywhere else, the same as soon as the lane holds a queue that is going
+  // to stand - a car waiting to turn off the main road at the next junction
+  // holds the lane just like a red does, and a through car let in behind the
+  // rolling cars ahead of it stood in the box of the junction before. A lane
+  // whose traffic is all rolling out keeps the old, optimistic rule, which is
+  // what keeps a ring of short links flowing.
+  const resting = restingRear(w, rt.order);
+  if (endsAtSignal(w, out.to) || Number.isFinite(resting)) {
     // Towards a signal a rolling tail is not discharging: it is rolling up to
     // whatever holds it, very often the red. Counting its CURRENT rear, and
     // not debiting the cars already crossing towards it, let a third car into
@@ -85,7 +92,7 @@ export function hasDownstreamStorage(w: SimWorld, v: Vehicle, conn: Connector): 
     // about to fill, and it stood inside the junction it had been let into.
     // So the queue is placed where it will come to rest, and every car
     // committed to the lane is debited from that, rolling tail or not.
-    free = Math.min(out.length, restingRear(w, rt.order));
+    free = Math.min(out.length, resting);
     for (const other of committed) {
       free -= other.archetype.length + Math.max(JAM_GAP, other.driver.s0);
     }

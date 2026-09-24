@@ -6,6 +6,8 @@ import { SimWorld } from '@sim/world';
 import { step } from '@sim/pipeline';
 import { vehiclePose } from '@sim/pose';
 import { DT } from '@sim/params';
+import { integrateAll } from '@sim/vehicles/integrate';
+import { snapshot } from '@sim/vehicles/state';
 
 /**
  * What the player sees, as opposed to what the simulation believes.
@@ -218,24 +220,48 @@ describe('rendered pose', () => {
   });
 
   it('keeps a car stopped half way across a lane angled, not snapped straight', () => {
+    // Built on purpose rather than waited for: lane changes are now only
+    // started when they can be finished (`canLeaveLane`), so a traffic run no
+    // longer reliably leaves a car standing mid-change. The pose of one that
+    // does - a car that had to stop half way - must still follow its curve.
     const { sim } = grid();
-    let angled = 0;
-    sim.clock.run(Math.round(200 / DT), () => {
-      step(sim, { traffic: true, pedestrians: true });
-      for (const v of sim.vehicles.values()) {
-        if (v.v > 0.05 || v.lateralSlope === 0) continue;
-        const lane = sim.lanelet(v.lanelet);
-        const pose = vehiclePose(sim, v, 1);
-        if (!lane || !pose) continue;
-        angled++;
-        // Standing still, it points exactly along the curve it was driving.
-        const along = lane.centre.sampleAt(Math.max(0, v.s - v.archetype.length / 2)).t;
-        let yaw = pose.angle - Math.atan2(along.y, along.x);
-        yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
-        expect(Math.abs(yaw - Math.atan(v.lateralSlope))).toBeLessThan(1e-6);
-      }
+    sim.clock.run(Math.round(40 / DT), () => step(sim, { traffic: true, pedestrians: false }));
+    const v = [...sim.vehiclesInIdOrder()].find((candidate) => {
+      const lane = sim.lanelet(candidate.lanelet);
+      return lane?.kind === 'link' && candidate.v > 2 && candidate.s > 60 &&
+        lane.length - candidate.s > 120 && !candidate.admittedConnector &&
+        candidate.clearingConnectors.length === 0 && candidate.lateral === 0 &&
+        sim.graph.siblingLanes(lane.id).some((id) =>
+          Math.abs((sim.lanelet(id)?.laneIndex ?? 0) - (lane.laneIndex ?? 0)) === 1);
     });
-    expect(angled).toBeGreaterThan(0);
+    expect(v).toBeDefined();
+    const car = v!;
+    const lane = sim.lanelet(car.lanelet)!;
+    const sibling = sim.graph.siblingLanes(lane.id)
+      .find((id) => Math.abs((sim.lanelet(id)?.laneIndex ?? 0) - (lane.laneIndex ?? 0)) === 1)!;
+
+    // The transfer, exactly as the integrator performs it, then part of the curve.
+    car.laneChange = sibling;
+    integrateAll(sim);
+    expect(car.lanelet).toBe(sibling);
+    for (let i = 0; i < 40 && Math.abs(car.lateralSlope) < 0.02; i++) integrateAll(sim);
+    // And it stops there.
+    car.v = 0;
+    car.prev = snapshot(car);
+    expect(Math.abs(car.lateral)).toBeGreaterThan(0.05);
+    expect(car.lateralSlope).not.toBe(0);
+
+    const here = sim.lanelet(car.lanelet)!;
+    const pose = vehiclePose(sim, car, 1)!;
+    // Standing still, it points exactly along the curve it was driving.
+    const along = here.centre.sampleAt(Math.max(0, car.s - car.archetype.length / 2)).t;
+    let yaw = pose.angle - Math.atan2(along.y, along.x);
+    yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+    expect(Math.abs(yaw - Math.atan(car.lateralSlope))).toBeLessThan(1e-6);
+    // A standing car is not steered straight by the next tick either.
+    const before = car.lateralSlope;
+    integrateAll(sim);
+    if (car.v === 0) expect(car.lateralSlope).toBe(before);
   });
 
   it('interpolates within a tick rather than holding the last pose', () => {
