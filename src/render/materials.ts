@@ -338,6 +338,13 @@ export function createMaterials(anisotropy: number): SceneMaterials {
       roughness,
       metalness,
       side: FrontSide,
+      // Both sides into the shadow map. Left null, three draws a front-sided
+      // material's BACK faces there, and a deck is a sheet facing the sun: its
+      // top was culled from the shadow pass and only the thin skirts at its
+      // edges cast anything, so a raised road threw no shadow on the street
+      // under it and read as a road painted on the ground. Surfaces at grade
+      // do not cast at all, so this costs them nothing.
+      shadowSide: DoubleSide,
       envMapIntensity: 0.55,
       vertexColors,
     });
