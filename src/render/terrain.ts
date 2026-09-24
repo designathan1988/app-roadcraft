@@ -1,3 +1,4 @@
+import { Digest } from '@core/digest';
 import {
   BufferGeometry,
   Color,
@@ -84,6 +85,13 @@ export interface TerrainSurface {
    * every rebuild.
    */
   naturalRenderedHeightAt(x: number, y: number): number;
+  /**
+   * A digest of everything `renderedHeightAt` and `naturalRenderedHeightAt`
+   * read inside a rectangle: the corners, shaped and natural, of every cell
+   * they touch, and the stamps themselves where the rectangle leaves the plate
+   * and the field is read analytically.
+   */
+  digest(minX: number, minY: number, maxX: number, maxY: number): number;
   /**
    * The height the terrain is actually DRAWN at.
    *
@@ -578,6 +586,22 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
     naturalRenderedHeightAt,
     renderedHeightAt,
     wetAt,
+    digest(minX, minY, maxX, maxY) {
+      const digest = new Digest();
+      if (minX < -TERRAIN_HALF || maxX > TERRAIN_HALF || minY < -TERRAIN_HALF || maxY > TERRAIN_HALF) {
+        digest.add(revision);
+      }
+      // Rows run from +y downwards (see `sampleGrid`).
+      const clampCorner = (value: number): number => Math.min(GRID - 1, Math.max(0, value));
+      const x0 = clampCorner(Math.floor((minX + TERRAIN_HALF) / TERRAIN_CELL));
+      const x1 = clampCorner(Math.floor((maxX + TERRAIN_HALF) / TERRAIN_CELL) + 1);
+      const y0 = clampCorner(Math.floor((TERRAIN_HALF - maxY) / TERRAIN_CELL));
+      const y1 = clampCorner(Math.floor((TERRAIN_HALF - minY) / TERRAIN_CELL) + 1);
+      for (let iy = y0; iy <= y1; iy++) {
+        for (let ix = x0; ix <= x1; ix++) digest.add(natural[ix + iy * GRID] as number).add(grid[ix + iy * GRID] as number);
+      }
+      return digest.value();
+    },
     shapeToRoads(shape) {
       const moved = shapeToRoads(shape);
       // A road that cut through a valley changes where the water's shore is.

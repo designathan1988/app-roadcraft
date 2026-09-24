@@ -1,5 +1,6 @@
 import earcut from 'earcut';
 import {
+  BufferAttribute,
   BufferGeometry,
   Float32BufferAttribute,
   Mesh,
@@ -150,16 +151,17 @@ function refine(b: Builder, maxEdge: number, maxRounds = 24, budget = 600_000): 
       const a = b.tris[t] as number;
       const c = b.tris[t + 1] as number;
       const d = b.tris[t + 2] as number;
-      let bestKey = -1;
+      // The three edges in the order a-c, c-d, d-a; the first of equal longest wins.
+      const ac = edgeLength(b, a, c);
+      const cd = edgeLength(b, c, d);
+      const da = edgeLength(b, d, a);
       let bestLength = maxEdge;
-      for (const [i, j] of [[a, c], [c, d], [d, a]] as const) {
-        const length = edgeLength(b, i, j);
-        if (length > bestLength) {
-          bestLength = length;
-          bestKey = i < j ? i * 0x4000_0000 + j : j * 0x4000_0000 + i;
-        }
-      }
-      if (bestKey >= 0) marked.add(bestKey);
+      let i = -1;
+      let j = -1;
+      if (ac > bestLength) { bestLength = ac; i = a; j = c; }
+      if (cd > bestLength) { bestLength = cd; i = c; j = d; }
+      if (da > bestLength) { i = d; j = a; }
+      if (i >= 0) marked.add(i < j ? i * 0x4000_0000 + j : j * 0x4000_0000 + i);
     }
     if (marked.size === 0) return;
 
@@ -330,154 +332,40 @@ function trianglesArea(flat: readonly number[], tris: readonly number[]): number
   return sum;
 }
 
+/** Vertex and index streams of a mesh under construction. */
+interface Streams {
+  readonly positions: number[];
+  readonly normals: number[];
+  readonly uvs: number[];
+  readonly colors: number[];
+  readonly indices: number[];
+}
+
+const streams = (): Streams => ({ positions: [], normals: [], uvs: [], colors: [], indices: [] });
+
+/** One build's options and the scratch its callbacks write into. */
+interface Context {
+  readonly options: SurfaceMeshOptions;
+  readonly uv: [number, number];
+  /** White until a tint writes it, so an untinted surface is written white. */
+  readonly rgb: [number, number, number];
+}
+
 export function buildSurfaceMesh(options: SurfaceMeshOptions): Mesh | null {
-  const { polygons, top, bottom, maxEdge, uv } = options;
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const uvs: number[] = [];
-  const colors: number[] = [];
-  const indices: number[] = [];
-  const scratch: [number, number] = [0, 0];
-  const rgb: [number, number, number] = [1, 1, 1];
-  const tint = options.tint;
+  const context: Context = { options, uv: [0, 0], rgb: [1, 1, 1] };
 
-  // ------------------------------------------------------------- top faces
-  //
   // Compact pieces first (see `splitToSpan`), then ear clipping inside each.
-  // The outline is sampled at exactly `maxEdge`, which is what makes the result
-  // crack-free across a cut: refinement only ever splits an edge LONGER than
-  // `maxEdge`, so no boundary edge is ever split, so two pieces that share a cut
-  // keep the identical vertices along it.
+  const out = streams();
   const pieces: Poly[] = [];
-  for (const polygon of polygons) splitToSpan(polygon, maxEdge * 6, pieces);
+  for (const polygon of options.polygons) splitToSpan(polygon, options.maxEdge * 6, pieces);
+  for (const piece of pieces) meshPiece(piece, context, out);
+  if (options.bottom) meshSkirts(context, out);
 
-  for (const polygon of pieces) {
-    const outer = polygon[0];
-    if (!outer || outer.length < 3) continue;
-
-    const flat: number[] = [];
-    const holes: number[] = [];
-    for (let ringIndex = 0; ringIndex < polygon.length; ringIndex++) {
-      const ring = polygon[ringIndex];
-      if (!ring || ring.length < 3) continue;
-      if (ringIndex > 0) holes.push(flat.length / 2);
-      densify(flat, ring, maxEdge);
-    }
-    const seed = earcut(flat, holes, 2);
-    if (seed.length === 0) continue;
-
-    // Which way round the TRIANGLES run decides which side faces the sky, so
-    // that is what is measured. Relying on the clipper's ring orientation is
-    // how a whole road network came to be drawn inside-out and vanished under
-    // the terrain. Measuring the RING instead was wrong the other way: earcut
-    // hands back anticlockwise triangles whatever the ring's winding, so a
-    // clockwise piece was flipped face down — every piece of a horizontal cut,
-    // the day `cutAtAxis` began returning them clockwise. The triangles are
-    // what is drawn; ask them.
-    const flip = trianglesArea(flat, seed) < 0;
-
-    const builder: Builder = { xs: [], ys: [], tris: [...seed], midpoints: new Map() };
-    for (let i = 0; i < flat.length; i += 2) {
-      builder.xs.push(flat[i] as number);
-      builder.ys.push(flat[i + 1] as number);
-    }
-    refine(builder, maxEdge);
-
-    const base = positions.length / 3;
-    for (let i = 0; i < builder.xs.length; i++) {
-      const x = builder.xs[i] as number;
-      const y = builder.ys[i] as number;
-      positions.push(x, top(x, y), -y);
-      uv(x, y, scratch);
-      uvs.push(scratch[0], scratch[1]);
-      normals.push(0, 1, 0);
-      if (tint) tint(x, y, rgb);
-      colors.push(rgb[0], rgb[1], rgb[2]);
-    }
-    // World Y is mirrored into three's Z. That reflection flips handedness, so
-    // a ring that is counter-clockwise on the map comes out clockwise in the
-    // scene: taken in order, the triangle's normal points UP, which is what a
-    // top face needs. A clockwise ring is emitted the other way round.
-    for (let i = 0; i < builder.tris.length; i += 3) {
-      let a = base + (builder.tris[i] as number);
-      let b = base + (builder.tris[i + 1] as number);
-      let c = base + (builder.tris[i + 2] as number);
-      if (options.uvFrame && options.uvWorld && !uvConsistent(positions, uvs, a, b, c, options.uvWorld)) {
-        const cx = (positions[a * 3]! + positions[b * 3]! + positions[c * 3]!) / 3;
-        const cy = -(positions[a * 3 + 2]! + positions[b * 3 + 2]! + positions[c * 3 + 2]!) / 3;
-        const fresh: number[] = [];
-        for (const v of [a, b, c]) {
-          const x = positions[v * 3]!;
-          const y = -positions[v * 3 + 2]!;
-          positions.push(x, positions[v * 3 + 1]!, -y);
-          options.uvFrame(x, y, cx, cy, scratch);
-          uvs.push(scratch[0], scratch[1]);
-          normals.push(0, 1, 0);
-          colors.push(colors[v * 3]!, colors[v * 3 + 1]!, colors[v * 3 + 2]!);
-          fresh.push(positions.length / 3 - 1);
-        }
-        [a, b, c] = fresh as [number, number, number];
-      }
-      if (flip) indices.push(a, c, b);
-      else indices.push(a, b, c);
-    }
-  }
-
-  // ----------------------------------------------------------------- skirts
-  //
-  // Built from the ORIGINAL outlines, never from the pieces. A cut made for
-  // triangulation is an interior line, and giving it a wall would hang a sheet
-  // of kerb down the middle of the carriageway — invisible from above, but real
-  // geometry, and doubled at every cut.
-  if (bottom) {
-    const scale = options.skirtUvScale ?? 1;
-    for (const polygon of polygons) {
-      const outer = polygon[0];
-      if (!outer || outer.length < 3) continue;
-      const area = ringArea(outer);
-      const flip = area < 0;
-      for (const ring of polygon) {
-        if (!ring || ring.length < 3) continue;
-        const flat: number[] = [];
-        densify(flat, ring, maxEdge);
-        const count = flat.length / 2;
-        let run = 0;
-        for (let k = 0; k < count; k++) {
-          const i = k * 2;
-          const j = ((k + 1) % count) * 2;
-          const ax = flat[i] as number;
-          const ay = flat[i + 1] as number;
-          const bx = flat[j] as number;
-          const by = flat[j + 1] as number;
-          const span = Math.hypot(bx - ax, by - ay);
-          if (span < 1e-6) continue;
-          const sign = flip ? -1 : 1;
-          const nx = (sign * (by - ay)) / span;
-          const nz = (sign * (bx - ax)) / span;
-          const topA = top(ax, ay);
-          const topB = top(bx, by);
-          const lowA = bottom(ax, ay);
-          const lowB = bottom(bx, by);
-          const side = positions.length / 3;
-          positions.push(ax, topA, -ay, bx, topB, -by, bx, lowB, -by, ax, lowA, -ay);
-          if (tint) tint((ax + bx) / 2, (ay + by) / 2, rgb);
-          for (let n = 0; n < 4; n++) colors.push(rgb[0], rgb[1], rgb[2]);
-          // Written rather than averaged, so a kerb keeps its hard edge instead
-          // of smearing into the surface above it.
-          for (let n = 0; n < 4; n++) normals.push(nx, 0, nz);
-          const u0 = run / scale;
-          const u1 = (run + span) / scale;
-          uvs.push(u0, topA / scale, u1, topB / scale, u1, lowB / scale, u0, lowA / scale);
-          run += span;
-          // Wound so the face looks the same way as the normal written above.
-          if (flip) indices.push(side, side + 1, side + 2, side, side + 2, side + 3);
-          else indices.push(side, side + 2, side + 1, side, side + 3, side + 2);
-        }
-      }
-    }
-  }
-
+  const { positions, normals, uvs, colors, indices } = out;
   if (indices.length === 0) return null;
+  // Only the top face was given a placeholder normal; recomputing just those
+  // vertices keeps the skirt's hard edges while the surface itself is smooth.
+  smoothTopNormals(positions, normals, indices);
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new Float32BufferAttribute(normals, 3));
@@ -487,17 +375,310 @@ export function buildSurfaceMesh(options: SurfaceMeshOptions): Mesh | null {
   // ones than to keep two variants of every road material.
   geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
-  // Only the top face was given a placeholder normal; recomputing just those
-  // vertices keeps the skirt's hard edges while the surface itself is smooth.
-  smoothTopNormals(geometry, positions, normals, indices);
+  return finish(geometry, options);
+}
+
+function finish(geometry: BufferGeometry,
+  options: Pick<SurfaceMeshOptions, 'name' | 'material' | 'castShadow' | 'receiveShadow'>): Mesh {
   geometry.computeBoundingSphere();
   geometry.computeBoundingBox();
-
   const mesh = new Mesh(geometry, options.material);
   mesh.name = options.name;
   mesh.castShadow = options.castShadow ?? false;
   mesh.receiveShadow = options.receiveShadow ?? true;
   return mesh;
+}
+
+/**
+ * The top face of one compact piece: ear clipping, refinement, and one read
+ * of the height, texture frame and tint per vertex.
+ *
+ * The outline is sampled at exactly `maxEdge`, which is what makes the result
+ * crack-free across a cut: refinement only ever splits an edge LONGER than
+ * `maxEdge`, so no boundary edge is ever split, so two pieces that share a cut
+ * keep the identical vertices along it.
+ */
+function meshPiece(polygon: Poly, context: Context, out: Streams): void {
+  const { options, uv: scratch, rgb } = context;
+  const { top, maxEdge, uv, tint } = options;
+  const { positions, normals, uvs, colors, indices } = out;
+  const outer = polygon[0];
+  if (!outer || outer.length < 3) return;
+
+  const flat: number[] = [];
+  const holes: number[] = [];
+  for (let ringIndex = 0; ringIndex < polygon.length; ringIndex++) {
+    const ring = polygon[ringIndex];
+    if (!ring || ring.length < 3) continue;
+    if (ringIndex > 0) holes.push(flat.length / 2);
+    densify(flat, ring, maxEdge);
+  }
+  const seed = earcut(flat, holes, 2);
+  if (seed.length === 0) return;
+
+  // Which way round the TRIANGLES run decides which side faces the sky, so
+  // that is what is measured. Relying on the clipper's ring orientation is
+  // how a whole road network came to be drawn inside-out and vanished under
+  // the terrain. Measuring the RING instead was wrong the other way: earcut
+  // hands back anticlockwise triangles whatever the ring's winding, so a
+  // clockwise piece was flipped face down — every piece of a horizontal cut,
+  // the day `cutAtAxis` began returning them clockwise. The triangles are
+  // what is drawn; ask them.
+  const flip = trianglesArea(flat, seed) < 0;
+
+  const builder: Builder = { xs: [], ys: [], tris: [...seed], midpoints: new Map() };
+  for (let i = 0; i < flat.length; i += 2) {
+    builder.xs.push(flat[i] as number);
+    builder.ys.push(flat[i + 1] as number);
+  }
+  refine(builder, maxEdge);
+
+  const base = positions.length / 3;
+  for (let i = 0; i < builder.xs.length; i++) {
+    const x = builder.xs[i] as number;
+    const y = builder.ys[i] as number;
+    positions.push(x, top(x, y), -y);
+    uv(x, y, scratch);
+    uvs.push(scratch[0], scratch[1]);
+    normals.push(0, 1, 0);
+    if (tint) tint(x, y, rgb);
+    colors.push(rgb[0], rgb[1], rgb[2]);
+  }
+  // World Y is mirrored into three's Z. That reflection flips handedness, so
+  // a ring that is counter-clockwise on the map comes out clockwise in the
+  // scene: taken in order, the triangle's normal points UP, which is what a
+  // top face needs. A clockwise ring is emitted the other way round.
+  for (let i = 0; i < builder.tris.length; i += 3) {
+    let a = base + (builder.tris[i] as number);
+    let b = base + (builder.tris[i + 1] as number);
+    let c = base + (builder.tris[i + 2] as number);
+    if (options.uvFrame && options.uvWorld && !uvConsistent(positions, uvs, a, b, c, options.uvWorld)) {
+      const cx = (positions[a * 3]! + positions[b * 3]! + positions[c * 3]!) / 3;
+      const cy = -(positions[a * 3 + 2]! + positions[b * 3 + 2]! + positions[c * 3 + 2]!) / 3;
+      const fresh: number[] = [];
+      for (const v of [a, b, c]) {
+        const x = positions[v * 3]!;
+        const y = -positions[v * 3 + 2]!;
+        positions.push(x, positions[v * 3 + 1]!, -y);
+        options.uvFrame(x, y, cx, cy, scratch);
+        uvs.push(scratch[0], scratch[1]);
+        normals.push(0, 1, 0);
+        colors.push(colors[v * 3]!, colors[v * 3 + 1]!, colors[v * 3 + 2]!);
+        fresh.push(positions.length / 3 - 1);
+      }
+      [a, b, c] = fresh as [number, number, number];
+    }
+    if (flip) indices.push(a, c, b);
+    else indices.push(a, b, c);
+  }
+}
+
+/**
+ * The walls hung from a surface's outline down to `bottom`.
+ *
+ * Built from the ORIGINAL outlines, never from the pieces. A cut made for
+ * triangulation is an interior line, and giving it a wall would hang a sheet
+ * of kerb down the middle of the carriageway — invisible from above, but real
+ * geometry, and doubled at every cut.
+ */
+function meshSkirts(context: Context, out: Streams, cut?: TileRect): void {
+  const { options, rgb } = context;
+  const { polygons, top, maxEdge, tint } = options;
+  const bottom = options.bottom;
+  if (!bottom) return;
+  const { positions, normals, uvs, colors, indices } = out;
+  const scale = options.skirtUvScale ?? 1;
+  for (const polygon of polygons) {
+    const outer = polygon[0];
+    if (!outer || outer.length < 3) continue;
+    const area = ringArea(outer);
+    const flip = area < 0;
+    for (const ring of polygon) {
+      if (!ring || ring.length < 3) continue;
+      const flat: number[] = [];
+      densify(flat, ring, maxEdge);
+      const count = flat.length / 2;
+      let run = 0;
+      for (let k = 0; k < count; k++) {
+        const i = k * 2;
+        const j = ((k + 1) % count) * 2;
+        const ax = flat[i] as number;
+        const ay = flat[i + 1] as number;
+        const bx = flat[j] as number;
+        const by = flat[j + 1] as number;
+        const span = Math.hypot(bx - ax, by - ay);
+        if (span < 1e-6) continue;
+        if (cut && alongCut(cut, ax, ay, bx, by)) continue;
+        const sign = flip ? -1 : 1;
+        const nx = (sign * (by - ay)) / span;
+        const nz = (sign * (bx - ax)) / span;
+        const topA = top(ax, ay);
+        const topB = top(bx, by);
+        const lowA = bottom(ax, ay);
+        const lowB = bottom(bx, by);
+        const side = positions.length / 3;
+        positions.push(ax, topA, -ay, bx, topB, -by, bx, lowB, -by, ax, lowA, -ay);
+        if (tint) tint((ax + bx) / 2, (ay + by) / 2, rgb);
+        for (let n = 0; n < 4; n++) colors.push(rgb[0], rgb[1], rgb[2]);
+        // Written rather than averaged, so a kerb keeps its hard edge instead
+        // of smearing into the surface above it.
+        for (let n = 0; n < 4; n++) normals.push(nx, 0, nz);
+        const u0 = run / scale;
+        const u1 = (run + span) / scale;
+        uvs.push(u0, topA / scale, u1, topB / scale, u1, lowB / scale, u0, lowA / scale);
+        run += span;
+        // Wound so the face looks the same way as the normal written above.
+        if (flip) indices.push(side, side + 1, side + 2, side, side + 2, side + 3);
+        else indices.push(side, side + 2, side + 1, side, side + 3, side + 2);
+      }
+    }
+  }
+}
+
+// ------------------------------------------------------------------ tiles
+
+/**
+ * One tile's worth of a surface: its top faces and the skirts along its part
+ * of the outline, ready to be copied into the surface's mesh (`mergeTiles`).
+ */
+export interface Tile {
+  readonly positions: Float32Array;
+  readonly normals: Float32Array;
+  readonly uvs: Float32Array;
+  readonly colors: Float32Array;
+  /** Local to the tile. */
+  readonly indices: Uint32Array;
+}
+
+/** An axis-aligned rectangle a surface has been cut to: [minX, minY, maxX, maxY]. */
+export type TileRect = readonly [number, number, number, number];
+
+/**
+ * How far a cut may land from the line it was asked for: `cutAtAxis` moves a
+ * cut a few thousandths off any vertex it would otherwise pass through.
+ */
+const CUT_SLACK = 0.1;
+
+/**
+ * The parts of `polygons` inside a rectangle, by four straight cuts (see
+ * `cutAtAxis`). Both sides of a cut come from the same crossing points, so
+ * the neighbouring rectangle, cut along the same line, meets these pieces
+ * vertex for vertex.
+ */
+export function clipToRect(polygons: MultiPoly, rect: TileRect): MultiPoly {
+  let pieces: MultiPoly = polygons;
+  const cuts: [0 | 1, number, boolean][] = [
+    [0, rect[0], true], [0, rect[2], false], [1, rect[1], true], [1, rect[3], false],
+  ];
+  for (const [axis, at, keepAbove] of cuts) {
+    const next: MultiPoly = [];
+    for (const polygon of pieces) {
+      const box = bounds(polygon);
+      if (!box) continue;
+      const low = axis === 0 ? box[0] : box[1];
+      const high = axis === 0 ? box[2] : box[3];
+      // Wholly on the kept side, or wholly off it: no cut to make.
+      if (keepAbove ? low >= at : high <= at) {
+        next.push(polygon);
+        continue;
+      }
+      if (keepAbove ? high <= at : low >= at) continue;
+      const [below = [], above = []] = cutAtAxis(polygon, axis, at) ??
+        clipHalves(polygon, Math.max(box[2] - box[0], box[3] - box[1]) + 1, axis === 0, at,
+          box[0], box[1], box[2], box[3]);
+      for (const piece of keepAbove ? above : below) next.push(piece);
+    }
+    pieces = next;
+  }
+  return pieces;
+}
+
+/**
+ * Builds one tile of a surface: the top faces of `options.polygons` (already
+ * cut to `rect`), and the skirts along every edge of their outline except the
+ * edges the cut itself made, which are interior to the whole surface.
+ */
+export function meshTile(options: SurfaceMeshOptions, rect: TileRect): Tile {
+  const context: Context = { options, uv: [0, 0], rgb: [1, 1, 1] };
+  const out = streams();
+  const spans: Poly[] = [];
+  for (const polygon of options.polygons) splitToSpan(polygon, options.maxEdge * 6, spans);
+  for (const span of spans) meshPiece(span, context, out);
+  // No vertex is shared with another tile, so the smoothing is the one the
+  // whole mesh would get.
+  smoothTopNormals(out.positions, out.normals, out.indices);
+  if (options.bottom) meshSkirts(context, out, rect);
+  return {
+    positions: new Float32Array(out.positions),
+    normals: new Float32Array(out.normals),
+    uvs: new Float32Array(out.uvs),
+    colors: new Float32Array(out.colors),
+    indices: new Uint32Array(out.indices),
+  };
+}
+
+/** Whether an edge runs along one of the lines a tile was cut on. */
+function alongCut(rect: TileRect, ax: number, ay: number, bx: number, by: number): boolean {
+  for (let k = 0; k < 4; k++) {
+    const at = rect[k] as number;
+    if (k % 2 === 0 ? Math.abs(ax - at) < CUT_SLACK && Math.abs(bx - at) < CUT_SLACK
+      : Math.abs(ay - at) < CUT_SLACK && Math.abs(by - at) < CUT_SLACK) return true;
+  }
+  return false;
+}
+
+/** One mesh of a surface from its tiles, in order. */
+export function mergeTiles(parts: readonly Tile[], options: Pick<SurfaceMeshOptions,
+  'name' | 'material' | 'castShadow' | 'receiveShadow'>): Mesh | null {
+  let vertices = 0;
+  let count = 0;
+  for (const tile of parts) {
+    vertices += tile.positions.length / 3;
+    count += tile.indices.length;
+  }
+  if (count === 0) return null;
+  const positions = new Float32Array(vertices * 3);
+  const normals = new Float32Array(vertices * 3);
+  const uvs = new Float32Array(vertices * 2);
+  const colors = new Float32Array(vertices * 3);
+  const indices = vertices > 0xffff ? new Uint32Array(count) : new Uint16Array(count);
+  let v = 0;
+  let k = 0;
+  for (const tile of parts) {
+    positions.set(tile.positions, v * 3);
+    normals.set(tile.normals, v * 3);
+    uvs.set(tile.uvs, v * 2);
+    colors.set(tile.colors, v * 3);
+    const local = tile.indices;
+    for (let i = 0; i < local.length; i++) indices[k++] = (local[i] as number) + v;
+    v += tile.positions.length / 3;
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
+  geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  geometry.setIndex(new BufferAttribute(indices, 1));
+  return finish(geometry, options);
+}
+
+/** Bounding box of a polygon's outer ring, [minX, minY, maxX, maxY]. */
+function bounds(polygon: Poly): [number, number, number, number] | null {
+  const outer = polygon[0];
+  if (!outer || outer.length < 3) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of outer) {
+    const x = point[0] as number;
+    const y = point[1] as number;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return [minX, minY, maxX, maxY];
 }
 
 /**
@@ -535,7 +716,7 @@ function ringArea(ring: readonly (readonly number[])[]): number {
 }
 
 /**
- * Recomputes normals for the up-facing vertices only.
+ * Recomputes normals for the up-facing vertices only, in place.
  *
  * `computeVertexNormals` would average a kerb's vertical face into the footway
  * above it and round off every edge in the scene. The skirt already carries an
@@ -544,7 +725,6 @@ function ringArea(ring: readonly (readonly number[])[]): number {
  * surface.
  */
 function smoothTopNormals(
-  geometry: BufferGeometry,
   positions: readonly number[],
   normals: number[],
   indices: readonly number[],
@@ -578,16 +758,16 @@ function smoothTopNormals(
       acc[index * 3 + 2] = (acc[index * 3 + 2] as number) + nz;
     }
   }
-  const attribute = geometry.getAttribute('normal');
   for (const index of flat) {
     const x = acc[index * 3] as number;
     const y = acc[index * 3 + 1] as number;
     const z = acc[index * 3 + 2] as number;
     const length = Math.hypot(x, y, z);
     if (length < 1e-9) continue;
-    attribute.setXYZ(index, x / length, y / length, z / length);
+    normals[index * 3] = x / length;
+    normals[index * 3 + 1] = y / length;
+    normals[index * 3 + 2] = z / length;
   }
-  attribute.needsUpdate = true;
 }
 
 export function disposeMesh(mesh: Mesh): void {

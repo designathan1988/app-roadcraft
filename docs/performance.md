@@ -58,6 +58,44 @@ grade, 16 on a raised deck.
 `tests/render/tessellation.spec.ts` pins these as ceilings, so a regression is a
 failing number rather than a slow frame.
 
+### Editing: only what an edit reaches is rebuilt
+
+A road edit used to merge, cut and triangulate every band of the whole network.
+The surfaces are now built a tile at a time (`TILE`, 192 units, in
+`render/roadSurfaces.ts`): each tile merges, bands and clips only the rings
+that reach it, meshes the result, and is keyed by an exact digest
+(`core/digest.ts`) of those rings, of every solved road profile a height query
+there can read (`RoadElevation.digest`) and of the ground under it
+(`TerrainSurface.digest`). A tile whose key comes round again is copied from
+the build before; `tests/render/roadTiles.spec.ts` proves a rebuilt mesh is bit
+for bit the mesh a build from nothing makes.
+
+| surfaces, player fixture ×4 (152 segments), Node | before | after |
+|---|---|---|
+| full build | 1 777 ms | 1 098 ms |
+| rebuild, nothing changed | 1 777 ms | 35 ms |
+| one road added | 1 777 ms | 139 ms |
+
+In the browser, drawing one road on the fixture took a 350 ms frame and now
+takes 211 ms, most of it the tiles along the legs whose junction height the new
+road changed.
+
+Two changes under that made every build cheaper, with the mesh unchanged to the
+bit: `Polyline.closestPoint` no longer allocates and skips runs of segments
+whose box is farther than the best so far, and the height field remembers the
+last point asked, because a mesh vertex asks the same point for its height, its
+skirt, its texture frame and its tint.
+
+### Loading the crowd
+
+Each citizen body bakes some twenty-five clips when a pedestrian first needs
+it. Baked in one go that was a frame of 100 to 350 ms every few seconds while
+the crowd loaded (a 95th-percentile frame of 150 ms); it now yields to the
+frame loop every 4 ms (`breathe` in `render/riggedCitizens.ts`), and the
+transfer of a capture onto a body tracks world rotations top-down instead of
+asking three for each parent's, 2.5 to 4 times faster for the same pose (to
+0.2 mm). The 95th-percentile frame is 16.8 ms.
+
 ### Frame
 
 * **Instancing** for everything repeated — see

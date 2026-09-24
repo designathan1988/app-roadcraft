@@ -241,10 +241,33 @@ function transferOnto(rig: Object3D, mesh: SkinnedMesh, from: Source, amplitude:
   const q0 = new Quaternion();
   const q1 = new Quaternion();
   const want = new Quaternion();
-  const parentWorld = new Quaternion();
+  const parentInverse = new Quaternion();
   const travel = new Vector3();
+  const next = new Vector3();
   const hip = new Vector3();
   const foot = new Vector3();
+
+  // World rotations for the current frame, top-down: a node's is its
+  // parent's times its own. The links are posed shallowest first, so every
+  // parent a link asks for is final by then. Asking three for it
+  // (`getWorldQuaternion`) recomposed the whole chain above every bone, every
+  // frame, and that was most of the time a body took to bake.
+  const worldQ = new Map<Object3D, Quaternion>();
+  const stamp = new Map<Object3D, number>();
+  let frame = 0;
+  const worldRotation = (o: Object3D): Quaternion => {
+    let q = worldQ.get(o);
+    if (!q) {
+      q = new Quaternion();
+      worldQ.set(o, q);
+    }
+    if (stamp.get(o) !== frame) {
+      if (o.parent) q.multiplyQuaternions(worldRotation(o.parent), o.quaternion);
+      else q.copy(o.quaternion);
+      stamp.set(o, frame);
+    }
+    return q;
+  };
 
   const lowestAt = (time: number): number => {
     const { k0, k1, f } = at(time);
@@ -263,30 +286,26 @@ function transferOnto(rig: Object3D, mesh: SkinnedMesh, from: Source, amplitude:
       const { k0, k1, f } = at(time);
       const a = WALK.frames[k0]!;
       const b = WALK.frames[k1]!;
-      travel.copy(vector(a.pelvis)).lerp(vector(b.pelvis), f)
+      travel.fromArray(a.pelvis).lerp(next.fromArray(b.pelvis), f)
         .sub(SOURCE_PELVIS_MEAN).multiplyScalar(amplitude.hips)
         .add(SOURCE_PELVIS_MEAN).sub(SOURCE_PELVIS_BIND).multiplyScalar(scale);
       placePelvis();
+      frame++;
       for (const link of links) {
         // World rotation now = (source now × source bind⁻¹) × this body's bind.
-        q0.copy(quaternion(a.q[link.source]!)).slerp(q1.copy(quaternion(b.q[link.source]!)), f);
+        q0.fromArray(a.q[link.source]!).slerp(q1.fromArray(b.q[link.source]!), f);
         if (link.swing !== 1) q0.copy(q1.copy(SOURCE_MEAN[link.source]!).slerp(q0, link.swing));
         want.copy(q0).multiply(SOURCE_BIND_INVERSE[link.source]!).multiply(link.bind);
         const parent = link.bone.parent;
-        if (parent) {
-          parent.getWorldQuaternion(parentWorld);
-          link.bone.quaternion.copy(parentWorld.invert().multiply(want));
-        } else {
-          link.bone.quaternion.copy(want);
-        }
-        link.bone.updateWorldMatrix(false, false);
+        if (parent) link.bone.quaternion.multiplyQuaternions(parentInverse.copy(worldRotation(parent)).invert(), want);
+        else link.bone.quaternion.copy(want);
       }
       rig.updateMatrixWorld(true);
       if (untouched || !feet.length) return;
       // A shorter swing leaves the legs straighter under the hips, which would
       // sink the feet into the ground; the hips rise by what the feet sank.
       let lowest = Infinity;
-      for (const bone of feet) lowest = Math.min(lowest, bone.getWorldPosition(foot).y);
+      for (const bone of feet) lowest = Math.min(lowest, foot.setFromMatrixPosition(bone.matrixWorld).y);
       travel.y += lowestAt(time) - lowest;
       placePelvis();
       rig.updateMatrixWorld(true);

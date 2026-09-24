@@ -1,5 +1,5 @@
 import {
-  AnimationMixer, BufferGeometry, DataTexture, DynamicDrawUsage, FloatType, Group, InstancedMesh,
+  BufferGeometry, DataTexture, DynamicDrawUsage, FloatType, Group, InstancedMesh,
   Matrix4, MeshDepthMaterial, MeshStandardMaterial, Object3D, Quaternion, RGBAFormat,
   RGBADepthPacking, SkinnedMesh, Texture, Vector3, type BufferAttribute,
 } from 'three';
@@ -22,23 +22,18 @@ import {
 } from './citizenGait';
 
 export { CITIZEN_MODELS } from './citizenCatalog';
-/**
- * Clips carried by the citizen GLBs that are still played: the seated poses
- * of people in vehicles. Their walks, stands and jog are a Quaternius capture
- * converted onto this skeleton, and that conversion is what hunched every
- * walker; a pedestrian plays only Rocketbox captures now (`WALK`, `LIBRARY`).
+/*
+ * Nothing the citizen GLBs animate is played: their clips are a Quaternius
+ * capture converted onto this skeleton, and that conversion is what hunched
+ * every walker. A pedestrian plays Rocketbox captures (`WALK`, `LIBRARY`), and
+ * a person in or on a vehicle an IK pose (`RIDER_CLIPS`).
  */
-const CLIPS = ['Driving_Loop', 'Sitting_Idle_Loop', 'Sitting_Talking_Loop'];
-/** Indices into the baked clips for the seated poses. */
-export const SEAT_DRIVE = 0;
-export const SEAT_RIDE = 1;
-export const SEAT_TALK = 2;
 /** The Rocketbox neutral walk of the body's sex, exactly as captured. */
-const WALK = 3;
+const WALK = 0;
 /** The same walk with an older person's shorter step and quieter arms. */
-const WALK_ELDER = 4;
+const WALK_ELDER = 1;
 /** The Rocketbox slow walk with its swing shrunk: short steps, for inching along. */
-const WALK_SHUFFLE = 5;
+const WALK_SHUFFLE = 2;
 /** The Rocketbox library clips, baked after the walks in this order. */
 const LIBRARY = [
   'start', 'stop', 'run', 'turnLeft', 'turnRight',
@@ -115,13 +110,48 @@ function skinMaterial(material: MeshStandardMaterial | MeshDepthMaterial, unifor
   material.customProgramCacheKey = () => 'citizen-skinning-v1';
 }
 
-/** A fresh, unposed copy of the body and its skinned mesh. */
-function restRig(asset: GLTF): { rig: Object3D; mesh: SkinnedMesh } {
+/** Longest stretch of baking between two frames, milliseconds. */
+const SLICE_MS = 4;
+let sliceStart = 0;
+
+/**
+ * Lets the frame loop in once this stretch of baking has run for `SLICE_MS`.
+ * A body bakes some twenty-five clips, and baked in one go each body a
+ * pedestrian first needed was a frame of 100 to 350 ms: the hitch every few
+ * seconds while the crowd's bodies loaded.
+ */
+async function breathe(): Promise<void> {
+  if (performance.now() - sliceStart < SLICE_MS) return;
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  sliceStart = performance.now();
+}
+
+/** One copy of a body to bake on, and the way back to its rest pose. */
+interface BakeRig {
+  readonly rig: Object3D;
+  readonly mesh: SkinnedMesh;
+  /** Puts every node back where the asset has it, as a fresh copy would be. */
+  reset(): void;
+}
+
+function restRig(asset: GLTF): BakeRig {
   const rig = clone(asset.scene);
   let mesh: SkinnedMesh | undefined;
   rig.traverse(o => { if (o instanceof SkinnedMesh && !mesh) mesh = o; });
   if (!mesh) throw new Error('Citizen model has no rig');
-  return { rig, mesh };
+  const rest: { o: Object3D; p: Vector3; q: Quaternion; s: Vector3 }[] = [];
+  rig.traverse(o => rest.push({ o, p: o.position.clone(), q: o.quaternion.clone(), s: o.scale.clone() }));
+  return {
+    rig, mesh,
+    reset() {
+      for (const { o, p, q, s } of rest) {
+        o.position.copy(p);
+        o.quaternion.copy(q);
+        o.scale.copy(s);
+      }
+      rig.updateMatrixWorld(true);
+    },
+  };
 }
 
 /**
@@ -129,8 +159,9 @@ function restRig(asset: GLTF): { rig: Object3D; mesh: SkinnedMesh } {
  * `duration`, one row more for the end, one more repeated so interpolation
  * past the last frame reads a real pose.
  */
-function bakeFrames(rig: Object3D, mesh: SkinnedMesh, pose: (time: number) => void, duration: number,
-  loop: boolean, fps = FPS): { data: Float32Array; frames: number; pelvisY: number } {
+async function bakeFrames(body: BakeRig, pose: (time: number) => void, duration: number,
+  loop: boolean, fps = FPS): Promise<{ data: Float32Array; frames: number; pelvisY: number }> {
+  const { rig, mesh } = body;
   const skeleton = mesh.skeleton;
   const frames = Math.max(1, Math.round(duration * fps));
   const width = skeleton.bones.length * 16;
@@ -139,6 +170,7 @@ function bakeFrames(rig: Object3D, mesh: SkinnedMesh, pose: (time: number) => vo
   const position = new Vector3();
   let pelvisY = 0;
   for (let i = 0; i <= frames; i++) {
+    await breathe();
     pose(loop ? (i % frames) * duration / frames : i * duration / frames);
     skeleton.update();
     data.set(skeleton.boneMatrices!, i * width);
@@ -153,11 +185,11 @@ function bakeFrames(rig: Object3D, mesh: SkinnedMesh, pose: (time: number) => vo
  * as recorded, anything less the elder's. `stride` is the ground one cycle
  * covers on THIS body, so moving it by that much per cycle plants the feet.
  */
-function bakeWalk(asset: GLTF, sex: WalkSex, amplitude?: WalkAmplitude): ClipFrames {
-  const { rig, mesh } = restRig(asset);
-  const walk = neutralWalkFor(rig, mesh, sex, amplitude);
+async function bakeWalk(body: BakeRig, sex: WalkSex, amplitude?: WalkAmplitude): Promise<ClipFrames> {
+  body.reset();
+  const walk = neutralWalkFor(body.rig, body.mesh, sex, amplitude);
   const duration = walkDuration(sex);
-  const baked = bakeFrames(rig, mesh, time => walk.pose(time), duration, true);
+  const baked = await bakeFrames(body, time => walk.pose(time), duration, true);
   const share = amplitude ? strideShare(walkSource(sex), amplitude) : 1;
   return { ...baked, duration, loop: true, stride: WALK_ADVANCE[sex] * walk.scale * share };
 }
@@ -167,40 +199,32 @@ function bakeWalk(asset: GLTF, sex: WalkSex, amplitude?: WalkAmplitude): ClipFra
  * resampled to the baked frames (`gaitClipOf`). A cycle baked with its swing
  * shrunk to `amplitude` covers that much less ground.
  */
-function bakeLibraryClip(asset: GLTF, clip: LibraryClip, amplitude?: WalkAmplitude): ClipFrames {
-  const { rig, mesh } = restRig(asset);
-  const transfer = clipTransferFor(rig, mesh, clip, amplitude);
+async function bakeLibraryClip(body: BakeRig, clip: LibraryClip, amplitude?: WalkAmplitude): Promise<ClipFrames> {
+  body.reset();
+  const transfer = clipTransferFor(body.rig, body.mesh, clip, amplitude);
   // A long standing or seated loop is slow motion, captured at 10 fps in the
   // library; baking it at 30 tripled the memory and the load for nothing.
-  const baked = bakeFrames(rig, mesh, time => transfer.pose(time), clip.duration, clip.loop, bakeFps(clip));
+  const baked = await bakeFrames(body, time => transfer.pose(time), clip.duration, clip.loop, bakeFps(clip));
   const facts = gaitClipOf(clip, transfer.scale, baked.frames);
   const share = amplitude ? strideShare(clip.source, amplitude) : 1;
   return { ...baked, ...facts, stride: facts.stride * share };
 }
 
-/** Bakes everything one body plays. No skeleton traversal occurs during drawing. */
-function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): ClipFrames[] {
-  const { rig, mesh } = restRig(asset);
-  const mixer = new AnimationMixer(rig);
+/**
+ * Bakes everything one body plays, on one copy of it put back to rest between
+ * clips, a few milliseconds at a time. No skeleton traversal occurs during
+ * drawing.
+ */
+async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promise<ClipFrames[]> {
+  const body = restRig(asset);
   const clips: ClipFrames[] = [];
-  for (const name of CLIPS) {
-    const clip = asset.animations.find(a => a.name === name);
-    if (!clip) throw new Error(`Citizen is missing ${name}`);
-    mixer.stopAllAction();
-    mixer.clipAction(clip).play();
-    const baked = bakeFrames(rig, mesh, time => { mixer.setTime(time); rig.updateMatrixWorld(true); },
-      clip.duration, true);
-    clips.push({ ...baked, duration: clip.duration, loop: true, stride: 1 });
-  }
-  mixer.stopAllAction();
-  mixer.uncacheRoot(rig);
   // The elder's step, and the shuffle's, cover less ground in the same time,
   // in proportion to how far the feet then reach fore and aft (`strideShare`).
-  clips[WALK] = bakeWalk(asset, sex);
-  clips[WALK_ELDER] = bakeWalk(asset, sex, ELDER_AMPLITUDE);
-  clips[WALK_SHUFFLE] = bakeLibraryClip(asset, library[sex].walkSlow, SHUFFLE_AMPLITUDE);
-  for (const name of LIBRARY) clips[LIBRARY_AT[name]] = bakeLibraryClip(asset, library[sex][name]);
-  for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = bakeRiderClip(asset, clip);
+  clips[WALK] = await bakeWalk(body, sex);
+  clips[WALK_ELDER] = await bakeWalk(body, sex, ELDER_AMPLITUDE);
+  clips[WALK_SHUFFLE] = await bakeLibraryClip(body, library[sex].walkSlow, SHUFFLE_AMPLITUDE);
+  for (const name of LIBRARY) clips[LIBRARY_AT[name]] = await bakeLibraryClip(body, library[sex][name]);
+  for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = await bakeRiderClip(body, clip);
   return clips;
 }
 
@@ -209,17 +233,13 @@ function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): ClipFrames[
  * rest pose before every frame, because the IK aims bones from wherever they
  * are. A still pose needs two frames, not thirty.
  */
-function bakeRiderClip(asset: GLTF, clip: RiderClip): ClipFrames {
-  const { rig, mesh } = restRig(asset);
-  const rest = new Map<Object3D, Quaternion>();
-  rig.traverse(o => rest.set(o, o.quaternion.clone()));
+async function bakeRiderClip(body: BakeRig, clip: RiderClip): Promise<ClipFrames> {
   const pose = (time: number): void => {
-    for (const [o, q] of rest) o.quaternion.copy(q);
-    rig.updateMatrixWorld(true);
-    clip.pose(rig, time);
+    body.reset();
+    clip.pose(body.rig, time);
   };
   const still = clip.key !== 'bikePedal';
-  const baked = bakeFrames(rig, mesh, pose, clip.duration, clip.loop, still ? 2 : FPS);
+  const baked = await bakeFrames(body, pose, clip.duration, clip.loop, still ? 2 : FPS);
   return { ...baked, duration: clip.duration, loop: clip.loop, stride: 1 };
 }
 
@@ -263,7 +283,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         }
       });
     if (disposed) { for (const resource of resources) resource.dispose(); return; }
-      const clips = bake(asset, models[index]!.includes('female') ? 'female' : 'male', library);
+      const clips = await bake(asset, models[index]!.includes('female') ? 'female' : 'male', library);
+      if (disposed) { for (const resource of resources) resource.dispose(); return; }
       let reference: SkinnedMesh | undefined;
       asset.scene.updateMatrixWorld(true);
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh && !reference) reference = o; });
@@ -343,15 +364,12 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     return work;
   }
 
-  /** Who may take which seat: any citizen rides along; only adults drive. */
-  const adults: number[] = [];
   const everyone: number[] = [];
   /** Bodies a pedestrian may be drawn as, by sex and by whether it is a child's. */
   const pools = { f: { adult: [] as number[], child: [] as number[] }, m: { adult: [] as number[], child: [] as number[] } };
   models.forEach((id, index) => {
     everyone.push(index);
     const child = id.includes('_child');
-    if (!child) adults.push(index);
     pools[id.includes('female') ? 'f' : 'm'][child ? 'child' : 'adult'].push(index);
   });
 
@@ -381,9 +399,6 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   const mixClips: ClipFrames[] = [];
   const mixPhases: number[] = [];
   const mixWeights: number[] = [];
-  const seatedClips: ClipFrames[] = [];
-  const seatedPhases: number[] = [0];
-  const SEATED_WEIGHTS = [1];
 
   /** Writes one citizen: blended bone palette plus instance transform. */
   function emit(batch: CitizenBatch, clips: readonly ClipFrames[], phases: readonly number[],
@@ -434,9 +449,6 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
 
   return {
     group,
-    preload(): Promise<void> {
-      return Promise.all(models.map((_, index) => request(index))).then(() => {});
-    },
     begin(level = 2, zoom = Infinity) {
       detail = level;
       lod = zoom >= 8 ? 0 : zoom >= 2 ? 1 : 2;
@@ -487,35 +499,6 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         mixWeights.push(play.weight);
       }
       emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale));
-    },
-    /**
-     * A person seated in a vehicle: the driver at the wheel, passengers riding
-     * along, some of them talking. The same people who walk the streets, so a
-     * car is driven by somebody rather than by a painted box.
-     *
-     * `hipY` is the world height of the seat; the figure is lowered so its
-     * pelvis sits on it. `seed` picks the person and their timing, and a
-     * driver is always an adult.
-     */
-    drawSeated(seed: number, x: number, y: number, heading: number, hipY: number,
-      pose: number, time: number, adult: boolean) {
-      const hash = pedHash(seed);
-      const pool = adult ? adults : everyone;
-      if (!pool.length) return;
-      const index = pool[hash % pool.length]!;
-      const batch = batches.get(index);
-      if (!batch) {
-        if (!loading.has(index)) void request(index).catch(() => {});
-        return;
-      }
-      if (batch.count >= CAPACITY) return;
-      if (batch.count >= batch.rows) grow(batch);
-      const clip = batch.clips[pose] ?? batch.clips[SEAT_RIDE]!;
-      const phase = ((time / clip.duration + (hash % 997) / 997) % 1) * clip.frames;
-      const scale = 0.96 + ((hash >>> 8) & 255) / 255 * 0.08;
-      seatedClips[0] = clip;
-      seatedPhases[0] = phase;
-      emit(batch, seatedClips, seatedPhases, SEATED_WEIGHTS, x, hipY - clip.pelvisY * m(scale), y, heading, m(scale));
     },
     /**
      * Somebody in or on a vehicle, or stepping between a vehicle and the

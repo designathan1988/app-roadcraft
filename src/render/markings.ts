@@ -1,6 +1,5 @@
-import { Color, Group, Mesh, MeshStandardMaterial } from 'three';
+import { Color, MeshStandardMaterial, type Material } from 'three';
 
-import { intersection, union, type MultiPoly } from '@core/clipper';
 import type { Vec2 } from '@core/vec2';
 import { GEO_EPS } from '@core/scalar';
 import { Level } from '@world/roadTypes';
@@ -12,7 +11,6 @@ import {
   junctionDetail,
   segmentMarkings,
 } from '@world/markings';
-import { buildSurfaceMesh, disposeMesh, type HeightFn } from './mesh/surfaceMesh';
 
 /**
  * Painted road markings, as real geometry lifted just off the carriageway.
@@ -36,7 +34,7 @@ import { buildSurfaceMesh, disposeMesh, type HeightFn } from './mesh/surfaceMesh
  */
 
 /** How far paint stands above the asphalt. Enough to win the depth test. */
-const PAINT_RISE = 0.02;
+export const PAINT_RISE = 0.02;
 
 interface Batch {
   rings: number[][][];
@@ -111,20 +109,33 @@ function addBar(batch: Batch, value: Bar): void {
   quad(batch, value.a, value.b, value.width / 2);
 }
 
-export function buildMarkings(
+/** Paint of one colour: lit like the asphalt under it, drawn over it. */
+export function paintMaterial(color: string): Material {
+  return new MeshStandardMaterial({
+    color: new Color(color),
+    roughness: 0.72,
+    metalness: 0,
+    // Paint is applied over the asphalt, so it takes the same light but never
+    // reflects the sky the way wet tarmac does.
+    envMapIntensity: 0.25,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+}
+
+
+/**
+ * The painted strokes of the network, one list of quads per colour, before
+ * they are merged and clipped: `roadSurfaces.ts` does that a tile at a time,
+ * against the carriageway of the ribbons alone, so paint belongs to the road
+ * legs and a crossing never becomes a white lattice at close zoom.
+ */
+export function markingQuads(
   net: Network,
-  include: (segment: SegmentId) => boolean = () => true,
-  deck: HeightFn = () => 0,
-  includeJunctionDetails = true,
-  /**
-   * Appended to every mesh name. The visual verifier identifies a surface by its
-   * name, and a tunnel's paint — which is legitimately under the ground — was
-   * indistinguishable from a road that had sunk into it.
-   */
-  suffix = '',
-): Group {
-  const group = new Group();
-  group.name = `road-markings${suffix}`;
+  include: (segment: SegmentId) => boolean,
+  includeJunctionDetails: boolean,
+): Map<string, number[][][]> {
   const batches = new Map<string, Batch>();
   const at = (color: string): Batch => {
     let batch = batches.get(color);
@@ -145,63 +156,7 @@ export function buildMarkings(
     for (const value of detail.stops) addBar(at('#ece9d9'), value);
     for (const value of detail.zebras) addBar(at('#f4f1e3'), value);
   }
-
-  // Markings belong to road legs, not to the shared intersection interior.
-  // Clipping them keeps a crossing from becoming a white lattice at close zoom.
-  const ribbonsOnly: MultiPoly = union(
-    [...net.ribbons.values()]
-      .filter((ribbon) => include(ribbon.id))
-      .map((ribbon) => ribbon.rings[Level.Asphalt])
-      .filter((ring): ring is NonNullable<typeof ring> => ring !== undefined && !ring.isEmpty)
-      .map((ring) => [ring.flatten().map((point) => [point.x, point.y])]),
-  );
-
-  let index = 0;
-  for (const [color, batch] of batches) {
-    if (batch.rings.length === 0) continue;
-    const clipped = intersection(union(batch.rings.map((ring) => [ring])), ribbonsOnly);
-    const material = new MeshStandardMaterial({
-      color: new Color(color),
-      roughness: 0.72,
-      metalness: 0,
-      // Paint is applied over the asphalt, so it takes the same light but never
-      // reflects the sky the way wet tarmac does.
-      envMapIntensity: 0.25,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-    });
-    const mesh = buildSurfaceMesh({
-      name: `markings-${index++}${suffix}`,
-      polygons: clipped,
-      top: (x, y) => deck(x, y) + PAINT_RISE,
-      material,
-      // Paint follows the road it is painted on, so it needs the same vertex
-      // density the deck has or it floats over a crest and sinks into a dip.
-      maxEdge: 5,
-      uv: (x, y, out) => {
-        out[0] = x / 12;
-        out[1] = y / 12;
-      },
-      receiveShadow: true,
-    });
-    if (mesh) {
-      mesh.renderOrder = 3;
-      group.add(mesh);
-    } else {
-      material.dispose();
-    }
-  }
-  return group;
-}
-
-export function disposeMarkings(group: Group): void {
-  for (const child of group.children) {
-    if (child instanceof Mesh) {
-      disposeMesh(child);
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      for (const material of materials) material.dispose();
-    }
-  }
-  group.clear();
+  const out = new Map<string, number[][][]>();
+  for (const [color, batch] of batches) if (batch.rings.length > 0) out.set(color, batch.rings);
+  return out;
 }

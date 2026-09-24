@@ -1,11 +1,12 @@
-import { Color, Group, Mesh } from 'three';
+import { Color, Group, type Material, type Mesh } from 'three';
 
-import { intersection, union, type MultiPoly } from '@core/clipper';
+import { difference, intersection, union, type MultiPoly, type Poly } from '@core/clipper';
+import { Digest } from '@core/digest';
 import { offsetPolyline } from '@core/offset';
 import type { SegmentId } from '@world/ids';
 import type { Network } from '@world/network';
-import { Level, ROAD_TYPES } from '@world/roadTypes';
-import { bands, surfaces } from '@world/surfaces';
+import { Level, ROAD_TYPES, type SurfaceLevel } from '@world/roadTypes';
+import { levelRings } from '@world/surfaces';
 import {
   ROAD_STRUCTURES,
   isRaised,
@@ -13,13 +14,18 @@ import {
   type RoadStructure,
 } from '@world/structures';
 import type { RoadElevation } from '@world/elevation';
-import { buildMarkings, disposeMarkings } from './markings';
+import { PAINT_RISE, markingQuads, paintMaterial } from './markings';
 import type { SceneMaterials } from './materials';
 import { TERRAIN_CELL } from './terrain';
 import {
-  buildSurfaceMesh,
+  clipToRect,
   disposeMesh,
+  mergeTiles,
+  meshTile,
   type HeightFn,
+  type SurfaceMeshOptions,
+  type Tile,
+  type TileRect,
   type TintFn,
   type UvFn,
   type UvFrameFn,
@@ -93,11 +99,91 @@ const MEDIAN_KERB = 0.4;
 /** Height of the planting inside it. */
 export const MEDIAN_PLANTING = 0.62;
 
+/**
+ * What one build of the surfaces keeps for the next, so an edit rebuilds only
+ * the tiles it reaches. Owned by the renderer; a build without it makes
+ * everything afresh.
+ */
+export interface SurfaceReuse {
+  /** The tiles of the last build, per structural level. */
+  readonly tiles: Map<RoadStructure, Map<number, TileBundle>>;
+  /**
+   * A digest of everything the height field and the texture frames read in a
+   * rectangle: the solved roads near it and the ground under it, both as
+   * shaped and as it naturally lies.
+   */
+  readonly dependsOn: (minX: number, minY: number, maxX: number, maxY: number) => number;
+  /** The paint materials, by colour: made once, not on every rebuild. */
+  readonly paint: Map<string, Material>;
+}
+
+/** Every surface of one tile, by mesh name. */
+export type TileBundle = ReadonlyMap<string, Tile>;
+
 export interface RoadSurfaces {
   readonly group: Group;
   readonly meshes: readonly Mesh[];
   readonly triangles: number;
+  /** Tiles the build made afresh, and copied from the build before. */
+  readonly built: number;
+  readonly reused: number;
   dispose(): void;
+}
+
+/**
+ * World size of one tile.
+ *
+ * A road edit used to merge, cut and triangulate every band of the whole
+ * network: a quarter of a million triangles and every polygon boolean, most of
+ * the time a new road took to appear, and more on a bigger map. Everything is
+ * now done a tile at a time from the rings that reach the tile, and a tile
+ * whose rings and surroundings (`SurfaceReuse.dependsOn`) have not changed is
+ * copied from the last build, so an edit pays for the tiles it reaches. A
+ * multiple of the ground and deck spans (8 x 6 and 16 x 6), so a tile holds
+ * whole pieces.
+ */
+const TILE = 192;
+/**
+ * Where the tile grid starts. Off any round number, so no road drawn on a
+ * round coordinate has its edge lie along a tile line, where it would be taken
+ * for a cut and lose its kerb (`meshTile`).
+ */
+const TILE_ORIGIN = 0.371;
+/** How far round a tile a ring may reach and still be read by it. */
+const TILE_REACH = 0.5;
+const TILE_BIAS = 1 << 15;
+
+/** One ring of input, with its box and its digest, measured once per build. */
+interface Input {
+  readonly poly: Poly;
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+  readonly digest: number;
+}
+
+function inputOf(poly: Poly): Input | null {
+  const outer = poly[0];
+  if (!outer || outer.length < 3) return null;
+  const digest = new Digest();
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const ring of poly) {
+    digest.add(ring.length);
+    for (const point of ring) {
+      const x = point[0] as number;
+      const y = point[1] as number;
+      digest.add(x).add(y);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  return { poly, minX, minY, maxX, maxY, digest: digest.value() };
 }
 
 const offset = (base: HeightFn, amount: number): HeightFn => (x, y) => base(x, y) + amount;
@@ -109,34 +195,55 @@ const CLASS_TINT: readonly Color[] = ROAD_TYPES.map((type) =>
 /** The tint the asphalt material is authored against, so 1.0 means "as baked". */
 const TINT_REFERENCE = new Color(0x3a3d3f).convertSRGBToLinear();
 
+/** What each surface of a tile is made from. */
+type Source =
+  | { readonly kind: 'band'; readonly band: 'verge' | 'footway' | 'kerb' | 'asphalt' }
+  | { readonly kind: 'median'; readonly part: 'kerb' | 'planting' }
+  | { readonly kind: 'paint'; readonly color: string };
+
+/** One surface of a structural level: how it is meshed, and from what. */
+interface SurfaceSpec {
+  readonly source: Source;
+  readonly options: Omit<SurfaceMeshOptions, 'polygons'>;
+  readonly renderOrder?: number;
+}
+
 export function buildRoadSurfaces(
   net: Network,
   elevation: RoadElevation,
   materials: SceneMaterials,
   terrainAt: (x: number, y: number) => number,
+  reuse?: SurfaceReuse,
 ): RoadSurfaces {
   const group = new Group();
   group.name = 'road-network';
   const meshes: Mesh[] = [];
   let triangles = 0;
-
-  const add = (mesh: Mesh | null): void => {
-    if (!mesh) return;
-    group.add(mesh);
-    meshes.push(mesh);
-    triangles += (mesh.geometry.index?.count ?? 0) / 3;
+  let built = 0;
+  let reused = 0;
+  // Without a caller to own them, the paint materials belong to this build.
+  const paint = reuse?.paint ?? new Map<string, Material>();
+  const paintFor = (color: string): Material => {
+    let material = paint.get(color);
+    if (!material) {
+      material = paintMaterial(color);
+      paint.set(color, material);
+    }
+    return material;
   };
 
   for (const structure of ROAD_STRUCTURES) {
     const present = [...net.doc.segments.values()].some(
       (segment) => segment.structure === structure.id,
     );
-    if (!present) continue;
+    if (!present) {
+      reuse?.tiles.delete(structure.id);
+      continue;
+    }
 
     const only: ReadonlySet<RoadStructure> = new Set([structure.id]);
     const include = (id: SegmentId): boolean =>
       (net.doc.segment(id)?.structure ?? 'ground') === structure.id;
-    const layer = bands(surfaces(net, include));
     const raised = isRaised(structure.id);
     const maxEdge = raised ? RAISED_MAX_EDGE : GROUND_MAX_EDGE;
 
@@ -175,70 +282,67 @@ export function buildRoadSurfaces(
     const suffix = structure.id === 'ground' ? '' : `-${structure.id}`;
 
     // Outermost first, so a nearer band's skirt lands on the one outside it.
-    add(
-      buildSurfaceMesh({
-        name: `verge${suffix}`,
-        polygons: layer.casing,
-        top: offset(deck, -VERGE_DROP),
-        bottom: soffit,
-        material: raised ? materials.deck : materials.verge,
-        maxEdge,
-        ...uvFor(raised ? materials.scale.deck : materials.scale.verge),
-        castShadow: raised,
-        receiveShadow: true,
-        skirtUvScale: raised ? materials.scale.deck : materials.scale.verge,
-      }),
-    );
-    add(
-      buildSurfaceMesh({
-        name: `footway${suffix}`,
-        polygons: layer.footway,
-        top: offset(deck, FOOTWAY_RISE),
-        bottom: offset(deck, -VERGE_DROP),
-        material: materials.footway,
-        maxEdge,
-        ...uvFor(materials.scale.footway),
-        castShadow: raised,
-        receiveShadow: true,
-        skirtUvScale: materials.scale.footway,
-      }),
-    );
-    add(
-      buildSurfaceMesh({
-        name: `kerb${suffix}`,
-        polygons: layer.kerb,
-        top: offset(deck, KERB_RISE),
-        bottom: deck,
-        material: materials.kerb,
-        maxEdge,
-        ...uvFor(materials.scale.kerb),
-        receiveShadow: true,
-        skirtUvScale: materials.scale.kerb,
-      }),
-    );
-    add(
-      buildSurfaceMesh({
-        name: `asphalt${suffix}`,
-        polygons: layer.carriageway,
-        top: deck,
-        ...(raised ? { bottom: soffit } : {}),
-        material: raised ? materials.asphaltRaised : materials.asphalt,
-        maxEdge,
-        ...uvFor(materials.scale.asphalt),
-        tint: asphaltTint,
-        castShadow: raised,
-        receiveShadow: true,
-        skirtUvScale: materials.scale.deck,
-      }),
-    );
-
-    // --------------------------------------------------------------- medians
-    const islands = medianPolygons(net, include, layer.carriageway);
-    if (islands.kerb.length > 0) {
-      add(
-        buildSurfaceMesh({
+    const specs: SurfaceSpec[] = [
+      {
+        source: { kind: 'band', band: 'verge' },
+        options: {
+          name: `verge${suffix}`,
+          top: offset(deck, -VERGE_DROP),
+          bottom: soffit,
+          material: raised ? materials.deck : materials.verge,
+          maxEdge,
+          ...uvFor(raised ? materials.scale.deck : materials.scale.verge),
+          castShadow: raised,
+          receiveShadow: true,
+          skirtUvScale: raised ? materials.scale.deck : materials.scale.verge,
+        },
+      },
+      {
+        source: { kind: 'band', band: 'footway' },
+        options: {
+          name: `footway${suffix}`,
+          top: offset(deck, FOOTWAY_RISE),
+          bottom: offset(deck, -VERGE_DROP),
+          material: materials.footway,
+          maxEdge,
+          ...uvFor(materials.scale.footway),
+          castShadow: raised,
+          receiveShadow: true,
+          skirtUvScale: materials.scale.footway,
+        },
+      },
+      {
+        source: { kind: 'band', band: 'kerb' },
+        options: {
+          name: `kerb${suffix}`,
+          top: offset(deck, KERB_RISE),
+          bottom: deck,
+          material: materials.kerb,
+          maxEdge,
+          ...uvFor(materials.scale.kerb),
+          receiveShadow: true,
+          skirtUvScale: materials.scale.kerb,
+        },
+      },
+      {
+        source: { kind: 'band', band: 'asphalt' },
+        options: {
+          name: `asphalt${suffix}`,
+          top: deck,
+          ...(raised ? { bottom: soffit } : {}),
+          material: raised ? materials.asphaltRaised : materials.asphalt,
+          maxEdge,
+          ...uvFor(materials.scale.asphalt),
+          tint: asphaltTint,
+          castShadow: raised,
+          receiveShadow: true,
+          skirtUvScale: materials.scale.deck,
+        },
+      },
+      {
+        source: { kind: 'median', part: 'kerb' },
+        options: {
           name: `median-kerb${suffix}`,
-          polygons: islands.kerb,
           top: offset(deck, MEDIAN_KERB),
           bottom: deck,
           material: materials.kerb,
@@ -246,12 +350,12 @@ export function buildRoadSurfaces(
           ...uvFor(materials.scale.kerb),
           receiveShadow: true,
           skirtUvScale: materials.scale.kerb,
-        }),
-      );
-      add(
-        buildSurfaceMesh({
+        },
+      },
+      {
+        source: { kind: 'median', part: 'planting' },
+        options: {
           name: `median-planting${suffix}`,
-          polygons: islands.planting,
           top: offset(deck, MEDIAN_PLANTING),
           bottom: offset(deck, MEDIAN_KERB),
           material: materials.verge,
@@ -259,20 +363,156 @@ export function buildRoadSurfaces(
           ...uvFor(materials.scale.verge),
           receiveShadow: true,
           skirtUvScale: materials.scale.kerb,
-        }),
-      );
+        },
+      },
+    ];
+
+    // ---------------------------------------------------------------- inputs
+    const levels: Record<'casing' | 'sidewalk' | 'curb' | 'asphalt', Input[]> = {
+      casing: inputsOf(levelRings(net, Level.Casing as SurfaceLevel, include)),
+      sidewalk: inputsOf(levelRings(net, Level.Sidewalk as SurfaceLevel, include)),
+      curb: inputsOf(levelRings(net, Level.Curb as SurfaceLevel, include)),
+      asphalt: inputsOf(levelRings(net, Level.Asphalt as SurfaceLevel, include)),
+    };
+    const strips = medianStrips(net, include);
+    const medians = { kerb: inputsOf(strips.kerb), planting: inputsOf(strips.planting) };
+    // Paint belongs to the road legs, not to the shared intersection interior,
+    // so it is clipped to the ribbons' carriageway alone.
+    const ribbonAsphalt: Input[] = [];
+    for (const ribbon of net.ribbons.values()) {
+      if (!include(ribbon.id)) continue;
+      const ring = ribbon.rings[Level.Asphalt];
+      if (!ring || ring.isEmpty) continue;
+      const input = inputOf([ring.flatten().map((point) => [point.x, point.y])]);
+      if (input) ribbonAsphalt.push(input);
+    }
+    const quads = new Map<string, Input[]>();
+    for (const [color, rings] of markingQuads(net, include, structure.id === 'ground')) {
+      quads.set(color, inputsOf(rings.map((ring) => [ring])));
+      specs.push({
+        source: { kind: 'paint', color },
+        options: {
+          name: `markings-${color.slice(1)}${suffix}`,
+          top: offset(deck, 0.02 + PAINT_RISE),
+          material: paintFor(color),
+          // Paint follows the road it is painted on, so it needs the same vertex
+          // density the deck has or it floats over a crest and sinks into a dip.
+          maxEdge: 5,
+          uv: (x, y, out) => {
+            out[0] = x / 12;
+            out[1] = y / 12;
+          },
+          receiveShadow: true,
+        },
+        renderOrder: 3,
+      });
     }
 
-    const markings = buildMarkings(
-      net,
-      include,
-      offset(deck, 0.02),
-      structure.id === 'ground',
-      suffix,
-    );
-    group.add(markings);
-    for (const child of markings.children) {
-      if (child instanceof Mesh) triangles += (child.geometry.index?.count ?? 0) / 3;
+    // ----------------------------------------------------------------- tiles
+    /** Everything that reaches each tile, by kind, in input order. */
+    interface Reach {
+      readonly levels: Record<keyof typeof levels, Input[]>;
+      readonly medians: Record<keyof typeof medians, Input[]>;
+      readonly ribbons: Input[];
+      readonly quads: Map<string, Input[]>;
+    }
+    const reach = new Map<number, Reach>();
+    const reachOf = (key: number): Reach => {
+      let value = reach.get(key);
+      if (!value) {
+        value = {
+          levels: { casing: [], sidewalk: [], curb: [], asphalt: [] },
+          medians: { kerb: [], planting: [] },
+          ribbons: [],
+          quads: new Map(),
+        };
+        reach.set(key, value);
+      }
+      return value;
+    };
+    const file = (input: Input, add: (into: Reach) => void): void => {
+      const x0 = Math.floor((input.minX - TILE_REACH - TILE_ORIGIN) / TILE);
+      const x1 = Math.floor((input.maxX + TILE_REACH - TILE_ORIGIN) / TILE);
+      const y0 = Math.floor((input.minY - TILE_REACH - TILE_ORIGIN) / TILE);
+      const y1 = Math.floor((input.maxY + TILE_REACH - TILE_ORIGIN) / TILE);
+      for (let ix = x0; ix <= x1; ix++) {
+        for (let iy = y0; iy <= y1; iy++) add(reachOf((ix + TILE_BIAS) * 0x1_0000 + (iy + TILE_BIAS)));
+      }
+    };
+    for (const name of ['casing', 'sidewalk', 'curb', 'asphalt'] as const) {
+      for (const input of levels[name]) file(input, (into) => into.levels[name].push(input));
+    }
+    for (const name of ['kerb', 'planting'] as const) {
+      for (const input of medians[name]) file(input, (into) => into.medians[name].push(input));
+    }
+    for (const input of ribbonAsphalt) file(input, (into) => into.ribbons.push(input));
+    for (const [color, list] of quads) {
+      for (const input of list) {
+        file(input, (into) => {
+          const bucket = into.quads.get(color);
+          if (bucket) bucket.push(input);
+          else into.quads.set(color, [input]);
+        });
+      }
+    }
+
+    // Everything a tile's build reads besides its rings and its surroundings:
+    // the constants of every surface, so a change to one is a change to all.
+    const salt = new Digest().addText(structure.id);
+    for (const spec of specs) {
+      salt.addText(spec.options.name).add(spec.options.maxEdge).add(spec.options.uvWorld ?? 0)
+        .add(spec.options.skirtUvScale ?? 0).add(spec.options.bottom ? 1 : 0).add(spec.options.tint ? 1 : 0);
+    }
+    const saltValue = salt.value();
+
+    const previous = reuse?.tiles.get(structure.id);
+    const kept = new Map<number, TileBundle>();
+    const parts = new Map<string, Tile[]>();
+    for (const spec of specs) parts.set(spec.options.name, []);
+    // In tile order, so a mesh is laid out the same however it was reached.
+    for (const key of [...reach.keys()].sort((a, b) => a - b)) {
+      const into = reach.get(key)!;
+      const ix = Math.floor(key / 0x1_0000) - TILE_BIAS;
+      const iy = (key % 0x1_0000) - TILE_BIAS;
+      const rect: TileRect = [
+        ix * TILE + TILE_ORIGIN, iy * TILE + TILE_ORIGIN, (ix + 1) * TILE + TILE_ORIGIN, (iy + 1) * TILE + TILE_ORIGIN,
+      ];
+      const digest = new Digest().add(saltValue).add(key);
+      const addAll = (list: readonly Input[]): void => {
+        digest.add(list.length);
+        for (const input of list) digest.add(input.digest);
+      };
+      addAll(into.levels.casing);
+      addAll(into.levels.sidewalk);
+      addAll(into.levels.curb);
+      addAll(into.levels.asphalt);
+      addAll(into.medians.kerb);
+      addAll(into.medians.planting);
+      addAll(into.ribbons);
+      for (const [color, list] of into.quads) {
+        digest.addText(color);
+        addAll(list);
+      }
+      if (reuse) digest.add(reuse.dependsOn(rect[0] - 1, rect[1] - 1, rect[2] + 1, rect[3] + 1));
+      const value = digest.value();
+      let bundle = previous?.get(value);
+      if (bundle) reused++;
+      else {
+        bundle = buildTile(into, rect, specs);
+        built++;
+      }
+      kept.set(value, bundle);
+      for (const [name, tile] of bundle) parts.get(name)?.push(tile);
+    }
+    reuse?.tiles.set(structure.id, kept);
+
+    for (const spec of specs) {
+      const mesh = mergeTiles(parts.get(spec.options.name) ?? [], spec.options);
+      if (!mesh) continue;
+      if (spec.renderOrder !== undefined) mesh.renderOrder = spec.renderOrder;
+      group.add(mesh);
+      meshes.push(mesh);
+      triangles += (mesh.geometry.index?.count ?? 0) / 3;
     }
   }
 
@@ -280,18 +520,75 @@ export function buildRoadSurfaces(
     group,
     meshes,
     triangles,
+    built,
+    reused,
     dispose() {
-      for (const child of group.children) {
-        if (child instanceof Mesh) disposeMesh(child);
-        else if (child instanceof Group) disposeMarkings(child);
-      }
+      for (const mesh of meshes) disposeMesh(mesh);
       group.clear();
+      if (!reuse) for (const material of paint.values()) material.dispose();
     },
   };
 }
 
+function inputsOf(polys: readonly Poly[]): Input[] {
+  const out: Input[] = [];
+  for (const poly of polys) {
+    const input = inputOf(poly);
+    if (input) out.push(input);
+  }
+  return out;
+}
+
 /**
- * The central reservation, as two real polygons rather than as paint.
+ * Every surface of one tile, from the rings that reach it: merged, banded and
+ * clipped exactly as the whole network would be, then cut to the tile.
+ */
+function buildTile(
+  into: {
+    readonly levels: Record<'casing' | 'sidewalk' | 'curb' | 'asphalt', readonly Input[]>;
+    readonly medians: Record<'kerb' | 'planting', readonly Input[]>;
+    readonly ribbons: readonly Input[];
+    readonly quads: ReadonlyMap<string, readonly Input[]>;
+  },
+  rect: TileRect,
+  specs: readonly SurfaceSpec[],
+): TileBundle {
+  const merged = (list: readonly Input[]): MultiPoly => list.length > 0 ? union(list.map((input) => input.poly)) : [];
+  const casing = merged(into.levels.casing);
+  const sidewalk = merged(into.levels.sidewalk);
+  const curb = merged(into.levels.curb);
+  const asphalt = merged(into.levels.asphalt);
+  const bands: Record<'verge' | 'footway' | 'kerb' | 'asphalt', MultiPoly> = {
+    verge: difference(casing, sidewalk),
+    footway: difference(sidewalk, curb),
+    kerb: difference(curb, asphalt),
+    asphalt,
+  };
+  let ribbonsOnly: MultiPoly | null = null;
+  const bundle = new Map<string, Tile>();
+  for (const spec of specs) {
+    const source = spec.source;
+    let polygons: MultiPoly;
+    if (source.kind === 'band') polygons = bands[source.band];
+    else if (source.kind === 'median') {
+      const list = into.medians[source.part];
+      polygons = list.length > 0 ? intersection(merged(list), asphalt) : [];
+    } else {
+      const list = into.quads.get(source.color) ?? [];
+      if (list.length === 0) polygons = [];
+      else {
+        ribbonsOnly ??= merged(into.ribbons);
+        polygons = intersection(merged(list), ribbonsOnly);
+      }
+    }
+    const inside = polygons.length > 0 ? clipToRect(polygons, rect) : [];
+    if (inside.length > 0) bundle.set(spec.options.name, meshTile({ ...spec.options, polygons: inside }, rect));
+  }
+  return bundle;
+}
+
+/**
+ * The central reservation's outlines, as two real polygons rather than as paint.
  *
  * It used to be drawn as two overlapping marking strokes at the same height —
  * a wide kerb colour with a narrower green inside it — which put two coplanar
@@ -302,16 +599,14 @@ export function buildRoadSurfaces(
  *
  * Clipped against the carriageway so it can never leak past the kerb line, and
  * unioned so two medians meeting at a junction are one shape rather than two
- * overlapping ones.
+ * overlapping ones - both a tile at a time, in `buildRoadSurfaces`.
  */
-function medianPolygons(
+function medianStrips(
   net: Network,
   include: (segment: SegmentId) => boolean,
-  carriageway: MultiPoly,
-): { kerb: MultiPoly; planting: MultiPoly } {
-  const kerbRings: MultiPoly = [];
-  const plantingRings: MultiPoly = [];
-
+): { kerb: Poly[]; planting: Poly[] } {
+  const kerb: Poly[] = [];
+  const planting: Poly[] = [];
   for (const ribbon of net.ribbons.values()) {
     if (!include(ribbon.id)) continue;
     const median = ribbon.road.median;
@@ -319,13 +614,9 @@ function medianPolygons(
     const centre = ribbon.centre[Level.Asphalt];
     if (!centre || centre.n < 2) continue;
     const points = centre.toPoints();
-    kerbRings.push(strip(points, (median + 1.4) / 2));
-    plantingRings.push(strip(points, median / 2));
+    kerb.push(strip(points, (median + 1.4) / 2));
+    planting.push(strip(points, median / 2));
   }
-
-  if (kerbRings.length === 0) return { kerb: [], planting: [] };
-  const kerb = intersection(union(kerbRings), carriageway);
-  const planting = intersection(union(plantingRings), carriageway);
   return { kerb, planting };
 }
 

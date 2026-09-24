@@ -86,8 +86,12 @@ function ownsJunction(net: Network, nodeId: NodeId, include: SurfaceSegmentFilte
   return owns;
 }
 
-/** Every ring of one level, as clipper input. */
-function ringsAt(net: Network, level: SurfaceLevel, include?: SurfaceSegmentFilter): MultiPoly {
+/**
+ * Every ring of one level, as clipper input, before they are merged: the
+ * renderer merges them a tile at a time (`roadSurfaces.ts`), so an edit pays
+ * only for the tiles it reaches.
+ */
+export function levelRings(net: Network, level: SurfaceLevel, include?: SurfaceSegmentFilter): MultiPoly {
   const out: MultiPoly = [];
 
   for (const ribbon of net.ribbons.values()) {
@@ -110,7 +114,7 @@ function ringsAt(net: Network, level: SurfaceLevel, include?: SurfaceSegmentFilt
 
 /** One merged polygon set per surface level. */
 export function levelPolygons(net: Network, level: SurfaceLevel, include?: SurfaceSegmentFilter): MultiPoly {
-  return union(ringsAt(net, level, include));
+  return union(levelRings(net, level, include));
 }
 
 export function surfaces(net: Network, include?: SurfaceSegmentFilter): Surfaces {

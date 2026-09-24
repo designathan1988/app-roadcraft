@@ -11,6 +11,7 @@ import {
   WebGLRenderer,
 } from 'three';
 
+import { Digest } from '@core/digest';
 import type { Vec2 } from '@core/vec2';
 import type { SegmentId } from '@world/ids';
 import type { Network } from '@world/network';
@@ -24,7 +25,7 @@ import { createEnvironment } from './environment';
 import { createMaterials, type SceneMaterials } from './materials';
 import { createIsoRig } from './isoViewport';
 import { createPostChain, type PostChain } from './postprocess';
-import { buildRoadSurfaces, type RoadSurfaces } from './roadSurfaces';
+import { buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
 import { PLANT_NEAR_ZOOM, buildScenery, createSceneryKit, type Scenery, type SceneryKit } from './scenery';
 import { GRASS_MIN_ZOOM } from './grass';
 import { advanceWind } from './wind';
@@ -144,6 +145,17 @@ export function createSceneRenderer(
   let utilities: Utilities | null = null;
   let elevation: RoadElevation | null = null;
 
+  // What each rebuild keeps for the next: the tiles of every surface an edit
+  // does not reach, keyed by the solved roads and the ground they read.
+  const surfaceReuse: SurfaceReuse = {
+    tiles: new Map(),
+    dependsOn: (minX, minY, maxX, maxY) => new Digest()
+      .add(elevation?.digest(minX, minY, maxX, maxY) ?? 0)
+      .add(terrain.digest(minX, minY, maxX, maxY))
+      .value(),
+    paint: new Map(),
+  };
+
   let networkRevision = -1;
   let terrainRevision = -1;
   let builtTriangles = 0;
@@ -199,7 +211,7 @@ export function createSceneRenderer(
     // from the same rule, where a road is buried deeply enough — tunnels.
     terrain.shapeToRoads(net.doc.segments.size > 0 ? elevation : null);
 
-    roads = buildRoadSurfaces(net, elevation, materials, terrain.renderedHeightAt);
+    roads = buildRoadSurfaces(net, elevation, materials, terrain.renderedHeightAt, surfaceReuse);
     world.add(roads.group);
 
     details = buildStructureDetails(net, elevation, terrain.renderedHeightAt, materials);
@@ -349,6 +361,7 @@ export function createSceneRenderer(
       agents.dispose();
       signals.dispose();
       roads?.dispose();
+      for (const paint of surfaceReuse.paint.values()) paint.dispose();
       details?.dispose();
       scenery?.dispose();
       sceneryKit.dispose();

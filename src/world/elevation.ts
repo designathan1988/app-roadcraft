@@ -1,3 +1,4 @@
+import { Digest } from '@core/digest';
 import { type Aabb, expand as expandBox } from '@core/aabb';
 import type { Polyline } from '@core/polyline';
 import type { NodeId, SegmentId } from './ids';
@@ -234,6 +235,15 @@ export interface RoadElevation {
    * tunnel. See `render/terrain.ts`, which is the only caller.
    */
   shapeAt(x: number, y: number, naturalGround: number): { height: number; weight: number };
+  /**
+   * A digest of everything a height, frame or road query can read at any
+   * point of a rectangle, the terrain aside: the solved profile of every road
+   * the spatial index could hand such a query, in the order it would. Two
+   * builds that agree on it answer every query there identically, which is
+   * what lets the renderer keep the meshes of the parts of the map an edit
+   * did not reach.
+   */
+  digest(minX: number, minY: number, maxX: number, maxY: number): number;
 }
 
 export interface RoadSample {
@@ -567,45 +577,111 @@ export function buildRoadElevation(
   // --------------------------------------------------------------- the index
   const index = new SpatialIndex(profiles);
 
+  /** Everything a query reads from one profile, digested once per build. */
+  const profileDigests = new Map<Profile, number>();
+  const profileDigest = (profile: Profile): number => {
+    let value = profileDigests.get(profile);
+    if (value === undefined) {
+      value = new Digest().add(profile.id).addText(profile.structure).add(profile.type).add(profile.half)
+        .add(profile.median).add(profile.step).addAll(profile.h).addAll(profile.line.xy).value();
+      profileDigests.set(profile, value);
+    }
+    return value;
+  };
+
+  const hit = { s: 0, distance: 0 };
   const sampleProfile = (profile: Profile, x: number, y: number): number => {
-    const hit = profile.line.closestPoint({ x, y });
+    profile.line.closestInto(x, y, hit);
     return heightAtArc(profile, hit.s);
   };
 
   const distances: number[] = [];
+  const arcs: number[] = [];
   const picked: Profile[] = [];
 
-  /** The road nearest a point, out of the structural levels asked for. */
+  /**
+   * The last point asked about, and what was found there: the nearest road,
+   * the arc length and distance to it, and the blended height.
+   *
+   * A mesh vertex asks the same point up to five times in a row - the height
+   * of the band's top and of its skirt, the texture frame, the class tint - and
+   * every one of those used to repeat the whole nearest-road search. The
+   * answers are the same numbers, so the last point is remembered. The
+   * elevation is immutable once built, so the memo can never be stale.
+   */
+  const last = {
+    x: NaN,
+    y: NaN,
+    structures: undefined as ReadonlySet<RoadStructure> | undefined,
+    road: null as Profile | null,
+    s: 0,
+    distance: Infinity,
+    /** NaN until the height itself has been asked for at this point. */
+    height: NaN,
+  };
+  const remembers = (x: number, y: number, structures?: ReadonlySet<RoadStructure>): boolean =>
+    last.x === x && last.y === y && last.structures === structures;
+  const remember = (x: number, y: number, structures: ReadonlySet<RoadStructure> | undefined,
+    road: Profile | null, s: number, distance: number, height: number): void => {
+    last.x = x;
+    last.y = y;
+    last.structures = structures;
+    last.road = road;
+    last.s = s;
+    last.distance = distance;
+    last.height = height;
+  };
+
+  /** The road nearest a point, out of the structural levels asked for; its arc and distance in `last`. */
   const nearest = (
     x: number,
     y: number,
     structures?: ReadonlySet<RoadStructure>,
   ): Profile | null => {
+    if (remembers(x, y, structures)) return last.road;
     let best: Profile | null = null;
     let bestDistance = Infinity;
+    let bestS = 0;
     for (const profile of index.near(x, y)) {
       if (structures && !structures.has(profile.structure)) continue;
-      const distance = profile.line.distanceTo({ x, y });
-      if (distance < bestDistance) {
-        bestDistance = distance;
+      profile.line.closestInto(x, y, hit);
+      if (hit.distance < bestDistance) {
+        bestDistance = hit.distance;
         best = profile;
+        bestS = hit.s;
       }
     }
+    remember(x, y, structures, best, bestS, bestDistance, NaN);
     return best;
   };
 
   const query = (x: number, y: number, structures?: ReadonlySet<RoadStructure>): number => {
+    if (remembers(x, y, structures) && !Number.isNaN(last.height)) return last.height;
     const candidates = index.near(x, y);
     let best = Infinity;
+    let road: Profile | null = null;
+    let roadS = 0;
     let found = 0;
     for (const profile of candidates) {
       if (structures && !structures.has(profile.structure)) continue;
-      const distance = profile.line.distanceTo({ x, y });
-      distances[found] = distance;
+      profile.line.closestInto(x, y, hit);
+      distances[found] = hit.distance;
+      arcs[found] = hit.s;
       picked[found] = profile;
       found++;
-      if (distance < best) best = distance;
+      if (hit.distance < best) {
+        best = hit.distance;
+        road = profile;
+        roadS = hit.s;
+      }
     }
+    const height = blend(x, y, best, found);
+    remember(x, y, structures, road, roadS, best, height);
+    return height;
+  };
+
+  /** The height at a point from the `found` candidates just measured. */
+  const blend = (x: number, y: number, best: number, found: number): number => {
     const ground = terrainAt(x, y) + ROAD_GROUND_CLEARANCE;
     if (found === 0) return ground;
     // How much the roads have to say here at all: everything within
@@ -617,7 +693,7 @@ export function buildRoadElevation(
     for (let i = 0; i < found; i++) {
       const w = Math.exp(-((distances[i] as number) - best) / BLEND_TAU);
       if (w < 1e-4) continue;
-      sum += w * sampleProfile(picked[i] as Profile, x, y);
+      sum += w * heightAtArc(picked[i] as Profile, arcs[i] as number);
       weight += w;
     }
     if (weight <= 0) return ground;
@@ -627,6 +703,7 @@ export function buildRoadElevation(
 
   return {
     at: query,
+    digest: (minX, minY, maxX, maxY) => index.digest(minX, minY, maxX, maxY, profileDigest),
     onSegment(segment, x, y) {
       const profile = byId.get(segment);
       if (!profile) return terrainAt(x, y) + ROAD_GROUND_CLEARANCE;
@@ -638,14 +715,14 @@ export function buildRoadElevation(
     roadAt(x, y, structures) {
       const best = nearest(x, y, structures);
       if (!best) return { along: y, across: x, type: -1, half: 0, median: 0 };
-      const hit = best.line.closestPoint({ x, y });
+      const { s, distance } = last;
       // Signed offset, so the two halves of a carriageway do not mirror the
       // texture into a seam down the centre line.
-      const frame = best.line.sampleAt(hit.s);
+      const frame = best.line.sampleAt(s);
       const sign = Math.sign((x - frame.p.x) * frame.n.x + (y - frame.p.y) * frame.n.y) || 1;
       return {
-        along: hit.s,
-        across: hit.distance * sign,
+        along: s,
+        across: distance * sign,
         type: best.type,
         half: best.half,
         median: best.median,
@@ -654,12 +731,16 @@ export function buildRoadElevation(
     surfaceFrameAt(x, y, structures, pickX, pickY) {
       const best = nearest(pickX, pickY, structures);
       if (!best) return { along: y, across: x };
-      const hit = best.line.closestPoint({ x, y });
-      const frame = best.line.sampleAt(hit.s);
+      let s = last.s;
+      if (pickX !== x || pickY !== y) {
+        best.line.closestInto(x, y, hit);
+        s = hit.s;
+      }
+      const frame = best.line.sampleAt(s);
       const dx = x - frame.p.x;
       const dy = y - frame.p.y;
       return {
-        along: hit.s + dx * frame.t.x + dy * frame.t.y,
+        along: s + dx * frame.t.x + dy * frame.t.y,
         across: dx * frame.n.x + dy * frame.n.y,
       };
     },
@@ -682,15 +763,14 @@ export function buildRoadElevation(
       let bestWeight = 0;
       let bestHeight = 0;
       for (const profile of index.near(x, y)) {
-        const distance = profile.line.distanceTo({ x, y });
+        profile.line.closestInto(x, y, hit);
+        const distance = hit.distance;
         const inner = profile.half + SHAPE_INNER;
-        // Cheap bound first. `closestPoint` is the expensive call in this loop
-        // and it runs once per terrain corner per candidate; rejecting on the
-        // widest batter any road could ask for keeps a dense network from
-        // paying for every road in its cell.
+        // Cheap bound first: rejecting on the widest batter any road could ask
+        // for keeps a dense network from paying for every road in its cell.
         if (distance >= inner + SHAPE_SHOULDER_MAX) continue;
         const sunken = isSunken(profile.structure);
-        const surface = heightAtArc(profile, profile.line.closestPoint({ x, y }).s);
+        const surface = heightAtArc(profile, hit.s);
         const height = surface - SHAPE_DROP;
         // The batter is sized from the earthwork it has to carry away, so a
         // shallow fill blends out quickly and a deep cut opens out properly.
@@ -1117,6 +1197,25 @@ class SpatialIndex {
         }
       }
     }
+  }
+
+  /** Digest of every profile `near` can return for a point of the rectangle, in its order. */
+  digest(minX: number, minY: number, maxX: number, maxY: number, of: (profile: Profile) => number): number {
+    const digest = new Digest();
+    if (this.buckets.size === 0) {
+      for (const profile of this.all) digest.add(of(profile));
+      return digest.value();
+    }
+    for (let x = Math.floor(minX / this.cell); x <= Math.floor(maxX / this.cell); x++) {
+      for (let y = Math.floor(minY / this.cell); y <= Math.floor(maxY / this.cell); y++) {
+        const key = x * 73_856_093 + y * 19_349_663;
+        digest.add(key);
+        for (const profile of this.buckets.get(key) ?? EMPTY) digest.add(of(profile));
+      }
+    }
+    digest.add(-1);
+    for (const profile of this.oversized) digest.add(of(profile));
+    return digest.value();
   }
 
   near(x: number, y: number): readonly Profile[] {

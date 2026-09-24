@@ -1,7 +1,6 @@
 import { EPS, FINE_EPS, clamp } from './scalar';
 import { type Vec2, perp } from './vec2';
 import { type Aabb, fromFlat } from './aabb';
-import { closestOnSegment } from './intersect';
 
 /** A position on a polyline, with its local frame. */
 export interface Frame {
@@ -36,6 +35,7 @@ export class Polyline {
   private _cum: Float64Array | null = null;
   private _tan: Float64Array | null = null;
   private _bbox: Aabb | null = null;
+  private _chunks: Float64Array | null = null;
 
   private constructor(xy: Float64Array) {
     this.xy = xy;
@@ -196,30 +196,132 @@ export class Polyline {
     return new Polyline(xy);
   }
 
-  /** Nearest point on the polyline to `p`. */
-  closestPoint(p: Vec2): { point: Vec2; s: number; distance: number } {
-    let best: Vec2 = this.point(0);
+  /** Bounding boxes of runs of `CHUNK` segments: [minX, minY, maxX, maxY] each. */
+  private get chunks(): Float64Array {
+    if (this._chunks) return this._chunks;
+    const segments = Math.max(0, this.n - 1);
+    const count = Math.ceil(segments / CHUNK);
+    const boxes = new Float64Array(count * 4);
+    for (let c = 0; c < count; c++) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      const last = Math.min(this.n - 1, (c + 1) * CHUNK);
+      for (let i = c * CHUNK; i <= last; i++) {
+        const x = this.xy[i * 2] as number;
+        const y = this.xy[i * 2 + 1] as number;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+      boxes[c * 4] = minX;
+      boxes[c * 4 + 1] = minY;
+      boxes[c * 4 + 2] = maxX;
+      boxes[c * 4 + 3] = maxY;
+    }
+    this._chunks = boxes;
+    return boxes;
+  }
+
+  /**
+   * The segment nearest (px, py): its index, or -1 for a single point, with
+   * its parameter and squared distance left in `nearest`.
+   *
+   * The same arithmetic as `closestOnSegment`, in the same order, so the answer
+   * is bit for bit what testing every segment gives - but with no allocation,
+   * and skipping every run of segments whose box is already farther away than
+   * the best so far. This is the innermost call of the road height field, run
+   * several times per mesh vertex: a scan of the whole centreline with two
+   * objects allocated per segment was a third of a road rebuild.
+   */
+  private nearestSegment(px: number, py: number): number {
+    const xy = this.xy;
+    const segments = this.n - 1;
+    const boxes = segments > CHUNK ? this.chunks : null;
+    let best = -1;
     let bestSq = Infinity;
-    let bestS = 0;
-    const cum = this.cum;
-    for (let i = 0; i + 1 < this.n; i++) {
-      const a = this.point(i);
-      const b = this.point(i + 1);
-      const hit = closestOnSegment(p, a, b);
-      if (hit.distSq < bestSq) {
-        bestSq = hit.distSq;
-        best = hit.point;
-        bestS = (cum[i] as number) + hit.t * ((cum[i + 1] as number) - (cum[i] as number));
+    let bestT = 0;
+    for (let start = 0; start < segments; start += CHUNK) {
+      if (boxes) {
+        const c = (start / CHUNK) * 4;
+        const dx = Math.max((boxes[c] as number) - px, 0, px - (boxes[c + 2] as number));
+        const dy = Math.max((boxes[c + 1] as number) - py, 0, py - (boxes[c + 3] as number));
+        // Skipped only when clearly farther, so rounding can never drop a tie.
+        if (dx * dx + dy * dy > bestSq * (1 + 1e-9) + 1e-12) continue;
+      }
+      const end = Math.min(segments, start + CHUNK);
+      for (let i = start; i < end; i++) {
+        const ax = xy[i * 2] as number;
+        const ay = xy[i * 2 + 1] as number;
+        const abx = (xy[i * 2 + 2] as number) - ax;
+        const aby = (xy[i * 2 + 3] as number) - ay;
+        const l2 = abx * abx + aby * aby;
+        let t = 0;
+        let qx = ax;
+        let qy = ay;
+        if (l2 >= EPS) {
+          t = ((px - ax) * abx + (py - ay) * aby) / l2;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          qx = ax + abx * t;
+          qy = ay + aby * t;
+        }
+        const ex = px - qx;
+        const ey = py - qy;
+        const distSq = ex * ex + ey * ey;
+        if (distSq < bestSq) {
+          bestSq = distSq;
+          best = i;
+          bestT = t;
+        }
       }
     }
-    return { point: best, s: bestS, distance: Math.sqrt(bestSq) };
+    nearest.t = bestT;
+    nearest.distSq = bestSq;
+    return best;
+  }
+
+  /** Nearest point on the polyline to `p`. */
+  closestPoint(p: Vec2): { point: Vec2; s: number; distance: number } {
+    const i = this.nearestSegment(p.x, p.y);
+    if (i < 0) return { point: this.point(0), s: 0, distance: Math.sqrt(nearest.distSq) };
+    const cum = this.cum;
+    const t = nearest.t;
+    const k = i * 2;
+    const ax = this.xy[k] as number;
+    const ay = this.xy[k + 1] as number;
+    const point = {
+      x: ax + ((this.xy[k + 2] as number) - ax) * t,
+      y: ay + ((this.xy[k + 3] as number) - ay) * t,
+    };
+    const s = (cum[i] as number) + t * ((cum[i + 1] as number) - (cum[i] as number));
+    return { point, s, distance: Math.sqrt(nearest.distSq) };
+  }
+
+  /** `closestPoint`'s arc length and distance, written into `out` without allocating. */
+  closestInto(px: number, py: number, out: { s: number; distance: number }): void {
+    const i = this.nearestSegment(px, py);
+    out.distance = Math.sqrt(nearest.distSq);
+    if (i < 0) {
+      out.s = 0;
+      return;
+    }
+    const cum = this.cum;
+    out.s = (cum[i] as number) + nearest.t * ((cum[i + 1] as number) - (cum[i] as number));
   }
 
   /** Perpendicular distance from `p` to this polyline. */
   distanceTo(p: Vec2): number {
-    return this.closestPoint(p).distance;
+    this.nearestSegment(p.x, p.y);
+    return Math.sqrt(nearest.distSq);
   }
 }
+
+/** Segments per bounding box in the nearest-point search. */
+const CHUNK = 16;
+/** Scratch result of `Polyline.nearestSegment`. */
+const nearest = { t: 0, distSq: Infinity };
 
 /** Drops consecutive duplicate points. */
 export function dedupe(points: readonly Vec2[], eps = FINE_EPS): Vec2[] {
