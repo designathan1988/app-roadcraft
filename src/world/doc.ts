@@ -512,7 +512,12 @@ export class RoadDoc {
   /** Replaces this instance from another valid document. */
   replaceWith(source: RoadDoc): void {
     const nextRevision = this.revision + 1;
-    const nextTerrainRevision = this.terrainRevision + 1;
+    // The land moves only when its stamps do. Drawing a road replaces the whole
+    // document with an edited clone (`commitDraft`), and bumping the terrain
+    // revision for it rewrote all 90 601 terrain corners, their normals and
+    // the rivers on every road drawn, for ground that had not changed.
+    const landMoved = !sameStamps(this.terrainStamps, source.terrainStamps);
+    const nextTerrainRevision = landMoved ? this.terrainRevision + 1 : this.terrainRevision;
 
     this.nodes.clear();
     this.segments.clear();
@@ -533,8 +538,10 @@ export class RoadDoc {
     for (const [id, pole] of source.poles) this.poles.set(id, { ...pole });
     for (const [id, span] of source.poleSpans) this.poleSpans.set(id, { ...span });
 
-    this.terrainStamps.length = 0;
-    this.terrainStamps.push(...source.terrainStamps.map((stamp) => ({ ...stamp })));
+    if (landMoved) {
+      this.terrainStamps.length = 0;
+      this.terrainStamps.push(...source.terrainStamps.map((stamp) => ({ ...stamp })));
+    }
 
     this.nodeIds = new IdAllocator(source.nodeIds.peek);
     this.segIds = new IdAllocator(source.segIds.peek);
@@ -706,4 +713,17 @@ function normaliseLaneCount(lanes: number | null, direction: SegmentDirection): 
   const value = Math.max(1, Math.min(8, Math.round(lanes)));
   // A two-way road must have an equal number of lanes on both sides.
   return direction === 'both' ? Math.max(2, Math.ceil(value / 2) * 2) : value;
+}
+
+/** Whether two stamp lists describe the same land, field for field. */
+function sameStamps(a: readonly TerrainStamp[], b: readonly TerrainStamp[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i] as TerrainStamp;
+    const q = b[i] as TerrainStamp;
+    if (p === q) continue;
+    const keys = new Set([...Object.keys(p), ...Object.keys(q)]) as Set<keyof TerrainStamp>;
+    for (const key of keys) if (p[key] !== q[key]) return false;
+  }
+  return true;
 }

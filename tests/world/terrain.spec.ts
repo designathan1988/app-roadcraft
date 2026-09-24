@@ -160,3 +160,32 @@ describe('levelling', () => {
     );
   });
 });
+
+describe('terrain revision', () => {
+  it('stays put when a document is replaced by an edit that left the land alone', async () => {
+    const { RoadDoc } = await import('@world/doc');
+    const doc = new RoadDoc();
+    doc.addTerrainStamp({ x: 0, y: 0, radius: 80, strength: 10, mode: 'raise' });
+    const before = doc.terrainRevision;
+    // What drawing a road does: edit a clone, then replace the document with it.
+    const work = doc.clone();
+    const a = work.addNode({ x: -200, y: 0 });
+    const b = work.addNode({ x: 200, y: 0 });
+    work.addSegment(a.id, b.id, 2);
+    doc.replaceWith(work);
+    expect(doc.segments.size).toBe(1);
+    expect(doc.terrainRevision).toBe(before);
+  });
+
+  it('moves when the replacement changes a stamp', async () => {
+    const { RoadDoc } = await import('@world/doc');
+    const doc = new RoadDoc();
+    doc.addTerrainStamp({ x: 0, y: 0, radius: 80, strength: 10, mode: 'raise' });
+    const before = doc.terrainRevision;
+    const work = doc.clone();
+    work.addTerrainStamp({ x: 50, y: 0, radius: 40, strength: 4, mode: 'lower' });
+    doc.replaceWith(work);
+    expect(doc.terrainStamps).toHaveLength(2);
+    expect(doc.terrainRevision).toBeGreaterThan(before);
+  });
+});

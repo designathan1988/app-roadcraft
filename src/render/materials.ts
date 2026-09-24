@@ -38,6 +38,13 @@ export interface SceneMaterials {
   readonly kerb: MeshStandardMaterial;
   readonly verge: MeshStandardMaterial;
   readonly deck: MeshStandardMaterial;
+  /**
+   * The deck's concrete again, for the parapets. The same look in its own
+   * material, because the parapets are instanced and the deck is not: one
+   * material drawn both ways makes three switch its program between the two
+   * variants on every frame.
+   */
+  readonly parapet: MeshStandardMaterial;
   readonly concrete: MeshStandardMaterial;
   readonly steel: MeshStandardMaterial;
   /** World units one tile of each surface covers, for UV generation. */
@@ -350,6 +357,7 @@ export function createMaterials(anisotropy: number): SceneMaterials {
   const kerbMaterial = keep(surface(kerb, 0xffffff, 1, 0, 0.85));
   const vergeMaterial = keep(surface(verge, 0xffffff, 1, 0, 0.9));
   const deckMaterial = keep(surface(deck, 0xffffff, 1, 0.02, 1));
+  const parapetMaterial = keep(surface(deck, 0xffffff, 1, 0.02, 1));
 
   // The close-zoom layer. `macroBlur` is how many mip levels softer the macro
   // map is read once the detail is fully in - enough to melt the magnified
@@ -360,6 +368,7 @@ export function createMaterials(anisotropy: number): SceneMaterials {
   applyDetail(kerbMaterial, { kind: 'concrete', macroTile: KERB_TILE, albedo: 0.55, normal: 0.7, macroBlur: 0.8 }, anisotropy);
   applyDetail(vergeMaterial, { kind: 'grass', macroTile: VERGE_TILE, albedo: 1, normal: 1.2, macroBlur: 2 }, anisotropy);
   applyDetail(deckMaterial, { kind: 'concrete', macroTile: DECK_TILE, albedo: 0.6, normal: 0.8, macroBlur: 1 }, anisotropy);
+  applyDetail(parapetMaterial, { kind: 'concrete', macroTile: DECK_TILE, albedo: 0.6, normal: 0.8, macroBlur: 1 }, anisotropy);
 
   return {
     asphalt,
@@ -368,6 +377,7 @@ export function createMaterials(anisotropy: number): SceneMaterials {
     kerb: kerbMaterial,
     verge: vergeMaterial,
     deck: deckMaterial,
+    parapet: parapetMaterial,
     concrete: keep(
       new MeshStandardMaterial({
         color: 0x9fa4a2,

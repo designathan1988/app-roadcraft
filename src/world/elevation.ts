@@ -236,6 +236,11 @@ export interface RoadElevation {
    */
   shapeAt(x: number, y: number, naturalGround: number): { height: number; weight: number };
   /**
+   * Boxes outside which `shapeAt` always answers weight 0: every road's
+   * influence box, which is wider than the widest batter it may shape.
+   */
+  shapeBounds(): readonly Aabb[];
+  /**
    * A digest of everything a height, frame or road query can read at any
    * point of a rectangle, the terrain aside: the solved profile of every road
    * the spatial index could hand such a query, in the order it would. Two
@@ -744,6 +749,7 @@ export function buildRoadElevation(
         across: dx * frame.n.x + dy * frame.n.y,
       };
     },
+    shapeBounds: () => profiles.map((profile) => profile.bbox),
     shapeAt(x, y, naturalGround) {
       // EVERY structure may shape the ground, and which one does is decided by
       // authority rather than by distance.

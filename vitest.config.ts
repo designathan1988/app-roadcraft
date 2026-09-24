@@ -30,7 +30,11 @@ export default defineConfig({
     exclude: ['tests/e2e/**', 'tests/**/_*/**', 'tests/**/_*'],
     // Tests always run with invariant assertions armed.
     env: { SIM_STRICT: '1' },
-    testTimeout: 60_000,
+    // Not a speed limit - the budgets that matter are asserted by the tests
+    // that own them. Several suites run minutes of a whole map, traffic and
+    // all, and under the full suite with coverage beside them they took up to
+    // seven times as long as alone and failed on a clock, not on a defect.
+    testTimeout: 180_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

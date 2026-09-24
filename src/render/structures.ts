@@ -325,7 +325,7 @@ export function buildStructureDetails(
   const parapetGeometry = new BoxGeometry(1, 1, 1);
   attach(instanced('structure-piers', pierGeometry, materials.concrete, piers));
   attach(instanced('structure-pier-caps', capGeometry, materials.concrete, caps));
-  attach(instanced('structure-parapets', parapetGeometry, materials.deck, parapets));
+  attach(instanced('structure-parapets', parapetGeometry, materials.parapet, parapets));
 
   const owned: BufferGeometry[] = [pierGeometry, capGeometry, parapetGeometry];
 

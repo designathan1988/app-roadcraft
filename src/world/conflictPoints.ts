@@ -190,7 +190,7 @@ export class ConflictIndex {
           const sb = b && sweeps.get(b.id);
           if (!a || !b || !sa || !sb) continue;
 
-          const zones = cachedPairZones(
+          const pair = cachedPair(
             previous,
             next,
             sa,
@@ -198,6 +198,7 @@ export class ConflictIndex {
             sb,
             shapes.get(b.id) as SweepShape,
           );
+          const zones = pair.zones;
           if (!zones) continue;
 
           if (a.fromLane === b.fromLane) {
@@ -209,15 +210,21 @@ export class ConflictIndex {
           this.recordIntrusions(a.id, b.id, zones);
 
           let kind: ConflictKind = 'swept';
-          let at = zoneCentre(sa, zones);
+          let at: Vec2;
           if (a.toLane === b.toLane) {
             kind = 'merge';
             at = sa.path.sampleAt(sa.crossing.length).p;
           } else {
-            const hit = firstCrossing(sa.crossing.centre.toPoints(), sb.crossing.centre.toPoints());
-            if (hit) {
+            // Both depend only on the two sweeps, so they are kept with the pair.
+            if (pair.crossing === undefined) {
+              pair.crossing = firstCrossing(sa.crossing.centre.toPoints(), sb.crossing.centre.toPoints());
+            }
+            if (pair.crossing) {
               kind = 'cross';
-              at = hit.at;
+              at = pair.crossing.at;
+            } else {
+              pair.centre ??= zoneCentre(sa, zones);
+              at = pair.centre;
             }
           }
           this.add(junction.node, a.id, b.id, kind, at, zones);
@@ -308,8 +315,12 @@ interface Sweep {
   readonly count: number;
   /** Per sample: centre x, y and unit tangent x, y. */
   readonly frame: Float64Array;
-  /** Broad phase of the HEAVY rectangles: cell key -> sample indices. */
-  readonly grid: Map<number, number[]>;
+  /**
+   * Broad phase of the HEAVY rectangles: cell key -> sample indices. Built
+   * the first time a pair needs it (`gridOf`): a movement whose every pair is
+   * answered from the cache never needs one.
+   */
+  grid: Map<number, number[]> | null;
 }
 
 function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
@@ -324,7 +335,6 @@ function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
   const c1 = crossing.length + heavy.length / 2;
   const count = Math.max(2, Math.ceil((c1 - c0) / SWEEP_STEP) + 1);
   const frame = new Float64Array(count * 4);
-  const grid = new Map<number, number[]>();
 
   for (let i = 0; i < count; i++) {
     const c = c0 + i * SWEEP_STEP;
@@ -335,11 +345,23 @@ function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
     frame[i * 4 + 1] = f.p.y;
     frame[i * 4 + 2] = t.x;
     frame[i * 4 + 3] = t.y;
-    const [hl, hw] = halfExtent(HEAVY);
-    const ex = Math.abs(t.x) * hl + Math.abs(t.y) * hw;
-    const ey = Math.abs(t.y) * hl + Math.abs(t.x) * hw;
-    for (let gx = Math.floor((f.p.x - ex) / CELL); gx <= Math.floor((f.p.x + ex) / CELL); gx++) {
-      for (let gy = Math.floor((f.p.y - ey) / CELL); gy <= Math.floor((f.p.y + ey) / CELL); gy++) {
+  }
+  return { crossing, path, c0, count, frame, grid: null };
+}
+
+function gridOf(s: Sweep): Map<number, number[]> {
+  if (s.grid) return s.grid;
+  const grid = new Map<number, number[]>();
+  const [hl, hw] = halfExtent(HEAVY);
+  for (let i = 0; i < s.count; i++) {
+    const x = s.frame[i * 4] as number;
+    const y = s.frame[i * 4 + 1] as number;
+    const tx = s.frame[i * 4 + 2] as number;
+    const ty = s.frame[i * 4 + 3] as number;
+    const ex = Math.abs(tx) * hl + Math.abs(ty) * hw;
+    const ey = Math.abs(ty) * hl + Math.abs(tx) * hw;
+    for (let gx = Math.floor((x - ex) / CELL); gx <= Math.floor((x + ex) / CELL); gx++) {
+      for (let gy = Math.floor((y - ey) / CELL); gy <= Math.floor((y + ey) / CELL); gy++) {
         const key = cellKey(gx, gy);
         const list = grid.get(key);
         if (list) list.push(i);
@@ -347,7 +369,8 @@ function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
       }
     }
   }
-  return { crossing, path, c0, count, frame, grid };
+  s.grid = grid;
+  return grid;
 }
 
 const cellKey = (x: number, y: number): number => (x + 32768) * 65536 + (y + 32768);
@@ -360,54 +383,67 @@ interface SweepShape {
   readonly count: number;
   readonly length: number;
   readonly frame: Float64Array;
+  /** The crossing's own centreline, which `firstCrossing` reads between samples. */
+  readonly centre: Float64Array;
 }
 
 interface CachedPair {
   readonly a: SweepShape;
   readonly b: SweepShape;
   readonly zones: PairZones | null;
+  /** Where the two centrelines first cross; undefined until asked. */
+  crossing?: { sA: number; sB: number; at: Vec2 } | null;
+  /** Middle of the heavy-body zone on `a`; undefined until asked. */
+  centre?: Vec2;
 }
 
 function shapeOf(s: Sweep): SweepShape {
   // FNV-1a over the frame's bytes. Only a key: a collision costs a recompute,
   // never a wrong answer, because a hit is confirmed by `sameShape`.
-  const words = new Uint32Array(s.frame.buffer, s.frame.byteOffset, s.frame.length * 2);
   let h = 0x811c9dc5;
-  for (let i = 0; i < words.length; i++) h = Math.imul(h ^ (words[i] as number), 0x01000193);
+  for (const values of [s.frame, s.crossing.centre.xy]) {
+    const words = new Uint32Array(values.buffer, values.byteOffset, values.length * 2);
+    for (let i = 0; i < words.length; i++) h = Math.imul(h ^ (words[i] as number), 0x01000193);
+  }
   return {
     hash: `${(h >>> 0).toString(36)}:${s.count}:${s.c0}:${s.crossing.length}`,
     c0: s.c0,
     count: s.count,
     length: s.crossing.length,
     frame: s.frame,
+    centre: s.crossing.centre.xy,
   };
 }
 
 function sameShape(p: SweepShape, q: SweepShape): boolean {
   if (p.count !== q.count || p.c0 !== q.c0 || p.length !== q.length) return false;
-  if (p.frame.length !== q.frame.length) return false;
-  for (let i = 0; i < p.frame.length; i++) if (p.frame[i] !== q.frame[i]) return false;
+  return sameValues(p.frame, q.frame) && sameValues(p.centre, q.centre);
+}
+
+function sameValues(p: Float64Array, q: Float64Array): boolean {
+  if (p.length !== q.length) return false;
+  for (let i = 0; i < p.length; i++) if (p[i] !== q[i]) return false;
   return true;
 }
 
-/** `pairZones`, answered from the previous build when neither sweep moved. */
-function cachedPairZones(
+/** A pair's zones, answered from the previous build when neither sweep moved. */
+function cachedPair(
   previous: Map<string, CachedPair>,
   next: Map<string, CachedPair>,
   a: Sweep,
   shapeA: SweepShape,
   b: Sweep,
   shapeB: SweepShape,
-): PairZones | null {
+): CachedPair {
   const key = `${shapeA.hash}|${shapeB.hash}`;
   const known = next.get(key) ?? previous.get(key);
   if (known && sameShape(known.a, shapeA) && sameShape(known.b, shapeB)) {
     next.set(key, known);
-    return known.zones;
+    return known;
   }
-  const zones = pairZones(a, b);
-  next.set(key, { a: shapeA, b: shapeB, zones });
-  return zones;
+  const pair: CachedPair = { a: shapeA, b: shapeB, zones: pairZones(a, b) };
+  next.set(key, pair);
+  return pair;
 }
 
 /** Half length and half width of each class's swept rectangle, built once. */
@@ -500,6 +536,7 @@ function pairZones(a: Sweep, b: Sweep): PairZones | null {
   // Which of b's samples this sample of a has already tested: a stamp per
   // sample instead of a set cleared per sample.
   const seen = new Int32Array(b.count);
+  const grid = gridOf(b);
   const [hl, hw] = halfExtent(HEAVY);
   for (let i = 0; i < a.count; i++) {
     const x = a.frame[i * 4] as number, y = a.frame[i * 4 + 1] as number;
@@ -509,7 +546,7 @@ function pairZones(a: Sweep, b: Sweep): PairZones | null {
     const stamp = i + 1;
     for (let gx = Math.floor((x - ex) / CELL); gx <= Math.floor((x + ex) / CELL); gx++) {
       for (let gy = Math.floor((y - ey) / CELL); gy <= Math.floor((y + ey) / CELL); gy++) {
-        const cell = b.grid.get(cellKey(gx, gy));
+        const cell = grid.get(cellKey(gx, gy));
         if (!cell) continue;
         for (const j of cell) {
           if (seen[j] === stamp) continue;

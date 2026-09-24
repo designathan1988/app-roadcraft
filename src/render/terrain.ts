@@ -1,3 +1,4 @@
+import type { Aabb } from '@core/aabb';
 import { Digest } from '@core/digest';
 import {
   BufferGeometry,
@@ -7,6 +8,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   PlaneGeometry,
+  Vector3,
   type Texture,
 } from 'three';
 
@@ -132,6 +134,8 @@ export interface TerrainSurface {
 /** What `shapeToRoads` needs to know about the road network. */
 export interface TerrainShaper {
   shapeAt(x: number, y: number, naturalGround: number): { height: number; weight: number };
+  /** Boxes outside which `shapeAt` always answers weight 0. */
+  shapeBounds(): readonly Aabb[];
 }
 
 function terrainBakes(anisotropy: number): {
@@ -509,39 +513,120 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
    * weight out where the road is buried deeply, so the ground closes over the
    * bore and stays open at the portals.
    */
+  /** Corners visited by the current shaping pass, by stamp, so boxes that overlap visit each once. */
+  const visited = new Int32Array(GRID * GRID);
+  let pass = 0;
+
   const shapeToRoads = (shape: TerrainShaper | null): boolean => {
-    let moved = false;
+    // The corners whose height this pass changes, whichever way.
+    const changed: number[] = [];
     // Restore whatever the last shaping moved, so this is a pure function of
     // the current network rather than an accumulation over every edit.
+    const before = new Map<number, number>();
     for (const i of shapedCorners) {
-      if (grid[i] !== natural[i]) {
-        grid[i] = natural[i] as number;
-        position.setY(i, natural[i] as number);
-        moved = true;
-      }
+      before.set(i, grid[i] as number);
+      grid[i] = natural[i] as number;
     }
     shapedCorners = [];
-    if (!shape) return moved;
 
-    for (let i = 0; i < GRID * GRID; i++) {
-      const x = position.getX(i);
-      const worldY = -position.getZ(i);
-      const ground = natural[i] as number;
-      const { height, weight } = shape.shapeAt(x, worldY, ground);
-      if (weight <= 0.001) continue;
-      const blended = ground + (height - ground) * weight;
-      if (Math.abs(blended - ground) < 0.002) continue;
-      grid[i] = blended;
-      position.setY(i, blended);
-      shapedCorners.push(i);
-      moved = true;
+    if (shape) {
+      // Only the corners some road could shape: everywhere else `shapeAt`
+      // answers weight 0, and asking all 90 601 of them was most of the pass.
+      pass++;
+      for (const box of shape.shapeBounds()) {
+        const x0 = Math.max(0, Math.floor((box.minX + TERRAIN_HALF) / TERRAIN_CELL));
+        const x1 = Math.min(GRID - 1, Math.ceil((box.maxX + TERRAIN_HALF) / TERRAIN_CELL));
+        const y0 = Math.max(0, Math.floor((TERRAIN_HALF - box.maxY) / TERRAIN_CELL));
+        const y1 = Math.min(GRID - 1, Math.ceil((TERRAIN_HALF - box.minY) / TERRAIN_CELL));
+        for (let iy = y0; iy <= y1; iy++) {
+          for (let ix = x0; ix <= x1; ix++) {
+            const i = ix + iy * GRID;
+            if (visited[i] === pass) continue;
+            visited[i] = pass;
+            const x = position.getX(i);
+            const worldY = -position.getZ(i);
+            const ground = natural[i] as number;
+            const { height, weight } = shape.shapeAt(x, worldY, ground);
+            if (weight <= 0.001) continue;
+            const blended = ground + (height - ground) * weight;
+            if (Math.abs(blended - ground) < 0.002) continue;
+            grid[i] = blended;
+            shapedCorners.push(i);
+          }
+        }
+      }
     }
-    if (moved) {
-      position.needsUpdate = true;
-      geometry.computeVertexNormals();
-      geometry.computeBoundingSphere();
+
+    for (const i of shapedCorners) {
+      const was = before.get(i) ?? (natural[i] as number);
+      if (grid[i] !== was) changed.push(i);
+      before.delete(i);
     }
-    return moved;
+    for (const [i, was] of before) if (grid[i] !== was) changed.push(i);
+    if (changed.length === 0) return false;
+    for (const i of changed) position.setY(i, grid[i] as number);
+    position.needsUpdate = true;
+    refreshNormals(changed);
+    geometry.computeBoundingSphere();
+    return true;
+  };
+
+  const normal = geometry.getAttribute('normal');
+  const pa = new Vector3();
+  const pb = new Vector3();
+  const pc = new Vector3();
+  const cb = new Vector3();
+  const ab = new Vector3();
+  const sum = new Vector3();
+  /** Adds one face's area-weighted normal, as `computeVertexNormals` forms it. */
+  const addFace = (a: number, b: number, c: number): void => {
+    pa.fromBufferAttribute(position, a);
+    pb.fromBufferAttribute(position, b);
+    pc.fromBufferAttribute(position, c);
+    cb.subVectors(pc, pb);
+    ab.subVectors(pa, pb);
+    sum.add(cb.cross(ab));
+  };
+  /**
+   * Recomputes the normals round the corners that moved: the corners
+   * themselves and every corner sharing a face with one, which is all a moved
+   * corner can tilt. The whole plate's `computeVertexNormals` was the other
+   * large share of every road edit.
+   */
+  const refreshNormals = (moved: readonly number[]): void => {
+    const touched = new Set<number>();
+    for (const i of moved) {
+      const ix = i % GRID;
+      const iy = (i - ix) / GRID;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = ix + dx;
+          const y = iy + dy;
+          if (x >= 0 && y >= 0 && x < GRID && y < GRID) touched.add(x + y * GRID);
+        }
+      }
+    }
+    for (const v of touched) {
+      sum.set(0, 0, 0);
+      const ix = v % GRID;
+      const iy = (v - ix) / GRID;
+      // The cells round the corner, split as `PlaneGeometry` splits them:
+      // (a, b, d) and (b, c, d).
+      for (let cy = iy - 1; cy <= iy; cy++) {
+        for (let cx = ix - 1; cx <= ix; cx++) {
+          if (cx < 0 || cy < 0 || cx >= TERRAIN_SEGMENTS || cy >= TERRAIN_SEGMENTS) continue;
+          const a = cx + GRID * cy;
+          const b = cx + GRID * (cy + 1);
+          const c = cx + 1 + GRID * (cy + 1);
+          const d = cx + 1 + GRID * cy;
+          if (v === a || v === b || v === d) addFace(a, b, d);
+          if (v === b || v === c || v === d) addFace(b, c, d);
+        }
+      }
+      sum.normalize();
+      normal.setXYZ(v, sum.x, sum.y, sum.z);
+    }
+    normal.needsUpdate = true;
   };
 
   let wetDiscs: readonly WaterStamp[] = [];

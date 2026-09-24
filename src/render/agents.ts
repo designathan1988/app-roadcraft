@@ -3,6 +3,7 @@ import {
   Color,
   DoubleSide,
   DynamicDrawUsage,
+  InstancedBufferAttribute,
   InstancedMesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -450,6 +451,8 @@ interface Part {
   readonly mesh: InstancedMesh;
   /** Write cursor, reset at the top of every sync. */
   n: number;
+  /** Whether this sync wrote a colour, so the colours need uploading. */
+  tinted: boolean;
 }
 
 function instanced(
@@ -462,13 +465,19 @@ function instanced(
   const mesh = new InstancedMesh(geometry, material, count);
   mesh.name = name;
   mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+  // Every part carries a colour per instance, white until tinted. Materials
+  // are shared between tinted and untinted parts, and three builds a
+  // different program for an instanced mesh with colours than without, so a
+  // mix of the two switched programs a dozen times a frame.
+  mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(count * 3).fill(1), 3);
+  mesh.instanceColor.setUsage(DynamicDrawUsage);
   mesh.castShadow = castShadow;
   mesh.receiveShadow = false;
   // Instances move every frame, so a bounding sphere computed once is wrong;
   // the meshes are few enough that skipping the frustum test is the cheap answer.
   mesh.frustumCulled = false;
   mesh.count = 0;
-  return { mesh, n: 0 };
+  return { mesh, n: 0, tinted: false };
 }
 
 export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () => void = () => {}): AgentMeshes {
@@ -497,6 +506,11 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     // Panes are single sheets seen from both sides: the windscreen from above,
     // a door's window from inside when it swings open.
     side: DoubleSide,
+    // In ONE pass. three draws a transparent double-sided material twice, back
+    // faces then front, and flags it for a new program before each: with a
+    // glass mesh per vehicle model that was 62 program lookups a frame. A
+    // pane is a single sheet, so there is no back face to order.
+    forceSinglePass: true,
     depthWrite: false,
   });
   // The cabin: seats, dashboard, wheel. Dark and matt, so the people sitting in
@@ -717,6 +731,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     if (tint >= 0) {
       colour.setHex(tint);
       part.mesh.setColorAt(part.n, colour);
+      part.tinted = true;
     }
     part.n++;
   };
@@ -1079,11 +1094,12 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         matrix.needsUpdate = true;
 
         const colour = part.mesh.instanceColor;
-        if (colour) {
+        if (colour && part.tinted) {
           colour.clearUpdateRanges();
           if (part.n > 0) colour.addUpdateRange(0, part.n * 3);
           colour.needsUpdate = true;
         }
+        part.tinted = false;
       }
     },
     dispose() {
