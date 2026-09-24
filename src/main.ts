@@ -44,8 +44,10 @@ import {
   vehicleCountLabel,
 } from '@ui/labels';
 import { isQualityLevel, type QualityLevel } from '@render/quality';
+import { createBuildingWiring } from './buildingsWiring';
 
 type Tool =
+  | 'building'
   | 'road'
   | 'terrain'
   | 'upgrade'
@@ -348,6 +350,25 @@ overlayCtx = overlayCanvas.getContext('2d');
 window.addEventListener('resize', () => scene.resize(), { passive: true });
 canvas.dataset['render'] = 'webgl';
 
+// Modular buildings (docs/buildings.md): the tool, its palette, its overlay
+// and the road-wins rule, wired in `buildingsWiring.ts`.
+const buildings = createBuildingWiring({
+  doc,
+  net,
+  history,
+  scene,
+  view: () => view,
+  size: () => ({ w: surface.cssW, h: surface.cssH }),
+  afterEdit() {
+    persistence.saveSessionSoon(doc, sessionSettings);
+    updateHistoryButtons();
+    requestDraw();
+  },
+  requestDraw: () => requestDraw(),
+  flash: (key, params) => flashHint(key, params),
+  hintChanged: () => updateHint(),
+});
+
 function syncViewFromFlatCamera(): void {
   view.moveTo({ x: camera.x, y: camera.y });
   view.zoomAt(
@@ -383,6 +404,8 @@ function mutateBuilt(fn: () => boolean): boolean {
   if (!fn()) return false;
   history.record(RoadDoc.fromJSON(before));
   net.rebuild();
+  // A road over a building demolishes it, in this same undo step.
+  buildings.afterRoadEdit();
   // The simulation catches up in the frame AFTER the one that draws the edit
   // (see `topologyAfterDraw`), so the player sees the road first.
   topologyAfterDraw = true;
@@ -397,6 +420,7 @@ function applySnapshot(data: ReturnType<RoadDoc['toJSON']> | null): void {
   if (!data) return;
   restoreInto(doc, data, net);
   rebuildSimulationTopology();
+  buildings.restored();
   selectedSegment = null;
   selectedNode = null;
   closeInspector();
@@ -663,6 +687,10 @@ canvas.addEventListener('pointerdown', (e) => {
       beginTerrainStroke(e.pointerId, world);
       break;
 
+    case 'building':
+      buildings.pointerDown({ x: e.clientX - r.left, y: e.clientY - r.top }, world, e.shiftKey);
+      break;
+
     case 'pole':
       // Shift-click removes, the way the bulldoze tool does on a road.
       //
@@ -716,6 +744,8 @@ canvas.addEventListener('pointerdown', (e) => {
       break;
 
     case 'bulldoze':
+      // A building stands over whatever is under it, so it is tried first.
+      if (buildings.bulldozeAt({ x: e.clientX - r.left, y: e.clientY - r.top })) break;
       // A pole is a thing standing in the world, so the tool whose job is
       // removing things has to be able to remove it. It is tried first: a
       // pole stands ON the footway of a road, so the road under it would
@@ -796,6 +826,11 @@ canvas.addEventListener('pointermove', (e) => {
 
   const world = pointerWorld(e);
 
+  if (tool === 'building') {
+    buildings.pointerMove(screen, world, e.shiftKey);
+    return;
+  }
+
   if (draft) {
     draft.snap = snapEndpoint(doc, net, draft.start, world, view.zoom);
     if (draft.samples.length < 256) draft.samples.push(world);
@@ -869,6 +904,7 @@ function endPointer(e: PointerEvent): void {
   if (pointers.size < 2) pinch = null;
   if (panning?.id === e.pointerId) panning = null;
   if (terrainStroke?.pointer === e.pointerId) endTerrainStroke();
+  if (tool === 'building') buildings.pointerUp(cancelled || wasPinching);
 
   if (draft) {
     const d = draft;
@@ -967,6 +1003,12 @@ window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
   const meta = e.ctrlKey || e.metaKey;
 
+  // The building tool's own keys (R, +/-, Delete, Ctrl+C/V/D, 1-4) first.
+  if (tool === 'building' && buildings.key(e)) {
+    e.preventDefault();
+    return;
+  }
+
   // Turning the view is only offered where there is something to turn. The flat
   // viewport answers `rotate` with nothing rather than pretending.
   if (!meta && (e.key === 'q' || e.key === 'Q' || e.key === 'e' || e.key === 'E')) {
@@ -1055,6 +1097,7 @@ window.addEventListener('keydown', (e) => {
     t: 'terrain',
     i: 'inspect',
     p: 'pole',
+    h: 'building',
   };
   const next = shortcuts[e.key.toLowerCase()];
   if (next) setTool(next);
@@ -1134,6 +1177,7 @@ document.querySelectorAll<HTMLButtonElement>('.structure-mode').forEach((button)
 
 const roadPalette = document.querySelector<HTMLElement>('.road-palette');
 const terrainPalette = document.getElementById('terrainPalette') as HTMLElement;
+const buildingPalette = document.getElementById('buildingPalette') as HTMLElement;
 
 function setTerrainMode(next: TerrainMode): void {
   terrainMode = next;
@@ -1216,6 +1260,11 @@ function setTool(next: Tool): void {
   roadPalette?.setAttribute('aria-hidden', String(!roadActive));
   terrainPalette.classList.toggle('hidden', !terrainActive);
   terrainPalette.setAttribute('aria-hidden', String(!terrainActive));
+  const buildingActive = next === 'building';
+  buildingPalette.classList.toggle('hidden', !buildingActive);
+  buildingPalette.setAttribute('aria-hidden', String(!buildingActive));
+  if (buildingActive) buildings.activate();
+  else buildings.deactivate();
   updateHint();
   requestDraw();
 }
@@ -1441,14 +1490,14 @@ function cycleNodeControl(id: NodeId, direction: 1 | -1): void {
  * never has to remember what was displaced.
  */
 let hintFlash: ReturnType<typeof setTimeout> | null = null;
-function flashHint(key: string): void {
+function flashHint(key: string, params?: Readonly<Record<string, string | number>>): void {
   // Both bars: on a phone only the touch hint is visible, and it used to miss
   // every one of these answers.
   const hints = ['hint', 'mobileHint']
     .map((id) => document.getElementById(id))
     .filter((el): el is HTMLElement => el !== null);
   for (const hint of hints) {
-    hint.textContent = t(key);
+    hint.textContent = t(key, params);
     delete hint.dataset['i18n'];
     hint.classList.add('flash');
   }
@@ -1476,6 +1525,7 @@ function hintKey(prefix: string): string {
   // Each sculpting operation gets its own sentence. Four modes behind one hint
   // meant the bar told the player nothing about the one they had selected.
   if (tool === 'terrain') return `${prefix}.terrain.${terrainMode}`;
+  if (tool === 'building') return buildings.hintKey(prefix);
   return `${prefix}.${tool}`;
 }
 
@@ -1641,6 +1691,7 @@ function frame(now: number): void {
       else rebuildSimulationTopology();
     }
   }
+  buildings.beforeDraw(tool === 'building');
   scene.draw(net, sim, alpha, wall, { holdRoads: terrainStroke !== null });
   drawOverlayScreen();
   if (topologyAfterDraw) {
@@ -1807,6 +1858,8 @@ function drawOverlayScreen(): void {
   // hang between them with its real sag, and a ring round any pole the run is
   // about to tie into. If it looks right here it is right when built.
   drawPolePlan(currentPolePlan(), ctx, at, w, h);
+
+  if (tool === 'building') buildings.drawOverlay(ctx);
 
   const strokeScreen = (
     points: readonly Vec2[],
@@ -2262,6 +2315,7 @@ languageSelect.onchange = () => {
 // carry a key, and these were built by hand.
 onLanguageChange(() => {
   refreshRoadTypeLabels();
+  buildings.languageChanged();
   updateHint();
   updateStatus();
   refreshInspector();
@@ -2351,4 +2405,6 @@ qualitySelect.onchange = () => {
   audit: () => [...sim.issues],
   /** The live three.js scene handle, for browser-driven checks. */
   scene: () => scene,
+  /** The building tool, for browser-driven checks. */
+  buildings: buildings.tool,
 };

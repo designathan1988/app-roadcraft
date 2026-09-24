@@ -209,6 +209,12 @@ export interface Scenery {
    * is done while it is unchanged.
    */
   cull(frustum: Frustum, view: Matrix4): void;
+  /**
+   * Drops every tree and shrub whose trunk stands where `covered` says -
+   * under a building (docs/buildings.md section 5) - from the instance cull.
+   * Nothing is rebuilt; the next `cull` simply skips them. Null clears it.
+   */
+  exclude(covered: ((x: number, y: number) => boolean) | null): void;
   dispose(): void;
 }
 
@@ -577,6 +583,8 @@ export function buildScenery(
   for (const mesh of meshes) triangles += trianglesOf(mesh.geometry) * mesh.count;
   /** The view the instances were last culled for; null draws them all until the first. */
   let culledFor: Matrix4 | null = null;
+  /** Plants standing under a building, per plant mesh; see `exclude`. */
+  const excluded = new Map<InstancedMesh, Uint8Array>();
 
   return {
     meshes,
@@ -596,7 +604,9 @@ export function buildScenery(
         const matrices = mesh.instanceMatrix.array as Float32Array;
         const colours = all.colours && mesh.instanceColor ? mesh.instanceColor.array as Float32Array : null;
         let n = 0;
+        const hidden = excluded.get(mesh);
         for (let i = 0; i < all.count; i++) {
+          if (hidden && hidden[i]) continue;
           const s = all.spheres;
           probe.center.set(s[i * 4] as number, s[i * 4 + 1] as number, s[i * 4 + 2] as number);
           probe.radius = (s[i * 4 + 3] as number) + SHADOW_REACH;
@@ -614,6 +624,25 @@ export function buildScenery(
           if (n > 0) mesh.instanceColor.addUpdateRange(0, n * 3);
           mesh.instanceColor.needsUpdate = true;
         }
+      }
+    },
+    exclude(covered) {
+      excluded.clear();
+      culledFor = null;
+      if (!covered) return;
+      for (const [mesh] of plants) {
+        const all = instances.get(mesh);
+        if (!all) continue;
+        const flags = new Uint8Array(all.count);
+        let any = false;
+        for (let i = 0; i < all.count; i++) {
+          // Sphere centres are in three's axes: world y is -z.
+          if (covered(all.spheres[i * 4] as number, -(all.spheres[i * 4 + 2] as number))) {
+            flags[i] = 1;
+            any = true;
+          }
+        }
+        if (any) excluded.set(mesh, flags);
       }
     },
     dispose() {

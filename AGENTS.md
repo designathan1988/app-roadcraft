@@ -44,7 +44,10 @@ core  →  view   →  render, ui
 * `editor` mutates the document. `ui` is the DOM; it may READ `sim`, because
   the inspector and the minimap display live simulation state.
 * `main.ts` wires them together and owns the input handling and the frame loop.
-  It is the composition root, and the only file allowed to touch everything.
+  It is the composition root, and the only file allowed to touch everything -
+  together with `buildingsWiring.ts`, which is `main.ts`'s building section
+  split out (the building tool's view, host, palette and overlay), so the
+  building feature touches `main.ts` in a handful of lines.
 
 If you find yourself wanting to import `render` from `world`, the thing you
 want belongs in `world` instead.
@@ -103,6 +106,10 @@ that `world` and `sim` never call `Math.random` (invariant 5, which
 | which movements physically conflict, and where | `src/world/conflictPoints.ts` | `tests/sim/collisions.spec.ts` |
 | signal plans and phases | `src/sim/signals/` | [docs/architecture.md](docs/architecture.md) |
 | tools, undo, save/load | `src/editor/` | [docs/architecture.md](docs/architecture.md) |
+| the building model: volumes, storeys, facades, foundations, validation, presets | `src/world/buildings/` | [docs/buildings.md](docs/buildings.md) |
+| building commands, snapping, the building tool | `src/editor/buildings.ts`, `buildingSnap.ts`, `buildingTool.ts` | [docs/buildings.md](docs/buildings.md) |
+| what a building LOOKS like: shell, openings, roofs, instanced parts | `src/render/buildings/` | [docs/buildings.md](docs/buildings.md) |
+| the building palette and its handles | `src/ui/buildingPanel.ts`, `src/ui/overlay/buildingOverlay.ts`, `src/buildingsWiring.ts` | [docs/buildings.md](docs/buildings.md) |
 | any text the player reads | `src/ui/i18n/en.ts` **and** `pt-BR.ts` | [docs/i18n.md](docs/i18n.md) |
 | panels, buttons, the inspector | `index.html`, `src/ui/` | [docs/i18n.md](docs/i18n.md) |
 
@@ -342,3 +349,10 @@ dev servers and browsers as soon as a check is done.
   `SimWorld.bodiesIn` is the list anything asking "is this lane clear here"
   must read — not `rt(id).order`, which misses shadows and the tails of
   vehicles whose front has already entered the junction.
+* **A building edit moves `doc.buildings.revision`, never `doc.revision`.**
+  Bumping the document revision for a storey rebuilds the whole road network,
+  the lanelets and the simulation. Buildings have their own gate in the
+  renderer (`render/buildings/layer.ts`), which also caches each building's
+  meshes, so an edit re-emits one building. The other way round, a ROAD edit
+  demolishes any building it now overlaps (`clearBuildingsOnRoads`, called
+  from `mutateBuilt`), in the same undo step - see docs/buildings.md.

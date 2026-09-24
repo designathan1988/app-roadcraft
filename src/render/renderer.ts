@@ -38,6 +38,7 @@ import { createSignalHeads, type SignalHeads } from './signals';
 import { buildStructureDetails, type StructureDetails } from './structures';
 import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
 import { createTerrainSurface, type TerrainSurface } from './terrain';
+import { type BuildingPreviewInput, createBuildingLayer } from './buildings/layer';
 import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } from './quality';
 
 /**
@@ -95,6 +96,8 @@ export interface SceneHandle {
   readonly stats: RenderStats;
   /** The solved road height field, for the editor's own previews. */
   elevationAt(x: number, y: number, structure?: RoadStructure): number;
+  /** The editor's building ghost (docs/buildings.md); null removes it. */
+  setBuildingPreview(preview: BuildingPreviewInput | null): void;
   /** The height the terrain is drawn at — what anything laid on it must clear. */
   terrainHeightAt(x: number, y: number): number;
   resize(): void;
@@ -248,6 +251,13 @@ export function createSceneRenderer(
   scene.add(...agents.meshes);
   const signals: SignalHeads = createSignalHeads(scene, deckHeight);
 
+  // Modular buildings: their own layer, behind their own gate (see
+  // `render/buildings/layer.ts`), so a building edit never re-solves the roads.
+  const buildings = createBuildingLayer();
+  scene.add(buildings.group);
+  /** The scenery the building footprints were last cut out of. */
+  let excludedFor: { scenery: Scenery | null; version: number } = { scenery: null, version: -1 };
+
   const rebuildWorld = (net: Network): void => {
     if (networkRevision === net.revision && terrainRevision === net.doc.terrainRevision) return;
     const started = performance.now();
@@ -352,7 +362,7 @@ export function createSceneRenderer(
     gl: renderer,
     get stats(): RenderStats {
       return {
-        triangles: builtTriangles,
+        triangles: builtTriangles + buildings.triangles,
         drawCalls: renderer.info.render.calls,
         quality: governor.current,
         fps: Math.round(fps),
@@ -363,6 +373,9 @@ export function createSceneRenderer(
     },
     terrainHeightAt(x, y) {
       return terrain.renderedHeightAt(x, y);
+    },
+    setBuildingPreview(preview) {
+      buildings.setPreview(preview);
     },
     elevationAt(x, y, structure) {
       if (!elevation) return terrain.renderedHeightAt(x, y);
@@ -390,6 +403,11 @@ export function createSceneRenderer(
         }
       } else {
         rebuildWorld(net);
+      }
+      buildings.update(net.doc, terrain.renderedHeightAt, `${net.doc.terrainRevision}:${rebuilds}`);
+      if (scenery && (excludedFor.scenery !== scenery || excludedFor.version !== buildings.version)) {
+        scenery.exclude(net.doc.buildings.size > 0 ? buildings.covers : null);
+        excludedFor = { scenery, version: buildings.version };
       }
 
       const detailed = rig.viewport.zoom >= quality.detailCutoffZoom;
@@ -448,6 +466,7 @@ export function createSceneRenderer(
     dispose() {
       agents.dispose();
       signals.dispose();
+      buildings.dispose();
       roads?.dispose();
       for (const paint of surfaceReuse.paint.values()) paint.dispose();
       details?.dispose();

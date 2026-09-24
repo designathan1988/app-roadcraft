@@ -18,6 +18,8 @@ import { impossibleAmong, worsensAnyNode } from './legAngles';
 import { type RoadStructure, migrateStructure } from './structures';
 import { MAX_TERRAIN_STAMPS, type TerrainStamp } from './terrain';
 import { clampToMap } from './bounds';
+import { BuildingStore } from './buildings/store';
+import type { SerializedBuilding } from './buildings/serialize';
 
 /** Legal driving directions, relative to the stored `a -> b` orientation. */
 export type SegmentDirection = 'both' | 'aToB' | 'bToA';
@@ -96,6 +98,13 @@ export class RoadDoc {
   private nextTerrainId = 1;
 
   readonly terrainStamps: TerrainStamp[] = [];
+
+  /**
+   * Modular buildings (docs/buildings.md). They keep their OWN revision,
+   * `buildings.revision`: a building edit must not move `revision`, which
+   * would rebuild the road network and the simulation for nothing.
+   */
+  readonly buildings = new BuildingStore();
 
   /** Bumped on every structural change; consumers use it to invalidate caches. */
   revision = 0;
@@ -500,6 +509,8 @@ export class RoadDoc {
     for (const id of this.dirtySegments) copy.dirtySegments.add(id);
     copy.terrainStamps.length = 0;
     copy.terrainStamps.push(...this.terrainStamps.map((stamp) => ({ ...stamp })));
+    copy.buildings.copyAllocator(this.buildings);
+    copy.buildings.revision = this.buildings.revision;
     return copy;
   }
 
@@ -537,6 +548,8 @@ export class RoadDoc {
     this.poleSpans.clear();
     for (const [id, pole] of source.poles) this.poles.set(id, { ...pole });
     for (const [id, span] of source.poleSpans) this.poleSpans.set(id, { ...span });
+    // Moves `buildings.revision` only if the buildings differ.
+    this.buildings.replaceWith(source.buildings);
 
     if (landMoved) {
       this.terrainStamps.length = 0;
@@ -583,6 +596,9 @@ export class RoadDoc {
       terrain: this.terrainStamps.map((stamp) => ({ ...stamp })),
       poles: [...this.poles.values()].map((p) => ({ id: p.id, x: p.x, y: p.y, lamp: p.lamp })),
       poleSpans: [...this.poleSpans.values()].map((s) => ({ id: s.id, a: s.a, b: s.b })),
+      // Only when there are any, so a map without buildings serialises
+      // exactly as it did before buildings existed.
+      ...(this.buildings.size > 0 ? { buildings: this.buildings.toJSON() } : {}),
     };
   }
 
@@ -663,6 +679,8 @@ export class RoadDoc {
       doc.poleSpans.set(id, { id, a, b });
       doc.spanIds.reserve(s.id);
     }
+    // Buildings, if the map has any; each one through `migrateBuilding`.
+    if (data.buildings) doc.buildings.load(data.buildings);
     for (const id of doc.nodes.keys()) doc.dirtyNodes.add(id);
     for (const id of doc.segments.keys()) doc.dirtySegments.add(id);
     doc.revision = 1;
@@ -703,6 +721,11 @@ export interface SerializedDoc {
    */
   readonly poles?: readonly { id: number; x: number; y: number; lamp?: boolean }[];
   readonly poleSpans?: readonly { id: number; a: number; b: number }[];
+  /**
+   * Modular buildings (docs/buildings.md). OPTIONAL, for the same reason as
+   * the poles: every map saved before buildings existed has no such key.
+   */
+  readonly buildings?: readonly SerializedBuilding[];
 }
 
 function detach(n: RoadNode | undefined, id: SegmentId): void {

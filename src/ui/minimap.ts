@@ -6,6 +6,10 @@ import type { SimWorld } from '@sim/world';
 import type { Camera } from '@view/camera';
 import type { CanvasSurface } from '@ui/overlay/surface';
 import { SELECTION, TERRAIN_SHADE } from '@ui/overlay/palette';
+import { footprintRects } from '@world/buildings/geometry';
+
+/** Building footprints on the minimap: pale, so the roads read over them. */
+const BUILDING_SHADE = '#b9b3a4';
 
 /**
  * Minimap.
@@ -69,6 +73,19 @@ export function drawMinimap(
   ctx.fillStyle = TERRAIN_SHADE;
   ctx.fillRect(0, 0, w, h);
   ctx.setTransform(scale, 0, 0, scale, ox, oy);
+
+  // Building footprints, under the roads (docs/buildings.md).
+  if (doc.buildings.size > 0) {
+    ctx.fillStyle = BUILDING_SHADE;
+    ctx.beginPath();
+    for (const b of doc.buildings.all()) {
+      for (const rect of footprintRects(b)) {
+        rect.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.closePath();
+      }
+    }
+    ctx.fill();
+  }
 
   // Roads, widest class first so narrow ones stay visible on top.
   const order = orderedRibbons(net);
