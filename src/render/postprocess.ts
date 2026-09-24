@@ -1,4 +1,4 @@
-import { Vector2, type Camera, type Scene, type WebGLRenderer } from 'three';
+import { Vector2, type Camera, type Object3D, type Scene, type WebGLRenderer } from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
@@ -39,6 +39,9 @@ export interface PostChain {
   setSize(width: number, height: number, pixelRatio: number): void;
   dispose(): void;
 }
+
+/** Objects the ambient-occlusion pass leaves out (see `createPostChain`). */
+const AO_SKIPPED = ['rigged-citizens', 'grass'];
 
 export function createPostChain(
   renderer: WebGLRenderer,
@@ -83,6 +86,29 @@ export function createPostChain(
       screenSpaceRadius: false,
     });
     gtao.blendIntensity = 0.85;
+    // The occlusion pass draws the scene again, every mesh with one override
+    // material. That material knows nothing of the citizens' baked skinning
+    // (`riggedCitizens.ts`), so they went into it in their bind pose, and the
+    // grass tufts are too small to occlude anything: a third of that pass's
+    // draw calls for depth that was wrong or worthless. Both sit it out.
+    const pass = gtao;
+    const draw = pass.render.bind(pass);
+    const skipped: Object3D[] = [];
+    pass.render = (...args: Parameters<GTAOPass['render']>) => {
+      skipped.length = 0;
+      for (const name of AO_SKIPPED) {
+        const object = scene.getObjectByName(name);
+        if (object?.visible) {
+          object.visible = false;
+          skipped.push(object);
+        }
+      }
+      try {
+        draw(...args);
+      } finally {
+        for (const object of skipped) object.visible = true;
+      }
+    };
     composer.addPass(gtao);
   }
 
