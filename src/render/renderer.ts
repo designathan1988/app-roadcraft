@@ -326,6 +326,7 @@ export function createSceneRenderer(
     },
     resize,
     draw(net, sim, alpha, delta, options) {
+      const frameStarted = performance.now();
       if (canvas.clientWidth !== lastWidth || canvas.clientHeight !== lastHeight) {
         lastWidth = canvas.clientWidth;
         lastHeight = canvas.clientHeight;
@@ -380,7 +381,7 @@ export function createSceneRenderer(
 
       if (delta > 0) fps = fps * 0.9 + (1 / Math.min(1, delta)) * 0.1;
       if (requested === 'auto') {
-        const next = governor.sample(delta);
+        const next = governor.sample(delta, performance.now() - frameStarted);
         if (next) {
           governor.set(next);
           applyQuality(next);

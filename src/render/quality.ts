@@ -118,12 +118,28 @@ export const isQualityLevel = (value: unknown): value is QualityLevel =>
  * Hysteresis on both sides, and a cooldown after every change, because a tier
  * switch itself costs a frame: without them the monitor oscillates between two
  * tiers for ever, which is far worse than sitting on the slower one.
+ *
+ * DOWN on frame time: a median frame slower than 34 fps. UP on the frame's own
+ * CPU cost: under vsync a frame never measures faster than the display, so the
+ * old test - a median frame under 9 ms - could never pass on a 60 Hz screen,
+ * and one slow stretch (assets arriving, a big edit) left the game on the low
+ * tier, grass and shadows gone, for the rest of the session. It climbs back
+ * now when frames keep up with the display and the work in them is small, no
+ * higher than the tier it started on, and it stops climbing for a while if a
+ * climb was undone at once.
  */
 export class QualityGovernor {
   private samples: number[] = [];
+  private costs: number[] = [];
   private cooldown = 0;
+  private clock = 0;
+  private lastRaise = -Infinity;
+  private holdRaise = 0;
+  private readonly ceiling: number;
 
-  constructor(private level: QualityLevel) {}
+  constructor(private level: QualityLevel, ceiling: QualityLevel = level) {
+    this.ceiling = QUALITY_LEVELS.indexOf(ceiling);
+  }
 
   get current(): QualityLevel {
     return this.level;
@@ -132,11 +148,17 @@ export class QualityGovernor {
   set(level: QualityLevel): void {
     this.level = level;
     this.samples.length = 0;
+    this.costs.length = 0;
     this.cooldown = 2.5;
   }
 
-  /** Returns the tier to switch to, or null to stay put. */
-  sample(deltaSeconds: number): QualityLevel | null {
+  /**
+   * Returns the tier to switch to, or null to stay put. `costMs` is the CPU
+   * time the frame's own work took; without it the tier only ever goes down.
+   */
+  sample(deltaSeconds: number, costMs = Infinity): QualityLevel | null {
+    this.clock += deltaSeconds;
+    if (this.holdRaise > 0) this.holdRaise -= deltaSeconds;
     if (this.cooldown > 0) {
       this.cooldown -= deltaSeconds;
       return null;
@@ -144,15 +166,27 @@ export class QualityGovernor {
     // A stall from a road rebuild is not a frame rate; it is one bad frame.
     if (deltaSeconds > 0.4) return null;
     this.samples.push(deltaSeconds);
+    this.costs.push(costMs);
     if (this.samples.length < 60) return null;
-    const sorted = [...this.samples].sort((a, b) => a - b);
-    const median = sorted[sorted.length >> 1] as number;
+    const median = middle(this.samples);
+    const cost = middle(this.costs);
     this.samples.length = 0;
+    this.costs.length = 0;
     const index = QUALITY_LEVELS.indexOf(this.level);
-    if (median > 1 / 34 && index > 0) return QUALITY_LEVELS[index - 1] as QualityLevel;
-    if (median < 1 / 110 && index < QUALITY_LEVELS.length - 1) {
+    if (median > 1 / 34 && index > 0) {
+      // Undone within twenty seconds: this machine cannot hold that tier.
+      if (this.clock - this.lastRaise < 20) this.holdRaise = 90;
+      return QUALITY_LEVELS[index - 1] as QualityLevel;
+    }
+    if (index < this.ceiling && this.holdRaise <= 0 && median < 1 / 50 && cost < 7) {
+      this.lastRaise = this.clock;
       return QUALITY_LEVELS[index + 1] as QualityLevel;
     }
     return null;
   }
+}
+
+function middle(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[sorted.length >> 1] as number;
 }
