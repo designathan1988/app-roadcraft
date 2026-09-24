@@ -1,6 +1,7 @@
 import {
   EDGE_LINE_DARK,
   EDGE_LINE_LIGHT,
+  LANE_LINE,
   Level,
   type RoadType,
   laneWidth,
@@ -85,7 +86,7 @@ export function segmentMarkings(ribbon: SegmentRibbon, startS: number): StrokeSp
       out.push({
         points: offsetPolyline(pts, -rt.width / 2 + lw * i),
         width: 0.7,
-        color: markingColor(rt),
+        color: LANE_LINE,
         dash: DASH,
         dashOffset: phase,
       });
@@ -110,14 +111,14 @@ export function segmentMarkings(ribbon: SegmentRibbon, startS: number): StrokeSp
       out.push({
         points: offsetPolyline(pts, off),
         width: 0.7,
-        color: markingColor(rt),
+        color: LANE_LINE,
         dash: DASH,
         dashOffset: phase,
       });
       out.push({
         points: offsetPolyline(pts, -off),
         width: 0.7,
-        color: markingColor(rt),
+        color: LANE_LINE,
         dash: DASH,
         dashOffset: phase,
       });
@@ -332,7 +333,6 @@ export function transitionMarkings(net: Network, node: NodeId): StrokeSpec[] {
   if (ra.markings === 'none' && rb.markings === 'none') return out;
 
   const median = mix(ra.median / 2, rb.median / 2);
-  const lined = rb.markings === 'lanes' ? rb : ra.markings === 'lanes' ? ra : rb.markings !== 'none' ? rb : ra;
   if (ra.median > 0 || rb.median > 0) {
     // The two directions part to either side of the reservation's nose.
     const colour = markingColor(rb.median > 0 ? rb : ra);
@@ -356,7 +356,7 @@ export function transitionMarkings(net: Network, node: NodeId): StrokeSpec[] {
       out.push({
         points: axis.offset((u) => side * (median(u) + lane(u) * k)),
         width: 0.7,
-        color: markingColor(lined),
+        color: LANE_LINE,
         dash: DASH,
         dashOffset: 0,
       });

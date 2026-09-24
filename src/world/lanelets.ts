@@ -71,6 +71,14 @@ export interface Connector {
   readonly inSegment: SegmentId;
   readonly outSegment: SegmentId;
   readonly turn: TurnKind;
+  /**
+   * True when this movement is the road the node is ON carried across it -
+   * a road bending at a node of two legs, or bending through a junction that
+   * has no straight-on movement (`carriedPair`). Its lanes pair one to one,
+   * and it has priority where the node is unsignalised. `turn` still states
+   * how far it bends, which is what speed and the indicator are read from.
+   */
+  readonly carried: boolean;
   readonly group: number;
   readonly length: number;
 }
@@ -272,8 +280,11 @@ export class LaneletGraph {
       for (const g of groups) for (const s of g.segments) groupBySegment.set(s, g.id);
 
       const connectorIds: ConnectorId[] = [];
+      const road = carriedPair(doc, nodeId);
 
-      const addConnector = (inId: LaneletId, inLane: Lanelet, outId: LaneletId, outLane: Lanelet, turn: TurnKind): void => {
+      const addConnector = (
+        inId: LaneletId, inLane: Lanelet, outId: LaneletId, outLane: Lanelet, turn: TurnKind, carried = false,
+      ): void => {
         const cid = connectorId(inId, outId);
         if (this.connectors.has(cid)) return;
         const waiting = inbound
@@ -303,6 +314,7 @@ export class LaneletGraph {
           inSegment: inLane.segment as SegmentId,
           outSegment: outLane.segment as SegmentId,
           turn,
+          carried,
           group: lanelet.group ?? 0,
           length: path.length,
         });
@@ -325,6 +337,9 @@ export class LaneletGraph {
           const isReverse = outLane.segment === inLane.segment;
           const outDir = tangentAtStart(outLane.centre);
           const turn = isReverse ? 'uturn' : classifyTurn(inDir, outDir);
+          // The road the node is ON carries its lanes across, however it bends.
+          const carried = !isReverse && road !== null &&
+            road.includes(inLane.segment) && road.includes(outLane.segment);
           const inSegment = doc.requireSegment(inLane.segment);
           const inLanes = travelLanes(
             roadProfile(inSegment.type, inSegment.lanes, inSegment.direction),
@@ -340,8 +355,8 @@ export class LaneletGraph {
           }
           if (node.blockedMovements.includes(movementKey(inLane.segment, outLane.segment))) continue;
           legal.push({ outId, outLane, turn });
-          if (laneIsPlausible(inLane, outLane, turn, inLanes, outLanes)) {
-            addConnector(inId, inLane, outId, outLane, turn);
+          if (laneIsPlausible(inLane, outLane, carried ? 'through' : turn, inLanes, outLanes)) {
+            addConnector(inId, inLane, outId, outLane, turn, carried);
           }
         }
 
@@ -455,6 +470,69 @@ function endDirection(pl: Polyline): Vec2 {
 function tangentAtStart(pl: Polyline): Vec2 {
   if (pl.n < 2) return { x: 1, y: 0 };
   return pl.sampleAt(0).t;
+}
+
+/** A pair of legs clearly straighter than every other pair by at least this much. */
+const CARRIED_MARGIN = (15 * Math.PI) / 180;
+/** A pair bending more than this is a corner between two roads, not one road. */
+const CARRIED_MAX_BEND = (100 * Math.PI) / 180;
+/** Below this bend a movement is already classified as straight on. */
+const STRAIGHT_BEND = (30 * Math.PI) / 180;
+
+/**
+ * The two legs that are ONE ROAD carried across a node, when that road bends.
+ *
+ * `classifyTurn` calls anything bending more than 30 degrees a turn. For a
+ * movement from one road into another that is right; for a road that simply
+ * bends at a node it is only half right - it states how sharp the bend is,
+ * which speed and the indicator should read - and two things keyed on the
+ * label went wrong with it:
+ *
+ *   - lane pairing. A turn leaves from the lane on its own side and arrives in
+ *     the lane on its own side, so a two-lane carriageway bending 45 degrees at
+ *     a node was paired lane 0 to lane 0 only, and lane 1 was merged into lane
+ *     0 by the no-route fallback: every such bend a lane drop. On a ring of
+ *     streets - a roundabout drawn as a polygon, bending at every node - the
+ *     circulating carriageway became a single lane with a merge at every node,
+ *     and it locked solid: not one vehicle left it in five minutes;
+ *   - right of way. `continues` in `sim/intersections/admission.ts` makes the
+ *     road the node is on the priority road; with no straight-on movement
+ *     nothing was, and every approach gave way to every other;
+ *
+ * A node of two legs is one road, whatever the angle. At a node of three or
+ * more with no straight-on pair at all, the road is the pair that goes on most
+ * nearly straight among the pairs of the highest class - and only when one
+ * pair clearly does, so a symmetric Y keeps its three turns.
+ */
+function carriedPair(doc: RoadDoc, nodeId: NodeId): readonly SegmentId[] | null {
+  const node = doc.node(nodeId);
+  if (!node) return null;
+  const incident = [...new Set(node.incident)];
+  if (incident.length === 2) return incident;
+  if (incident.length < 3) return null;
+  const legs = incident.map((segment) => {
+    const seg = doc.requireSegment(segment);
+    return { segment, type: seg.type, dir: smoothedDirectionFromNode(orientedPolyline(doc, seg, nodeId)) };
+  });
+  const pairs: { members: SegmentId[]; rank: number; bend: number }[] = [];
+  for (let i = 0; i < legs.length; i++) {
+    for (let j = i + 1; j < legs.length; j++) {
+      const a = legs[i]!;
+      const b = legs[j]!;
+      // Both directions point away from the node: a straight road has them
+      // opposed, so the bend is what is left of a half turn.
+      const between = Math.abs(normalizeAngle(angleOf(b.dir) - angleOf(a.dir)));
+      const bend = Math.PI - between;
+      if (bend < STRAIGHT_BEND) return null;
+      pairs.push({ members: [a.segment, b.segment], rank: Math.min(a.type, b.type), bend });
+    }
+  }
+  pairs.sort((a, b) => b.rank - a.rank || a.bend - b.bend);
+  const best = pairs[0];
+  if (!best || best.bend > CARRIED_MAX_BEND) return null;
+  const rival = pairs.find((p) => p !== best && p.rank === best.rank);
+  if (rival && rival.bend - best.bend < CARRIED_MARGIN) return null;
+  return best.members;
 }
 
 /**
