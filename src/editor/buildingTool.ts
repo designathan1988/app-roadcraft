@@ -198,6 +198,18 @@ export class BuildingTool {
     return buildingHandles(shown, this.selection.volume, this.floorOf(shown));
   }
 
+  /** The tool is put away: no ghost, no gesture, no hover. The selection stays. */
+  deactivate(): void {
+    this.drag = null;
+    this.hover = null;
+    this.setPreview(null);
+  }
+
+  /** The building face under a screen point, if any (the bulldozer asks). */
+  pickAt(screen: Vec2): BuildingHit | null {
+    return this.pick(screen);
+  }
+
   get dragging(): boolean {
     return this.drag !== null && this.drag.kind !== 'click';
   }
