@@ -106,12 +106,13 @@ export const TUNNEL_GRADE = 0.13;
 
 export const ROAD_STRUCTURES: readonly RoadStructureSpec[] = [
   { id: 'ground', key: 'structure.ground', clearance: 0, deck: 0.55, supports: false },
-  // Sixteen units (6.4 m) to the deck SURFACE, of which the structure itself
-  // takes 3.4: 12.6 units, 5.0 m, of headroom under the soffit - inside the
-  // 4.5 to 5.5 m a road under a structure is built to. The deck is 1.2 m deep,
-  // which is what a box girder spanning 30 m between piers actually is; at 0.64
-  // m it read as a sheet of card on stilts.
-  { id: 'elevated', key: 'structure.elevated', clearance: 16, deck: 3, supports: true },
+  // Fourteen units (5.6 m) to the deck SURFACE, of which the structure itself
+  // takes 3.0: eleven units, 4.4 m, of headroom under the soffit - what an
+  // urban flyover over a street is built to, and low enough that the ramp up
+  // to it is over inside 100 units at 16 %. The deck is a metre deep, what a
+  // girder spanning 30 m between piers is; at 0.64 m it read as a sheet of
+  // card on stilts.
+  { id: 'elevated', key: 'structure.elevated', clearance: 14, deck: 2.6, supports: true },
   { id: 'bridge', key: 'structure.bridge', clearance: 7.5, deck: 2.4, supports: true },
   { id: 'tunnel', key: 'structure.tunnel', clearance: -TUNNEL_DEPTH, deck: 0.6, supports: false },
 ] as const;
