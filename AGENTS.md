@@ -251,8 +251,14 @@ download is not available.
   ground must clear the second one.
 * **Textures are baked once.** `materials.ts` and `textureBaker.ts` cache by key.
   Do not create a material inside a rebuild.
-* **Signal heads are objects, not instances.** They are removed when their
-  junction disappears; if you add per-node scene objects, remove them too.
+* **Repeated scene parts are instanced, never one object each.** Signal heads
+  were a dozen meshes per head and cost over a thousand draw calls a frame
+  (every mesh is drawn again for the shadow map and the occlusion pass); they
+  are nine instanced batches for the whole map now (`render/signals.ts`). A
+  material shared by instanced meshes must see every one of them with the same
+  program variant - all with instance colours or none, never also a plain mesh,
+  and a transparent DoubleSide material needs `forceSinglePass` - or three
+  re-evaluates its program on every draw.
 * **A vertex colour attribute does nothing unless the material asks for it.**
   The mesh builder always writes `color`, and the per-class road tint was
   written into it for a whole revision while every road still came out the same
