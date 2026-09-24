@@ -1,3 +1,4 @@
+import type { NodeId } from '@world/ids';
 import type { Connector } from '@world/lanelets';
 import { CONVOY_ROLLING, JAM_GAP } from '../params';
 import type { Vehicle } from '../vehicles/state';
@@ -45,13 +46,31 @@ export function hasDownstreamStorage(w: SimWorld, v: Vehicle, conn: Connector): 
     (other.lanelet === conn.id || other.admittedConnector === conn.id),
   );
 
-  // A physically empty lane always accepts the moving convoy. This remains
-  // unconditional so pathological short links cannot become permanently
-  // impassable. The phantom-space bug only exists when a downstream queue is
-  // already present and another vehicle is crossing toward the same refuge.
-  if (rt.order.length === 0) return true;
-
   const out = w.lanelet(conn.toLane);
+
+  // A physically empty lane with nobody on the way into it always accepts.
+  // This remains unconditional so pathological short links cannot become
+  // permanently impassable.
+  //
+  // It used to accept whatever was on the way as well. Between two signalised
+  // junctions a car length apart, the 25-unit link was empty whenever its last
+  // car had just left, and three cars in a row were admitted into room for
+  // one: the first two filled the link against the far red, and the third
+  // stopped inside the junction it had been let into, across every other
+  // movement there, for a whole phase. Seven times in five minutes. An empty
+  // lane with cars already crossing towards it has only what they leave.
+  //
+  // Only towards a signal, which is what holds a short link full for a whole
+  // phase. Towards a junction the stream normally flows on through - a ring
+  // of short links, a road bending at a node - the old rule stays: metering
+  // those a car at a time halved the flow round a ring and let it lock.
+  if (rt.order.length === 0) {
+    if (!committed.length || !out || !endsAtSignal(w, out.to)) return true;
+    let room = out.length;
+    for (const other of committed) room -= other.archetype.length + Math.max(JAM_GAP, other.driver.s0);
+    return room >= v.archetype.length + Math.max(JAM_GAP, v.driver.s0);
+  }
+
   if (!out) return false;
 
   // Free space runs from the lane entry to the rear bumper of its last vehicle.
@@ -71,4 +90,10 @@ export function hasDownstreamStorage(w: SimWorld, v: Vehicle, conn: Connector): 
   // alone made a 30-unit lane look safe while the truck rear remained in the
   // previous junction forever.
   return free >= v.archetype.length + Math.max(JAM_GAP, v.driver.s0);
+}
+
+/** Whether a lane ends at a signalised junction. */
+function endsAtSignal(w: SimWorld, node: NodeId | undefined): boolean {
+  if (node === undefined) return false;
+  return w.graph.junctions.get(node)?.signalised ?? false;
 }
