@@ -67,6 +67,18 @@ export interface RenderStats {
   readonly rebuildMs: number;
   /** Increments once per completed world rebuild. */
   readonly rebuilds: number;
+  /** Wall time of the last terrain-only update (a brush dab while roads are held), ms. */
+  readonly terrainMs: number;
+}
+
+export interface DrawOptions {
+  /**
+   * Keep the roads, and everything laid along them, as they are: only the
+   * ground is updated, and shaped to the roads' current heights. Set while a
+   * terrain brush stroke is held; the first draw without it re-solves the
+   * roads once for the whole stroke.
+   */
+  readonly holdRoads?: boolean;
 }
 
 export interface SceneHandle {
@@ -81,7 +93,7 @@ export interface SceneHandle {
   /** The height the terrain is drawn at — what anything laid on it must clear. */
   terrainHeightAt(x: number, y: number): number;
   resize(): void;
-  draw(net: Network, sim: SimWorld, alpha: number, delta: number): void;
+  draw(net: Network, sim: SimWorld, alpha: number, delta: number, options?: DrawOptions): void;
   setQuality(level: QualityLevel | 'auto'): void;
   readonly quality: QualityLevel | 'auto';
   dispose(): void;
@@ -161,6 +173,7 @@ export function createSceneRenderer(
   let builtTriangles = 0;
   let rebuildMs = 0;
   let rebuilds = 0;
+  let terrainMs = 0;
 
   const deckHeight = (
     _world: SimWorld,
@@ -301,6 +314,7 @@ export function createSceneRenderer(
         fps: Math.round(fps),
         rebuildMs: Math.round(rebuildMs),
         rebuilds,
+        terrainMs: Math.round(terrainMs),
       };
     },
     terrainHeightAt(x, y) {
@@ -311,14 +325,27 @@ export function createSceneRenderer(
       return elevation.at(x, y, structure ? new Set([structure]) : undefined);
     },
     resize,
-    draw(net, sim, alpha, delta) {
+    draw(net, sim, alpha, delta, options) {
       if (canvas.clientWidth !== lastWidth || canvas.clientHeight !== lastHeight) {
         lastWidth = canvas.clientWidth;
         lastHeight = canvas.clientHeight;
         resize();
       }
-      terrain.update(net.doc);
-      rebuildWorld(net);
+      const terrainStarted = performance.now();
+      const groundMoved = terrain.update(net.doc);
+      // A brush stroke in progress: every dab used to re-solve the whole road
+      // network and re-mesh every road, tree and tuft of grass near it - 450 ms
+      // a dab on the player map, so painting was a slideshow. While the stroke
+      // is held only the ground follows the brush, cut and filled to the roads
+      // as they already stand; the roads catch up once, when it ends.
+      if (options?.holdRoads && elevation && networkRevision === net.revision) {
+        if (groundMoved) {
+          terrain.shapeToRoads(net.doc.segments.size > 0 ? elevation : null);
+          terrainMs = performance.now() - terrainStarted;
+        }
+      } else {
+        rebuildWorld(net);
+      }
 
       const detailed = rig.viewport.zoom >= quality.detailCutoffZoom;
       if (roads) roads.group.visible = true;

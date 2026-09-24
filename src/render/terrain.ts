@@ -711,6 +711,7 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
         previous.stamps.length > 0 &&
         previous.stamps[0] === doc.terrainStamps[0];
 
+      let box: readonly [number, number, number, number] | null = null;
       if (firstBuild || !added || !sameHistory) {
         rewrite(0, GRID - 1, 0, GRID - 1);
       } else {
@@ -723,10 +724,21 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
         // the disc does not cover if an earlier stamp reached further; the box
         // above is still the only place its influence is non-zero.
         rewrite(cx0, cx1, cy0, cy1);
+        box = [cx0, cx1, cy0, cy1];
       }
 
       position.needsUpdate = true;
-      geometry.computeVertexNormals();
+      if (box) {
+        // Only the corners the dab rewrote can have tilted, with their ring of
+        // neighbours; the whole plate's normals were a third of a dab.
+        const moved: number[] = [];
+        for (let iy = box[2]; iy <= box[3]; iy++) {
+          for (let ix = box[0]; ix <= box[1]; ix++) moved.push(iy * GRID + ix);
+        }
+        refreshNormals(moved);
+      } else {
+        geometry.computeVertexNormals();
+      }
       geometry.computeBoundingSphere();
       lastStamps = doc.terrainStamps;
       rebuildWater(lastStamps);

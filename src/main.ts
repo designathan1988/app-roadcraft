@@ -532,7 +532,10 @@ const TERRAIN_REPEAT_MS = 110;
  * the brush live on an empty map and merely coarser on a full one.
  */
 function terrainPaintInterval(): number {
-  return Math.max(TERRAIN_MIN_MS, scene.stats.rebuildMs * 1.4);
+  // During a stroke only the ground is rebuilt (see `DrawOptions.holdRoads`),
+  // so it is the ground's own cost that paces the brush.
+  const cost = terrainStroke ? scene.stats.terrainMs : scene.stats.rebuildMs;
+  return Math.max(TERRAIN_MIN_MS, cost * 1.4);
 }
 
 /** One dab, with no spacing or rate checks of its own. */
@@ -605,6 +608,8 @@ function beginTerrainStroke(pointer: number, at: Vec2): void {
 
 function endTerrainStroke(): void {
   terrainStroke = null;
+  // The roads were held for the stroke; this frame re-solves them.
+  requestDraw();
   if (terrainRepeat !== null) {
     clearInterval(terrainRepeat);
     terrainRepeat = null;
@@ -1579,7 +1584,7 @@ function frame(now: number): void {
       else rebuildSimulationTopology();
     }
   }
-  scene.draw(net, sim, alpha, wall);
+  scene.draw(net, sim, alpha, wall, { holdRoads: terrainStroke !== null });
   drawOverlayScreen();
   if (topologyAfterDraw) {
     topologyAfterDraw = false;
