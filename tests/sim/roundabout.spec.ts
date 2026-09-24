@@ -46,6 +46,7 @@ function run(doc: RoadDoc, seconds: number): { left: number; worstStill: number 
   let worstStill = 0;
   for (let i = 0; i < Math.round(seconds / DT); i++) {
     step(sim, { traffic: true, pedestrians: false });
+    sim.clock.tick++;
     for (const v of sim.vehicles.values()) {
       seen.add(v.id);
       const held = v.v < 0.2 ? (still.get(v.id) ?? 0) + DT : 0;
