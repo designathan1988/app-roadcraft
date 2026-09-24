@@ -326,6 +326,8 @@ export function createSceneRenderer(
 
       crowdProjection.multiplyMatrices(rig.camera.projectionMatrix, rig.camera.matrixWorldInverse);
       crowdFrustum.setFromProjectionMatrix(crowdProjection);
+      // Plants and street furniture outside the view are not drawn at all.
+      scenery?.cull(crowdFrustum, crowdProjection);
       agents.sync(sim, alpha, detailed, rig.viewport.zoom, {
         pedestrianDetail: quality.pedestrianDetail,
         pedestrianVisible,
