@@ -77,10 +77,22 @@ export function hasDownstreamStorage(w: SimWorld, v: Vehicle, conn: Connector): 
   const tailId = rt.order[0];
   const tail = tailId === undefined ? undefined : w.veh(tailId);
   let free = tail ? tail.s - tail.archetype.length : out.length;
-  // A rolling tail is discharging and the existing convoy rules keep its
-  // followers moving. A stopped tail is a real queue: every car already in
-  // the connector must be debited before another one is allowed into the box.
-  if (tail && tail.v <= CONVOY_ROLLING) {
+  if (endsAtSignal(w, out.to)) {
+    // Towards a signal a rolling tail is not discharging: it is rolling up to
+    // whatever holds it, very often the red. Counting its CURRENT rear, and
+    // not debiting the cars already crossing towards it, let a third car into
+    // a 25-unit link that a rolling motorcycle and the car behind it were
+    // about to fill, and it stood inside the junction it had been let into.
+    // So the queue is placed where it will come to rest, and every car
+    // committed to the lane is debited from that, rolling tail or not.
+    free = Math.min(out.length, restingRear(w, rt.order));
+    for (const other of committed) {
+      free -= other.archetype.length + Math.max(JAM_GAP, other.driver.s0);
+    }
+  } else if (tail && tail.v <= CONVOY_ROLLING) {
+    // A rolling tail is discharging and the existing convoy rules keep its
+    // followers moving. A stopped tail is a real queue: every car already in
+    // the connector must be debited before another one is allowed into the box.
     for (const other of committed) {
       free -= other.archetype.length + Math.max(JAM_GAP, other.driver.s0);
     }
@@ -90,6 +102,43 @@ export function hasDownstreamStorage(w: SimWorld, v: Vehicle, conn: Connector): 
   // alone made a 30-unit lane look safe while the truck rear remained in the
   // previous junction forever.
   return free >= v.archetype.length + Math.max(JAM_GAP, v.driver.s0);
+}
+
+/**
+ * Where the rear of the last vehicle on a lane will come to rest.
+ *
+ * Walked from the front of the queue: each vehicle stops at the nearest
+ * standing obstacle ahead of it (a red, a car standing beyond the lane) or at
+ * its standstill gap behind the resting rear of the one in front, whichever is
+ * nearer. A vehicle already standing stays where it is. Infinite when the
+ * whole lane is on its way out.
+ */
+function restingRear(w: SimWorld, order: readonly number[]): number {
+  let limit = Infinity;
+  let rear = Infinity;
+  for (let i = order.length - 1; i >= 0; i--) {
+    const v = w.veh(order[i] as number);
+    if (!v) continue;
+    const own = v.v <= CONVOY_ROLLING ? v.s : v.s + standingReach(v);
+    const nose = Math.max(v.s, Math.min(own, limit));
+    rear = nose - v.archetype.length;
+    limit = rear - Math.max(JAM_GAP, v.driver.s0);
+  }
+  return rear;
+}
+
+/**
+ * How much further a vehicle will go before something standing still holds
+ * it: the nearest obstacle ahead that is not moving away. Infinite when
+ * nothing ahead is standing.
+ */
+function standingReach(v: Vehicle): number {
+  let reach = Infinity;
+  for (const o of v.constraints.obstacles) {
+    if (o.speed > CONVOY_ROLLING) continue;
+    reach = Math.min(reach, Math.max(0, o.gap));
+  }
+  return reach;
 }
 
 /** Whether a lane ends at a signalised junction. */
