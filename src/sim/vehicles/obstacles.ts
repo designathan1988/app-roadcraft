@@ -5,7 +5,7 @@ import { pedestrianInSpan } from '../intersections/crossingSpans';
 import { divergeObstacle, findLeader, shadowLeaderObstacle } from './leaderIndex';
 import { signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
-import { nextConnector } from '../intersections/admission';
+import { mergeRemaining, nextConnector } from '../intersections/admission';
 import { kerbStopObstacle } from './kerbStops';
 
 /** Stop short of a zebra span somebody is on; null when the path is clear. */
@@ -38,6 +38,48 @@ function pedestrianAhead(w: SimWorld, v: Vehicle): Obstacle | null {
   return best;
 }
 
+/**
+ * The vehicle ahead on ANOTHER movement into the lane this one runs into.
+ *
+ * Car following looks down the vehicle's own route, and two movements that
+ * merge only meet on the lane after the junction: a car on the other one was
+ * invisible until both had left it, and a merge zone had to be held by one car
+ * at a time for the whole junction to keep them apart. Measured by the
+ * distance each front still has to go to the start of the shared lane - where
+ * the two paths end together - the car nearer it is the leader, and its rear
+ * is followed like any other. That is what lets `mergeFollows` in admission
+ * send the next car in behind it, one from each lane in turn.
+ */
+function mergeObstacle(w: SimWorld, v: Vehicle): Obstacle | null {
+  const lane = w.lanelet(v.lanelet);
+  const connectorId = lane?.kind === 'connector' ? lane.id : v.admittedConnector;
+  const conn = connectorId ? w.connector(connectorId) : undefined;
+  if (!conn) return null;
+  const mine = mergeRemaining(w, v, conn);
+  if (mine === null) return null;
+  const junction = w.graph.junctions.get(conn.node);
+  if (!junction) return null;
+  let best: Obstacle | null = null;
+  for (const otherId of junction.connectors) {
+    if (otherId === conn.id) continue;
+    const other = w.connector(otherId);
+    if (!other || other.toLane !== conn.toLane) continue;
+    const consider = (id: number): void => {
+      const o = w.veh(id);
+      if (!o || o.id === v.id) return;
+      const theirs = mergeRemaining(w, o, other);
+      if (theirs === null || theirs > mine || (theirs === mine && o.id > v.id)) return;
+      const gap = mine - theirs - o.archetype.length;
+      if (!best || gap < best.gap) best = { gap: Math.max(0, gap), speed: o.v, kind: 'vehicle' };
+    };
+    for (const id of w.rt(other.id).order) consider(id);
+    for (const id of w.rt(other.fromLane).order) {
+      if (w.veh(id)?.admittedConnector === other.id) consider(id);
+    }
+  }
+  return best;
+}
+
 /** Extra space left in front of the zebra band (`CrossingSpan.along` already clears it). */
 const PED_STOP_MARGIN = 0.5;
 
@@ -66,6 +108,10 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
   // sweeping the start both movements share.
   const diverging = divergeObstacle(w, v);
   if (diverging) constraints.obstacles.push(diverging);
+
+  // A vehicle ahead on another movement into the same lane.
+  const merging = mergeObstacle(w, v);
+  if (merging) constraints.obstacles.push(merging);
 
   // A body still overlapping the lane it is sliding out of must not be driven
   // into whatever is still there.

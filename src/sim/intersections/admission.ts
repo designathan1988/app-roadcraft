@@ -11,6 +11,7 @@ import { COARSE_EPS } from '@core/scalar';
 import { bodyClassOfArchetype } from '../vehicles/archetypes';
 import { slowestBend } from '../vehicles/curvature';
 import { type Claim, type HolderState, zoneShareable } from './claims';
+import type { ConflictPoint } from '@world/conflictPoints';
 import { PED_BODY, PED_MIN_PACE, PED_REACH_TIME, pedestrianInSpan } from './crossingSpans';
 
 export type RowClass = 'signalGreen' | 'priority' | 'stop' | 'yield' | 'none';
@@ -194,6 +195,7 @@ function admit(w: SimWorld): void {
           .map((reservation) => reservation.connector.id);
       }
       r.v.admittedConnector = r.conn.id;
+      w.mergeTurn.set(r.conn.toLane, r.conn.fromLane);
       holdings?.delete(r.v.id);
       // Waiting time before admission is ordinary queueing, not time spent
       // holding a reservation.  Start the watchdog clock at the grant.
@@ -304,10 +306,15 @@ function evaluate(w: SimWorld, r: Request): Verdict {
     return { ok: false, reason: 'yield' };
   }
 
+  if (zipperHolds(w, r)) {
+    return { ok: false, reason: 'conflict', reservations };
+  }
+
   // Only the connector physically about to be entered becomes a hard claim.
   // Future connectors remain maximum needs in the Banker's safety check.
   if (!w.claims.available(current.points, r.v.id, current.connector.id,
-    bodyClassOfArchetype(r.v.archetype), w.conflicts, (claim) => holderState(w, claim))) {
+    bodyClassOfArchetype(r.v.archetype), w.conflicts, (claim) => holderState(w, claim),
+    (point, claim) => mergeFollows(w, r, point, claim))) {
     return { ok: false, reason: 'conflict', reservations };
   }
   if (queuedBodyInZone(w, r.v, current.connector)) {
@@ -352,6 +359,77 @@ function evaluate(w: SimWorld, r: Request): Verdict {
 
   return { ok: true, reservations };
 }
+
+/**
+ * Whether this vehicle leaves the next place in a merge to the other lane.
+ *
+ * Where two lanes run into one - a lane drop, a road narrowing - both carry
+ * the road on and rank the same, and the claim table let a stream from one of
+ * them keep the merge for as long as it kept rolling: each follower joined the
+ * claim of the car ahead of it (`convoyCanEnter`), and the head of the other
+ * lane, which had asked first, stood at the taper for more than twenty
+ * seconds while the lane beside it poured through. Drivers zip: one from each
+ * lane in turn. So while the head of another lane into the same lane stands
+ * ready at its line, with at least this one's right of way, the lane that sent
+ * the last car waits its turn.
+ */
+function zipperHolds(w: SimWorld, r: Request): boolean {
+  if (w.mergeTurn.get(r.conn.toLane) !== r.conn.fromLane) return false;
+  for (const other of pending?.get(r.conn.node) ?? []) {
+    if (other.v.id === r.v.id || other.v.admittedConnector) continue;
+    if (other.conn.toLane !== r.conn.toLane || other.conn.fromLane === r.conn.fromLane) continue;
+    if (RANK[other.row] < RANK[r.row]) continue;
+    if (other.d <= ZIP_READY || other.v.v <= CONVOY_ROLLING) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether this vehicle may join a merge behind a holder on the other movement.
+ *
+ * Two movements that end on the same lane conflict over the whole of their
+ * shared end, and a claim on that zone was held until the holder's body had
+ * left the junction: the next car from the other lane could not start until
+ * then, however far ahead the first one was. That spacing is the car in front,
+ * and car following keeps it (`mergeObstacle` in `vehicles/obstacles.ts`
+ * follows a vehicle ahead on the other movement, measured to the lane they
+ * both run into). So a vehicle may share a merge zone with a holder that is
+ * rolling and already a whole body ahead of it towards that lane.
+ */
+function mergeFollows(
+  w: SimWorld,
+  r: Pick<Request, 'v' | 'conn' | 'd'>,
+  point: ConflictPoint,
+  claim: Claim,
+): boolean {
+  if (point.kind !== 'merge') return false;
+  const holder = w.veh(claim.vehicle);
+  const theirs = w.connector(claim.connector);
+  if (!holder || !theirs || theirs.toLane !== r.conn.toLane) return false;
+  if (holder.v <= CONVOY_ROLLING) return false;
+  const ahead = mergeRemaining(w, holder, theirs);
+  if (ahead === null) return false;
+  const mine = Math.max(0, r.d) + r.conn.length;
+  return ahead + holder.archetype.length + Math.max(JAM_GAP, r.v.driver.s0) <= mine;
+}
+
+/**
+ * Distance from a vehicle's front to the start of the lane its movement runs
+ * into; negative once the front is past it. Null when it is not on or behind
+ * that movement.
+ */
+export function mergeRemaining(w: SimWorld, v: Vehicle, conn: Connector): number | null {
+  if (v.lanelet === conn.id) return conn.length - v.s;
+  if (v.lanelet === conn.fromLane) {
+    const lane = w.lanelet(conn.fromLane);
+    return lane ? lane.length - v.s + conn.length : null;
+  }
+  if (v.lanelet === conn.toLane) return -v.s;
+  return null;
+}
+
+/** How close to its line a rolling head of the other lane must be to take its turn, world units (standing heads always may). */
+const ZIP_READY = 8;
 
 /**
  * Whether a vehicle with a better right of way is waiting for the same lane out.
@@ -504,6 +582,8 @@ function stopShortOfIntrusion(w: SimWorld, v: Vehicle, conn: Connector, d: numbe
     if (!point) continue;
     for (const claim of w.claims.holdersAt(ref.point)) {
       if (claim.vehicle === v.id || claim.connector === conn.id) continue;
+      // Ahead in the same merge: followed, not stopped short of.
+      if (mergeFollows(w, { v, conn, d }, point, claim)) continue;
       const holder = holderState(w, claim);
       if (!holder) continue;
       const z = point.zone(conn.id, mine, holder.cls);
@@ -737,6 +817,8 @@ function sharedConvoyResource(w: SimWorld, resource: ResourceKey): boolean {
   const point = w.conflicts.points[id];
   const claims = w.claims.holdersAt(id);
   if (!point || claims.length === 0) return false;
+  // Holders of one merge are a queue into one lane, kept apart by following.
+  if (point.kind === 'merge') return true;
   const placed = claims.map((claim) => ({ connector: claim.connector, state: holderState(w, claim) }));
   for (let i = 0; i < placed.length; i++) {
     for (let j = i + 1; j < placed.length; j++) {
@@ -1090,6 +1172,13 @@ function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
     // Only people who would reach the vehicle's path soon after stepping off:
     // somebody at the far kerb of a wide crossing lets the turn go first.
     if (!signalised || !controller) {
+      // No zebra painted here - a road carrying on at another width, a link
+      // too short for one - is no zebra: somebody waiting to cross takes a
+      // gap like anywhere else on the road (`pedGapAccepted`), and is not
+      // waved across. Giving them a zebra's priority where nothing is painted
+      // held a car at a street widening into a boulevard for 74 s while people
+      // kept arriving to cross in front of it.
+      if (w.net.crosswalkDistanceAt(segment, r.conn.node) <= 0) continue;
       // Uncontrolled zebra: give way to those who would soon be in the path;
       // somebody at the far kerb of a wide crossing lets the turn go first.
       if (edge && span) {

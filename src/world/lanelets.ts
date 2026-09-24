@@ -326,7 +326,7 @@ export class LaneletGraph {
         const inLane = this.lanelets.get(inId);
         if (!inLane || inLane.segment === undefined) continue;
         const inDir = endDirection(inLane.centre);
-        const legal: { outId: LaneletId; outLane: Lanelet; turn: TurnKind }[] = [];
+        const legal: { outId: LaneletId; outLane: Lanelet; turn: TurnKind; carried: boolean }[] = [];
 
         for (const outId of outbound) {
           const outLane = this.lanelets.get(outId);
@@ -354,7 +354,7 @@ export class LaneletGraph {
             continue;
           }
           if (node.blockedMovements.includes(movementKey(inLane.segment, outLane.segment))) continue;
-          legal.push({ outId, outLane, turn });
+          legal.push({ outId, outLane, turn, carried });
           if (laneIsPlausible(inLane, outLane, carried ? 'through' : turn, inLanes, outLanes)) {
             addConnector(inId, inLane, outId, outLane, turn, carried);
           }
@@ -372,7 +372,10 @@ export class LaneletGraph {
             a.outId.localeCompare(b.outId),
           );
           const fallback = legal[0]!;
-          addConnector(inId, inLane, fallback.outId, fallback.outLane, fallback.turn);
+          // A lane that merges into the road it is on is still that road:
+          // losing `carried` here made the dropped lane give way at a node of
+          // three legs, and the lane beside it never had to let it in.
+          addConnector(inId, inLane, fallback.outId, fallback.outLane, fallback.turn, fallback.carried);
         }
       }
 
