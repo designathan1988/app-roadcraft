@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { ARCHETYPES } from '@sim/vehicles/archetypes';
 import {
-  SEATED_EXTENTS, buildBusModel, buildTruckModel, buildVehicleModel, seatFitScale,
+  SEATED_EXTENTS, buildBusModel, buildTruckModel, buildVehicleModel, extentsOf, seatFitScale,
 } from '@render/vehicleModels';
 import { m } from '@world/units';
 
@@ -40,13 +40,16 @@ describe('occupants', () => {
         // tallest body of the roster is drawn at 90 % in the lowest cabin.
         expect(s, `${a.id} seat at ${seat.x.toFixed(1)}`).toBeGreaterThanOrEqual(0.9);
         const u = (metres: number): number => m(metres) * s;
-        expect(u(SEATED_EXTENTS.top), `${a.id} head`).toBeLessThanOrEqual(seat.headroom);
-        expect(u(SEATED_EXTENTS.bottom), `${a.id} feet`).toBeLessThanOrEqual(seat.hipY - seat.floor + 1e-6);
-        expect(u(SEATED_EXTENTS.forward), `${a.id} legs`).toBeLessThanOrEqual(seat.legroom + 1e-6);
-        expect(u(SEATED_EXTENTS.half), `${a.id} shoulders`).toBeLessThanOrEqual(seat.sideRoom + 1e-6);
+        // A car seat is sized for the reclined car poses, a bus seat for the
+        // upright captured sitting clip.
+        const e = extentsOf(seat);
+        expect(u(e.top), `${a.id} head`).toBeLessThanOrEqual(seat.headroom);
+        expect(u(e.bottom), `${a.id} feet`).toBeLessThanOrEqual(seat.hipY - seat.floor + 1e-6);
+        expect(u(e.forward), `${a.id} legs`).toBeLessThanOrEqual(seat.legroom + 1e-6);
+        expect(u(e.half), `${a.id} shoulders`).toBeLessThanOrEqual(seat.sideRoom + 1e-6);
         // And the seat itself is inside the body.
-        expect(Math.abs(seat.z) + u(SEATED_EXTENTS.half)).toBeLessThan(a.width / 2);
-        expect(seat.hipY + u(SEATED_EXTENTS.top)).toBeLessThan(a.height);
+        expect(Math.abs(seat.z) + u(e.half)).toBeLessThan(a.width / 2);
+        expect(seat.hipY + u(e.top)).toBeLessThan(a.height);
       }
     }
   });

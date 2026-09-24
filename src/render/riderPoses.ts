@@ -58,10 +58,30 @@ type V3 = readonly [number, number, number];
 // ---------------------------------------------------------------- the poses
 
 /**
+ * Where a driver's steering wheel is, from the hip point, metres: its centre
+ * ahead and above, the tilt of its rim from vertical (top towards the
+ * driver) and its radius. The vehicle models build the column to it and the
+ * renderer places the wheel there at the driver's own size, so the hands the
+ * driving poses put on the rim are on the rim.
+ */
+export const DRIVER_WHEEL = { forward: 0.44, up: 0.215, tilt: 0.45, radius: 0.19 } as const;
+
+/**
+ * A point on the rim of the driver's wheel, pelvis frame (+X left, +Y up,
+ * +Z forward): `clock` radians round from the top, positive to the left.
+ */
+export function rimPoint(clock: number): V3 {
+  const { forward, up, tilt, radius } = DRIVER_WHEEL;
+  const across = Math.sin(clock) * radius;
+  const along = Math.cos(clock) * radius;
+  return [across, up + along * Math.cos(tilt), forward - along * Math.sin(tilt)];
+}
+
+/**
  * A car seat: reclined a little, thighs near level, feet forward on the
  * pedals or the floor, and for the driver the hands on the wheel at ten to
  * two. Floor and wheel are placed to match `vehicleModels.ts` (hip point
- * 0.24 m above the floor, wheel 0.42 m ahead of it and 0.32 m up).
+ * 0.3 m above the floor, the wheel at `DRIVER_WHEEL`).
  */
 const CAR_DRIVE: Targets = {
   // The rest pose already stoops about 0.2 rad forward; this reclines the
@@ -71,8 +91,8 @@ const CAR_DRIVE: Targets = {
   // heel nor toe passes through the cabin floor or into the engine bay.
   leftFoot: [0.17, -0.15, 0.62],
   rightFoot: [-0.14, -0.15, 0.64],
-  leftHand: [0.17, 0.3, 0.4],
-  rightHand: [-0.17, 0.3, 0.4],
+  leftHand: rimPoint(1.05),
+  rightHand: rimPoint(-1.05),
   kneePole: [0, 1, 1],
   elbowPole: [0, -1, 0.2],
   look: -0.12,
