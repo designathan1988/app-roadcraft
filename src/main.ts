@@ -33,7 +33,7 @@ import { History, restoreInto } from '@editor/history';
 import { Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
-import { initChrome } from '@ui/chrome';
+import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
 import { LANGUAGES, initLanguage, language, onLanguageChange, plural, setLanguage, t } from '@ui/i18n';
 import {
   nodeCountLabel,
@@ -995,12 +995,24 @@ window.addEventListener('keydown', (e) => {
 
   if (meta && e.key.toLowerCase() === 'z' && !e.shiftKey) {
     e.preventDefault();
-    applySnapshot(history.undo(doc));
+    undoButton.click();
     return;
   }
   if (meta && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
     e.preventDefault();
-    applySnapshot(history.redo(doc));
+    redoButton.click();
+    return;
+  }
+
+  // Space pauses and resumes, as in every simulation game. A button the
+  // player reached with the keyboard keeps Space for itself; one merely
+  // clicked with the mouse (and so still focused) must not swallow it.
+  if (!meta && e.key === ' ') {
+    const target = e.target as HTMLElement | null;
+    if (target instanceof HTMLButtonElement && focusCameFromKeyboard()) return;
+    e.preventDefault();
+    target?.blur?.();
+    trafficButton.click();
     return;
   }
 
@@ -1222,7 +1234,9 @@ function setPaused(paused: boolean): void {
   persistence.saveSessionSoon(doc, sessionSettings);
   requestDraw();
 }
-trafficButton.onclick = () => setPaused(traffic);
+// Through `setSpeed`, so the speed buttons show "Pause" pressed as well; going
+// straight to `setPaused` left "1×" lit on a paused simulation.
+trafficButton.onclick = () => setSpeed(traffic ? 0 : sim.clock.speed);
 
 function setSpeed(speed: number): void {
   if (speed <= 0) setPaused(true);
@@ -1294,14 +1308,19 @@ initChrome(requestDraw);
   seedStarter(fresh);
   applySnapshot(fresh.toJSON());
   fitView();
+  flashHint('hint.newMap');
 };
-(document.getElementById('saveMap') as HTMLButtonElement).onclick = () => exportToFile(doc, sessionSettings());
+(document.getElementById('saveMap') as HTMLButtonElement).onclick = () => {
+  exportToFile(doc, sessionSettings());
+  flashHint('hint.saved');
+};
 (document.getElementById('openMap') as HTMLButtonElement).onclick = async () => {
   const imported = await importFromFile();
   if (!imported) return;
   history.record(doc);
   applySnapshot(imported.document);
   restoreSettings(imported.settings);
+  flashHint('hint.opened');
 };
 
 (document.getElementById('resetView') as HTMLButtonElement).onclick = () => {
@@ -1312,8 +1331,18 @@ initChrome(requestDraw);
 
 const undoButton = document.getElementById('undoAction') as HTMLButtonElement;
 const redoButton = document.getElementById('redoAction') as HTMLButtonElement;
-undoButton.onclick = () => applySnapshot(history.undo(doc));
-redoButton.onclick = () => applySnapshot(history.redo(doc));
+// An undo can change something far off screen, so the hint bar says it
+// happened; Ctrl+Z and Ctrl+Y go through these buttons too.
+undoButton.onclick = () => {
+  const snapshot = history.undo(doc);
+  applySnapshot(snapshot);
+  if (snapshot) flashHint('hint.undone');
+};
+redoButton.onclick = () => {
+  const snapshot = history.redo(doc);
+  applySnapshot(snapshot);
+  if (snapshot) flashHint('hint.redone');
+};
 
 function updateHistoryButtons(): void {
   undoButton.disabled = !history.canUndo;
@@ -1413,15 +1442,20 @@ function cycleNodeControl(id: NodeId, direction: 1 | -1): void {
  */
 let hintFlash: ReturnType<typeof setTimeout> | null = null;
 function flashHint(key: string): void {
-  const hint = document.getElementById('hint');
-  if (!hint) return;
-  hint.textContent = t(key);
-  delete hint.dataset['i18n'];
-  hint.classList.add('flash');
+  // Both bars: on a phone only the touch hint is visible, and it used to miss
+  // every one of these answers.
+  const hints = ['hint', 'mobileHint']
+    .map((id) => document.getElementById(id))
+    .filter((el): el is HTMLElement => el !== null);
+  for (const hint of hints) {
+    hint.textContent = t(key);
+    delete hint.dataset['i18n'];
+    hint.classList.add('flash');
+  }
   if (hintFlash !== null) clearTimeout(hintFlash);
   hintFlash = setTimeout(() => {
     hintFlash = null;
-    hint.classList.remove('flash');
+    for (const hint of hints) hint.classList.remove('flash');
     updateHint();
   }, 1600);
 }

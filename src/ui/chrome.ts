@@ -88,8 +88,60 @@ function keepActiveToolVisible(): void {
   });
 }
 
+/**
+ * The "more" menu of the top bar on a narrow screen.
+ *
+ * On a desktop the menu's contents sit inline and the button is hidden, so
+ * none of this is reachable there. A button inside the menu closes it once it
+ * has done its job; the selectors do not, so the player sees what they chose.
+ */
+function initMoreMenu(): void {
+  const button = document.getElementById('moreMenu');
+  const menu = document.getElementById('topMenu');
+  if (!button || !menu) return;
+  const setOpen = (open: boolean): void => {
+    menu.classList.toggle('open', open);
+    button.setAttribute('aria-expanded', String(open));
+  };
+  button.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
+  menu.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('button')) setOpen(false);
+  });
+  document.addEventListener('pointerdown', (e) => {
+    const target = e.target as Node;
+    if (menu.classList.contains('open') && !menu.contains(target) && !button.contains(target)) setOpen(false);
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menu.classList.contains('open')) {
+      setOpen(false);
+      button.focus();
+    }
+  });
+}
+
+let tabbing = false;
+
+/**
+ * Whether focus was last moved with the keyboard (Tab), not the pointer.
+ *
+ * `:focus-visible` cannot answer this for a key handler: the moment a key is
+ * pressed, the browser starts treating the focused element as keyboard
+ * focused, so a button merely clicked with the mouse already matches it by
+ * the time the keydown arrives.
+ */
+export function focusCameFromKeyboard(): boolean {
+  return tabbing;
+}
+
+function trackFocusModality(): void {
+  window.addEventListener('keydown', (e) => { if (e.key === 'Tab') tabbing = true; }, true);
+  window.addEventListener('pointerdown', () => { tabbing = false; }, true);
+}
+
 /** Wires the interface shell. Call once, after the markup exists. */
 export function initChrome(onLayout: () => void): void {
+  trackFocusModality();
   initPanels(onLayout);
+  initMoreMenu();
   keepActiveToolVisible();
 }

@@ -76,8 +76,21 @@ body { user-select: none; -webkit-user-select: none; }
   justify-content: space-between;
   padding: 0 14px;
   pointer-events: none;
+  /* Above the panels, so the phone's "more" menu opens over the palette. */
+  z-index: 3;
 }
-.top-actions { display: flex; gap: 8px; pointer-events: auto; }
+.top-actions { position: relative; display: flex; align-items: center; gap: 10px; pointer-events: auto; }
+.top-menu { display: flex; align-items: center; gap: 8px; }
+.button-group { display: flex; align-items: center; gap: 5px; }
+.top-actions > .button-group,
+.top-menu > .select-chip:first-of-type { padding-left: 10px; border-left: 1px solid var(--ui-border); }
+.menu-label { display: none; }
+.more-button { display: none !important; }
+.play-toggle .when-paused,
+.play-toggle:not(.active) .when-running { display: none; }
+.play-toggle:not(.active) .when-paused { display: block; }
+.play-toggle:not(.active) { color: var(--accent-2); border-color: rgba(255, 200, 100, 0.5); }
+.play-toggle .when-paused { fill: currentColor; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand strong { display: block; font-size: 14px; letter-spacing: 0.17em; text-shadow: 0 1px 12px rgba(101, 229, 195, 0.2); }
 .brand span { display: block; font-size: 10px; color: var(--muted); letter-spacing: 0.08em; }
@@ -379,7 +392,7 @@ body { user-select: none; -webkit-user-select: none; }
 /* A transient answer to an action, shown in the hint bar rather than in a
    second floating panel. Brightened and slightly enlarged so a glance at the
    same place registers that something changed. */
-.hint.flash {
+.hint.flash, .mobile-hint.flash {
   color: var(--accent, #7ee0b8);
   font-weight: 600;
   transform: translateX(-50%) scale(1.04);
@@ -413,6 +426,45 @@ body { user-select: none; -webkit-user-select: none; }
 
 @media (max-width: 780px) {
   .topbar { top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; height: 54px; }
+  /* The file actions and the two selectors fold behind "more"; undo, redo,
+     pause and framing stay on the bar where a thumb reaches them. */
+  .more-button { display: grid !important; }
+  .more-button[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+  .top-actions { gap: 6px; }
+  .top-actions > .button-group { padding-left: 6px; }
+  .top-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 12px);
+    right: -6px;
+    z-index: 5;
+    width: 230px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid var(--ui-border);
+    border-radius: 14px;
+    background: var(--ui-bg-solid);
+    box-shadow: var(--shadow);
+  }
+  .top-menu.open { display: flex; }
+  .top-menu .button-group { flex-direction: column; align-items: stretch; gap: 4px; }
+  .top-menu > .select-chip:first-of-type { padding-left: 9px; border-left: 1px solid var(--ui-border); }
+  .top-menu .icon-button {
+    width: 100%;
+    height: 40px;
+    display: flex;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 11px;
+    font: inherit;
+    font-size: 13px;
+  }
+  .top-menu .menu-label { display: inline; }
+  .top-menu .select-chip { height: 40px; width: 100%; }
+  .top-menu .select-chip select { flex: 1; max-width: none; font-size: 13px; text-align-last: right; }
+  .top-menu .select-chip .menu-label { color: var(--muted); font-size: 13px; }
   .toolbar {
     left: 10px;
     right: 10px;
