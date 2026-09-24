@@ -82,6 +82,16 @@ export interface RoadType {
 export const markingColor = (rt: RoadType): string => rt.line;
 
 /**
+ * The line between two lanes running the SAME way: always white.
+ *
+ * `line` is the class's centre-line colour, and for the two street classes it
+ * is yellow - the colour that tells a driver the traffic beyond it comes the
+ * other way. Every divider used to be painted in it, so a one-way street was
+ * marked down its middle exactly like a two-way one, and read as one.
+ */
+export const LANE_LINE = '#eee8d7';
+
+/**
  * Edge lines.
  *
  * Two of them, because an edge line has to read against the asphalt on one
