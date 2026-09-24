@@ -128,6 +128,7 @@ function snapHeading(
   doc: RoadDoc,
   start: Anchor,
   heading: number,
+  landing?: number,
 ): { angle: number; guide: SnapResult['guide'] } {
   const candidates: { angle: number; guide: SnapResult['guide'] }[] = [];
 
@@ -145,13 +146,27 @@ function snapHeading(
     }
   }
 
-  // World orthogonals plus 45s, which is the grid most street layouts follow.
-  for (let i = 0; i < 8; i++) {
-    candidates.push({ angle: (i * Math.PI) / 4, guide: 'orthogonal' });
-  }
-  // And every 15 degrees, as a coarser fallback.
-  for (let i = 0; i < 24; i++) {
-    candidates.push({ angle: (i * Math.PI) / 12, guide: 'angle' });
+  if (landing !== undefined) {
+    // Landing on a road, the angles that matter are the ones to THAT road:
+    // square to it first, then every 15 degrees from its own direction. The
+    // world grid used to be offered here as well, and against any road not
+    // itself on that grid it won - a street drawn square onto an avenue at 21
+    // degrees was pulled to 105, and onto a bend to the world axis rather than
+    // the bend's normal: the new road visibly swung off where it was drawn.
+    candidates.push({ angle: landing + Math.PI / 2, guide: 'perpendicular' });
+    candidates.push({ angle: landing - Math.PI / 2, guide: 'perpendicular' });
+    for (let i = 0; i < 24; i++) {
+      candidates.push({ angle: landing + (i * Math.PI) / 12, guide: 'angle' });
+    }
+  } else {
+    // World orthogonals plus 45s, which is the grid most street layouts follow.
+    for (let i = 0; i < 8; i++) {
+      candidates.push({ angle: (i * Math.PI) / 4, guide: 'orthogonal' });
+    }
+    // And every 15 degrees, as a coarser fallback.
+    for (let i = 0; i < 24; i++) {
+      candidates.push({ angle: (i * Math.PI) / 12, guide: 'angle' });
+    }
   }
 
   let angle = heading;
@@ -228,13 +243,28 @@ export function snapEndpoint(
   // as solid as before — and it arrives at an angle the editor is willing to
   // build.
   if (network.kind === 'segment' && network.segment !== undefined) {
-    const snapped = snapHeading(doc, start, angleOf(sub(raw, start.at)));
-    const hit = rayHitsPolyline(
-      start.at,
-      fromAngle(snapped.angle),
-      net.polylines.get(doc, network.segment).toPoints(),
-      dist(start.at, raw) * 2 + 1,
-    );
+    const target = net.polylines.get(doc, network.segment);
+    const points = target.toPoints();
+    const reach = dist(start.at, raw) * 2 + 1;
+    const heading = angleOf(sub(raw, start.at));
+    // The target's direction where the new road meets it. Taken at the contact
+    // first, then once more where the snapped ray actually lands, which on a
+    // bend is a little further along.
+    const contact = { s: 0, distance: 0 };
+    const tangentAt = (p: Vec2): number => {
+      target.closestInto(p.x, p.y, contact);
+      return angleOf(target.sampleAt(contact.s).t);
+    };
+    let snapped = snapHeading(doc, start, heading, tangentAt(network.at));
+    let hit = rayHitsPolyline(start.at, fromAngle(snapped.angle), points, reach);
+    if (hit) {
+      const again = snapHeading(doc, start, heading, tangentAt(hit));
+      const second = rayHitsPolyline(start.at, fromAngle(again.angle), points, reach);
+      if (second) {
+        snapped = again;
+        hit = second;
+      }
+    }
     // The snapped landing has to be NEAR WHERE THE POINTER IS, or it is not a
     // snap, it is a different road.
     //
