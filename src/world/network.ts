@@ -425,6 +425,20 @@ export class Network {
     return dot((legs[0] as { dir: Vec2 }).dir, (legs[1] as { dir: Vec2 }).dir) < -Math.cos(TRANSITION_BEND);
   }
 
+  /**
+   * Whether a node is a junction of three legs or more.
+   *
+   * A zero mouth distance is the sentinel for "no junction mouth on this end":
+   * a dead end, a road bending at a node. But a junction leg can have a zero
+   * mouth too - the wide arm of a fork, whose corners with the narrower arms
+   * fall behind the node, needs no trim. Read as the sentinel, that arm got no
+   * crossing and a stop line at the node itself, a crossing's depth past the
+   * bar painted for it.
+   */
+  private isJunction(node: NodeId): boolean {
+    return (this.doc.node(node)?.incident.length ?? 0) >= 3;
+  }
+
   /** Distance from a node to this segment's junction mouth, at asphalt level. */
   mouthDistance(seg: SegmentId, node: NodeId): number {
     const s = this.doc.segment(seg);
@@ -448,7 +462,7 @@ export class Network {
    */
   stopLineDistance(seg: SegmentId, node: NodeId): number {
     const mouth = this.mouthDistance(seg, node);
-    if (mouth <= 0) return 0;
+    if (mouth <= 0 && !this.isJunction(node)) return 0;
     // Nothing stops where a road merely carries on: the link runs to the mouth
     // and the lanes continue across the node.
     if (this.continues(node)) return mouth;
@@ -481,7 +495,7 @@ export class Network {
    */
   crosswalkDistanceAt(seg: SegmentId, node: NodeId): number {
     const mouth = this.mouthDistance(seg, node);
-    if (mouth <= 0) return 0;
+    if (mouth <= 0 && !this.isJunction(node)) return 0;
     if (this.continues(node)) return 0;
     const length = this.polylines.get(this.doc, seg).length;
     const clear = mouth + CROSSWALK_DEPTH / 2 + 1;
