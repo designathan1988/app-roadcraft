@@ -1,6 +1,7 @@
 import { type Vec2, addScaled } from '@core/vec2';
 import { m } from '@world/units';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
+import { SIGNAL_POST_RADIUS, signalPosts } from '@world/signalPosts';
 import { DT } from '../params';
 import { vehiclePose } from '../pose';
 import type { SimWorld } from '../world';
@@ -62,7 +63,8 @@ const AVOID_REACH = m(6);
 const AVOID_PACE = m(0.9);
 const AVOID_GAP = m(0.12);
 const AVOID_CLOSING = m(0.15);
-interface Blocked { lo: number; hi: number; meet: number }
+/** An interval of the footway's width taken by an obstruction: with the comfort gap, and its tight core. */
+interface Blocked { lo: number; hi: number; meet: number; centre: number; core: number }
 const BLOCKED: Blocked[] = [];
 
 /**
@@ -234,10 +236,10 @@ export class PedestrianClearance {
     return best;
   }
 
-  canShift(w: SimWorld, p: Ped, edge: SidewalkEdge, lat: number): boolean {
+  canShift(w: SimWorld, p: Ped, edge: SidewalkEdge, lat: number, s = p.s): boolean {
     const current = this.at(w, p);
     if (!current) return false;
-    const at = this.point(w, edge, p.entry, p.s, lat);
+    const at = this.point(w, edge, p.entry, s, lat);
     return !this.blocker(p, at.x, at.y, current);
   }
 
@@ -295,10 +297,20 @@ export class PedestrianClearance {
       if (meet > AVOID_SECONDS) return;
       const lateral = dx * frame.n.x + dy * frame.n.y + p.lat;
       const half = across + PERSON + AVOID_GAP;
-      blocked.push({ lo: lateral - half, hi: lateral + half, meet: Math.max(0, meet) });
+      blocked.push({ lo: lateral - half, hi: lateral + half, meet: Math.max(0, meet), centre: lateral, core: across + PERSON });
     });
     if (!blocked.length) return target;
     blocked.sort((a, b) => a.meet - b.meet);
+    for (let count = blocked.length; count > 0; count--) {
+      const free = freePoint(blocked, count, target, p.lat, usable);
+      if (free !== null) return free;
+    }
+    // No line clears everything with room to spare: take one that clears it
+    // at all, shoulder past - the same margin the step itself is checked at.
+    // Giving up here kept the walker's own line, straight at the obstruction,
+    // and once furniture could no longer be walked through, a walker faced
+    // with a street tree on a narrow footway stood in front of it for good.
+    for (const b of blocked) { b.lo = b.centre - b.core; b.hi = b.centre + b.core; }
     for (let count = blocked.length; count > 0; count--) {
       const free = freePoint(blocked, count, target, p.lat, usable);
       if (free !== null) return free;
@@ -358,7 +370,7 @@ export class PedestrianClearance {
       // shoulder — but never pass through one another. Keeping furniture solid
       // here as well froze a walker for 145 s in `pedFlow.spec`; `clearLine`
       // is what keeps people out of it in the first place.
-      if (released && !vehicle && other.id <= 0) return;
+      if (released && !vehicle && other.id <= 0 && other.id > -1_000_000) return;
       // Friends closing up a conversation step round each other shoulder
       // to shoulder, as they would; a stranger's full space would leave the
       // last to arrive stuck outside the circle.
@@ -420,6 +432,10 @@ export class PedestrianClearance {
       }
     }
     for (const pole of w.doc.poles.values()) add(pole.x, pole.y, m(0.18));
+    // The traffic signal posts, where the renderer draws them. They stand on
+    // the kerb two metres back from the zebra - where people wait to cross -
+    // and used to be known only to the renderer.
+    for (const post of signalPosts(w.net, w.graph)) add(post.x, post.y, SIGNAL_POST_RADIUS);
     this.scenery = items;
   }
 }

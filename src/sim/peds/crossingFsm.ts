@@ -1016,7 +1016,16 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   // Blocked sideways: hold the line. Stepping the other way instead, as this
   // used to, made a boxed-in walker zigzag on the spot every tick.
   if (space.canShift(w, p, edge, proposed)) p.lat = proposed;
-  else {
+  else if (p.stuck > BACK_OFF_AFTER && p.s > BACK_OFF_STEP
+    && space.canShift(w, p, edge, proposed, p.s - BACK_OFF_STEP)) {
+    // Boxed in against something ahead, and the step aside would bring them
+    // closer to it: a person takes half a step back and goes round. A walker
+    // who came down the narrow side of a street tree stood a hand's breadth
+    // from the trunk for good, once furniture could no longer be walked
+    // through - forward was the tree, and so was every step aside.
+    p.s -= BACK_OFF_STEP;
+    p.lat = proposed;
+  } else {
     p.lat = held;
     p.latV = 0;
     // Committed side blocked too: take the other one next time.
@@ -1033,6 +1042,10 @@ const PLAN = { target: 0, rate: 0 };
 
 /** Seconds held up before committing to a side. */
 const DODGE_AFTER = 0.6;
+/** Held up this long with every step aside refused, a walker backs off a little to get round. */
+const BACK_OFF_AFTER = 1.2;
+/** How far back, per tick, a boxed-in walker steps while moving aside. */
+const BACK_OFF_STEP = m(0.012);
 /** How close to the edge of the usable width counts as pinned against it. */
 const EDGE_PINNED = m(0.05);
 

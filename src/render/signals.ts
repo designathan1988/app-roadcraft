@@ -16,9 +16,7 @@ import {
   type Material,
 } from 'three';
 
-import { addScaled, angleOf, perp } from '@core/vec2';
-import { crosswalkDistance } from '@world/approach';
-import { roadProfile } from '@world/roadTypes';
+import { signalPostPlace } from '@world/signalPosts';
 import type { SimWorld } from '@sim/world';
 import type { SegmentId } from '@world/ids';
 import { signalStateFor, type SignalState } from '@sim/signals/query';
@@ -84,7 +82,6 @@ const HEAD_WIDTH = u(0.62);
 const HEAD_DEPTH = u(0.42);
 const LAMP_RADIUS = u(0.21);
 const VISOR_DEPTH = u(0.2);
-const KERB_CLEARANCE = m(0.9);
 const HEAD_CENTRE = u(5.5);
 /** Vertical spacing between lens centres. */
 const LAMP_PITCH = HEAD_HEIGHT * 0.3;
@@ -272,19 +269,11 @@ export function createSignalHeads(
           );
           if (!signalGroup) continue;
 
-          const road = roadProfile(segment.type, segment.lanes, segment.direction);
-          const mouth = world.net.mouthDistance(segmentId, node);
-          const polyline = world.net.polylines.get(world.doc, segmentId);
-          // Sample outward from the node to find the kerb position, then reverse
-          // that tangent: traffic on this approach travels TOWARD the node.
-          // Using the outward tangent put every head on the driver's left.
-          const outward = segment.a === node ? polyline : polyline.reversed();
-          const distance = Math.min(crosswalkDistance(mouth) + m(2), outward.length * 0.45);
-          const frame = outward.sampleAt(distance);
-          const travel = { x: -frame.t.x, y: -frame.t.y };
-          const left = perp(travel);
-          const right = { x: -left.x, y: -left.y };
-          const position = addScaled(frame.p, right, road.width / 2 + KERB_CLEARANCE);
+          // Where the post stands is the world's (`world/signalPosts.ts`): the
+          // pedestrians walk round the same post.
+          const post = signalPostPlace(world.net, node, segmentId);
+          if (!post) continue;
+          const position = { x: post.x, y: post.y };
           const key = `${node}:${segmentId}`;
           const state = signalStateFor(controller, signalGroup.id);
           placed.push({
@@ -293,7 +282,7 @@ export function createSignalHeads(
             y: position.y,
             // Local +X carries the arm inward over the road. Under the shared
             // world-to-Three mapping, the world heading is also the Three yaw.
-            yaw: angleOf({ x: -right.x, y: -right.y }),
+            yaw: post.yaw,
             state,
             key,
           });
