@@ -33,7 +33,18 @@ export interface Handle {
 const HANDLE_OUT = m(1.6);
 const CORNER_OUT = m(3.2);
 
-export function buildingHandles(b: Building, volumeId: number, floor: number): Handle[] {
+/**
+ * `nearest` orders the four footprint corners (front-left, front-right,
+ * back-right, back-left in the local frame) by how close each is to the viewer;
+ * the move and rotate handles take the first two, so they never land behind
+ * the building or on top of the roof arrow. Default: the front corners.
+ */
+export function buildingHandles(
+  b: Building,
+  volumeId: number,
+  floor: number,
+  nearest: (corners: readonly { x: number; y: number }[]) => readonly number[] = () => [0, 1],
+): Handle[] {
   const v = volumeById(b, volumeId) ?? b.volumes[0];
   if (!v) return [];
   const u = b.module;
@@ -57,9 +68,16 @@ export function buildingHandles(b: Building, volumeId: number, floor: number): H
     out.push({ kind: 'side', side, x: p.x, y: p.y, z: baseZ, dx: d.x, dy: d.y });
   }
   const f = footprintCells(b);
-  const move = localToWorld(b, f.x0 * u - CORNER_OUT, f.y0 * u - CORNER_OUT);
+  const corners = [
+    localToWorld(b, f.x0 * u - CORNER_OUT, f.y0 * u - CORNER_OUT),
+    localToWorld(b, f.x1 * u + CORNER_OUT, f.y0 * u - CORNER_OUT),
+    localToWorld(b, f.x1 * u + CORNER_OUT, f.y1 * u + CORNER_OUT),
+    localToWorld(b, f.x0 * u - CORNER_OUT, f.y1 * u + CORNER_OUT),
+  ];
+  const order = nearest(corners);
+  const move = corners[order[0] ?? 0] as { x: number; y: number };
+  const turn = corners[order[1] ?? 1] as { x: number; y: number };
   out.push({ kind: 'move', x: move.x, y: move.y, z: floor, dx: 0, dy: 0 });
-  const turn = localToWorld(b, f.x1 * u + CORNER_OUT, f.y0 * u - CORNER_OUT);
   out.push({ kind: 'rotate', x: turn.x, y: turn.y, z: floor, dx: 0, dy: 0 });
   return out;
 }

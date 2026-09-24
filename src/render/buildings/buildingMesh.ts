@@ -4,9 +4,7 @@ import {
   Float32BufferAttribute,
   Group,
   InstancedMesh,
-  type Material,
   Mesh,
-  Object3D,
   Uint32BufferAttribute,
 } from 'three';
 
@@ -588,78 +586,141 @@ function emitRoof(
   }
 }
 
-// ------------------------------------------------------------------ assembly
+// ------------------------------------------------------------------ chunks
 
-const scratch = new Object3D();
-
-function instanced(
-  name: string,
-  geometry: BufferGeometry,
-  material: Material,
-  placements: readonly Placement[],
-  castShadow: boolean,
-  coloured: boolean,
-): InstancedMesh | null {
-  if (placements.length === 0) return null;
-  const mesh = new InstancedMesh(geometry, material, placements.length);
-  mesh.name = name;
-  mesh.castShadow = castShadow;
-  mesh.receiveShadow = true;
-  placements.forEach((p, i) => {
-    // World y is mirrored into three's z, as everywhere else in this layer.
-    scratch.position.set(p.x, p.z, -p.y);
-    scratch.rotation.set(0, p.yaw, 0);
-    scratch.scale.set(p.sx, p.sy, p.sz);
-    scratch.updateMatrix();
-    mesh.setMatrixAt(i, scratch.matrix);
-    if (coloured && p.colour) mesh.setColorAt(i, p.colour);
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.computeBoundingSphere();
-  return mesh;
+/** One part batch of one building: its instance matrices (and colours). */
+export interface PartBatch {
+  readonly matrices: Float32Array;
+  readonly colours: Float32Array | null;
+  readonly count: number;
 }
 
 /**
- * Meshes for a set of buildings. `ghost` draws them with the translucent
- * preview materials, casting no shadow.
+ * Everything one building contributes, in typed arrays: a shell fragment with
+ * local indices and its instance batches. The layer caches these per building
+ * (see `layer.ts`), so an edit re-emits one building and merely concatenates
+ * the rest.
  */
-export function buildBuildingMeshes(
-  buildings: Iterable<Building>,
-  groundAt: GroundAt,
-  kit: BuildingKit,
-  ghost = false,
-): BuildingMeshes {
-  const group = new Group();
-  group.name = ghost ? 'building-preview' : 'buildings';
+export interface BuildingChunk {
+  readonly position: Float32Array;
+  readonly normal: Float32Array;
+  readonly colour: Float32Array;
+  readonly index: Uint32Array;
+  readonly parts: Readonly<Record<PartKind, PartBatch>>;
+}
+
+/** Column-major T * Ry * S, written straight into `out` at `offset`. */
+function writeMatrix(out: Float32Array, offset: number, p: Placement): void {
+  const c = Math.cos(p.yaw);
+  const s = Math.sin(p.yaw);
+  out[offset] = c * p.sx; out[offset + 1] = 0; out[offset + 2] = -s * p.sx; out[offset + 3] = 0;
+  out[offset + 4] = 0; out[offset + 5] = p.sy; out[offset + 6] = 0; out[offset + 7] = 0;
+  out[offset + 8] = s * p.sz; out[offset + 9] = 0; out[offset + 10] = c * p.sz; out[offset + 11] = 0;
+  // World y is mirrored into three's z, as everywhere else in this layer.
+  out[offset + 12] = p.x; out[offset + 13] = p.z; out[offset + 14] = -p.y; out[offset + 15] = 1;
+}
+
+export function emitChunk(b: Building, groundAt: GroundAt): BuildingChunk {
   const shell = new Shell();
   const parts = Object.fromEntries(PART_KINDS.map((k) => [k, [] as Placement[]])) as Record<PartKind, Placement[]>;
-  for (const b of buildings) emitBuilding(b, groundAt, shell, parts);
+  emitBuilding(b, groundAt, shell, parts);
+  const batches = {} as Record<PartKind, PartBatch>;
+  for (const kind of PART_KINDS) {
+    const list = parts[kind];
+    const matrices = new Float32Array(list.length * 16);
+    const coloured = kind === 'awning';
+    const colours = coloured ? new Float32Array(list.length * 3) : null;
+    list.forEach((p, i) => {
+      writeMatrix(matrices, i * 16, p);
+      if (colours && p.colour) {
+        colours[i * 3] = p.colour.r;
+        colours[i * 3 + 1] = p.colour.g;
+        colours[i * 3 + 2] = p.colour.b;
+      }
+    });
+    batches[kind] = { matrices, colours, count: list.length };
+  }
+  return {
+    position: new Float32Array(shell.position),
+    normal: new Float32Array(shell.normal),
+    colour: new Float32Array(shell.colour),
+    index: new Uint32Array(shell.index),
+    parts: batches,
+  };
+}
 
+/**
+ * Meshes for a set of building chunks: one merged shell, one instanced batch
+ * per part. `ghost` draws them with the translucent preview materials,
+ * casting no shadow and with no instance colours (one program per material).
+ */
+export function assembleBuildingMeshes(chunks: readonly BuildingChunk[], kit: BuildingKit, ghost = false): BuildingMeshes {
+  const group = new Group();
+  group.name = ghost ? 'building-preview' : 'buildings';
   const meshes: (Mesh | InstancedMesh)[] = [];
   let triangles = 0;
-  if (shell.triangles > 0) {
-    const mesh = new Mesh(shell.geometry(), ghost ? kit.ghostShell : kit.shell);
+
+  let vertices = 0;
+  let indices = 0;
+  for (const chunk of chunks) {
+    vertices += chunk.position.length / 3;
+    indices += chunk.index.length;
+  }
+  if (indices > 0) {
+    const position = new Float32Array(vertices * 3);
+    const normal = new Float32Array(vertices * 3);
+    const colour = new Float32Array(vertices * 3);
+    const index = new Uint32Array(indices);
+    let v = 0;
+    let n = 0;
+    for (const chunk of chunks) {
+      position.set(chunk.position, v * 3);
+      normal.set(chunk.normal, v * 3);
+      colour.set(chunk.colour, v * 3);
+      for (let i = 0; i < chunk.index.length; i++) index[n + i] = (chunk.index[i] as number) + v;
+      v += chunk.position.length / 3;
+      n += chunk.index.length;
+    }
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(position, 3));
+    g.setAttribute('normal', new Float32BufferAttribute(normal, 3));
+    g.setAttribute('color', new Float32BufferAttribute(colour, 3));
+    g.setIndex(new Uint32BufferAttribute(index, 1));
+    g.computeBoundingSphere();
+    const mesh = new Mesh(g, ghost ? kit.ghostShell : kit.shell);
     mesh.name = ghost ? 'building-preview-shell' : 'building-shell';
     mesh.castShadow = !ghost;
     mesh.receiveShadow = !ghost;
     meshes.push(mesh);
-    triangles += shell.triangles;
+    triangles += indices / 3;
   }
+
   for (const kind of PART_KINDS) {
-    const mesh = instanced(
-      `building-${kind}${ghost ? '-preview' : ''}`,
-      kit.geometry[kind],
-      ghost ? kit.ghostParts : kit.material[kind],
-      parts[kind],
-      !ghost && kit.castsShadow.has(kind),
-      !ghost && kind === 'awning',
-    );
-    if (!mesh) continue;
+    let count = 0;
+    for (const chunk of chunks) count += chunk.parts[kind].count;
+    if (count === 0) continue;
+    const mesh = new InstancedMesh(kit.geometry[kind], ghost ? kit.ghostParts : kit.material[kind], count);
+    mesh.name = `building-${kind}${ghost ? '-preview' : ''}`;
+    mesh.castShadow = !ghost && kit.castsShadow.has(kind);
+    mesh.receiveShadow = !ghost;
+    const matrices = mesh.instanceMatrix.array as Float32Array;
+    const coloured = !ghost && kind === 'awning';
+    if (coloured) mesh.setColorAt(0, new Color(1, 1, 1));
+    const colours = coloured && mesh.instanceColor ? (mesh.instanceColor.array as Float32Array) : null;
+    let at = 0;
+    for (const chunk of chunks) {
+      const batch = chunk.parts[kind];
+      if (batch.count === 0) continue;
+      matrices.set(batch.matrices, at * 16);
+      if (colours && batch.colours) colours.set(batch.colours, at * 3);
+      at += batch.count;
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
     meshes.push(mesh);
     const g = kit.geometry[kind];
-    const per = (g.index ? g.index.count : g.getAttribute('position').count) / 3;
-    triangles += per * mesh.count;
+    triangles += ((g.index ? g.index.count : g.getAttribute('position').count) / 3) * count;
   }
   for (const mesh of meshes) group.add(mesh);
 
@@ -669,10 +730,20 @@ export function buildBuildingMeshes(
     dispose() {
       for (const mesh of meshes) {
         // The shell geometry is this build's own; the part geometries are the kit's.
-        if (!(mesh instanceof InstancedMesh)) mesh.geometry.dispose();
-        else mesh.dispose();
+        if (mesh instanceof InstancedMesh) mesh.dispose();
+        else mesh.geometry.dispose();
       }
       group.clear();
     },
   };
+}
+
+/** Meshes for buildings, emitted afresh (the preview; tests). */
+export function buildBuildingMeshes(
+  buildings: Iterable<Building>,
+  groundAt: GroundAt,
+  kit: BuildingKit,
+  ghost = false,
+): BuildingMeshes {
+  return assembleBuildingMeshes([...buildings].map((b) => emitChunk(b, groundAt)), kit, ghost);
 }

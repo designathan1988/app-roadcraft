@@ -184,7 +184,7 @@ export const EN: Dictionary = {
   'hint.upgrade': 'Click a road to upgrade its class',
   'hint.move': 'Drag a node to reposition it',
   'hint.split': 'Click a road to split it',
-  'hint.bulldoze': 'Click a road to demolish it',
+  'hint.bulldoze': 'Click a road or a building to demolish it',
   'hint.control': 'Click a junction to change its control · Shift: go back',
   'hint.control.miss': 'No junction there — click where two or more roads meet',
   'hint.pole':

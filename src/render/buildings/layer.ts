@@ -4,10 +4,10 @@ import { pointInPolygon } from '@core/polygon';
 import type { Vec2 } from '@core/vec2';
 import type { RoadDoc } from '@world/doc';
 import type { GroundAt } from '@world/buildings/foundation';
-import { footprintRects } from '@world/buildings/geometry';
+import { buildingBounds, footprintRects } from '@world/buildings/geometry';
 import type { Building, BuildingId } from '@world/buildings/types';
 import { m } from '@world/units';
-import { type BuildingMeshes, buildBuildingMeshes } from './buildingMesh';
+import { type BuildingChunk, type BuildingMeshes, assembleBuildingMeshes, buildBuildingMeshes, emitChunk } from './buildingMesh';
 import { type BuildingKit, createBuildingKit } from './kit';
 
 /**
@@ -40,7 +40,7 @@ export interface BuildingLayer {
 }
 
 /** How far past a wall a plant is still considered under the building. */
-const PLANT_MARGIN = m(1.2);
+const PLANT_MARGIN = m(2.5);
 const CELL = 64;
 
 export function createBuildingLayer(): BuildingLayer {
@@ -53,6 +53,20 @@ export function createBuildingLayer(): BuildingLayer {
   let ghostKey = '';
   let preview: BuildingPreviewInput | null = null;
   let version = 0;
+  /**
+   * Each building's emitted meshes, keyed by its record and by the ground
+   * around it: an edit re-emits one building, a terrain dab only the ones
+   * whose ground it moved; everything else is concatenated from here.
+   */
+  const chunks = new Map<BuildingId, { key: string; chunk: BuildingChunk }>();
+  const chunkFor = (b: Building, groundAt: GroundAt): BuildingChunk => {
+    const key = `${JSON.stringify(b)}|${groundDigest(b, groundAt)}`;
+    const known = chunks.get(b.id);
+    if (known && known.key === key) return known.chunk;
+    const chunk = emitChunk(b, groundAt);
+    chunks.set(b.id, { key, chunk });
+    return chunk;
+  };
   /** Footprints bucketed on a coarse grid, for `covers`. */
   let buckets = new Map<string, Vec2[][]>();
 
@@ -96,7 +110,8 @@ export function createBuildingLayer(): BuildingLayer {
           stored.dispose();
         }
         const shown = [...doc.buildings.all()].filter((b) => b.id !== hides);
-        stored = buildBuildingMeshes(shown, groundAt, kit);
+        for (const id of chunks.keys()) if (!doc.buildings.has(id)) chunks.delete(id);
+        stored = assembleBuildingMeshes(shown.map((b) => chunkFor(b, groundAt)), kit);
         group.add(stored.group);
         index(doc.buildings.all());
         version++;
@@ -136,4 +151,21 @@ export function createBuildingLayer(): BuildingLayer {
       group.clear();
     },
   };
+}
+
+/**
+ * A fingerprint of the ground under and around a building: a 6 x 6 grid over
+ * its bounds grown by two modules (the entrance steps land out there). Any
+ * change the foundation could see changes this.
+ */
+function groundDigest(b: Building, groundAt: GroundAt): string {
+  const box = buildingBounds(b, b.module * 2);
+  let out = '';
+  for (let i = 0; i <= 5; i++) {
+    for (let j = 0; j <= 5; j++) {
+      const h = groundAt(box.minX + ((box.maxX - box.minX) * i) / 5, box.minY + ((box.maxY - box.minY) * j) / 5);
+      out += `${h.toFixed(2)},`;
+    }
+  }
+  return out;
 }

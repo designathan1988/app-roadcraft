@@ -174,7 +174,7 @@ export const PT_BR: Dictionary = {
   'hint.upgrade': 'Clique numa via para melhorar a classe',
   'hint.move': 'Arraste um nó para reposicionar',
   'hint.split': 'Clique numa via para dividir',
-  'hint.bulldoze': 'Clique numa via para demolir',
+  'hint.bulldoze': 'Clique numa via ou num edifício para demolir',
   'hint.control': 'Clique num cruzamento para mudar o controle · Shift: voltar',
   'hint.control.miss': 'Nenhum cruzamento aí — clique onde duas ou mais vias se encontram',
   'hint.pole':

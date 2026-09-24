@@ -17,11 +17,12 @@ src/editor/blueprintLibrary.ts  the player's own saved blueprints (localStorage)
 src/render/buildings/    the meshes: one merged shell, instanced components
 src/ui/buildingPanel.ts  the palette: types, presets, parameters, component picker
 src/ui/overlay/buildingOverlay.ts  handles, outlines, the validity label
+src/buildingsWiring.ts   main.ts's building section: ToolView, ToolHost, palette, overlay
 ```
 
 The layer order of AGENTS.md section 2 holds: the model knows nothing of the
-editor, the editor nothing of three.js, and `main.ts` wires the tool to the
-pointer.
+editor, the editor nothing of three.js, and `main.ts` (through
+`buildingsWiring.ts`) wires the tool to the pointer.
 
 ---
 
@@ -109,7 +110,7 @@ facade is built there.
 * `Building.cores: Core[]` - `{ id, x, y, kind: 'stair' | 'lift' |
   'stairLift', from, to }`. The renderer already draws a core's overrun box on
   a flat roof, so a lift is visible; nothing moves in it yet.
-* `entrancesOf(building)` - derived from `door`, `shopfront` and
+* `foundationOf(building, groundAt).entrances` - derived from `door`, `shopfront` and
   `loadingDoor` bays on level 0: position, outward normal and the ground
   height in front. This is where pedestrians and deliveries will attach to the
   footway graph.
@@ -226,9 +227,13 @@ point to the screen, turn a screen point into a world point on a plane at a
 given height, cast a pick ray, read the rendered ground - and a `commit`
 callback that is `mutateBuildings`.
 
-* **Place** (`H`, then pick a preset or a type): the ghost follows the pointer,
+* **Place** (`H`, then pick a preset, a type, or one of *My blueprints*):
+  the ghost follows the pointer,
   snapped (below), green when valid, red with the reason when not; click to
-  build. `R` turns it a quarter, `Shift+R` 15 degrees.
+  build. `R` turns it a quarter, `Shift+R` 15 degrees. With the pointer
+  over an existing building the ghost steps aside and a click selects that
+  building instead. After a placement the tool switches to **Edit** on the new
+  building, so the first module can be shaped at once.
 * **Edit**: click a building to select it and the volume under the pointer.
   * the **arrow on the roof** - drag up or down to add or remove storeys (live
     preview, one storey per storey-height of screen travel);
@@ -238,7 +243,8 @@ callback that is `mutateBuildings`.
   * the **ring at a corner** - drag to rotate it (15 degree steps, Shift for free);
   * click a facade bay with a component chosen in the picker to replace it
     (scope: bay, storey, side or volume);
-  * `PageUp`/`PageDown` or `+`/`-` storeys, `Delete` removes the volume
+  * `1`-`4` choose the type (residential, commercial, industrial, mixed),
+    `PageUp`/`PageDown` or `+`/`-` storeys, `Delete` removes the volume
     (the building if it is the last one), `Ctrl+D` duplicates, `Ctrl+C` /
     `Ctrl+V` copy and paste at the pointer, `R` rotates, `Escape` deselects.
 
@@ -281,8 +287,17 @@ because the ground under the foundations may have moved.
   the scenery's instance cull (`Scenery.exclude`), so nothing grows through a
   roof - without re-solving the roads.
 
-A city of several hundred buildings is therefore ~12 draw calls for all of
-them, and a rebuild is a pass over typed arrays.
+* The layer keeps each building's emitted geometry (`emitChunk`), keyed by its
+  record and a fingerprint of the ground around it. An edit re-emits the one
+  building it touched, a terrain dab only the buildings whose ground moved;
+  the rest is concatenated from the cache.
+
+A city of several hundred buildings is therefore ~10 draw calls for all of
+them. Measured in the real game on the GPU with 400 buildings (about 5.3
+million triangles): steady frames at 17 ms, and an edit's rebuild in about
+115 ms (it was 450 ms before the per-building cache). A drag only rebuilds the
+ghost; the stored layer is rebuilt once when the drag starts (to hide the
+building being edited) and once when it ends.
 
 ---
 
@@ -300,13 +315,12 @@ them, and a rebuild is a pass over typed arrays.
 ## 7. Adding to it
 
 * **A new facade component**: add it to `BAY_COMPONENTS` in `types.ts`, give
-  it parts in `render/buildings/kit.ts` and a case in `buildingMesh.ts`'s
-  `placeComponent`, a button in the picker (`ui/buildingPanel.ts` builds them
+  it parts in `render/buildings/kit.ts` and a case in `buildingMesh.ts`'s `openingOf` and `emitBay`, a button in the picker (`ui/buildingPanel.ts` builds them
   from the list) and `building.component.<name>` in both dictionaries.
 * **A new roof**: `ROOF_KINDS` in `types.ts`, a case in `buildingMesh.ts`'s
-  `addRoof`, `building.roof.<name>` in both dictionaries.
+  `emitRoof`, `building.roof.<name>` in both dictionaries.
 * **A new preset**: `BLUEPRINTS` in `blueprints.ts` and `building.preset.<key>`
   in both dictionaries.
 * **Interiors, lifts, occupants**: fill `Storey.spaces` and `Building.cores`;
-  read `entrancesOf` to connect a building to the footway graph. The model
+  read `foundationOf(...).entrances` to connect a building to the footway graph. The model
   already stores and round-trips all three.

@@ -195,7 +195,14 @@ export class BuildingTool {
     if (this.mode !== 'edit' || !this.selection) return [];
     const shown = this.preview?.hides === this.selection.building ? this.preview.building : this.selected();
     if (!shown) return [];
-    return buildingHandles(shown, this.selection.volume, this.floorOf(shown));
+    const floor = this.floorOf(shown);
+    // Move and rotate go on the two footprint corners nearest the viewer.
+    const nearest = (corners: readonly Vec2[]): number[] =>
+      corners
+        .map((p, i) => ({ i, y: this.view.project(p.x, p.y, floor).y }))
+        .sort((a, b) => b.y - a.y)
+        .map((c) => c.i);
+    return buildingHandles(shown, this.selection.volume, floor, nearest);
   }
 
   /** The tool is put away: no ghost, no gesture, no hover. The selection stays. */
