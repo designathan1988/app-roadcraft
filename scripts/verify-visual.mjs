@@ -138,7 +138,7 @@ const SCENARIOS = [
       const s = D.addNode({ x: 0, y: 330 });
       const over = D.addSegment(a.id, b.id, 3);
       D.addSegment(n.id, s.id, 2);
-      D.setSegmentStructure(over.id, 'viaduct');
+      D.setSegmentStructure(over.id, 'elevated');
     `,
   },
   {

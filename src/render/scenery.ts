@@ -365,8 +365,11 @@ export function buildScenery(
   const bushes = new Map<BushKind, Placement[]>(BUSH_KINDS.map((k) => [k, []]));
 
   // ------------------------------------------------------ street furniture
+  // On the item's OWN road. The unfiltered field answers for whichever road is
+  // nearest, and a lamp on a street passing under a viaduct was lifted onto the
+  // deck above it.
   const deckAt = (item: FurnitureItem): number =>
-    elevation.at(item.x, item.y) + (item.on === 'median' ? MEDIAN_PLANTING : FOOTWAY_RISE);
+    elevation.onSegment(item.segment, item.x, item.y) + (item.on === 'median' ? MEDIAN_PLANTING : FOOTWAY_RISE);
   for (const item of streetFurniture(net)) {
     const base = deckAt(item);
     // Local +X of a lamp reaches over the road; local -Z of a bench, a post

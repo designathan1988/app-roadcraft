@@ -61,7 +61,6 @@ export const EN: Dictionary = {
 
   'structure.ground': 'At grade',
   'structure.elevated': 'Elevated',
-  'structure.viaduct': 'Viaduct',
   'structure.bridge': 'Bridge',
   'structure.tunnel': 'Tunnel',
   'structure.tunnel.help':

@@ -15,7 +15,7 @@ import type { UtilityPole, UtilitySpan } from './utilities';
 // Runtime imports, and safe: `geometry` and `legAngles` take `RoadDoc` as a
 // TYPE only, so nothing here is part of a runtime cycle.
 import { impossibleAmong, worsensAnyNode } from './legAngles';
-import type { RoadStructure } from './structures';
+import { type RoadStructure, migrateStructure } from './structures';
 import { MAX_TERRAIN_STAMPS, type TerrainStamp } from './terrain';
 import { clampToMap } from './bounds';
 
@@ -633,7 +633,9 @@ export class RoadDoc {
         dashOrigin: s.dashOrigin ?? 0,
         direction: s.direction ?? 'both',
         lanes: normaliseLaneCount(s.lanes ?? null, s.direction ?? 'both'),
-        structure: s.structure ?? 'ground',
+        // Through the migration, so a level that has since been merged into
+        // another (`viaduct`) loads as the one it became.
+        structure: migrateStructure(s.structure) ?? 'ground',
       });
       doc.requireNode(a).incident.push(id);
       doc.requireNode(b).incident.push(id);
@@ -690,7 +692,8 @@ export interface SerializedDoc {
     dashOrigin?: number;
     direction?: SegmentDirection;
     lanes?: number | null;
-    structure?: RoadStructure;
+    /** A current structure id, or a legacy one `migrateStructure` maps. */
+    structure?: RoadStructure | 'viaduct';
   }[];
   readonly terrain?: readonly TerrainStamp[];
   /**

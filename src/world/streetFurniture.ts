@@ -97,6 +97,11 @@ export function streetFurniture(net: Network): FurnitureItem[] {
     const length = ribbon.full.length;
     const start = Math.min(36, length * 0.24);
     const road = ribbon.road;
+    // On a deck or in a bore there is a lamp column and nothing else: no soil
+    // for a tree pit, and nobody sets a bench, a post box or a hydrant on a
+    // viaduct. Trees on elevated decks were photographed growing out of the
+    // footway fifteen units over the grass.
+    const built = (net.doc.segment(ribbon.id)?.structure ?? 'ground') !== 'ground';
 
     for (let s = start; s < length - start; s += LAMP_SPACING) {
       const frame = ribbon.full.sampleAt(s);
@@ -118,6 +123,10 @@ export function streetFurniture(net: Network): FurnitureItem[] {
       const seed = hash01(ribbon.id, column);
 
       items.push({ ...base, kind: 'lamp', x, y, radius: m(0.13), seed });
+      if (built) {
+        column++;
+        continue;
+      }
 
       // A bin beside every third column, set a little further from the kerb
       // than the column so the two do not occupy the same spot.
@@ -160,7 +169,7 @@ export function streetFurniture(net: Network): FurnitureItem[] {
     }
 
     // Shrubs down a planted central reservation.
-    if (road.median > 0) {
+    if (road.median > 0 && !built) {
       const centre = ribbon.centre[Level.Asphalt];
       if (centre && centre.n >= 2) {
         const run = centre.length;
