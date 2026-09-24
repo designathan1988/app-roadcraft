@@ -92,6 +92,10 @@ interface CitizenBatch {
  * Size of a child drawn on an adult body, when the roster has no child model
  * of their sex: without it a child walked the street at full adult height.
  */
+/** No two people within this distance of each other wear the same body, if the roster allows. */
+const CAST_NEAR = m(25);
+/** Frames undrawn after which a person's body is forgotten: about a minute. */
+const CAST_FORGET = 3600;
 const CHILD_ON_ADULT = 0.64;
 
 const SKINNING = `
@@ -407,21 +411,93 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
    * roster is drawn on an adult one, scaled down to a child's height; an
    * older person walks on an adult body with the elder's walk.
    */
-  function bodyFor(ped: Pick<Ped, 'gender' | 'ageClass'>, hash: number, helmet = false): { index: number; size: number } | null {
+  function poolFor(ped: Pick<Ped, 'gender' | 'ageClass'>, helmet: boolean):
+    { pool: readonly number[]; size: number; spare?: readonly number[]; spareSize?: number } | null {
     const sex = pools[ped.gender === 'f' ? 'f' : 'm'];
     const other = pools[ped.gender === 'f' ? 'm' : 'f'];
-    const pick = (pool: readonly number[]): number => pool[hash % pool.length]!;
     const fits = helmeted[ped.gender === 'f' ? 'f' : 'm'];
-    if (helmet && ped.ageClass !== 'child' && fits.length) return { index: pick(fits), size: 1 };
+    if (helmet && ped.ageClass !== 'child' && fits.length) return { pool: fits, size: 1 };
     if (ped.ageClass === 'child') {
-      if (sex.child.length) return { index: pick(sex.child), size: 1 };
-      if (sex.adult.length) return { index: pick(sex.adult), size: CHILD_ON_ADULT };
-      if (other.child.length) return { index: pick(other.child), size: 1 };
+      // There are one girl's body and two boys' in the roster: a second child
+      // nearby, who would be the first one's twin, is drawn on an adult body
+      // at a child's height instead.
+      if (sex.child.length) return { pool: sex.child, size: 1, spare: sex.adult, spareSize: CHILD_ON_ADULT };
+      if (sex.adult.length) return { pool: sex.adult, size: CHILD_ON_ADULT };
+      if (other.child.length) return { pool: other.child, size: 1 };
     } else {
-      if (sex.adult.length) return { index: pick(sex.adult), size: 1 };
-      if (other.adult.length) return { index: pick(other.adult), size: 1 };
+      if (sex.adult.length) return { pool: sex.adult, size: 1 };
+      if (other.adult.length) return { pool: other.adult, size: 1 };
     }
-    return everyone.length ? { index: pick(everyone), size: 1 } : null;
+    return everyone.length ? { pool: everyone, size: 1 } : null;
+  }
+
+  /**
+   * The casting registry: which body each person is drawn as, chosen once,
+   * the first time they are drawn, and kept for as long as they are about.
+   *
+   * It used to be `pool[hash % pool.length]` - every person drawn
+   * independently of everybody round them - and with forty-odd bodies to a
+   * sex that put the same person twice among ten people near each other two
+   * times in three, and now and then twins side by side in one car. Now a
+   * body is dealt from a deck starting where the hash points, skipping any
+   * body worn by somebody within `CAST_NEAR` or by somebody of the same party
+   * or vehicle; if every one is taken, the one worn farthest away. A person is
+   * the same identity seated, getting out and walking off (the vehicle seat's
+   * seed is the pedestrian's id), so they keep their body throughout.
+   */
+  interface Cast { index: number; size: number; x: number; y: number; seen: number; group: number }
+  const cast = new Map<number, Cast>();
+  const wearers = new Map<number, Set<number>>();
+  let castFrame = 0;
+  function bodyFor(ped: Pick<Ped, 'gender' | 'ageClass'>, hash: number, helmet: boolean,
+    seed: number, x: number, y: number, company: number): { index: number; size: number } | null {
+    const known = cast.get(seed);
+    if (known) {
+      known.x = x; known.y = y; known.seen = castFrame;
+      return known;
+    }
+    const choice = poolFor(ped, helmet);
+    if (!choice) return null;
+    const { pool, spare } = choice;
+    let size = choice.size;
+    let index = -1;
+    let fallback = pool[hash % pool.length]!;
+    let farthest = -1;
+    const deck = pool.length + (spare?.length ?? 0);
+    for (let k = 0; k < deck; k++) {
+      const fromSpare = k >= pool.length;
+      const candidate = fromSpare ? spare![(hash + k) % spare!.length]! : pool[(hash + k) % pool.length]!;
+      let nearest = Infinity;
+      let taken = false;
+      for (const other of wearers.get(candidate) ?? []) {
+        const worn = cast.get(other);
+        if (!worn) continue;
+        if (company !== 0 && worn.group === company) { taken = true; break; }
+        nearest = Math.min(nearest, Math.hypot(worn.x - x, worn.y - y));
+      }
+      if (taken) continue;
+      if (nearest >= CAST_NEAR) {
+        index = candidate;
+        if (fromSpare) size = choice.spareSize ?? size;
+        break;
+      }
+      if (!fromSpare && nearest > farthest) { farthest = nearest; fallback = candidate; }
+    }
+    if (index < 0) index = fallback;
+    const entry: Cast = { index, size, x, y, seen: castFrame, group: company };
+    cast.set(seed, entry);
+    const list = wearers.get(index);
+    if (list) list.add(seed);
+    else wearers.set(index, new Set([seed]));
+    return entry;
+  }
+  /** Forgets whoever has not been drawn for `CAST_FORGET` frames: gone, or long out of sight. */
+  function forgetCast(): void {
+    for (const [seed, entry] of cast) {
+      if (castFrame - entry.seen < CAST_FORGET) continue;
+      cast.delete(seed);
+      wearers.get(entry.index)?.delete(seed);
+    }
   }
   const mixClips: ClipFrames[] = [];
   const mixPhases: number[] = [];
@@ -478,6 +554,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     group,
     begin(level = 2, zoom = Infinity) {
       detail = level;
+      castFrame++;
+      if (castFrame % 240 === 0) forgetCast();
       lod = zoom >= 8 ? 0 : zoom >= 2 ? 1 : 2;
       group.userData.lod = lod;
       for (const batch of batches.values()) {
@@ -496,7 +574,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
      */
     draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number) {
       const hash = pedHash(ped.id);
-      const body = bodyFor(ped, hash);
+      const body = bodyFor(ped, hash, false, ped.id, x, y, ped.party.size > 1 ? ped.party.id + 1 : 0);
       if (!body) return;
       const index = body.index;
       const batch = batches.get(index);
@@ -548,7 +626,9 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
      * as drawn (`riderPoses.helmetShape`); the return value is then negative
      * if the body has none, and the helmet must not be drawn.
      */
-    drawClip(identity: { readonly seed: number; readonly gender: 'f' | 'm'; readonly ageClass: 'child' | 'adult' | 'elder' },
+    drawClip(identity: { readonly seed: number; readonly gender: 'f' | 'm'; readonly ageClass: 'child' | 'adult' | 'elder';
+      /** Who they are with - a vehicle's occupants, negative - so none of them wears the same body. */
+      readonly company?: number },
       pelvisX: number, pelvisY: number, pelvisHeight: number, heading: number,
       plays: readonly { readonly key: CitizenClipKey; readonly phase: number; readonly weight: number;
         /** For a walk: ground covered, world units; the phase then follows this body's own stride. */
@@ -556,7 +636,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       lean = 0, maxScale = Infinity, fromGround: boolean | 'pelvisOver' = false, fixedScale = 0,
       helmet: Matrix4 | null = null): number {
       const hash = pedHash(identity.seed);
-      const body = bodyFor(identity, hash, helmet !== null);
+      const body = bodyFor(identity, hash, helmet !== null, identity.seed, pelvisX, pelvisY, identity.company ?? 0);
       if (!body) return 0;
       const batch = batches.get(body.index);
       if (!batch) {
