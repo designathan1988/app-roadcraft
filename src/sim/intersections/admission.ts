@@ -7,6 +7,7 @@ import { canStopComfortably, type ObstacleKind } from '../vehicles/idm';
 import { pedestrianSignalState, signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
 import { hasDownstreamStorage } from './spillback';
+import { cycleFull } from './cycles';
 import { COARSE_EPS } from '@core/scalar';
 import { bodyClassOfArchetype } from '../vehicles/archetypes';
 import { slowestBend } from '../vehicles/curvature';
@@ -330,6 +331,9 @@ function evaluate(w: SimWorld, r: Request): Verdict {
   if (!hasDownstreamStorage(w, r.v, r.conn)) {
     return { ok: false, reason: 'spillback', reservations };
   }
+  if (cycleFull(w, r.conn.fromLane, r.conn.toLane, r.v.archetype.length + Math.max(JAM_GAP, r.v.driver.s0))) {
+    return { ok: false, reason: 'spillback', reservations };
+  }
   if (outranksForExit(r)) {
     return { ok: false, reason: 'yield', reservations };
   }
@@ -375,6 +379,9 @@ function evaluate(w: SimWorld, r: Request): Verdict {
  */
 function zipperHolds(w: SimWorld, r: Request): boolean {
   if (w.mergeTurn.get(r.conn.toLane) !== r.conn.fromLane) return false;
+  // A turn left untaken is no turn: when the other lane's head is held by
+  // something else (somebody crossing, a full street beyond), this one goes.
+  if (r.v.waited > ZIP_PATIENCE) return false;
   for (const other of pending?.get(r.conn.node) ?? []) {
     if (other.v.id === r.v.id || other.v.admittedConnector) continue;
     if (other.conn.toLane !== r.conn.toLane || other.conn.fromLane === r.conn.fromLane) continue;
@@ -428,6 +435,8 @@ export function mergeRemaining(w: SimWorld, v: Vehicle, conn: Connector): number
   return null;
 }
 
+/** Seconds a head waits for the other lane to take its turn before going itself. */
+const ZIP_PATIENCE = 4;
 /** How close to its line a rolling head of the other lane must be to take its turn, world units (standing heads always may). */
 const ZIP_READY = 8;
 

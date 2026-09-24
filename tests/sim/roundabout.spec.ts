@@ -4,6 +4,9 @@ import { RoadDoc } from '@world/doc';
 import { step } from '@sim/pipeline';
 import { DT } from '@sim/params';
 import { simOf } from './support/bodies';
+import { Network } from '@world/network';
+import { findAnchor, type Anchor } from '@editor/snap';
+import { commitDraft } from '@editor/commit';
 
 /**
  * A ROUNDABOUT DRAWN AS A RING OF STREETS.
@@ -39,8 +42,32 @@ function ring(oneWay: boolean): RoadDoc {
   return doc;
 }
 
-function run(doc: RoadDoc, seconds: number): { left: number; worstStill: number } {
-  const sim = simOf(doc, 0x5eed, 2);
+/** The same ring drawn through the editor, as a player draws it. */
+function drawnRing(): RoadDoc {
+  const doc = new RoadDoc();
+  const net = new Network(doc);
+  net.rebuild();
+  const draw = (from: { x: number; y: number }, to: { x: number; y: number }): void => {
+    const start = findAnchor(doc, net, from, 1);
+    const endAt = findAnchor(doc, net, to, 1);
+    const end: Anchor = endAt.kind === 'free' ? { kind: 'free', at: to } : endAt;
+    commitDraft(doc, net, start, end, 1);
+    net.rebuild();
+  };
+  const R = 90;
+  const pts = Array.from({ length: 8 }, (_, i) =>
+    ({ x: R * Math.cos((i * Math.PI) / 4), y: R * Math.sin((i * Math.PI) / 4) }));
+  for (let i = 0; i < 8; i++) draw(pts[i]!, pts[(i + 1) % 8]!);
+  for (const s of doc.segments.values()) doc.setSegmentDirection(s.id, 'aToB');
+  for (const i of [0, 2, 4, 6]) {
+    const p = pts[i]!;
+    draw(p, { x: p.x * 5, y: p.y * 5 });
+  }
+  return doc;
+}
+
+function run(doc: RoadDoc, seconds: number, seed = 0x5eed): { left: number; worstStill: number } {
+  const sim = simOf(doc, seed, 2);
   const seen = new Set<number>();
   const still = new Map<number, number>();
   let worstStill = 0;
@@ -65,4 +92,15 @@ describe('a ring of one-way streets with four arms', () => {
     expect(left).toBeGreaterThan(30);
     expect(worstStill).toBeLessThan(150);
   });
+
+  // The ring used to fill up anyway, on other seeds, with every link holding
+  // a car waiting for the next one: entries are now metered onto a small
+  // cycle of links (`sim/intersections/cycles.ts`).
+  for (const seed of [22, 23]) {
+    it(`never locks solid when drawn with the editor (seed ${seed})`, () => {
+      // Before metering, seed 22 left 2 vehicles out in 300 s.
+      const { left } = run(drawnRing(), 300, seed);
+      expect(left).toBeGreaterThan(20);
+    });
+  }
 });
