@@ -98,7 +98,7 @@ export const EN: Dictionary = {
   'inspector.close': 'Close inspector',
   'inspector.road': 'ROAD',
   'inspector.node': 'NODE',
-  'inspector.class': 'CLASS',
+  'inspector.junction': 'JUNCTION',
   'inspector.length': 'LENGTH',
   'inspector.speed': 'SPEED',
   'inspector.lanes': 'LANES',
@@ -133,7 +133,7 @@ export const EN: Dictionary = {
   'inspector.cycle': 'CYCLE',
   'inspector.phase': 'PHASE',
   'inspector.group': 'GROUP {id}',
-  'inspector.mouths': 'MOUTH SETBACK',
+  'inspector.mouths': 'Setback per leg',
   'inspector.reverse': 'Reverse one-way',
   'inspector.duplicateHint': 'Duplicate road (Ctrl/Cmd+D)',
   'inspector.splitMiddle': 'Split at the middle',
@@ -166,8 +166,7 @@ export const EN: Dictionary = {
   'control.stop': 'Stop sign',
   'control.yield': 'Give way',
   'control.none': 'Uncontrolled',
-  'control.disconnected': 'disconnected',
-  'control.signalised': 'signal',
+  'control.disconnected': 'Disconnected',
 
   // ------------------------------------------------------------------ hints
   'hint.road': 'Drag to build · Wheel: zoom · Right button: camera',

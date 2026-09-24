@@ -8,7 +8,7 @@ import { METERS_PER_UNIT } from '@world/units';
 import type { SimWorld } from '@sim/world';
 import { signalStateFor } from '@sim/signals/query';
 import { ROAD_STRUCTURES, type RoadStructure } from '@world/structures';
-import { plural, t } from './i18n';
+import { language, plural, t } from './i18n';
 import { roadTypeName, structureName } from './labels';
 import { surfaceMode } from '@world/junction/build';
 
@@ -46,6 +46,21 @@ interface InspectorContext {
 let current: InspectorContext | null = null;
 
 /**
+ * What the panel's controls were last built for.
+ *
+ * The panel has two halves that change at very different rates. The controls
+ * (selects, sliders, buttons) depend only on the selection, the document and
+ * the language; the statistics (vehicles, queue, signal phase) change every
+ * tick. Rebuilding everything on the 0.4 s refresh replaced the element under
+ * the pointer mid-click, closed an open select and reset the scroll, so the
+ * frame loop refused to refresh while the panel held focus - and since a
+ * clicked button KEEPS focus, the live numbers froze after the first click.
+ * The controls are now rebuilt only when this key changes, and the timer
+ * rewrites the statistics block alone.
+ */
+let builtFor = '';
+
+/**
  * Inspector panel.
  *
  * Reads live simulation state through the same pure queries the renderer uses,
@@ -59,10 +74,17 @@ export function openInspector(
   actions: InspectorActions,
 ): void {
   current = { doc, net, sim, selection, actions };
+  builtFor = '';
   renderCurrent();
 }
 
-/** Refreshes the open inspector without replacing its selection or actions. */
+/**
+ * Refreshes the open inspector without replacing its selection or actions.
+ *
+ * Cheap when only the traffic changed: the statistics are rewritten, and only
+ * if their text differs, so it is safe to call on a timer while the player is
+ * using the panel's controls.
+ */
 export function refreshInspector(): void {
   if (current) renderCurrent();
 }
@@ -73,6 +95,20 @@ function renderCurrent(): void {
   if (!panel || !body || !current) return;
 
   const { doc, net, sim, selection, actions } = current;
+  const key = `${selection.segment}|${selection.node}|${doc.revision}|${language()}`;
+  const stats = document.getElementById('inspectStats');
+
+  if (key === builtFor && stats && body.contains(stats)) {
+    const html =
+      selection.segment !== null
+        ? segmentStats(doc, net, sim, selection.segment)
+        : selection.node !== null
+          ? nodeStats(doc, sim, selection.node)
+          : null;
+    if (html === null) closeInspector();
+    else if (stats.innerHTML !== html) stats.innerHTML = html;
+    return;
+  }
 
   if (selection.segment !== null) {
     renderSegment(doc, net, sim, body, selection.segment, actions);
@@ -84,6 +120,7 @@ function renderCurrent(): void {
   }
   // A renderer closes the panel when its selected entity no longer exists.
   if (!current) return;
+  builtFor = key;
   panel.hidden = false;
   panel.setAttribute('aria-hidden', 'false');
   panel.classList.remove('hidden');
@@ -92,6 +129,7 @@ function renderCurrent(): void {
 
 export function closeInspector(): void {
   current = null;
+  builtFor = '';
   const panel = document.getElementById('inspector');
   if (panel) {
     panel.classList.add('hidden');
@@ -101,19 +139,10 @@ export function closeInspector(): void {
   document.getElementById('app')?.classList.remove('inspector-open');
 }
 
-function renderSegment(
-  doc: RoadDoc,
-  net: Network,
-  sim: SimWorld,
-  body: HTMLElement,
-  id: SegmentId,
-  actions: InspectorActions,
-): void {
+/** The live numbers for a road, or null when the road no longer exists. */
+function segmentStats(doc: RoadDoc, net: Network, sim: SimWorld, id: SegmentId): string | null {
   const seg = doc.segment(id);
-  if (!seg) {
-    closeInspector();
-    return;
-  }
+  if (!seg) return null;
   const rt = roadProfile(seg.type, seg.lanes, seg.direction);
   const length = net.polylines.get(doc, id).length;
 
@@ -137,37 +166,61 @@ function renderSegment(
     }
   }
 
+  return grid([
+    [t('inspector.length'), `${meters(length)} m`],
+    [t('inspector.lanes'), seg.direction === 'both'
+      ? t('inspector.lanesTwoWay', { count: rt.lanes, perSide: travelLanes(rt, seg.direction) })
+      : t('inspector.lanesOneWay', { count: rt.lanes })],
+    [t('inspector.speed'), `${Math.round(rt.speedLimit * METERS_PER_UNIT * 3.6)} km/h`],
+    [t('inspector.meanSpeed'), speedCount ? `${Math.round((speedSum / speedCount) * METERS_PER_UNIT * 3.6)} km/h` : '—'],
+    [t('inspector.vehicles'), String(occupancy)],
+    [t('inspector.queue'), String(queued)],
+    [t('inspector.capacity'), t('inspector.capacityValue', { count: Math.round(capacity) })],
+    [t('inspector.volume'), String(sim.segmentVolume.get(id) ?? 0)],
+  ]);
+}
+
+function renderSegment(
+  doc: RoadDoc,
+  net: Network,
+  sim: SimWorld,
+  body: HTMLElement,
+  id: SegmentId,
+  actions: InspectorActions,
+): void {
+  const seg = doc.segment(id);
+  const stats = segmentStats(doc, net, sim, id);
+  if (!seg || stats === null) {
+    closeInspector();
+    return;
+  }
+  const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+  const length = net.polylines.get(doc, id).length;
+  setTitle(`${t('inspector.road')} · ${roadTypeName(rt)}`);
+
   const maxCurve = Math.max(20, Math.min(280, length * 0.65));
   const curveValue = seg.curve?.h ?? 0;
   const curvePosition = seg.curve?.t ?? 0.5;
+  // Reversing is meaningful only for a one-way road. On a two-way road the
+  // button used to turn it one-way A to B, which is what the direction select
+  // is for and not what "reverse" says.
+  const oneWay = seg.direction !== 'both';
 
   body.innerHTML =
-    card(t('inspector.class'), roadTypeName(rt)) +
-    grid([
-      [t('inspector.length'), `${meters(length)} m`],
-      [t('inspector.lanes'), seg.direction === 'both'
-        ? t('inspector.lanesTwoWay', { count: rt.lanes, perSide: travelLanes(rt, seg.direction) })
-        : t('inspector.lanesOneWay', { count: rt.lanes })],
-      [t('inspector.speed'), `${Math.round(rt.speedLimit * METERS_PER_UNIT * 3.6)} km/h`],
-      [t('inspector.vehicles'), String(occupancy)],
-      [t('inspector.meanSpeed'), speedCount ? `${Math.round((speedSum / speedCount) * METERS_PER_UNIT * 3.6)} km/h` : '—'],
-      [t('inspector.queue'), String(queued)],
-      [t('inspector.capacity'), t('inspector.capacityValue', { count: Math.round(capacity) })],
-      [t('inspector.volume'), String(sim.segmentVolume.get(id) ?? 0)],
-    ]) +
+    `<div id="inspectStats">${stats}</div>` +
     `<label class="inspect-select">${t('inspector.roadClass')} <select id="inspectClass">${ROAD_TYPES.map((type, index) => `<option value="${index}"${index === seg.type ? ' selected' : ''}>${roadTypeName(type)}</option>`).join('')}</select></label>` +
     `<label class="inspect-select">${t('inspector.direction')} <select id="inspectDirection">${directionOptions(seg.direction)}</select></label>` +
     `<label class="inspect-select">${t('inspector.structure')} <select id="inspectStructure">${ROAD_STRUCTURES.map((structure) => `<option value="${structure.id}"${structure.id === seg.structure ? ' selected' : ''}>${structureName(structure.id)}</option>`).join('')}</select></label>` +
     `<label class="inspect-select">${t('inspector.laneCount')} <select id="inspectLanes">${laneOptions(seg.direction, seg.lanes, rt.lanes)}</select></label>` +
-    `<label class="inspect-select">${t('inspector.curvature')} <input id="inspectCurve" type="range" min="${-maxCurve}" max="${maxCurve}" step="1" value="${Math.max(-maxCurve, Math.min(maxCurve, curveValue))}" /><output id="inspectCurveValue">${Math.round(curveValue)}</output></label>` +
-    `<label class="inspect-select">${t('inspector.curvePosition')} <input id="inspectCurvePosition" type="range" min="0.15" max="0.85" step="0.01" value="${curvePosition}"${seg.curve ? '' : ' disabled'} /><output id="inspectCurvePositionValue">${curvePosition.toFixed(2)}</output></label>` +
-    `<div class="inspect-actions">
-       <button id="inspectUpgrade"${seg.type >= ROAD_TYPES.length - 1 ? ' disabled' : ''}>${t('inspector.upgrade')}</button>
-       <button id="inspectReverse">${t('inspector.reverse')}</button>
-       <button id="inspectDuplicate" title="${t('inspector.duplicateHint')}">${t('inspector.duplicate')}</button>
-       <button id="inspectSplit">${t('inspector.splitMiddle')}</button>
-       <button id="inspectDelete" class="danger">${t('inspector.demolish')}</button>
-     </div>`;
+    `<label class="inspect-range"><span>${t('inspector.curvature')}</span><output id="inspectCurveValue">${curveText(curveValue)}</output><input id="inspectCurve" type="range" min="${-maxCurve}" max="${maxCurve}" step="1" value="${Math.max(-maxCurve, Math.min(maxCurve, curveValue))}" /></label>` +
+    `<label class="inspect-range"${seg.curve ? '' : ' data-disabled'}><span>${t('inspector.curvePosition')}</span><output id="inspectCurvePositionValue">${percent(curvePosition)}</output><input id="inspectCurvePosition" type="range" min="0.15" max="0.85" step="0.01" value="${curvePosition}"${seg.curve ? '' : ' disabled'} /></label>` +
+    `<div class="inspect-actions">` +
+    `<button type="button" id="inspectUpgrade"${seg.type >= ROAD_TYPES.length - 1 ? ' disabled' : ''}>${t('inspector.upgrade')}</button>` +
+    (oneWay ? `<button type="button" id="inspectReverse">${t('inspector.reverse')}</button>` : '') +
+    `<button type="button" id="inspectDuplicate" title="${t('inspector.duplicateHint')}">${t('inspector.duplicate')}</button>` +
+    `<button type="button" id="inspectSplit">${t('inspector.splitMiddle')}</button>` +
+    `<button type="button" id="inspectDelete" class="danger">${t('inspector.demolish')}</button>` +
+    `</div>`;
 
   const upgrade = document.getElementById('inspectUpgrade') as HTMLButtonElement | null;
   const remove = document.getElementById('inspectDelete') as HTMLButtonElement | null;
@@ -192,7 +245,7 @@ function renderSegment(
   if (split) split.onclick = () => actions.onSplit?.(id);
   if (curve) {
     curve.oninput = () => {
-      if (curveValueOutput) curveValueOutput.value = curve.value;
+      if (curveValueOutput) curveValueOutput.value = curveText(Number(curve.value));
     };
     curve.onchange = () => {
       const h = Number(curve.value);
@@ -201,7 +254,7 @@ function renderSegment(
   }
   if (curvePositionInput && seg.curve) {
     curvePositionInput.oninput = () => {
-      if (curvePositionOutput) curvePositionOutput.value = Number(curvePositionInput.value).toFixed(2);
+      if (curvePositionOutput) curvePositionOutput.value = percent(Number(curvePositionInput.value));
     };
     curvePositionInput.onchange = () => {
       actions.onSetCurve?.(id, { t: Number(curvePositionInput.value), h: seg.curve!.h });
@@ -210,26 +263,18 @@ function renderSegment(
   if (remove) remove.onclick = () => actions.onDelete(id);
 }
 
-function renderNode(
-  doc: RoadDoc,
-  net: Network,
-  sim: SimWorld,
-  body: HTMLElement,
-  id: NodeId,
-): void {
+/** The live numbers for a junction, or null when the node no longer exists. */
+function nodeStats(doc: RoadDoc, sim: SimWorld, id: NodeId): string | null {
   const node = doc.node(id);
-  if (!node) {
-    closeInspector();
-    return;
-  }
+  if (!node) return null;
 
   const junction = sim.graph.junctions.get(id);
   const controller = sim.controller(id);
   const control = !junction
     ? t('control.disconnected')
     : junction.signalised
-      ? t('control.signalised')
-      : controlLabel(node.control);
+      ? t('control.signal')
+      : t(`control.${node.control}`);
   let active = 0;
   let queued = 0;
   let speedSum = 0;
@@ -252,34 +297,51 @@ function renderNode(
   const volume = node.incident.reduce((total, segment) => total + (sim.segmentVolume.get(segment) ?? 0), 0);
 
   const rows: [string, string][] = [
-    [t('inspector.connections'), String(node.incident.length)],
     [t('inspector.control'), control],
+    [t('inspector.connections'), String(node.incident.length)],
     [t('inspector.movements'), String(junction?.connectors.length ?? 0)],
     [t('inspector.vehicles'), String(active)],
     [t('inspector.queue'), String(queued)],
     [t('inspector.meanSpeed'), speedCount ? `${Math.round((speedSum / speedCount) * METERS_PER_UNIT * 3.6)} km/h` : '—'],
     [t('inspector.capacity'), t('inspector.capacityValue', { count: Math.round(capacity) })],
     [t('inspector.volume'), String(volume)],
-    ['X', String(Math.round(node.x))],
-    ['Y', String(Math.round(node.y))],
   ];
 
   if (controller && junction?.signalised) {
     rows.push([t('inspector.cycle'), `${controller.plan.cycle.toFixed(0)} s`]);
     rows.push([
       t('inspector.phase'),
-      `${controller.stageIndex + 1}/${controller.plan.stages.length} ${phaseLabel(controller.sub)}`,
+      `${controller.stageIndex + 1}/${controller.plan.stages.length} · ${phaseLabel(controller.sub)}`,
     ]);
   }
 
-  let approaches = '';
-  if (controller && junction) {
-    const lines = junction.groups.map((g) => {
+  // Each signal group as a lamp: the colour is read faster than the word, and
+  // the word stays for anyone who cannot tell the lamps apart.
+  let lamps = '';
+  if (controller && junction && junction.groups.length) {
+    lamps = `<div class="signal-chips">${junction.groups.map((g) => {
       const state = signalStateFor(controller, g.id);
-      return `<div class="inspect-card"><span>${t('inspector.group', { id: g.id })}</span><strong>${signalLabel(state)}</strong></div>`;
-    });
-    approaches = `<div class="inspect-grid">${lines.join('')}</div>`;
+      return `<span class="signal-chip" data-state="${state}"><i></i>${t('inspector.group', { id: g.id + 1 })} · ${signalLabel(state)}</span>`;
+    }).join('')}</div>`;
   }
+  return grid(rows) + lamps;
+}
+
+function renderNode(
+  doc: RoadDoc,
+  net: Network,
+  sim: SimWorld,
+  body: HTMLElement,
+  id: NodeId,
+): void {
+  const node = doc.node(id);
+  const stats = nodeStats(doc, sim, id);
+  if (!node || stats === null) {
+    closeInspector();
+    return;
+  }
+  setTitle(node.incident.length >= 3 ? t('inspector.junction') : t('inspector.node'));
+  const junction = sim.graph.junctions.get(id);
 
   const mouths = node.incident
     .map((seg) => `${meters(net.mouthDistance(seg, id))} m`)
@@ -297,8 +359,8 @@ function renderNode(
         `<strong>${t('inspector.impossibleGap', { angle: ((gap * 180) / Math.PI).toFixed(1) })}</strong>` +
         `<span>${t('inspector.impossibleBody')}</span>` +
         `<div class="inspect-actions">` +
-        (node.incident.length === 2 ? `<button id="inspectFixJoin">${t('inspector.joinLegs')}</button>` : '') +
-        `<button id="inspectFixRemove">${t('inspector.removeNode')}</button>` +
+        (node.incident.length === 2 ? `<button type="button" id="inspectFixJoin">${t('inspector.joinLegs')}</button>` : '') +
+        `<button type="button" id="inspectFixRemove">${t('inspector.removeNode')}</button>` +
         `</div></div>`;
 
   // The offer is a promise that the two legs read as ONE road, so it is gated on
@@ -313,13 +375,14 @@ function renderNode(
   const alignedLegs =
     node.incident.length === 2 && surfaceMode(doc, net.polylines, id) === 'none';
   const joinOffer = alignedLegs
-    ? `<div class="inspect-actions"><button id="inspectJoin">${t('inspector.joinAligned')}</button></div>`
+    ? `<div class="inspect-actions"><button type="button" id="inspectJoin">${t('inspector.joinAligned')}</button></div>`
     : '';
 
-  body.innerHTML = grid(rows) + impossible + approaches + card(t('inspector.mouths'), mouths || '—') +
+  body.innerHTML = `<div id="inspectStats">${stats}</div>` + impossible +
     `<label class="inspect-select">${t('inspector.controlSelect')} <select id="inspectControl">${controlOptions(node.control)}</select></label>` +
     joinOffer +
-    movementControls(doc, junction, node.blockedMovements);
+    movementControls(doc, junction, node.blockedMovements) +
+    `<p class="inspect-note">${t('inspector.mouths')}: ${mouths || '—'}</p>`;
 
   const fixJoin = document.getElementById('inspectFixJoin') as HTMLButtonElement | null;
   if (fixJoin) fixJoin.onclick = () => actionsForNode().onJoin?.(id);
@@ -419,15 +482,25 @@ function controlOptions(value: JunctionControl): string {
     .join('');
 }
 
-const controlLabel = (value: JunctionControl): string => t(`control.${value}`).toLowerCase();
-
 const signalLabel = (value: string): string => t(`signal.${value}`);
 
-const phaseLabel = (value: string): string => t(`phase.${value}`).toUpperCase();
+const phaseLabel = (value: string): string => t(`phase.${value}`);
 
 const turnLabel = (value: string): string => t(`turn.${value}`);
 
 const meters = (units: number): string => (units * METERS_PER_UNIT).toFixed(1);
+
+/** A curve's bulge: how far the arc leaves the straight line, signed by side. */
+const curveText = (units: number): string =>
+  Math.abs(units) < 0.5 ? '0 m' : `${units > 0 ? '+' : '−'}${Math.round(Math.abs(units) * METERS_PER_UNIT)} m`;
+
+const percent = (fraction: number): string => `${Math.round(fraction * 100)}%`;
+
+/** Names what is selected in the panel's own heading. */
+function setTitle(value: string): void {
+  const title = document.getElementById('inspectorTitle');
+  if (title) title.textContent = value;
+}
 
 const card = (label: string, value: string): string =>
   `<div class="inspect-card"><span>${label}</span><strong>${value}</strong></div>`;

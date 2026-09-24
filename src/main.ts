@@ -1614,8 +1614,9 @@ function frame(now: number): void {
   if (uiClock > 0.4) {
     uiClock = 0;
     updateStatus();
-    const panel = document.getElementById('inspector');
-    if (panel && !panel.contains(document.activeElement)) refreshInspector();
+    // Safe while the player is using the panel: an unchanged selection only
+    // rewrites the statistics block, never the control under the pointer.
+    refreshInspector();
   }
 
   // Keep animating while anything is moving; otherwise settle.

@@ -89,7 +89,7 @@ export const PT_BR: Dictionary = {
   'inspector.close': 'Fechar inspetor',
   'inspector.road': 'VIA',
   'inspector.node': 'NÓ',
-  'inspector.class': 'CLASSE',
+  'inspector.junction': 'CRUZAMENTO',
   'inspector.length': 'EXTENSÃO',
   'inspector.speed': 'VELOCIDADE',
   'inspector.lanes': 'FAIXAS',
@@ -124,7 +124,7 @@ export const PT_BR: Dictionary = {
   'inspector.cycle': 'CICLO',
   'inspector.phase': 'FASE',
   'inspector.group': 'GRUPO {id}',
-  'inspector.mouths': 'RECUO DAS BOCAS',
+  'inspector.mouths': 'Recuo por via',
   'inspector.reverse': 'Inverter mão única',
   'inspector.duplicateHint': 'Duplicar via (Ctrl/Cmd+D)',
   'inspector.splitMiddle': 'Dividir no meio',
@@ -157,8 +157,7 @@ export const PT_BR: Dictionary = {
   'control.stop': 'Parada obrigatória',
   'control.yield': 'Dê a preferência',
   'control.none': 'Sem controle',
-  'control.disconnected': 'desconectado',
-  'control.signalised': 'semáforo',
+  'control.disconnected': 'Desconectado',
 
   'hint.road': 'Arraste para construir · Roda: zoom · Botão direito: câmera',
   'hint.road.tunnel':
