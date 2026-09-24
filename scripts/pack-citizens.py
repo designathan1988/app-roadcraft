@@ -90,7 +90,8 @@ for model in MANIFEST['models']:
             accessors.add(primitive['indices'])
     for skin in document.get('skins', []):
         accessors.add(skin['inverseBindMatrices'])
-    for animation in document['animations']:
+    # convert-citizens.mjs no longer exports clips; a GLB from before it may.
+    for animation in document.get('animations', []):
         for sampler in animation['samplers']:
             accessors.update([sampler['input'], sampler['output']])
     ordered = sorted(accessors)
@@ -101,7 +102,7 @@ for model in MANIFEST['models']:
             primitive['indices'] = accessor_map[primitive['indices']]
     for skin in document.get('skins', []):
         skin['inverseBindMatrices'] = accessor_map[skin['inverseBindMatrices']]
-    for animation in document['animations']:
+    for animation in document.get('animations', []):
         for sampler in animation['samplers']:
             sampler.update(input=accessor_map[sampler['input']], output=accessor_map[sampler['output']])
     document['accessors'] = [document['accessors'][index] for index in ordered]
@@ -145,7 +146,7 @@ for model in MANIFEST['models']:
                     'bytes': len(glb), 'sha256': hashlib.sha256(glb).hexdigest(),
                     'verticesBefore': before_vertices, 'vertices': after_vertices,
                     'primitivesBefore': before_primitives, 'primitives': after_primitives,
-                    'clips': [clip['name'] for clip in document['animations']]})
+                    'clips': [clip['name'] for clip in document.get('animations', [])]})
     print(f"{model['id']}: {before_vertices}->{after_vertices} vertices, "
           f"{before_primitives}->{after_primitives} groups, {len(glb)//1024} KiB", flush=True)
 

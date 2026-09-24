@@ -23,10 +23,11 @@ import {
 
 export { CITIZEN_MODELS } from './citizenCatalog';
 /*
- * Nothing the citizen GLBs animate is played: their clips are a Quaternius
- * capture converted onto this skeleton, and that conversion is what hunched
- * every walker. A pedestrian plays Rocketbox captures (`WALK`, `LIBRARY`), and
- * a person in or on a vehicle an IK pose (`RIDER_CLIPS`).
+ * The citizen GLBs carry no clips. The Quaternius capture once converted onto
+ * this skeleton is what hunched every walker, and nothing played it, so it was
+ * stripped (`scripts/strip-citizen-animations.mjs`). A pedestrian plays
+ * Rocketbox captures (`WALK`, `LIBRARY`), and a person in or on a vehicle an IK
+ * pose (`RIDER_CLIPS`).
  */
 /** The Rocketbox neutral walk of the body's sex, exactly as captured. */
 const WALK = 0;

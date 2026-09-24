@@ -7,16 +7,21 @@ are recorded in `public/models/citizens/catalog.json`.
 
 The rigged character meshes and clothing come from the [Microsoft Rocketbox
 Avatar Library](https://github.com/microsoft/Microsoft-Rocketbox), licensed
-under MIT. The walk, jog and idle clips come from the [Quaternius Universal
-Animation Library](https://quaternius.com/packs/universalanimationlibrary.html),
-licensed CC0. Their license texts are included beside the GLB files and in the
-shipped JavaScript bundle's scene metadata. The
-Rocketbox FBX rigs were retargeted to those clips and exported as GLB. No asset
+under MIT. The Rocketbox FBX rigs were retargeted to clips from the [Quaternius
+Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html),
+licensed CC0, and exported as GLB. Their license texts are included beside the
+GLB files and in the shipped JavaScript bundle's scene metadata. No asset
 server is contacted at runtime.
 
+The GLBs carry no animation clips. Pedestrians play the Rocketbox captures in
+`src/render/motion/` and people in or on vehicles the IK poses in
+`src/render/riderPoses.ts`; the retargeted Quaternius clips were never played
+and were stripped by `scripts/strip-citizen-animations.mjs`, which roughly
+halved the download (see [performance.md](performance.md#loading-the-crowd)).
+
 `src/render/riggedCitizens.ts` requests only models that enter the camera view,
-with at most three concurrent loads. It bakes each loaded rig's clips into bone
-palettes once. The dynamic palette begins with 16 rows per model and grows only
+with at most three concurrent loads. It bakes the Rocketbox clips and the rider
+poses onto each loaded rig, into bone palettes, once. The dynamic palette begins with 16 rows per model and grows only
 when needed. Visible citizens share instanced meshes and upload only
 their current bone row per frame. Each pedestrian's animation phase advances
 with its actual travelled distance; idle, walking and jogging blend smoothly.
@@ -38,16 +43,21 @@ existing geometry. Distant citizens do not render a separate shadow pass.
    Set `CHROME_PATH` if an installed Playwright browser is unavailable.
    Set `ROADCRAFT_ANIMATION_SOURCE` to the licensed Quaternius
    `UAL1_Standard.glb`, then run `node scripts/convert-citizens.mjs <source-name>`
-   for each source name in that directory's `source-manifest.json`.
+   for each source name in that directory's `source-manifest.json`. The clips
+   pose each rig (its exported rest pose is the last frame they leave) but are
+   not exported.
 3. Run `python scripts/pack-citizens.py` with numpy and Pillow. It welds identical
    complete vertices, combines matching material groups and compresses textures.
    It preserves every original high-detail triangle and skin weight.
 4. Copy only files listed by the generated `packed/catalog.json` into
    `public/models/citizens/`, including the catalog itself. Regenerate the
    TypeScript roster from those IDs. Do not copy rejected working models.
-5. Run `node scripts/citizen-lods.mjs` and the asset tests, then build and run
-   `node scripts/verify-citizens.mjs` against the production bundle. The latter
-   exercises all 80 models and repeated instances in the actual game.
+5. Run `node scripts/citizen-lods.mjs`, then
+   `node scripts/strip-citizen-animations.mjs`: it removes clips from a GLB
+   exported by an older converter, keeps the catalog's hashes in step, and
+   changes nothing on a file that has none. Then run the asset tests, build and
+   run `node scripts/verify-citizens.mjs` against the production bundle. The
+   latter exercises all 80 models and repeated instances in the actual game.
 
 The build imports the reviewed GLBs through Vite asset URLs. Unreferenced
 legacy files under `public/` are not included in the production output.

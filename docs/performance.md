@@ -96,6 +96,16 @@ transfer of a capture onto a body tracks world rotations top-down instead of
 asking three for each parent's, 2.5 to 4 times faster for the same pose (to
 0.2 mm). The 95th-percentile frame is 16.8 ms.
 
+The bodies are also a download: 80 GLBs, each fetched when a pedestrian first
+needs it. Every one carried the eight Quaternius clips its conversion had
+retargeted onto it, which nothing plays (pedestrians play the Rocketbox
+captures, riders IK poses). `scripts/strip-citizen-animations.mjs` removed
+them with every accessor and bufferView only they used: the roster went from
+123 730 396 bytes (118.0 MiB) to 65 235 196 (62.2 MiB), 47% less (36.5 to
+59.1% per body), with every mesh, skin, distant LOD and texture unchanged to
+the byte. `tests/render/citizenAssets.spec.ts` fails if a clip, or data nothing
+references, comes back.
+
 ### Frame
 
 * **Instancing** for everything repeated — see

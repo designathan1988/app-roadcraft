@@ -1,7 +1,16 @@
 /* global window, document, atob, btoa, requestAnimationFrame */
-/** Convert one pinned Rocketbox source with retargeted Quaternius clips.
+/** Convert one pinned Rocketbox source, posed by the retargeted Quaternius clips.
  * Working files and motion contact-sheet frames are written to the temp cache.
  * Run fetch-citizens.py first. No city state is read or modified.
+ *
+ * The GLB it writes carries NO animation clips. Nothing in the game played
+ * them (pedestrians play the Rocketbox captures in src/render/motion/, riders
+ * the IK poses in src/render/riderPoses.ts), and they were 36.5 to 59.1% of
+ * every roster file. The clips are still retargeted here, because the preview
+ * frames use them and because the exported rest pose is the one they leave.
+ * scripts/strip-citizen-animations.mjs removes clips from a GLB exported
+ * before this change; it is idempotent, so running it over the roster after
+ * any rebuild is always safe.
  */
 
 import { chromium } from '@playwright/test';
@@ -104,21 +113,22 @@ links.push({b,src,rest:b.quaternion.clone(),correction:src.getWorldQuaternion(ne
 
 
  const {GLTFExporter}=await import('/node_modules/three/examples/jsm/exporters/GLTFExporter.js');
- const output=[];
+ // The clips are played through exactly as they were when they were exported,
+ // and no longer exported. What this pass leaves behind IS exported: the pose
+ // it ends in becomes every bone's node transform, riggedCitizens.ts puts a
+ // body back to those transforms before every clip it bakes, and the rider
+ // poses aim bones from them. Skipping the pass would change that rest pose.
  for(const clip of library.animations){
   mixer.stopAllAction();mixer.clipAction(clip).play();
-  const frames=Math.ceil(clip.duration*30),times=[],positions=[],rotations=links.map(()=>[]);
-  for(let i=0;i<=frames;i++){
-    const t=i*clip.duration/frames;window.animateAt(t);times.push(t);root.position.toArray(positions,positions.length);
-    links.forEach(({b},j)=>b.quaternion.toArray(rotations[j],rotations[j].length));
-  }
-  const tracks=[new T.VectorKeyframeTrack(root.name+'.position',times,positions)];
-  links.forEach(({b},j)=>tracks.push(new T.QuaternionKeyframeTrack(b.name+'.quaternion',times,rotations[j])));
-  output.push(new T.AnimationClip(clip.name,clip.duration,tracks));
+  const frames=Math.ceil(clip.duration*30);
+  for(let i=0;i<=frames;i++)window.animateAt(i*clip.duration/frames);
  }
  mixer.stopAllAction();
  rig.scale.setScalar(.01);rig.updateMatrixWorld(true);
- const binary=await new GLTFExporter().parseAsync(rig,{binary:true,animations:output});
+ // `trs` is what the exporter forced while it had clips to write: nodes stored
+ // as translation, rotation and scale, as every roster GLB has them, rather
+ // than as matrices the loader would decompose again.
+ const binary=await new GLTFExporter().parseAsync(rig,{binary:true,trs:true});
  const bytes=new Uint8Array(binary);let encoded='';for(let start=0;start<bytes.length;start+=32768)encoded+=String.fromCharCode(...bytes.subarray(start,start+32768));window.exported=btoa(encoded);
  rig.scale.setScalar(1);mixer.clipAction(library.animations.find(c=>c.name==='Walk_Loop')).play();window.animateAt(.4);
 
