@@ -6,18 +6,21 @@ import { CITIZEN_MODELS } from '@render/citizenCatalog';
 
 interface Accessor { bufferView: number; byteOffset?: number; componentType: number; count: number; type: string }
 interface View { byteOffset?: number; byteLength: number; byteStride?: number }
-interface Primitive { attributes: Record<string, number>; indices: number; extras?: { roadcraftLods?: number[] } }
+interface Primitive {
+  attributes: Record<string, number>; indices: number;
+  targets?: Record<string, number>[]; extras?: { roadcraftLods?: number[] };
+}
 interface Asset {
   bufferViews: View[]; accessors: Accessor[]; meshes: { primitives: Primitive[] }[];
   nodes: { name?: string; mesh?: number; skin?: number }[];
-  skins: { joints: number[] }[];
-  animations: { name: string; channels: { sampler: number; target: { node: number; path: string } }[];
-    samplers: { input: number; output: number }[] }[];
+  skins: { joints: number[]; inverseBindMatrices?: number }[];
+  images?: { bufferView?: number }[];
+  animations?: unknown[];
 }
 const widths: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
 const root = resolve('public/models/citizens');
 const catalog = JSON.parse(readFileSync(resolve(root, 'catalog.json'), 'utf8')) as {
-  models: { id: string; sha256: string; vertices: number; verticesBefore: number }[];
+  models: { id: string; sha256: string; vertices: number; verticesBefore: number; clips: string[] }[];
 };
 
 function read(name: string) {
@@ -82,27 +85,28 @@ describe('rigged citizen catalog', () => {
     }
   });
 
-  it('contains actual leg movement in both walk clips for all 80 rigs', () => {
+  // Nothing plays the clips the conversion once exported: pedestrians play the
+  // Rocketbox captures in src/render/motion/, riders IK poses. They were
+  // stripped by scripts/strip-citizen-animations.mjs, and must not come back,
+  // nor leave data behind that nothing reads.
+  it('carries no animation clips, and no accessor or bufferView that nothing uses', () => {
     for (const name of CITIZEN_MODELS) {
-      const { data, values } = read(name);
-      for (const clipName of ['Walk_Loop', 'Walk_Formal_Loop']) {
-        const clip = data.animations.find(clip => clip.name === clipName)!;
-        expect(clip, name).toBeDefined();
-        for (const leg of ['Bip01_L_Thigh', 'Bip01_R_Thigh']) {
-          const bone = data.nodes.findIndex(node => node.name === leg);
-          const channel = clip.channels.find(channel => channel.target.node === bone && channel.target.path === 'rotation');
-          expect(channel, `${name}:${leg}`).toBeDefined();
-          const rotations = values(clip.samplers[channel!.sampler]!.output);
-          let largest = 0;
-          for (let i = 4; i < rotations.length; i += 4) {
-            const dot = rotations[0]! * rotations[i]! + rotations[1]! * rotations[i + 1]! +
-              rotations[2]! * rotations[i + 2]! + rotations[3]! * rotations[i + 3]!;
-            largest = Math.max(largest, 1 - Math.abs(dot));
-          }
-          expect(largest, `${name}:${clipName}:${leg}`).toBeGreaterThan(0.01);
-        }
+      const { data } = read(name);
+      expect(data.animations, name).toBeUndefined();
+      const accessors = new Set<number>();
+      for (const mesh of data.meshes) for (const primitive of mesh.primitives) {
+        for (const index of Object.values(primitive.attributes)) accessors.add(index);
+        accessors.add(primitive.indices);
+        for (const target of primitive.targets ?? []) for (const index of Object.values(target)) accessors.add(index);
+        for (const index of primitive.extras?.roadcraftLods ?? []) accessors.add(index);
       }
+      for (const skin of data.skins) if (skin.inverseBindMatrices !== undefined) accessors.add(skin.inverseBindMatrices);
+      expect([...accessors].sort((a, b) => a - b), name).toEqual(data.accessors.map((_, index) => index));
+      const views = new Set(data.accessors.map(accessor => accessor.bufferView));
+      for (const image of data.images ?? []) if (image.bufferView !== undefined) views.add(image.bufferView);
+      expect([...views].sort((a, b) => a - b), name).toEqual(data.bufferViews.map((_, index) => index));
     }
+    for (const model of catalog.models) expect(model.clips, model.id).toEqual([]);
   });
 
   it('provides valid smaller distant meshes without replacing full detail', () => {

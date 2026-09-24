@@ -94,6 +94,7 @@ that `world` and `sim` never call `Math.random` (invariant 5, which
 | pedestrian pace, parties, steering, destinations | `src/sim/peds/behaviour.ts` | [docs/architecture.md](docs/architecture.md) |
 | what pedestrians do in places — benches, stopping to look, talking | `src/sim/peds/activities.ts` | [docs/architecture.md](docs/architecture.md) |
 | how a pedestrian's body moves — walk, start, stop, turns, sit, talk | `src/render/riggedCitizens.ts` + `src/render/citizenWalk.ts` | `scripts/extract-rocketbox-clips.mjs` |
+| the citizen model files, their catalog, hashes and download size | `public/models/citizens/`, rebuilt by `scripts/convert-citizens.mjs` → `pack-citizens.py` → `citizen-lods.mjs` → `strip-citizen-animations.mjs` | [docs/pedestrians.md](docs/pedestrians.md) |
 | right of way, gap acceptance, deadlock | `src/sim/intersections/admission.ts` | [docs/architecture.md](docs/architecture.md) |
 | the path a turn takes through a junction | `src/world/turnPaths.ts` | `tests/world/connectorFootprints.spec.ts` |
 | cars stopping at the kerb, doors, people getting in and out | `src/sim/vehicles/kerbStops.ts` | `tests/sim/kerbStops.spec.ts` |
@@ -308,16 +309,18 @@ download is not available.
 * **Pedestrian clips are Rocketbox captures, transferred, not retargeted.**
   `scripts/extract-rocketbox-clips.mjs` writes `src/render/motion/rocketbox*.json`
   as world rotations relative to the walk avatar's bind pose — measured equal
-  to the user's walk package to 0.6°. Do not play the Quaternius clips inside
-  the citizen GLBs for a pedestrian; their conversion is what hunched them.
+  to the user's walk package to 0.6°. The Quaternius clips the citizen GLBs
+  used to carry were what hunched them; nothing played them, and
+  `scripts/strip-citizen-animations.mjs` removed them (47% of the download).
+  `tests/render/citizenAssets.spec.ts` fails if a clip comes back.
 * **A signal stage never holds two movements whose cars could meet.**
   `signals/plan.ts` groups approaches from the conflict matrix, so a crossroads
   of two-way streets runs one approach at a time. Pairing opposing approaches
   again (for capacity) brings back the permissive left turn players reported
   as a fault; `tests/sim/fourWay.spec.ts` will fail.
 * **A seated person must fit the seat's room.** Car-seat poses are IK poses
-  sized by `seatFitScale` against measured extents; the chair clips inside the
-  citizen GLBs put heads through roofs. If you change a body profile or a pose,
+  sized by `seatFitScale` against measured extents; the chair clips the citizen
+  GLBs used to carry put heads through roofs. If you change a body profile or a pose,
   rerun `scripts/measure-seated-poses.mjs` (against `npm run dev`) and `occupantFit.spec.ts`.
 * **A lane change occupies two lanes.** The transfer moves the occupancy index
   at once; the body slides across over the next second. `Vehicle.shadow`
