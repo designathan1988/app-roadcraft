@@ -28,13 +28,24 @@ const PORT = Number(process.env.ROADCRAFT_VISUAL_PORT ?? 5199);
 const WRITE_SHOTS = process.argv.includes('--shots');
 const SHOT_DIR = path.resolve('docs', 'screenshots');
 
-/** Software rendering is the fallback when no GPU is exposed to the browser. */
-const LAUNCH_ARGS = [
-  '--use-gl=angle',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-  '--no-sandbox',
-];
+/**
+ * The GPU by default. This used to force SwiftShader everywhere, which
+ * rasterises the whole scene on the CPU: on a machine with a perfectly good
+ * graphics card the verifier's browser sat at two thirds of a 24-thread CPU
+ * while the card idled, and the game being played beside it stalled.
+ * Software rendering is now opt-in, for a machine with no GPU exposed to the
+ * browser (a CI runner): `ROADCRAFT_SOFTWARE_GL=1`.
+ */
+const SOFTWARE_GL = process.env.ROADCRAFT_SOFTWARE_GL === '1';
+const LAUNCH_ARGS = SOFTWARE_GL
+  ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox']
+  : [
+      '--use-gl=angle',
+      `--use-angle=${process.platform === 'win32' ? 'd3d11' : process.platform === 'darwin' ? 'metal' : 'vulkan'}`,
+      '--enable-gpu',
+      '--ignore-gpu-blocklist',
+      '--no-sandbox',
+    ];
 
 /**
  * Each scenario builds a document from scratch through the same public API the
@@ -310,7 +321,11 @@ function fail(message) {
 
 const server = await preview({ preview: { port: PORT, strictPort: true } });
 const browser = await chromium.launch({
-  ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
+  // The installed Chrome unless told otherwise: it drives the real GPU, and it
+  // does not depend on Playwright's own download being present.
+  ...(process.env.CHROME_PATH
+    ? { executablePath: process.env.CHROME_PATH }
+    : SOFTWARE_GL ? {} : { channel: 'chrome' }),
   args: LAUNCH_ARGS,
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });

@@ -11,10 +11,18 @@ const port = Number(process.env.ROADCRAFT_CITIZEN_PORT ?? 5202);
 const profiling = process.argv.includes('--profile');
 const benchmarkOnly = process.argv.includes('--benchmark-only') || profiling;
 const server = await preview({ preview: { port, strictPort: true } });
+// The installed Chrome on the real GPU, as `verify-visual.mjs` does: Playwright's
+// headless shell with no GPU flags rasterises on the CPU. Software rendering
+// only when asked for (a machine with no GPU exposed to the browser).
+const SOFTWARE_GL = process.env.ROADCRAFT_SOFTWARE_GL === '1' || process.env.ROADCRAFT_SOFTWARE_RENDERER === '1';
+const ANGLE = process.platform === 'win32' ? 'd3d11' : process.platform === 'darwin' ? 'metal' : 'vulkan';
 const browser = await chromium.launch({
-  ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
-  args: process.env.ROADCRAFT_SOFTWARE_RENDERER === '1'
-    ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [],
+  ...(process.env.CHROME_PATH
+    ? { executablePath: process.env.CHROME_PATH }
+    : SOFTWARE_GL ? {} : { channel: 'chrome' }),
+  args: SOFTWARE_GL
+    ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+    : ['--use-gl=angle', `--use-angle=${ANGLE}`, '--enable-gpu', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];

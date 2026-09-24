@@ -35,6 +35,11 @@ export default defineConfig({
     // all, and under the full suite with coverage beside them they took up to
     // seven times as long as alone and failed on a clock, not on a defect.
     testTimeout: 180_000,
+    // A CAP on the workers, not the default of one per hardware thread. Each
+    // worker can be simulating a whole map; on a 24-thread machine the default
+    // started 23 of them per run, and a few runs side by side froze the
+    // computer the game is played on. Raise it with VITEST_MAX_WORKERS.
+    maxWorkers: Number(process.env.VITEST_MAX_WORKERS ?? 6),
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

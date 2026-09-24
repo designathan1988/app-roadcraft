@@ -227,8 +227,16 @@ npm run screens          # verify:visual, and write docs/screenshots/*.jpg
 `npm run check` must be green before anything is considered done. It is fast
 (seconds). `npm run verify:visual` is the one that catches what unit tests
 cannot: a scene that does not boot, a surface under the terrain, a non-finite
-vertex, a page error. It needs a browser; set `CHROME_PATH` if Playwright's own
-download is not available.
+vertex, a page error. It drives the installed Chrome on the real GPU (set
+`CHROME_PATH` to use another); `ROADCRAFT_SOFTWARE_GL=1` falls back to
+SwiftShader for a machine with no GPU, which rasterises on the CPU and is
+many times slower.
+
+**Never saturate the machine.** The game is played on the same computer the
+tests run on. `vitest` is capped at 6 workers (`VITEST_MAX_WORKERS`), because
+each worker may be simulating a whole map; run one heavy job at a time (a full
+suite, a build, a browser harness), prefer the targeted spec files, and stop
+dev servers and browsers as soon as a check is done.
 
 ---
 
