@@ -33,6 +33,7 @@ import { History, restoreInto } from '@editor/history';
 import { Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
+import { initChrome } from '@ui/chrome';
 import { LANGUAGES, initLanguage, language, onLanguageChange, plural, setLanguage, t } from '@ui/i18n';
 import {
   nodeCountLabel,
@@ -1025,6 +1026,9 @@ window.addEventListener('keydown', (e) => {
 
   const digit = Number(e.key);
   if (digit >= 1 && digit <= ROAD_TYPES.length) {
+    // The class palette is shown only with the road tool, so choosing a class
+    // from another tool also picks up the tool that draws it.
+    if (tool !== 'road') setTool('road');
     selectRoadType(digit - 1);
     return;
   }
@@ -1191,9 +1195,13 @@ function setTool(next: Tool): void {
     closeInspector();
   }
   canvas.dataset['tool'] = next;
+  // Each palette is shown only with the tool it configures: the road classes
+  // used to stay on screen for upgrade, move, bulldoze and the rest, where
+  // they did nothing but cover the map.
   const terrainActive = next === 'terrain';
-  roadPalette?.classList.toggle('hidden', terrainActive);
-  roadPalette?.setAttribute('aria-hidden', String(terrainActive));
+  const roadActive = next === 'road';
+  roadPalette?.classList.toggle('hidden', !roadActive);
+  roadPalette?.setAttribute('aria-hidden', String(!roadActive));
   terrainPalette.classList.toggle('hidden', !terrainActive);
   terrainPalette.setAttribute('aria-hidden', String(!terrainActive));
   updateHint();
@@ -1270,6 +1278,8 @@ congestionButton.onclick = () => {
   requestDraw();
 };
 congestionButton.classList.toggle('active', congestionOverlay);
+congestionButton.setAttribute('aria-pressed', String(congestionOverlay));
+initChrome(requestDraw);
 
 (document.getElementById('newMap') as HTMLButtonElement).onclick = () => {
   if (!window.confirm(t('confirm.newMap'))) return;

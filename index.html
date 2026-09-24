@@ -66,18 +66,22 @@
       <button class="tool" data-tool="inspect" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></span><span data-i18n="tool.inspect">Inspect</span></button>
     </section>
 
-    <section class="simulation-controls glass" data-i18n-label="sim.label" aria-label="Simulation controls">
-      <div class="panel-title"><span data-i18n="sim.title">SIMULATION</span><button id="congestionToggle" class="tiny-button" type="button" data-i18n-label="sim.congestion" aria-label="Toggle congestion map" aria-pressed="false">≈</button></div>
-      <div class="speed-controls" role="group" data-i18n-label="sim.speed" aria-label="Simulation speed">
-        <button type="button" data-speed="0" data-i18n="sim.pause">Pause</button><button type="button" data-speed="1" class="active">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button>
+    <section class="simulation-controls glass" data-panel="sim" data-collapsed-narrow data-i18n-label="sim.label" aria-label="Simulation controls">
+      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="simBody"><span data-i18n="sim.title">SIMULATION</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>
+      <div class="panel-body" id="simBody">
+        <div class="speed-controls" role="group" data-i18n-label="sim.speed" aria-label="Simulation speed">
+          <button type="button" data-speed="0" data-i18n="sim.pause">Pause</button><button type="button" data-speed="1" class="active">1×</button><button type="button" data-speed="2">2×</button><button type="button" data-speed="4">4×</button>
+        </div>
+        <label class="density-control"><span data-i18n="sim.traffic">Traffic</span> <input id="trafficIntensity" type="range" min="0" max="200" value="100" step="10" /><output id="trafficIntensityValue">100%</output></label>
+        <label class="density-control"><span data-i18n="sim.people">People</span> <input id="pedIntensity" type="range" min="0" max="200" value="100" step="10" /><output id="pedIntensityValue">100%</output></label>
+        <label class="density-control"><span data-i18n="sim.demand">Demand</span> <select id="demandLevel" class="themed-select"><option value="0.55" data-i18n="sim.demand.low">Low</option><option value="1" selected data-i18n="sim.demand.normal">Normal</option><option value="1.55" data-i18n="sim.demand.peak">Peak</option></select></label>
+        <button id="congestionToggle" class="toggle-row" type="button" data-i18n-title="sim.congestion" title="Colour the roads by congestion" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16c3-4 5-4 8 0s5 4 8 0"/><path d="M3 10c3-4 5-4 8 0s5 4 8 0"/></svg><span data-i18n="sim.congestionLabel">Congestion map</span><i class="switch" aria-hidden="true"></i></button>
       </div>
-      <label class="density-control"><span data-i18n="sim.traffic">Traffic</span> <input id="trafficIntensity" type="range" min="0" max="200" value="100" step="10" /><output id="trafficIntensityValue">100%</output></label>
-      <label class="density-control"><span data-i18n="sim.people">People</span> <input id="pedIntensity" type="range" min="0" max="200" value="100" step="10" /><output id="pedIntensityValue">100%</output></label>
-      <label class="density-control"><span data-i18n="sim.demand">Demand</span> <select id="demandLevel"><option value="0.55" data-i18n="sim.demand.low">Low</option><option value="1" selected data-i18n="sim.demand.normal">Normal</option><option value="1.55" data-i18n="sim.demand.peak">Peak</option></select></label>
     </section>
 
-    <section class="road-palette glass" data-i18n-label="palette.label" aria-label="Road classes">
-      <div class="panel-title"><span data-i18n="palette.title">ROAD CLASS</span><kbd>1–4</kbd></div>
+    <section class="road-palette glass" data-panel="palette" data-i18n-label="palette.label" aria-label="Road classes">
+      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="paletteBody"><span data-i18n="palette.title">ROAD CLASS</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><kbd>1–4</kbd></div>
+      <div class="panel-body" id="paletteBody">
       <div class="alignment-modes" role="group" data-i18n-label="palette.alignment" aria-label="Alignment">
         <button type="button" class="alignment-mode active" data-alignment="straight" aria-pressed="true" data-i18n="palette.alignment.straight">Straight</button>
         <button type="button" class="alignment-mode" data-alignment="curve" aria-pressed="false" data-i18n="palette.alignment.curve">Curve</button>
@@ -89,10 +93,12 @@
         <button type="button" class="structure-mode" data-structure="tunnel" aria-pressed="false" data-i18n="structure.tunnel" data-i18n-title="structure.tunnel.help" title="Drive a road under a hill: draw it long enough for the ramps to reach depth">Tunnel</button>
       </div>
       <div id="roadTypes" class="road-types" role="group" data-i18n-label="palette.classes" aria-label="Road classes"></div>
+      </div>
     </section>
 
-    <section id="terrainPalette" class="terrain-palette glass hidden" data-i18n-label="terrain.label" aria-label="Terrain editor" aria-hidden="true">
-      <div class="panel-title"><span data-i18n="terrain.title">GEOGRAPHY</span><kbd data-i18n="terrain.brush">Brush</kbd></div>
+    <section id="terrainPalette" class="terrain-palette glass hidden" data-panel="terrain" data-i18n-label="terrain.label" aria-label="Terrain editor" aria-hidden="true">
+      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="terrainBody"><span data-i18n="terrain.title">GEOGRAPHY</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><kbd>1–4</kbd></div>
+      <div class="panel-body" id="terrainBody">
       <div class="terrain-modes" role="group" data-i18n-label="terrain.operation" aria-label="Terrain operation">
         <button type="button" class="terrain-mode active" data-terrain-mode="raise" aria-pressed="true" data-i18n="terrain.raise">Raise</button>
         <button type="button" class="terrain-mode" data-terrain-mode="lower" aria-pressed="false" data-i18n="terrain.lower">Lower</button>
@@ -102,6 +108,7 @@
       <label class="terrain-control"><span data-i18n="terrain.radius">Radius</span> <input id="terrainRadius" type="range" min="30" max="180" value="80" step="10" /><output id="terrainRadiusValue">80</output></label>
       <label class="terrain-control"><span data-i18n="terrain.strength">Strength</span> <input id="terrainStrength" type="range" min="1" max="10" value="4" step="1" /><output id="terrainStrengthValue">4</output></label>
       <button id="clearTerrain" class="terrain-clear" type="button" data-i18n="terrain.clear">Flatten the whole map</button>
+      </div>
     </section>
 
     <section id="inspector" class="inspector glass hidden" aria-live="polite" aria-hidden="true" aria-labelledby="inspectorTitle" hidden>
@@ -112,10 +119,11 @@
     <div id="hint" class="hint glass" data-i18n="hint.road">Drag to build · Wheel: zoom · Right button: camera</div>
     <div id="mobileHint" class="mobile-hint glass" data-i18n="hint.mobile.road">1 finger: build · 2 fingers: camera</div>
 
-    <section id="minimapPanel" class="minimap-panel glass" data-i18n-label="minimap.label" aria-label="Minimap">
-      <div class="minimap-head"><span data-i18n="minimap.title">MAP</span><span id="coordReadout">X 0 · Y 0</span></div>
-      <div class="minimap-wrap"><canvas id="minimap" tabindex="0" role="button" data-i18n-label="minimap.move" aria-label="Move the camera from the minimap" aria-describedby="minimapNote"></canvas></div>
-      <div id="minimapNote" class="minimap-note" data-i18n="minimap.note">Tap, drag or use the arrow keys to move the camera</div>
+    <section id="minimapPanel" class="minimap-panel glass" data-panel="minimap" data-collapsed-narrow data-i18n-label="minimap.label" aria-label="Minimap">
+      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="minimapBody"><span data-i18n="minimap.title">MAP</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><span id="coordReadout" class="coord-readout">X 0 · Y 0</span></div>
+      <div class="panel-body" id="minimapBody">
+        <div class="minimap-wrap"><canvas id="minimap" tabindex="0" role="button" data-i18n-label="minimap.move" data-i18n-title="minimap.note" aria-label="Move the camera from the minimap" title="Tap, drag or use the arrow keys to move the camera"></canvas></div>
+      </div>
     </section>
 
     <div class="statusbar glass">
