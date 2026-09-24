@@ -101,6 +101,12 @@ export interface Diverge {
 const SWEEP_STEP = 1;
 /** Clearance kept around every body, world units (6 cm). */
 const SWEEP_MARGIN = 0.15;
+/**
+ * How far behind its stop line the front of a waiting body is swept, world
+ * units: vehicles stop a few units short of the line, and a long one turning
+ * beside them swings over that much of the lane next to it (see `inRange`).
+ */
+const QUEUE_BACK = 8;
 /** Broad-phase cell size, world units. */
 const CELL = 8;
 
@@ -331,7 +337,8 @@ function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
 
   const path = joinedPath(inbound.centre, crossing.centre, outbound.centre);
   const heavy = BODY_ENVELOPE[HEAVY] as { length: number; width: number };
-  const c0 = -heavy.length / 2;
+  // From a heavy body standing a little short of its stop line (`QUEUE_BACK`).
+  const c0 = -heavy.length / 2 - QUEUE_BACK;
   const c1 = crossing.length + heavy.length / 2;
   const count = Math.max(2, Math.ceil((c1 - c0) / SWEEP_STEP) + 1);
   const frame = new Float64Array(count * 4);
@@ -457,10 +464,23 @@ function halfExtent(cls: BodyClass): readonly [number, number] {
 }
 
 /** Whether sample `i` is a legal centre for a body of this class. */
+/**
+ * Whether a sample is a place a body of this class can be on the movement.
+ *
+ * The far end is where its rear has left the exit of the box. The near end
+ * used to be where its FRONT reaches the stop line, so a body standing behind
+ * its line was never inside any zone - and a car does stand behind its line,
+ * a few units short of it, or further back in the queue. A bus turning right
+ * off a short link swings its rear across the lane beside it well behind the
+ * line; the car waiting there was outside every zone, so nothing held the bus
+ * for it and nothing held it short of the bus, and the two bodies overlapped.
+ * Every class is now swept from where the sweep starts: the front of the
+ * longest body `QUEUE_BACK` short of the line.
+ */
 function inRange(s: Sweep, i: number, cls: BodyClass): boolean {
   const half = (BODY_ENVELOPE[cls] as { length: number }).length / 2;
   const c = s.c0 + i * SWEEP_STEP;
-  return c >= -half - 1e-9 && c <= s.crossing.length + half + 1e-9;
+  return c >= s.c0 - 1e-9 && c <= s.crossing.length + half + 1e-9;
 }
 
 /**
