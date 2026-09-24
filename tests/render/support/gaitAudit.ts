@@ -1,0 +1,256 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { step } from '@sim/pipeline';
+import { DT } from '@sim/params';
+import { pedPose } from '@sim/pose';
+import { pedHash } from '@sim/peds/behaviour';
+import type { Ped } from '@sim/peds/state';
+import type { SimWorld } from '@sim/world';
+import { m } from '@world/units';
+import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
+import { decodeRocketboxLibrary } from '@render/citizenWalk';
+import { gaitClipsOf, type GaitClipName, type GaitClips, type GaitPlay } from '@render/citizenGait';
+import { fixtureDoc, simOf } from '../../sim/support/bodies';
+
+/**
+ * Measures what the player sees a pedestrian's legs do against how the drawn
+ * body actually moves, on the real simulation — no browser, no skinned mesh.
+ *
+ *   glide        the body moves at a visible pace (>= 0.15 m/s) and the legs
+ *                are not stepping: an idle pose, a finished stop, anything
+ *                whose clip is not advancing.
+ *   slow motion  a walk cycle played at under three quarters of the rate it
+ *                was captured at.
+ *   unstepped    body rotation, while standing or nearly, with no stepping
+ *                clip advancing: a figure swivelling on motionless legs.
+ *   skate        the difference between how fast the body moves and how fast
+ *                the stepping legs carry it.
+ */
+
+const motion = (name: string): unknown =>
+  JSON.parse(readFileSync(join(process.cwd(), 'src', 'render', 'motion', name), 'utf8'));
+const LIBRARY = decodeRocketboxLibrary(motion('rocketboxMale.json'), motion('rocketboxFemale.json'));
+export const GAIT_CLIPS: Readonly<Record<'male' | 'female', GaitClips>> = {
+  male: gaitClipsOf(LIBRARY.male, 'male'),
+  female: gaitClipsOf(LIBRARY.female, 'female'),
+};
+
+/** A gait controller as the renderer drives one: created once, stepped every frame. */
+export interface GaitController<S> {
+  create(ped: Ped, time: number, heading: number, hash: number): S;
+  step(state: S, ped: Ped, clips: GaitClips, time: number, heading: number, size: number, hash: number): void;
+  plays(state: S, clips: GaitClips, out: GaitPlay[]): void;
+  heading(state: S): number;
+}
+
+export interface GaitAudit {
+  pedSeconds: number;
+  /** Seconds the drawn body moved at 0.15 m/s or more, and of those, with legs not stepping. */
+  movingSeconds: number;
+  glideSeconds: number;
+  /** Seconds a walk cycle carried most of the weight, and of those, played under 0.75 of its rate. */
+  walkSeconds: number;
+  slowMotionSeconds: number;
+  /** Mean ratio of played to captured cadence over `walkSeconds`. */
+  cadenceMean: number;
+  /** Body rotation, radians, while under 0.3 m/s, and of it, with no stepping clip advancing. */
+  slowRotation: number;
+  unsteppedRotation: number;
+  /** Mean |drawn speed - speed the stepping legs carry the body at| while moving, m/s. */
+  skateMean: number;
+  /** Cadence against speed, for the report: [speed band m/s, mean cadence ratio, seconds]. */
+  cadenceBySpeed: [number, number, number][];
+}
+
+const WALKS = new Set<GaitClipName>(['walk', 'walkElder', 'walkSlow', 'walkShuffle']);
+const STEPPING = new Set<GaitClipName>([...WALKS, 'run', 'start', 'stop', 'turnLeft', 'turnRight']);
+const MOVING = 0.15;
+const SLOW = 0.75;
+
+/** Body size the renderer gives an age class, near enough: a child is drawn about two thirds tall. */
+const sizeOf = (p: Ped): number => (p.ageClass === 'child' ? 0.7 : 1);
+
+export function auditGait<S>(controller: GaitController<S>, seconds: number, seed = 3,
+  onTick?: (sim: SimWorld) => void, breakdown?: Map<string, number>): GaitAudit {
+  const sim = simOf(fixtureDoc(), seed, 2);
+  const states = new Map<number, S>();
+  const last = new Map<number, { x: number; y: number; heading: number; frames: Map<GaitClipName, number> }>();
+  const bands = new Map<number, [number, number]>();
+  const out: GaitPlay[] = [];
+  const audit: GaitAudit = {
+    pedSeconds: 0, movingSeconds: 0, glideSeconds: 0, walkSeconds: 0, slowMotionSeconds: 0, cadenceMean: 0,
+    slowRotation: 0, unsteppedRotation: 0, skateMean: 0, cadenceBySpeed: [],
+  };
+  let cadenceSum = 0;
+  let skateSum = 0;
+  sim.clock.run(Math.round(seconds / DT), () => {
+    step(sim, { traffic: true, pedestrians: true });
+    onTick?.(sim);
+    for (const ped of sim.peds.values()) {
+      const pose = pedPose(sim, ped, 1);
+      if (!pose) continue;
+      const clips = GAIT_CLIPS[ped.gender === 'f' ? 'female' : 'male'];
+      const hash = pedHash(ped.id);
+      const size = sizeOf(ped);
+      let state = states.get(ped.id);
+      if (!state) {
+        state = controller.create(ped, ped.age, pose.angle, hash);
+        states.set(ped.id, state);
+      }
+      controller.step(state, ped, clips, ped.age, pose.angle, size, hash);
+      out.length = 0;
+      controller.plays(state, clips, out);
+      const heading = controller.heading(state);
+      const before = last.get(ped.id);
+      const frames = new Map<GaitClipName, number>();
+      for (const p of out) frames.set(p.name, p.frame);
+      last.set(ped.id, { x: pose.p.x, y: pose.p.y, heading, frames });
+      if (!before) continue;
+
+      audit.pedSeconds += DT;
+      const speed = Math.hypot(pose.p.x - before.x, pose.p.y - before.y) / m(1) / DT;
+      if (speed > 4) continue; // a re-seat, not motion
+      let stepping = 0;
+      let carried = 0;
+      let walkWeight = 0;
+      let cadence = 0;
+      for (const p of out) {
+        if (!STEPPING.has(p.name)) continue;
+        const clip = clips[p.name];
+        const was = before.frames.get(p.name);
+        if (was === undefined) continue;
+        let delta = p.frame - was;
+        if (clip.loop) delta = ((delta % clip.frames) + clip.frames) % clip.frames;
+        if (delta <= 1e-6 || delta > clip.frames / 2) continue;
+        stepping += p.weight;
+        if (WALKS.has(p.name) || p.name === 'run') {
+          const rate = delta / clip.frames / DT;
+          carried += p.weight * rate * clip.stride * size;
+          if (p.name !== 'run') { walkWeight += p.weight; cadence += p.weight * rate * clip.duration; }
+        } else if (clip.travel) {
+          const at = (f: number): number => {
+            const k = Math.min(clip.frames - 1, Math.max(0, Math.floor(f)));
+            return clip.travel![k]! + (clip.travel![k + 1]! - clip.travel![k]!) * (f - k);
+          };
+          carried += p.weight * (at(p.frame) - at(was)) * size / DT;
+        }
+      }
+      const turned = Math.abs(Math.atan2(Math.sin(heading - before.heading), Math.cos(heading - before.heading)));
+      if (speed < 0.3) {
+        audit.slowRotation += turned;
+        if (stepping < 0.5) {
+          audit.unsteppedRotation += turned;
+          if (breakdown && turned > 0) {
+            const top = out.reduce((a, b) => (b.weight > a.weight ? b : a), out[0]!);
+            const key = `${top.name}|${ped.state}|${ped.activity ? ped.activity.kind + ':' + ped.activity.phase : '-'}|${Math.abs(ped.turnV) > 0.35 ? 'spin' : 'slowturn'}|${speed < 0.06 ? 'still' : 'creep'}`;
+            breakdown.set(key, (breakdown.get(key) ?? 0) + turned);
+          }
+        }
+      }
+      if (speed >= MOVING) {
+        audit.movingSeconds += DT;
+        if (stepping < 0.5) audit.glideSeconds += DT;
+        skateSum += Math.abs(speed - carried) * DT;
+      }
+      if (walkWeight > 0.5) {
+        const ratio = cadence / walkWeight;
+        audit.walkSeconds += DT;
+        cadenceSum += ratio * DT;
+        if (ratio < SLOW) audit.slowMotionSeconds += DT;
+        const band = Math.min(18, Math.floor(speed * 10));
+        const entry = bands.get(band) ?? [0, 0];
+        entry[0] += ratio * DT; entry[1] += DT;
+        bands.set(band, entry);
+      }
+    }
+  });
+  audit.cadenceMean = cadenceSum / Math.max(1e-9, audit.walkSeconds);
+  audit.skateMean = skateSum / Math.max(1e-9, audit.movingSeconds);
+  audit.cadenceBySpeed = [...bands.entries()].sort((a, b) => a[0] - b[0])
+    .map(([band, [sum, time]]) => [band / 10, sum / time, time]);
+  return audit;
+}
+
+export interface FlowAudit {
+  pedSeconds: number;
+  /** Seconds a walker's body centre was closer to street furniture than a person's radius. */
+  insideFurniture: number;
+  /** Seconds two people's centres were closer than 0.3 m (shoulders overlapping). */
+  overlapping: number;
+  /** Seconds walkers on a footway, wanting to move and not queueing at a kerb, stood still. */
+  heldUp: number;
+  walkingSeconds: number;
+  /** Seconds walkers slowed below half their own pace within two metres of furniture ahead. */
+  slowedByFurniture: number;
+  /** Closest approach of any walker's centre to the edge of a piece of furniture, metres. */
+  nearestFurniture: number;
+}
+
+/** How people get along the pavement: through furniture, into each other, held up. */
+export function auditFlow(seconds: number, seed = 3): FlowAudit {
+  const sim = simOf(fixtureDoc(), seed, 2);
+  interface Obstacle { x: number; y: number; radius: number; along?: { x: number; y: number }; halfLength?: number; halfWidth?: number }
+  const items: Obstacle[] = streetFurniture(sim.net).filter(blocksPedestrians);
+  for (const pole of sim.doc.poles.values()) items.push({ x: pole.x, y: pole.y, radius: m(0.18) });
+  const CELL = m(4);
+  const grid = new Map<string, typeof items>();
+  for (const item of items) {
+    const key = `${Math.floor(item.x / CELL)}:${Math.floor(item.y / CELL)}`;
+    const list = grid.get(key) ?? [];
+    list.push(item);
+    grid.set(key, list);
+  }
+  const edgeDistance = (item: Obstacle, x: number, y: number): number => {
+    const dx = x - item.x, dy = y - item.y;
+    if (item.halfLength === undefined || item.halfWidth === undefined || !item.along) return Math.hypot(dx, dy) - item.radius;
+    const along = Math.abs(dx * item.along.x + dy * item.along.y) - item.halfLength;
+    const across = Math.abs(-dx * item.along.y + dy * item.along.x) - item.halfWidth;
+    return Math.hypot(Math.max(0, along), Math.max(0, across)) + Math.min(0, Math.max(along, across));
+  };
+  const near = (x: number, y: number, call: (item: Obstacle) => void): void => {
+    const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL);
+    for (let i = cx - 1; i <= cx + 1; i++) for (let j = cy - 1; j <= cy + 1; j++) for (const item of grid.get(`${i}:${j}`) ?? []) call(item);
+  };
+  const flow: FlowAudit = { pedSeconds: 0, insideFurniture: 0, overlapping: 0, heldUp: 0, walkingSeconds: 0,
+    slowedByFurniture: 0, nearestFurniture: Infinity };
+  const PERSON = m(0.3);
+  sim.clock.run(Math.round(seconds / DT), () => {
+    step(sim, { traffic: true, pedestrians: true });
+    const peds = [...sim.peds.values()];
+    const cells = new Map<string, Ped[]>();
+    for (const p of peds) {
+      const key = `${Math.floor(p.x / CELL)}:${Math.floor(p.y / CELL)}`;
+      const list = cells.get(key) ?? [];
+      list.push(p);
+      cells.set(key, list);
+    }
+    for (const p of peds) {
+      flow.pedSeconds += DT;
+      const edge = sim.sidewalks.edges.get(p.edge);
+      const seated = p.activity?.kind === 'bench' && p.activity.phase !== 'approach';
+      if (!seated && edge?.kind !== 'crossing') {
+        let nearest = Infinity;
+        let aheadClose = false;
+        near(p.x, p.y, (item) => {
+          const d = edgeDistance(item, p.x, p.y);
+          nearest = Math.min(nearest, d);
+          const dx = item.x - p.x, dy = item.y - p.y;
+          if (d < m(2) && dx * Math.cos(p.heading) + dy * Math.sin(p.heading) > 0) aheadClose = true;
+        });
+        if (nearest < PERSON) flow.insideFurniture += DT;
+        flow.nearestFurniture = Math.min(flow.nearestFurniture, nearest / m(1));
+        if (p.state === 'Walking' && !p.activity && p.pause <= 0) {
+          flow.walkingSeconds += DT;
+          if (aheadClose && p.v < 0.5 * Math.min(p.speed, p.party.pace)) flow.slowedByFurniture += DT;
+          if (p.v < 0.05 && p.stuck > 0) flow.heldUp += DT;
+        }
+      }
+      const cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL);
+      for (let i = cx - 1; i <= cx + 1; i++) for (let j = cy - 1; j <= cy + 1; j++) for (const q of cells.get(`${i}:${j}`) ?? []) {
+        if (q.id > p.id && Math.hypot(q.x - p.x, q.y - p.y) < m(0.3)) flow.overlapping += DT;
+      }
+    }
+  });
+  return flow;
+}
