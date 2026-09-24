@@ -77,6 +77,17 @@ export interface PedActivity {
   fromY: number;
   /** Drawn speed of the body while it steps between the footway and the seat. */
   move: number;
+  /**
+   * Talking: this member's place in the party's circle (`planTalks`), as an
+   * arc position and an offset on the current edge, and the point everybody
+   * in the circle faces. Rewritten every tick; unused by other activities.
+   */
+  slotS: number;
+  slotLat: number;
+  faceX: number;
+  faceY: number;
+  /** Talking: index of this member's place round the circle, -1 until given one. */
+  slot: number;
 }
 
 export interface PedParty {
@@ -91,6 +102,15 @@ export interface PedParty {
    * away — so this tightens the line-abreast spacing (`formation`).
    */
   readonly hasChild: boolean;
+  /**
+   * Where the party is going, and how many places it has reached. Kept on
+   * the party, not on each member: a destination drawn per member — "ahead
+   * of the way I happen to be facing" — drifted apart between two people a
+   * metre apart, and a party whose members want different places walks
+   * apart and stays apart. Members copy these into their own `goal`/`trip`.
+   */
+  goal: SidewalkNodeId | null;
+  trip: number;
 }
 
 export interface PedKinematics {

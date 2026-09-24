@@ -23,7 +23,10 @@ import {
   considerActivity,
   endActivity,
   holdFacing,
+  planTalks,
   stepActivity,
+  talkFacing,
+  talkLateral,
 } from './activities';
 
 const SPACES = new WeakMap<SimWorld, PedestrianClearance>();
@@ -51,15 +54,9 @@ export function stepPedestrians(w: SimWorld): void {
   if (!space) { space = new PedestrianClearance(); SPACES.set(w, space); }
   space.begin(w);
   const remove: Ped[] = [];
-  // Where each party that has stopped to talk is standing, so its members can
-  // turn to face one another rather than the way they happened to arrive.
-  TALK.clear();
-  for (const p of peds) {
-    if (p.activity?.kind !== 'talk') continue;
-    const at = TALK.get(p.party.id) ?? { x: 0, y: 0, n: 0 };
-    at.x += p.x; at.y += p.y; at.n++;
-    TALK.set(p.party.id, at);
-  }
+  // Where each party that has stopped to talk stands, and each member's
+  // place in its circle, so they walk to it and turn to face one another.
+  planTalks(w, peds);
 
   for (const p of peds) {
     p.age += DT;
@@ -73,6 +70,7 @@ export function stepPedestrians(w: SimWorld): void {
     planAhead(w, p, edge);
     scanNeighbours(w, p, edge);
     const cap = stepActivity(w, p, edge, stopWithin);
+    gatherParty(w, p);
     const free = desiredSpeed(w, p, edge);
     const desired = cap === null ? free : Math.min(free, cap);
     steer(w, p, edge, desired, space);
@@ -163,7 +161,7 @@ export function stepPedestrians(w: SimWorld): void {
     // for a frame after a turn.
     const settled = w.sidewalks.edges.get(p.edge);
     if (settled) p.lat = wallsClamp(settled, p.entry, p.s, p.lat);
-    settlePose(w, p, false, space);
+    settlePose(w, p, false, space, desired > 0.05 && p.state === 'Walking');
     if (settled?.kind === 'walk' && !p.activity) considerActivity(w, p, settled);
     const wantsToMove = p.state !== 'WaitAtKerb' && desired > 0.05;
     // Held-up time; a released walker keeps its release until it has
@@ -202,7 +200,7 @@ export function stepPedestrians(w: SimWorld): void {
 }
 
 function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {
-  const command = followSpeed(desired, p.stuck >= STUCK_RELEASE);
+  const command = followSpeed(desired, p.stuck >= STUCK_RELEASE) * facingShare(p, edge);
   p.v = eased(p.v, Math.min(command, approachSpeed(w, p, edge, space, command)));
   const before = p.s;
   p.s = space.safeStep(w, p, edge, p.s + p.v * DT);
@@ -240,6 +238,27 @@ function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: P
     }
   }
 }
+
+/**
+ * Share of the wanted pace a person facing away from their way can walk at.
+ *
+ * People turn, then walk. Somebody who has been standing face to face with a
+ * friend, sitting on a bench or looking at the street does not set off at a
+ * stride in a direction their body does not face: they turn on the spot, a
+ * step or two, and go. Without this the body accelerated at once and the
+ * heading followed at a turning rate, so for most of a second the legs
+ * walked one way while the body slid the other — a moonwalk.
+ */
+function facingShare(p: Ped, edge: SidewalkEdge): number {
+  edge.corridor.place(p.s, p.lat, p.entry !== edge.from, SPOT);
+  const off = Math.cos(p.heading) * SPOT.tx + Math.sin(p.heading) * SPOT.ty;
+  return clamp((off - ALIGN_STOP) / (ALIGN_FREE - ALIGN_STOP), ALIGN_FLOOR, 1);
+}
+/** Cosines of the heading error below which walking is unaffected, and at which it is a shuffle round. */
+const ALIGN_FREE = Math.cos(0.9);
+const ALIGN_STOP = Math.cos(1.9);
+/** Share of the pace kept while turning round: enough to step, never enough to stride backwards. */
+const ALIGN_FLOOR = 0.1;
 
 /** Moves onto the next routed edge, carrying the overshoot. */
 function advance(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClearance): boolean {
@@ -410,19 +429,27 @@ function chooseGoal(w: SimWorld, p: Ped, here: SidewalkNode | undefined): Sidewa
   const pool = w.sidewalks.goalNodes;
   if (!pool.length) return undefined;
 
-  let goal = p.goal === null ? undefined : w.sidewalks.nodes.get(p.goal);
+  // A party goes where the party goes: the destination and the count of
+  // places reached are kept on the party, and whichever member gets there
+  // first decides the next one for everybody.
+  const party = p.party;
+  const shared = party.size > 1;
+  const current = shared ? party.goal : p.goal;
+  let goal = current === null ? undefined : w.sidewalks.nodes.get(current);
   const arrived =
     !!goal && !!here && (goal.id === here.id || dist(goal.at, here.at) < PED_BEHAVIOUR.arriveRadius);
   if (arrived) {
-    p.trip++;
+    if (shared) party.trip++;
+    else p.trip++;
     goal = undefined;
-    p.pause = arrivalPause(p);
-    arrivalActivity(p, p.pause);
   }
+  if (shared) p.trip = party.trip;
+  if (arrived) arrivalActivity(w, p, arrivalPause(p));
   if (!goal) {
     goal = nextGoal(w, p, here, pool);
-    p.goal = goal ? goal.id : null;
+    if (shared) party.goal = goal ? goal.id : null;
   }
+  p.goal = goal ? goal.id : null;
   return goal;
 }
 
@@ -704,8 +731,12 @@ function desiredSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
   }
   let v = Math.min(p.speed, p.party.pace);
 
-  // Individual pace variation applies on footways only.
-  if (p.state === 'Walking') v *= strollFactor(p.id, p.age, p.ageClass);
+  // Pace variation applies on footways only. A party's is the party's: with
+  // one each, two people side by side drifted a metre apart every few
+  // seconds, and nothing brought them back abreast.
+  if (p.state === 'Walking') {
+    v *= p.party.size > 1 ? strollFactor(p.party.id, p.age, 'adult') : strollFactor(p.id, p.age, p.ageClass);
+  }
   if (edge.kind === 'corner') v *= PED_BEHAVIOUR.cornerFactor;
 
   const remaining = edge.length - p.s;
@@ -726,57 +757,132 @@ function desiredSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
     }
   }
 
-  v *= cohesion(w, p);
+  v *= partyPace(p, edge);
   return Math.max(0, v);
 }
 
 /**
- * Pacing for the companion directly behind, as a multiplier. Cuts the link when
- * the two have parted, which is the only place a party ever breaks up.
+ * The companions this person is walking with right now, measured in their
+ * own direction of travel: `along` ahead of them (negative behind) and
+ * `across` to their left, world units. One list, reused, as `NEAR` is.
  *
- * A party only holds together while its members are on the same footway going
- * the same way. The moment a crossing releases part of a party the rest walk
- * on, deliberately: waiting would park somebody at a kerb they are not queuing
- * to cross, where the crossing rules have nothing to say about them, and would
- * let one red signal hold a party still for a whole cycle. They re-form on
- * their own, because the destination is the party's and not the walker's, so
- * the ones ahead keep making the turns the ones behind will make.
+ * A companion counts while near — on this footway, round the corner ahead,
+ * waiting at the kerb behind — and going the same way. Measured in the plane
+ * rather than along one edge, because a party is forever straddling two:
+ * the old rule paced only for a companion on the SAME edge and cut the link
+ * for good the first time one turned a corner a step behind, after which
+ * nothing ever brought the party back together.
  */
-function cohesion(w: SimWorld, p: Ped): number {
-  if (p.trailing === null) return 1;
-  const mate = w.peds.get(p.trailing);
-  if (!mate) {
-    p.trailing = null;
-    return 1;
-  }
-  // A companion on another edge is mid-crossing or a turn behind: transient,
-  // and not something to pace for, because the lag is not measurable across
-  // two edges and a kerb is no place to be held. One on the SAME footway
-  // walking the other way is not a transient — they have parted.
-  if (mate.edge !== p.edge) return 1;
-  if (mate.entry !== p.entry) {
-    p.trailing = null;
-    return 1;
-  }
+interface Companion { ped: Ped; along: number; sameEdge: boolean; rank: number }
+const COMPANIONS: Companion[] = [];
+let companionCount = 0;
+/** This walker's place in the party's line, from the front, among the companions gathered. */
+let myRank = 0;
 
-  const lag = p.s - mate.s;
-  if (lag <= PED_BEHAVIOUR.cohesionSlack) return 1;
-  if (lag > PED_BEHAVIOUR.cohesionBreak) {
-    p.trailing = null;
-    return 1;
-  }
-
-  // Slower than the companion, not equal to them, so the gap actually closes;
-  // and never below the crawl, so a companion held up by a stranger cannot
-  // bring the footway to a halt.
-  const closing = clamp((lag - PED_BEHAVIOUR.cohesionSlack) / PED_BEHAVIOUR.cohesionSlack, 0, 1);
-  const cap = Math.max(
-    mate.v * lerp(1, PED_BEHAVIOUR.cohesionClose, closing),
-    PED_BEHAVIOUR.cohesionCrawl,
-  );
-  const own = Math.max(Math.min(p.speed, p.party.pace), DIV_EPS);
-  return clamp(cap / own, 0, 1);
+/**
+ * Whether `a` walks ahead of `b` in their party's line. Level within
+ * `RANK_TIE` counts by id, so two people side by side have a settled order
+ * instead of one that flips at every half-stride.
+ */
+function aheadOf(alongA: number, idA: number, alongB: number, idB: number): boolean {
+  return alongA - alongB > (idA < idB ? -RANK_TIE : RANK_TIE);
 }
+const RANK_TIE = m(0.4);
+
+function gatherParty(w: SimWorld, p: Ped): number {
+  companionCount = 0;
+  myRank = 0;
+  if (p.party.size < 2 || p.activity) return 0;
+  const hx = Math.cos(p.heading), hy = Math.sin(p.heading);
+  for (let k = 0; k < p.party.size; k++) {
+    const q = w.peds.get(p.party.id + k);
+    if (!q || q === p || q.party !== p.party || q.activity || q.pause > 0) continue;
+    const dx = q.x - p.x, dy = q.y - p.y;
+    const along = dx * hx + dy * hy;
+    const across = -dx * hy + dy * hx;
+    if (Math.abs(along) > PARTY_REACH || Math.abs(across) > PARTY_ACROSS) continue;
+    // Somebody walking the other way is not walking with us.
+    if (q.v > m(0.3) && Math.cos(q.heading - p.heading) < 0.3) continue;
+    let slot = COMPANIONS[companionCount];
+    if (!slot) { slot = { ped: q, along: 0, sameEdge: false, rank: 0 }; COMPANIONS[companionCount] = slot; }
+    slot.ped = q;
+    slot.along = along;
+    slot.sameEdge = q.edge === p.edge && q.entry === p.entry;
+    companionCount++;
+  }
+  for (let i = 0; i < companionCount; i++) {
+    const c = COMPANIONS[i]!;
+    c.rank = aheadOf(0, p.id, c.along, c.ped.id) ? 1 : 0;
+    for (let j = 0; j < companionCount; j++) {
+      const o = COMPANIONS[j]!;
+      if (j !== i && aheadOf(o.along, o.ped.id, c.along, c.ped.id)) c.rank++;
+    }
+    if (aheadOf(c.along, c.ped.id, 0, p.id)) myRank++;
+  }
+  return companionCount;
+}
+
+/**
+ * How many of a party of `size` walk side by side here: all of them where
+ * the footway takes them abreast, fewer where it does not, and fewer again
+ * while somebody is coming the other way and needs the room to pass. A group
+ * that held its line across the whole footway met every oncoming walker head
+ * on and squeezed past them shoulder to shoulder.
+ */
+function perRow(p: Ped, usable: number, size: number): number {
+  let width = usable * 2 - PED_BEHAVIOUR.shoulder;
+  if (NEAR.oncomingGap < PED_BEHAVIOUR.oncomingLook) width -= PARTY_PASS_ROOM;
+  return clamp(Math.floor(width / partySpacing(p)) + 1, 1, size);
+}
+/** Width a group leaves free for somebody coming the other way to pass it. */
+const PARTY_PASS_ROOM = m(0.9);
+
+/**
+ * Pace for keeping formation, as a multiplier on the party's pace.
+ *
+ * People walking together keep abreast: the one behind lengthens their
+ * stride, the one in front shortens theirs, until they are level. Where the
+ * footway cannot take them all abreast they walk in rows, one behind the
+ * other. The old rule only ever slowed the member in FRONT, and only once
+ * the gap passed two metres, so a party drifted to that length and stayed
+ * there: measured, companions were level 6 % of the time they walked, and
+ * 1.4 m apart on median — a queue of friends, not a group.
+ *
+ * Bounded both ways: nobody hurries past `PARTY_HURRY` of the party's pace
+ * or dawdles below `PARTY_WAIT` of it, so a companion held up at a kerb is
+ * waited for at a stroll — never by stopping dead on an open footway — and
+ * one left too far behind (`PARTY_REACH`) is not waited for at all.
+ */
+function partyPace(p: Ped, edge: SidewalkEdge): number {
+  const n = companionCount;
+  if (p.state !== 'Walking' || n === 0) return 1;
+  const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
+  const k = perRow(p, usable, n + 1);
+  const rows = Math.ceil((n + 1) / k);
+  const rowOffset = (rank: number): number => -(Math.floor(rank / k) - (rows - 1) / 2) * PARTY_ROW;
+  // The group's reference point, from everybody's place less their offset in
+  // the formation; this walker's error is how far from its own place it is.
+  let sum = -rowOffset(myRank);
+  for (let i = 0; i < n; i++) sum += COMPANIONS[i]!.along - rowOffset(COMPANIONS[i]!.rank);
+  const error = sum / (n + 1) + rowOffset(myRank);
+  return clamp(1 + error * PARTY_GAIN, PARTY_WAIT, PARTY_HURRY);
+}
+
+/** Lateral spacing of a party walking abreast: closer for a family. */
+function partySpacing(p: Ped): number {
+  return Math.max(PED_BEHAVIOUR.shoulder,
+    PED_BEHAVIOUR.abreastSpacing * (p.party.hasChild ? PED_BEHAVIOUR.familySpacingFactor : 1));
+}
+
+/** How far ahead or behind, and to the side, a companion still counts as walking with us. */
+const PARTY_REACH = m(12);
+const PARTY_ACROSS = m(5);
+/** Gap between two rows of a party walking in file. */
+const PARTY_ROW = m(1.0);
+/** Pace change per unit of formation error, and its bounds. */
+const PARTY_GAIN = 0.1;
+const PARTY_WAIT = 0.72;
+const PARTY_HURRY = 1.2;
 
 /**
  * Urgency while in the road.
@@ -820,6 +926,9 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   // Going to stop, or stopped, at one side of the footway: that side.
   const stopping = p.activity && p.activity.side !== 0 && edge.kind === 'walk' ? p.activity : null;
   if (stopping) target = stopping.side * usable;
+  // Going to a place in a conversation: that place.
+  const talking = talkLateral(p);
+  if (talking !== null) target = talking;
   // Line up for a narrower next edge — a zebra is far narrower than a footway
   // — before reaching it, so the entry is walked into rather than cut to.
   const nextEdge = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
@@ -850,7 +959,7 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
       const across = (jam.x - frame.p.x) * frame.n.x + (jam.y - frame.p.y) * frame.n.y;
       target = p.lat + (across >= p.lat ? -1 : 1) * MAKE_ROOM;
     }
-  } else {
+  } else if (talking === null) {
     // Step around somebody slower, towards whichever side has more room.
     if (
       NEAR.leaderGap < PED_BEHAVIOUR.passLook &&
@@ -1048,14 +1157,14 @@ function eased(current: number, target: number): number {
 const PED_ACCEL = m(1.1);
 const PED_DECEL = m(2.4);
 /** Deceleration planned for a stop that is seen coming: a kerb, a queue, a place to stop at. */
-const PED_COMFORT = m(1.2);
+const PED_COMFORT = m(1.6);
 
 /**
  * World position, and a body heading turned towards the direction of travel
  * at a human rate. Standing still, a person keeps facing where they were
  * going, or turns to face the crossing they are waiting for.
  */
-function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianClearance): void {
+function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianClearance, wants = false): void {
   const edge = w.sidewalks.edges.get(p.edge);
   if (!edge) return;
   // The corridor's frame is continuous: its normal is interpolated between
@@ -1158,10 +1267,18 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   let rate = TURN_RATE_STANDING;
   // Standing on the footway, not placed by an activity: turns are made in
   // decisive steps rather than tracked by the degree (`steerHeading`).
-  const standing = !anchor && p.v <= FACE_MIN_SPEED;
+  let standing = !anchor && p.v <= FACE_MIN_SPEED;
+  const talk = anchor ? null : talkFacing(p);
   if (anchor) {
     face = anchor.face;
     if (p.activity?.move) rate = TURN_RATE;
+  } else if (talk !== null) {
+    // At one's place in a conversation: facing its centre, whatever small
+    // step closes the circle up. Turning to it is a turn towards somebody,
+    // made at a person's pace, not a slow swivel.
+    face = talk;
+    rate = TURN_RATE;
+    standing = true;
   } else if (p.v > FACE_MIN_SPEED) {
     const lean = Math.atan2(p.latV, Math.max(p.v, m(0.8))) * SIDESTEP_LEAN;
     face = Math.atan2(ty, tx) + lean;
@@ -1172,13 +1289,13 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
       const t = w.sidewalks.orientedPath(next, w.sidewalks.other(edge, p.entry)).sampleAt(0).t;
       face = Math.atan2(t.y, t.x);
     }
-  } else if (p.activity?.kind === 'talk') {
-    const party = TALK.get(p.party.id);
-    if (party && party.n > 1) {
-      const cx = (party.x - p.x) / (party.n - 1);
-      const cy = (party.y - p.y) / (party.n - 1);
-      if (Math.hypot(cx - p.x, cy - p.y) > m(0.2)) face = Math.atan2(cy - p.y, cx - p.x);
-    }
+  } else if (wants) {
+    // About to walk off from standing: turn to the way first. Without this a
+    // body facing its companions set off walking backwards, the feet playing
+    // a walk the wrong way round until the heading came about.
+    face = Math.atan2(ty, tx);
+    rate = TURN_RATE;
+    standing = false;
   } else {
     face = holdFacing(w, p, edge);
   }
@@ -1216,8 +1333,6 @@ function steerHeading(p: Ped, face: number | null, rate: number, standing = fals
   p.heading = Math.atan2(Math.sin(p.heading), Math.cos(p.heading));
 }
 
-/** Where each talking party stands: summed positions and a count, rebuilt each tick. */
-const TALK = new Map<number, { x: number; y: number; n: number }>();
 
 /** Travel below which the direction of travel is not a direction worth facing, u/s. */
 const FACE_MIN_SPEED = m(0.12);
@@ -1327,31 +1442,44 @@ const TURN_RATE_STANDING = 1.25;
  * and the following model puts them in a queue, which is what people do.
  */
 function formation(p: Ped, usable: number): number {
-  const size = p.party.size;
-  if (size < 2) return preferredLateral(p.id, p.file, PED.files) * usable;
-
-  // A family keeps closer together than a party of adults would — a parent
-  // does not let a child drift a lane's width away — so it walks abreast at
-  // about half the spacing.
-  const spacing = Math.max(PED_BEHAVIOUR.shoulder,
-    PED_BEHAVIOUR.abreastSpacing *
-      (p.party.hasChild ? PED_BEHAVIOUR.familySpacingFactor : 1));
+  // Who is walking with this person on this footway right now.
+  let n = 0;
+  for (let i = 0; i < companionCount; i++) if (COMPANIONS[i]!.sameEdge) n++;
+  if (n === 0) return preferredLateral(p.id, p.file, PED.files) * usable;
+  const size = n + 1;
   const base = preferredLateral(p.party.id, p.party.id % PED.files, PED.files) * usable;
-  const needed = (size - 1) * spacing + PED_BEHAVIOUR.shoulder;
-  if (usable * 2 < needed) {
-    // A narrow footway may fit a pair, though it cannot fit the whole party
-    // abreast. Keep pairs side by side and place the next pair behind them.
-    if (usable * 2 < spacing + PED_BEHAVIOUR.shoulder) return base;
-    const halfPair = spacing / 2;
-    const rows = Math.ceil(size / 2);
-    const rowShift = (Math.floor(p.rank / 2) - (rows - 1) / 2) * m(0.3);
-    return clamp(base + rowShift, -(usable - halfPair), usable - halfPair) +
-      (p.rank % 2 === 0 ? -halfPair : halfPair);
-  }
+  const k = perRow(p, usable, size);
+  if (k === 1) return base;
 
-  const half = ((size - 1) / 2) * spacing;
-  const place = (p.rank - (size - 1) / 2) * spacing;
-  return clamp(base, -(usable - half), usable - half) + place;
+  // Rows of `k` from the front, by where each actually walks; within a row,
+  // everybody keeps the side they are on, so nobody crosses through anybody.
+  // A family keeps closer together than a party of adults would — a parent
+  // does not let a child drift a lane's width away (`partySpacing`).
+  const spacing = partySpacing(p);
+  const rank = (c: Companion): number => {
+    let r = 0;
+    for (let j = 0; j < companionCount; j++) {
+      const o = COMPANIONS[j]!;
+      if (o !== c && o.sameEdge && aheadOf(o.along, o.ped.id, c.along, c.ped.id)) r++;
+    }
+    return aheadOf(0, p.id, c.along, c.ped.id) ? r + 1 : r;
+  };
+  let mine = 0;
+  for (let i = 0; i < companionCount; i++) {
+    const c = COMPANIONS[i]!;
+    if (c.sameEdge && aheadOf(c.along, c.ped.id, 0, p.id)) mine++;
+  }
+  const row = Math.floor(mine / k);
+  let inRow = 1;
+  let right = 0;
+  for (let i = 0; i < companionCount; i++) {
+    const c = COMPANIONS[i]!;
+    if (!c.sameEdge || Math.floor(rank(c) / k) !== row) continue;
+    inRow++;
+    if (c.ped.lat < p.lat || (c.ped.lat === p.lat && c.ped.id < p.id)) right++;
+  }
+  const half = ((inRow - 1) / 2) * spacing;
+  return clamp(base, -(usable - half), usable - half) + (right - (inRow - 1) / 2) * spacing;
 }
 
 // --------------------------------------------------------------- occupancy

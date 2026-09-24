@@ -145,7 +145,7 @@ function spawnParty(w: SimWorld, edge: SidewalkEdge, head: number, size: number)
     if (speed < pace) pace = speed;
   }
 
-  const party: PedParty = { id: w.nextPedId, size, pace, hasChild };
+  const party: PedParty = { id: w.nextPedId, size, pace, hasChild, goal: null, trip: 0 };
   const members: Ped[] = [];
   const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
   const spacing = Math.max(PED_BEHAVIOUR.shoulder,

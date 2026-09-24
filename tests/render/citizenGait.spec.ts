@@ -32,10 +32,15 @@ describe('citizen gait', () => {
     // Slow motion: a walk cycle played at under three quarters of its rate.
     expect(audit.slowMotionSeconds / audit.walkSeconds).toBeLessThan(0.015);
     // Gliding: the body moving at a visible pace while the legs do not step.
-    expect(audit.glideSeconds / audit.movingSeconds).toBeLessThan(0.01);
-    // Swivelling on motionless legs, radians over the whole run.
-    expect(audit.unsteppedRotation).toBeLessThan(12);
-    expect(audit.skateMean).toBeLessThan(0.025);
+    expect(audit.glideSeconds / audit.movingSeconds).toBeLessThan(0.008);
+    // Swivelling on motionless legs, radians over the whole run: 12.2 before a
+    // standing body was made to turn only as far as its turn clip steps it,
+    // with the feet leading and each step finished; 5.4 after.
+    expect(audit.unsteppedRotation).toBeLessThan(7.5);
+    // Feet sliding, as a share of the pace: an absolute ceiling failed walkers
+    // for walking at a real pace (1.15 m/s realised instead of 1.0) with the
+    // same 2.4 % mismatch.
+    expect(audit.skateMean / audit.movingSpeedMean).toBeLessThan(0.028);
   });
 
   it('walks round the furniture and the other people, not through them', () => {

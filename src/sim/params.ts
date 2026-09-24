@@ -142,16 +142,21 @@ export const SIGNAL = {
 export const PED = {
   /** Design speed used to size clearance intervals. */
   designSpeed: m(1.0),
-  meanSpeed: m(1.34),
+  // Adults in a city walk at 1.4 m/s on average (Bosina & Weidmann 2017,
+  // a meta-analysis of 58 studies: 1.41 m/s for free-flowing traffic). The
+  // realised pace on the player map was 1.0 m/s - people read as strolling
+  // in slow motion - after the party, corner and kerb factors had each taken
+  // their share of a 1.34 trait.
+  meanSpeed: m(1.4),
   speedSd: m(0.2),
-  minSpeed: m(0.8),
-  maxSpeed: m(1.8),
+  minSpeed: m(0.95),
+  maxSpeed: m(1.9),
   /** Reaction lag before stepping off the kerb. */
-  startLag: 1.0,
+  startLag: 0.7,
   /** Following model. */
   jamGap: m(0.45),
   headway: 0.4,
-  accel: m(1.2),
+  accel: m(1.6),
   /** Parallel walking files across a crossing. */
   files: 3,
   fileSpacing: m(0.7),

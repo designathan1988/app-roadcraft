@@ -634,7 +634,7 @@ function spawnAlighted(w: SimWorld, person: KerbPerson): void {
     file: id % PED.files,
     ageClass: person.ageClass,
     gender: person.gender,
-    party: { id, size: 1, pace: speed, hasChild: false },
+    party: { id, size: 1, pace: speed, hasChild: false, goal: null, trip: 0 },
     rank: 0,
     edge: edge.id,
     entry: edge.from,

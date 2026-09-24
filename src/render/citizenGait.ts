@@ -311,6 +311,14 @@ const MOVE_FROM_STILL = 0.14;
 const KEEP_MOVING = 0.06;
 /** Body turning rate, rad/s, at which the feet have to step round. */
 const TURN_STEPS = 0.35;
+/** The same for a body standing or creeping, which no stride carries round. */
+const TURN_STEPS_STANDING = 0.2;
+/** Turning rate, rad/s, a fully played turn clip carries a standing body round at. */
+const STEPPED_TURN_RATE = 3.2;
+/** Yaw rate, rad/s, a turn clip steps at before the body has begun to follow it. */
+const FEET_LEAD_RATE = 1.2;
+/** Angle, rad, a standing body may lag where it is facing before it steps round. */
+const LAG_STEPS = 0.12;
 /** Drawn speed below which a turn that fast is stepped with the turn clips. */
 const TURN_IN_PLACE = 0.3;
 /** Seconds a turn clip is held once the turning has stopped. */
@@ -439,7 +447,29 @@ export function stepGait(g: Gait, ped: Ped, clips: GaitClips, time: number, head
 
   // The simulation already turns the body at a human rate; this only absorbs
   // frame-to-frame interpolation. The lean turns it towards its motion.
-  g.base = wrap(g.base + wrap(heading - g.base) * approach(dt, 1 / 18));
+  if (speed < TURN_IN_PLACE && g.lean !== 0) {
+    // Coming to rest, the lean into the walk becomes part of where the body
+    // faces, and is stepped out like any other turn. Relaxing it freely
+    // turned a standing body on still feet.
+    g.base = wrap(g.base + g.lean);
+    g.lean = 0;
+  }
+  const want = wrap(heading - g.base);
+  let swing = want * approach(dt, 1 / 18);
+  if (speed < TURN_IN_PLACE) {
+    // Standing or creeping, the body turns only as far as its feet step it
+    // round, by the weight of the turn clip now playing. It used to take the simulation's heading
+    // at once, and the turn clip faded in over a body already turned - the
+    // swivel on motionless legs that players kept reporting.
+    const stepWeight = g.cur.key === 'turnLeft' || g.cur.key === 'turnRight'
+      ? g.fade * g.fade * (3 - 2 * g.fade)
+      : g.prev && (g.prev.key === 'turnLeft' || g.prev.key === 'turnRight') ? 1 - g.fade : 0;
+    // Only once the steps carry most of the pose: turning while the turn clip
+    // is still a faint blend over the stand is the same swivel, slower.
+    const limit = STEPPED_TURN_RATE * Math.max(0, stepWeight * 2 - 1) * dt;
+    swing = Math.max(-limit, Math.min(limit, swing));
+  }
+  g.base = wrap(g.base + swing);
   let lean = 0;
   if (speed > LEAN_FROM) {
     const off = wrap(Math.atan2(g.vy, g.vx) - g.base);
@@ -457,7 +487,12 @@ export function stepGait(g: Gait, ped: Ped, clips: GaitClips, time: number, head
   const cur = g.cur;
   const isGait = cur.key === 'loco' || cur.key === 'start' || cur.key === 'stop';
   const isTurn = cur.key === 'turnLeft' || cur.key === 'turnRight';
-  const spin = Math.abs(ped.turnV) > TURN_STEPS;
+  // Standing, a slower turn already needs the feet: the body is not carried
+  // round by a stride, so any visible rotation is footwork or a swivel.
+  // A body still short of where it is facing, standing, steps round to it too.
+  const lagging = speed < TURN_IN_PLACE && Math.abs(wrap(heading - g.base)) > LAG_STEPS;
+  const spin = lagging || Math.abs(ped.turnV) > (speed < TURN_IN_PLACE ? TURN_STEPS_STANDING : TURN_STEPS);
+  const turnSign = Math.abs(ped.turnV) > TURN_STEPS_STANDING ? Math.sign(ped.turnV) : Math.sign(wrap(heading - g.base));
   const seat = act?.kind === 'bench' ? act.phase : null;
 
   if (seat === 'sitDown' || seat === 'seated' || seat === 'standUp') {
@@ -466,10 +501,14 @@ export function stepGait(g: Gait, ped: Ped, clips: GaitClips, time: number, head
     g.cur.phase = seat === 'sitDown' ? Math.min(1, act!.t / SIT_DOWN_SECONDS[ped.gender])
       : seat === 'standUp' ? Math.min(1, act!.t / STAND_UP_SECONDS[ped.gender])
         : (act!.t / clips.sitIdle.duration) % 1;
-  } else if (speed > (isGait ? KEEP_MOVING : MOVE_FROM_STILL) && (isGait || !spin || speed >= TURN_IN_PLACE)) {
+  } else if (speed > (isGait ? KEEP_MOVING : MOVE_FROM_STILL) && (!spin || speed >= TURN_IN_PLACE)) {
+    // A fast turn while barely creeping is a turn on the spot, even out of a
+    // walk: it used to stay in the walk stop, feet planted, while the body
+    // swung round to face the road at every kerb - most of the rotation the
+    // audit found on motionless legs.
     moving(g, ped, clips, dt, speed, size, hash, elder);
   } else {
-    standing(g, ped, clips, dt, turned, spin, isTurn, hash);
+    standing(g, ped, clips, dt, turned, spin, isTurn, hash, turnSign);
     // A walk fading out under a turn or a stop keeps stepping with whatever
     // motion is left, rather than freezing mid-stride while the body turns.
     g.cycle = (g.cycle + Math.hypot(speed, TURN_FOOT * ped.turnV) * dt / Math.max(1e-3, g.stride)) % 1;
@@ -479,26 +518,33 @@ export function stepGait(g: Gait, ped: Ped, clips: GaitClips, time: number, head
   const prev = g.prev;
   if (prev?.key === 'stop') prev.phase = Math.min(1, prev.phase + STOP_SETTLE * dt / clips.stop.duration);
   else if (prev?.key === 'start') prev.phase = Math.min(1, prev.phase + dt / clips.start.duration);
+  else if (prev?.key === 'turnLeft' || prev?.key === 'turnRight') {
+    // A turn handing over - to its own next step or to a walk - finishes the
+    // step it is in rather than freezing with a foot in the air.
+    prev.phase = Math.min(1, prev.phase + dt / clips[prev.key].duration);
+  }
   if (g.fade < 1) g.fade = Math.min(1, g.fade + dt / g.fadeTime);
   if (g.fade >= 1) g.prev = null;
 }
 
 /** The branch of `stepGait` for a body not going anywhere: turning, settling, or standing. */
 function standing(g: Gait, ped: Ped, clips: GaitClips, dt: number, turned: number, spin: boolean,
-  isTurn: boolean, hash: number): void {
+  isTurn: boolean, hash: number, turnSign: number): void {
   const cur = g.cur;
   if (spin || (isTurn && g.settling < TURN_SETTLE)) {
     // Turning on the spot: the feet step round, the turn clip advanced by
     // the angle the body has actually turned. This comes before the end of
     // a walk stop, which used to swivel the body on legs standing still.
-    const key: Single = spin ? (ped.turnV > 0 ? 'turnLeft' : 'turnRight') : (cur.key as Single);
+    const key: Single = spin ? (turnSign > 0 ? 'turnLeft' : 'turnRight') : (cur.key as Single);
     if (spin) g.settling = 0; else g.settling += dt;
     if (g.cur.key !== key) {
       play(g, key, 0, TURN_FADE);
       g.cur.acc = TURN_WINDUP;
     }
     const clip = clips[key];
-    g.cur.acc += turned;
+    // The feet lead a turn: they step from its first moment, and the body
+    // follows once the steps carry the pose (see the swing limit above).
+    g.cur.acc += spin ? Math.max(turned, FEET_LEAD_RATE * dt) : turned;
     g.cur.phase = fractionAtYaw(clip, g.cur.acc);
     if (g.cur.phase >= 0.96) {
       // Still turning past the end of the clip: step round again.

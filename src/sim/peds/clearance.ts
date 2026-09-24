@@ -9,6 +9,8 @@ import type { SidewalkEdge } from './sidewalk';
 
 interface Footprint {
   id: number; x: number; y: number; radius: number; cell: string;
+  /** A person's party, while they are in a conversation with it; -1 otherwise. */
+  talk?: number;
   forward?: Vec2; halfLength?: number; halfWidth?: number;
 }
 const CELL = m(4);
@@ -36,6 +38,8 @@ export const PERSON_SQUEEZED_SPACING = 2 * PERSON * SQUEEZE_FLOOR;
 /** Closest two people ever get: shoulders brushing as one turns sideways (0.3 m). */
 export const PERSON_RELEASED_SPACING = m(0.3);
 const SQUEEZE_SECONDS = 1.2;
+/** Closest two members of one conversation come while stepping round each other into it. */
+const TALK_SPACING = m(0.42);
 /**
  * Seconds held up after which a pedestrian stops treating other people and
  * street furniture as solid at all, until it has moved on. A last resort, not
@@ -119,7 +123,8 @@ export class PedestrianClearance {
     for (const p of w.pedsInIdOrder()) {
       const at = this.at(w, p);
       if (!at) continue;
-      const footprint = { id: p.id, x: at.x, y: at.y, radius: PERSON, cell: '' };
+      const footprint = { id: p.id, x: at.x, y: at.y, radius: PERSON, cell: '',
+        talk: p.activity?.kind === 'talk' ? p.party.id : -1 };
       this.people.set(p.id, footprint);
       this.insert(footprint);
     }
@@ -342,6 +347,7 @@ export class PedestrianClearance {
     // Somebody still in the carriageway gets off it first: they may brush
     // past people standing at the zebra's mouth at once rather than wait.
     const released = p.stuck >= STUCK_RELEASE || p.state === 'Crossing';
+    const talking = p.activity?.kind === 'talk' ? p.party.id : -1;
     this.visit(x, y, m(6.5), other => {
       if (blocked || other.id === p.id) return;
       if (ignore && other.id > 0 && ignore(other.id)) return;
@@ -353,10 +359,14 @@ export class PedestrianClearance {
       // here as well froze a walker for 145 s in `pedFlow.spec`; `clearLine`
       // is what keeps people out of it in the first place.
       if (released && !vehicle && other.id <= 0) return;
+      // Friends closing up a conversation step round each other shoulder
+      // to shoulder, as they would; a stranger's full space would leave the
+      // last to arrive stuck outside the circle.
+      const friends = talking >= 0 && other.talk === talking;
       const minimum = vehicle
         ? PERSON
         : other.id > 0
-          ? released ? PERSON_RELEASED_SPACING : (PERSON + other.radius) * squeeze
+          ? released ? PERSON_RELEASED_SPACING : friends ? TALK_SPACING : (PERSON + other.radius) * squeeze
           : PERSON + (other.halfLength === undefined ? other.radius : 0);
       const next = this.distance(other, x, y);
       if (next >= minimum) return;

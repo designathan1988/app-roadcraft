@@ -59,6 +59,8 @@ export interface GaitAudit {
   unsteppedRotation: number;
   /** Mean |drawn speed - speed the stepping legs carry the body at| while moving, m/s. */
   skateMean: number;
+  /** Mean drawn speed while moving, m/s. */
+  movingSpeedMean: number;
   /** Cadence against speed, for the report: [speed band m/s, mean cadence ratio, seconds]. */
   cadenceBySpeed: [number, number, number][];
 }
@@ -80,10 +82,11 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
   const out: GaitPlay[] = [];
   const audit: GaitAudit = {
     pedSeconds: 0, movingSeconds: 0, glideSeconds: 0, walkSeconds: 0, slowMotionSeconds: 0, cadenceMean: 0,
-    slowRotation: 0, unsteppedRotation: 0, skateMean: 0, cadenceBySpeed: [],
+    slowRotation: 0, unsteppedRotation: 0, skateMean: 0, movingSpeedMean: 0, cadenceBySpeed: [],
   };
   let cadenceSum = 0;
   let skateSum = 0;
+  let movedSum = 0;
   sim.clock.run(Math.round(seconds / DT), () => {
     step(sim, { traffic: true, pedestrians: true });
     onTick?.(sim);
@@ -150,8 +153,16 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
       }
       if (speed >= MOVING) {
         audit.movingSeconds += DT;
-        if (stepping < 0.5) audit.glideSeconds += DT;
+        if (stepping < 0.5) {
+          audit.glideSeconds += DT;
+          if (breakdown) {
+            const top = out.reduce((a, b) => (b.weight > a.weight ? b : a), out[0]!);
+            const key = `G:${top.name}|${ped.state}|${ped.activity ? ped.activity.kind : '-'}|${speed < 0.5 ? 'slow' : speed < 1 ? 'mid' : 'fast'}`;
+            breakdown.set(key, (breakdown.get(key) ?? 0) + DT);
+          }
+        }
         skateSum += Math.abs(speed - carried) * DT;
+        movedSum += speed * DT;
       }
       if (walkWeight > 0.5) {
         const ratio = cadence / walkWeight;
@@ -167,6 +178,7 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
   });
   audit.cadenceMean = cadenceSum / Math.max(1e-9, audit.walkSeconds);
   audit.skateMean = skateSum / Math.max(1e-9, audit.movingSeconds);
+  audit.movingSpeedMean = movedSum / Math.max(1e-9, audit.movingSeconds);
   audit.cadenceBySpeed = [...bands.entries()].sort((a, b) => a[0] - b[0])
     .map(([band, [sum, time]]) => [band / 10, sum / time, time]);
   return audit;
