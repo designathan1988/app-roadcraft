@@ -65,8 +65,18 @@ import {
 const STATION = 4;
 /** Hard cap on stations per segment, so a 4 km road does not allocate 1000. */
 const MAX_STATIONS = 400;
-/** Extra reach past the junction trim that the junction plate has to cover. */
-const PLATE_MARGIN = 3;
+/**
+ * Extra reach past the junction trim that the junction plate has to cover.
+ *
+ * More than one `STATION`: a profile is read by interpolating between stations,
+ * so it is exactly flat only up to the last station INSIDE the plate, which can
+ * be a whole station short of the plate's nominal edge. At three units that
+ * left the last unit of every junction polygon interpolating towards the ramp
+ * or the deck beyond - a few hundredths of a step in the plate, measured on
+ * elevated crossroads. One station plus a unit keeps the flat part past the
+ * junction outline whatever the spacing.
+ */
+const PLATE_MARGIN = STATION + 1;
 /** Lateral samples across the casing when reading the ground under a road. */
 const LATERAL = [-1, -0.62, -0.28, 0, 0.28, 0.62, 1] as const;
 /** Stations either side of one that must also be cleared (chord protection). */
@@ -162,6 +172,13 @@ const DECK_GRADE = 0.05;
  * from the peak is what makes the stated gradient the real one.
  */
 const CURVE_PEAK = 1.5;
+/**
+ * Most rounds of the profile solve. A node lifted by one of its roads re-solves
+ * the others, and along a chain that travels one node per round; the solve
+ * stops as soon as nothing moves, which on any map built so far is within a
+ * handful of rounds. The cap only bounds a pathological network.
+ */
+const MAX_SOLVE_PASSES = 64;
 /** Softness of the blend between neighbouring profiles, in world units. */
 const BLEND_TAU = 2.5;
 /**
@@ -585,28 +602,48 @@ export function buildRoadElevation(
   }
 
   // ---------------------------------------------------------------- profiles
-  // Three passes: a profile can be pushed up by its grade envelope, which raises
-  // the node it ends at, which raises every other road meeting there. Raising
-  // only, so the sequence is monotone and settles.
-  for (let pass = 0; pass < 3; pass++) {
-    for (const profile of profiles) {
-      if (isRaised(profile.structure)) solveRaised(profile, nodeHeight, aloft);
-      else if (isSunken(profile.structure)) solveSunken(profile, nodeHeight, wanted);
-      else solveGround(profile, nodeHeight);
-    }
-    let changed = false;
+  // Solved until the nodes stop moving. A profile can be pushed up at its end by
+  // its own envelope - a deck lifted over a rise, a ramp that had to clear a
+  // mound - which raises the node it ends at, which re-solves every other road
+  // meeting there, which may raise the node at ITS far end. Raising only, so
+  // the sequence is monotone and settles.
+  //
+  // It used to be three passes over everything, whatever had happened. Along a
+  // chain of raised spans over broken ground the lift travels one node per
+  // pass, so after the third the solve simply stopped: a plate left standing
+  // up to two units above the node the other legs had been solved against, which
+  // is the step players saw where an elevated boulevard met its crossroads.
+  // Now only the roads meeting a node that moved are solved again, until none
+  // does; and the plates are pinned to the node at the end whatever happened,
+  // so a leg and its junction agree exactly even if the cap is ever reached.
+  const solve = (profile: Profile): void => {
+    if (isRaised(profile.structure)) solveRaised(profile, nodeHeight, aloft);
+    else if (isSunken(profile.structure)) solveSunken(profile, nodeHeight, wanted);
+    else solveGround(profile, nodeHeight);
+  };
+  let dirty: Iterable<Profile> = profiles;
+  for (let pass = 0; pass < MAX_SOLVE_PASSES; pass++) {
+    for (const profile of dirty) solve(profile);
+    const next = new Set<Profile>();
     for (const [node, list] of incident) {
       let height = nodeHeight.get(node) ?? 0;
+      let moved = false;
       for (const profile of list) {
         const end = profile.a === node ? (profile.h[0] as number) : (profile.h[profile.h.length - 1] as number);
         if (end > height + 1e-6) {
           height = end;
-          changed = true;
+          moved = true;
         }
       }
       nodeHeight.set(node, height);
+      if (moved) for (const profile of list) next.add(profile);
     }
-    if (!changed && pass > 0) break;
+    dirty = next;
+    if (next.size === 0) break;
+  }
+  for (const profile of dirty) solve(profile);
+  for (const profile of profiles) {
+    pinPlates(profile, nodeHeight.get(profile.a) ?? 0, nodeHeight.get(profile.b) ?? 0);
   }
 
   // --------------------------------------------------------------- the index

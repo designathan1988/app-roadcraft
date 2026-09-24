@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { buildRoadElevation, type RoadElevation } from '@world/elevation';
+import { Level } from '@world/roadTypes';
 import {
   ROAD_GROUND_CLEARANCE,
   TUNNEL_BORE,
@@ -267,14 +268,18 @@ describe('ramps between a raised deck and the ground', () => {
     const grade = (i: number): number => Math.abs((heights[i + 4] as number) - (heights[i] as number)) / 4;
     const foot = heights[0] as number;
     const upStart = heights.findIndex((h) => h > foot + 0.02);
+    // The first units of a ramp are its sag curve, where the grade is still
+    // building up from level and is below a deck's; the ramp does not end
+    // there. `SAG` is the curve's length (`RAMP_CURVE`).
+    const SAG = 12;
     let upEnd = upStart;
-    while (upEnd < heights.length - 5 && grade(upEnd) > 0.052) upEnd++;
+    while (upEnd < heights.length - 5 && (grade(upEnd) > 0.052 || upEnd - upStart < SAG)) upEnd++;
     const end = heights.length - 1;
     const tail = heights[end] as number;
     let downStart = end;
     while (downStart > 0 && (heights[downStart] as number) <= tail + 0.02) downStart--;
     let downEnd = downStart;
-    while (downEnd > 4 && grade(downEnd - 4) > 0.052) downEnd--;
+    while (downEnd > 4 && (grade(downEnd - 4) > 0.052 || downStart - downEnd < SAG)) downEnd--;
     let steepest = 0;
     for (let i = 0; i + 4 < heights.length; i++) steepest = Math.max(steepest, grade(i));
     return {
@@ -386,6 +391,105 @@ describe('ramps between a raised deck and the ground', () => {
       fine = Math.max(fine, Math.abs(field.at(x + 0.5, 0) - field.at(x, 0)));
     }
     expect(fine / coarse).toBeLessThan(0.4);
+  });
+});
+
+describe('where a leg meets its junction plate', () => {
+  /** Broken ground: three waves, ±19 units, the kind a few brush strokes leave. */
+  const hilly = (x: number, y: number): number =>
+    9 * Math.sin(x / 140) + 6 * Math.sin((x - y) / 70) + 4 * Math.cos(y / 55);
+
+  type Layout = 'all-elevated' | 'elevated-over-ground' | 'elevated-landing-on-streets';
+
+  /**
+   * A crossroads whose four arms are CHAINS of `count` segments of `length`:
+   * a boulevard north-south, `typeEW` east-west. A chain is what a player
+   * draws - a road is rarely one segment - and it is what the regression
+   * needed: the lift a deck takes over a rise travels one node along the
+   * chain per round of the solve, and after the third round it simply stopped,
+   * leaving a plate up to two units above the node its junction was solved at.
+   */
+  function crossroads(typeEW: number, count: number, length: number, layout: Layout) {
+    const doc = new RoadDoc();
+    const centre = doc.addNode({ x: 0, y: 0 });
+    const arms = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
+    arms.forEach(([dx, dy], arm) => {
+      let previous = centre;
+      for (let k = 1; k <= count; k++) {
+        const node = doc.addNode({ x: dx * length * k, y: dy * length * k });
+        const segment = doc.addSegment(previous.id, node.id, arm % 2 === 0 ? 3 : typeEW);
+        if (!segment) throw new Error('the fixture failed to build a segment');
+        const raised = layout === 'all-elevated' ||
+          (layout === 'elevated-over-ground' && arm % 2 === 0) ||
+          (layout === 'elevated-landing-on-streets' && k < count);
+        if (raised) doc.setSegmentStructure(segment.id, 'elevated');
+        previous = node;
+      }
+    });
+    const net = new Network(doc);
+    net.rebuild();
+    return { doc, net };
+  }
+
+  /**
+   * The worst height difference across every seam between a leg and the
+   * junction plate it ends on: at the junction outline (the casing trim),
+   * half a unit either side of it, at five points across the carriageway, and
+   * against the one height the node has.
+   */
+  function worstSeam(doc: RoadDoc, net: Network, field: RoadElevation): number {
+    let worst = 0;
+    for (const [id, ribbon] of net.ribbons) {
+      const segment = doc.segment(id);
+      const trims = net.trims.get(id);
+      if (!segment || !trims) continue;
+      const line = ribbon.full;
+      const only = new Set([segment.structure]);
+      const half = ribbon.road.width / 2;
+      for (const end of ['a', 'b'] as const) {
+        const node = end === 'a' ? segment.a : segment.b;
+        const trim = trims[end][Level.Casing] ?? 0;
+        const plate = field.nodeHeight(node);
+        for (const delta of [-0.5, 0, 0.5]) {
+          const reach = Math.min(line.length, Math.max(0, trim + delta));
+          const s = end === 'a' ? reach : line.length - reach;
+          const frame = line.sampleAt(s);
+          worst = Math.max(worst, Math.abs(field.onSegment(id, frame.p.x, frame.p.y) - plate));
+          for (const across of [-0.9, -0.45, 0, 0.45, 0.9]) {
+            const x = frame.p.x + frame.n.x * half * across;
+            const y = frame.p.y + frame.n.y * half * across;
+            worst = Math.max(worst, Math.abs(field.at(x, y, only) - plate));
+          }
+        }
+      }
+    }
+    return worst;
+  }
+
+  const cases: Array<[string, (x: number, y: number) => number]> = [['flat', flatGround()], ['hilly', hilly]];
+  for (const [ground, terrain] of cases) {
+    for (const [name, typeEW] of [['boulevards', 3], ['a boulevard and an avenue', 2]] as const) {
+      for (const layout of ['all-elevated', 'elevated-over-ground', 'elevated-landing-on-streets'] as const) {
+        it(`meets it exactly: ${name}, ${layout}, ${ground} ground`, () => {
+          for (const [count, length] of [[3, 150], [2, 200]] as const) {
+            const { doc, net } = crossroads(typeEW, count, length, layout);
+            const field = buildRoadElevation(net, terrain);
+            // Invariant 3: the plate is flat and every leg is flat over its
+            // reach at the SAME height. Measured before this was fixed: 1.94
+            // units on hilly ground.
+            expect(worstSeam(doc, net, field)).toBeLessThan(1e-3);
+          }
+        });
+      }
+    }
+  }
+
+  it('stays continuous over an elevated crossroads on broken ground', () => {
+    for (const layout of ['all-elevated', 'elevated-over-ground'] as const) {
+      const { net } = crossroads(2, 3, 150, layout);
+      const field = buildRoadElevation(net, hilly);
+      expect(continuityRatio(field, 200)).toBeLessThan(0.4);
+    }
   });
 });
 
