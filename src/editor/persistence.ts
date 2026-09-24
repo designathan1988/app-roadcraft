@@ -2,6 +2,7 @@ import { RoadDoc, type JunctionControl, type SegmentDirection, type SerializedDo
 import { ROAD_TYPES } from '@world/roadTypes';
 import { migrateStructure } from '@world/structures';
 import { isTerrainMode } from '@world/terrain';
+import { isSerializedBuildings } from '@world/buildings/serialize';
 
 const KEY = 'roadcraft.world.v7';
 /** Where storage the loader could not read is kept, rather than deleted. */
@@ -304,6 +305,11 @@ export function isSerializedDoc(value: unknown): value is SerializedDoc {
       terrainIds.add(stamp.id);
     }
   }
+
+  // Buildings: the list itself must be a list. Each record is then repaired
+  // or dropped one by one by `migrateBuilding` on load, so a damaged building
+  // never quarantines the roads around it.
+  if (!isSerializedBuildings(value.buildings)) return false;
 
   return true;
 }
