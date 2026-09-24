@@ -122,6 +122,12 @@ export function createSceneRenderer(
   // boot and silently gave us the hard filter anyway, so the softness the
   // scene was tuned for never existed. Name what we actually get.
   renderer.shadowMap.type = PCFShadowMap;
+  // Drawn once a frame, on request (see `post.render` below). Left automatic,
+  // three redraws every shadow map on EVERY `renderer.render`, and the frame
+  // has two scene renders with the sun in them - the main pass and the
+  // ambient-occlusion pass's normal pass - so the whole shadow pass, every
+  // caster in the city, was drawn twice a frame for the same picture.
+  renderer.shadowMap.autoUpdate = false;
 
   let requested: QualityLevel | 'auto' = initialQuality;
   const governor = new QualityGovernor(requested === 'auto' ? 'high' : requested);
@@ -377,6 +383,7 @@ export function createSceneRenderer(
       const halfWidth = (halfHeight * canvas.clientWidth) / Math.max(1, canvas.clientHeight);
       environment.follow(target, halfWidth, halfHeight);
 
+      renderer.shadowMap.needsUpdate = true;
       post.render(delta);
 
       if (delta > 0) fps = fps * 0.9 + (1 / Math.min(1, delta)) * 0.1;
