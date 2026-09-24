@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
-import { buildRoadElevation, type RoadElevation } from '@world/elevation';
+import { buildRoadElevation, rampLength, type RoadElevation } from '@world/elevation';
 import {
   ROAD_GROUND_CLEARANCE,
   TUNNEL_BORE,
@@ -224,7 +224,7 @@ describe('raised structures', () => {
     for (let x = -220; x < 220; x += 2) {
       steepest = Math.max(steepest, Math.abs(field.at(x + 2, 0) - field.at(x, 0)) / 2);
     }
-    expect(steepest).toBeLessThan(0.13);
+    expect(steepest).toBeLessThan(0.105);
   });
 
   it('keeps the ground pass and the raised pass apart', () => {
@@ -233,6 +233,125 @@ describe('raised structures', () => {
     const ground = new Set(['ground' as const]);
     const raised = new Set(['elevated' as const]);
     expect(field.at(0, 0, raised)).toBeGreaterThan(field.at(0, 0, ground) + 5);
+  });
+});
+
+describe('ramps between a raised deck and the ground', () => {
+  /** Ground road, a raised span of `span`, ground road; straight along x. */
+  function ramped(structure: 'elevated' | 'bridge', span: number, ground: (x: number, y: number) => number) {
+    const doc = new RoadDoc();
+    const a = doc.addNode({ x: -span / 2 - 300, y: 0 });
+    const b = doc.addNode({ x: -span / 2, y: 0 });
+    const c = doc.addNode({ x: span / 2, y: 0 });
+    const d = doc.addNode({ x: span / 2 + 300, y: 0 });
+    doc.addSegment(a.id, b.id, 2);
+    const raised = doc.addSegment(b.id, c.id, 2)!;
+    doc.addSegment(c.id, d.id, 2);
+    doc.setSegmentStructure(raised.id, structure);
+    const net = new Network(doc);
+    net.rebuild();
+    const field = buildRoadElevation(net, ground);
+    const heights: number[] = [];
+    for (let s = 0; s <= span; s += 1) heights.push(field.onSegment(raised.id, -span / 2 + s, 0));
+    return { field, heights, span };
+  }
+
+  /** Where the climb starts and where it has reached the top, and its steepest 4-unit grade. */
+  function climb(heights: readonly number[]) {
+    const foot = heights[0] as number;
+    const top = Math.max(...heights);
+    const start = heights.findIndex((h) => h > foot + 0.02);
+    const end = heights.findIndex((h) => h >= top - 0.02);
+    let steepest = 0;
+    for (let i = 4; i < heights.length; i++) {
+      steepest = Math.max(steepest, Math.abs((heights[i] as number) - (heights[i - 4] as number)) / 4);
+    }
+    return { rise: top - foot, length: end - start, steepest };
+  }
+
+  it('climbs a few metres in a few tens of metres, at the design grade', () => {
+    // The player's complaint: "a climb of a few metres, not an absurd thing that
+    // never ends". Measured before: 262 units (105 m) to climb 15 units, as a
+    // smoothstep whose mean grade was 5.3 %, and on rolling ground 341.
+    for (const [structure, clearance] of [['elevated', 16], ['bridge', 7.5]] as const) {
+      const { heights } = ramped(structure, 900, flatGround());
+      const { rise, length, steepest } = climb(heights);
+      expect(rise).toBeGreaterThan(clearance);
+      expect(rise).toBeLessThan(clearance + 1);
+      // Straight at 10 % between two vertical curves of ~30 units.
+      expect(length).toBeLessThan(rampLength(rise) + 10);
+      expect(length).toBeGreaterThan(rise / 0.1);
+      expect(steepest).toBeLessThan(0.103);
+    }
+    const elevated = climb(ramped('elevated', 900, flatGround()).heights);
+    expect(elevated.length).toBeLessThan(200);
+  });
+
+  it('never climbs more steeply than the design grade, however high it has to go', () => {
+    // Landings sunk below the plain by 0, 6 and 12 units: rises of about 16,
+    // 22 and 28. The ramp gets longer, never steeper.
+    const lengths: number[] = [];
+    for (const depth of [0, 6, 12]) {
+      const sunk = (x: number): number => -depth * Math.exp(-(((Math.abs(x) - 450) / 70) ** 2));
+      const { heights } = ramped('elevated', 900, sunk);
+      const { length, steepest } = climb(heights.slice(0, 450));
+      expect(steepest).toBeLessThan(0.103);
+      lengths.push(length);
+    }
+    expect(lengths[1]).toBeGreaterThan(lengths[0] as number);
+    expect(lengths[2]).toBeGreaterThan(lengths[1] as number);
+    expect(lengths[2]).toBeLessThan(rampLength(28) + 20);
+  });
+
+  it('follows rolling ground instead of flying at its highest hill', () => {
+    // The old deck was one constant: the highest ground under the span plus the
+    // clearance, which on rolling ground put it thirty units over the hollows.
+    const rolling = (x: number, y: number): number => 6 * Math.sin(x / 90) + 4 * Math.sin((x + y) / 37);
+    const { heights, span } = ramped('elevated', 900, rolling);
+    let highest = 0;
+    let lowest = Infinity;
+    for (let s = 250; s <= span - 250; s += 5) {
+      const above = (heights[s] as number) - rolling(-span / 2 + s, 0);
+      highest = Math.max(highest, above);
+      lowest = Math.min(lowest, above);
+    }
+    expect(lowest).toBeGreaterThan(15.5);
+    expect(highest).toBeLessThan(27);
+  });
+
+  it('spans a valley level as a bridge, rim to rim', () => {
+    const valley = (x: number): number => (Math.abs(x) < 180 ? -20 * (1 - Math.abs(x) / 180) : 0);
+    const { heights } = ramped('bridge', 700, valley);
+    // Over the middle of the valley the deck is no lower than at its rims.
+    expect(heights[350] as number).toBeGreaterThan((heights[350 - 170] as number) - 0.5);
+  });
+
+  it('brings a raised road that simply ends down to the ground', () => {
+    // A raised dead end used to stay at its full height: a deck ending in mid-air.
+    const doc = new RoadDoc();
+    const a = doc.addNode({ x: -400, y: 0 });
+    const b = doc.addNode({ x: 0, y: 0 });
+    const c = doc.addNode({ x: 500, y: 0 });
+    doc.addSegment(a.id, b.id, 1);
+    const raised = doc.addSegment(b.id, c.id, 1)!;
+    doc.setSegmentStructure(raised.id, 'elevated');
+    const net = new Network(doc);
+    net.rebuild();
+    const field = buildRoadElevation(net, flatGround());
+    expect(field.nodeHeight(c.id)).toBeCloseTo(ROAD_GROUND_CLEARANCE, 3);
+    expect(field.onSegment(raised.id, 250, 0)).toBeGreaterThan(15);
+  });
+
+  it('stays continuous through the ramps and over the deck', () => {
+    const rolling = (x: number, y: number): number => 6 * Math.sin(x / 90) + 4 * Math.sin((x + y) / 37);
+    const { field } = ramped('elevated', 700, rolling);
+    let coarse = 0;
+    let fine = 0;
+    for (let x = -500; x <= 500; x += 2) {
+      coarse = Math.max(coarse, Math.abs(field.at(x + 2, 0) - field.at(x, 0)));
+      fine = Math.max(fine, Math.abs(field.at(x + 0.5, 0) - field.at(x, 0)));
+    }
+    expect(fine / coarse).toBeLessThan(0.4);
   });
 });
 

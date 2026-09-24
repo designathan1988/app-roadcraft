@@ -116,8 +116,50 @@ const RAMP_RELAX = 0.8;
 /** Lift above the ground at which a structure stops shaping it: piers, not fill. */
 const LIFT_ON = 1.5;
 const LIFT_OFF = 7;
-/** Steepest gradient of a ramp on a raised structure. */
-const RAMP_GRADE = 0.08;
+/**
+ * Grade of the straight part of a ramp between a raised deck and a road at
+ * grade: ten per cent.
+ *
+ * The number is the design value of the TANGENT, not the peak of a curve. The
+ * ramp used to be one smoothstep sized so its peak slope was 8 %, which put its
+ * mean at 5.3 %: a fifteen-unit climb took 281 units, and because the deck was
+ * held at the highest ground anywhere under the span plus the clearance, on
+ * rolling ground the climb was twenty units and more, the two ramps of a
+ * 900-unit span met in the middle, and the whole structure was one long hump
+ * that "never ends", as the player put it.
+ *
+ * Why ten: highway practice limits interchange ramps to 3-5 % for speed, but
+ * allows short upgrades of 8 % where the ramp ends at a junction, and one-way
+ * downgrades 2 % steeper than that (AASHTO Green Book ch. 10; TxDOT Roadway
+ * Design Manual 15.7; NJDOT Design Manual 7). Urban collectors run 9-12 % in
+ * rolling terrain. An urban flyover approach at 30-60 km/h ending at a street
+ * is the short, junction-terminated case, so 10 % is the steepest value any of
+ * those sources would sign off, and it is what the player asked for: a climb
+ * that is over in a few tens of metres.
+ */
+const RAMP_GRADE = 0.1;
+/**
+ * Length of the sag vertical curve at the foot of a ramp, where the grade
+ * builds up from level to `RAMP_GRADE`, in world units (about 12 m). The crest
+ * at the top is rounded over about the same length by `RAMP_CREST`.
+ *
+ * A ramp is then `rise / RAMP_GRADE + RAMP_CURVE` long: a sixteen-unit climb
+ * takes about 190 units, against 300 for the smoothstep it replaces, and every
+ * unit of its straight part climbs at the design grade instead of two thirds
+ * of it.
+ */
+const RAMP_CURVE = 30;
+/** Softness of the crest where a ramp meets its deck: a curve of about `RAMP_CURVE`. */
+const RAMP_CREST = (RAMP_CURVE * RAMP_GRADE) / 2;
+/** Steepest gradient with which a deck is carried up to a higher deck it meets in the air. */
+const DECK_TIE = 0.05;
+/**
+ * Steepest grade of an elevated deck following the land: 5 %, what an urban
+ * arterial is designed to in rolling terrain, and half the ramp's.
+ */
+const DECK_GRADE = 0.05;
+/** Reach of the light smoothing that rounds the grade breaks of a deck line. */
+const DECK_SMOOTH = 12;
 /**
  * Peak-to-mean slope ratio of the smoothstep used for vertical curves.
  *
@@ -170,6 +212,12 @@ interface Profile {
    * cuts through what rises above it and is filled up over what falls away.
    */
   readonly base: number[];
+  /**
+   * For a raised structure, the lowest line the DECK may take: the ground it
+   * spans plus its clearance, as a designed grade line (see `deckLine`). Empty
+   * for anything else.
+   */
+  readonly deck: number[];
   readonly a: NodeId;
   readonly b: NodeId;
   /** Arc length at the `a` end over which the profile is flat (junction plate). */
@@ -400,6 +448,7 @@ export function buildRoadElevation(
       h: base.slice(),
       ceil,
       base,
+      deck: isRaised(segment.structure) ? deckLine(ceil, step, segment.structure) : [],
       a: segment.a,
       b: segment.b,
       plateA,
@@ -421,15 +470,12 @@ export function buildRoadElevation(
     }
   }
 
-  /** The ground a junction plate has to sit above, sampled over its own disc. */
-  const groundAtNode = new Map<NodeId, number>();
-  /** The same disc's MEAN, for a junction that is built into the ground. */
+  /** The mean ground over a junction's own disc, for a node no road at grade reaches. */
   const balancedAtNode = new Map<NodeId, number>();
   for (const [node, list] of incident) {
     const point = net.doc.node(node);
     if (!point) continue;
-    let ground = terrainAt(point.x, point.y);
-    let sum = ground;
+    let sum = terrainAt(point.x, point.y);
     let count = 1;
     let radius = 6;
     for (const profile of list) {
@@ -440,36 +486,11 @@ export function buildRoadElevation(
       const r = (radius * ring) / 2;
       for (let k = 0; k < 8; k++) {
         const angle = (k / 8) * Math.PI * 2 + ring * 0.4;
-        const value = terrainAt(point.x + Math.cos(angle) * r, point.y + Math.sin(angle) * r);
-        if (value > ground) ground = value;
-        sum += value;
+        sum += terrainAt(point.x + Math.cos(angle) * r, point.y + Math.sin(angle) * r);
         count++;
       }
     }
-    groundAtNode.set(node, ground + ROAD_GROUND_CLEARANCE);
     balancedAtNode.set(node, sum / count + ROAD_GROUND_CLEARANCE);
-  }
-
-  /**
-   * The height a junction would have to sit at to clear the ground around it.
-   *
-   * Still the MAXIMUM, because this is what a raised structure has to fly over
-   * and what a ramp has to land on top of. It is no longer where a road at
-   * grade meets the ground — see `gradeHeight` below.
-   */
-  const landingCeil = new Map<NodeId, number>();
-  for (const [node, list] of incident) {
-    let height = groundAtNode.get(node) ?? 0;
-    for (const profile of list) {
-      const plate = profile.a === node ? profile.plateA : profile.plateB;
-      const from = profile.a === node ? 0 : profile.length - plate;
-      const to = profile.a === node ? plate : profile.length;
-      for (let s = from; s <= to + 1e-6; s += profile.step) {
-        const value = profile.ceil[stationIndex(profile, s)] as number;
-        if (value > height) height = value;
-      }
-    }
-    landingCeil.set(node, height);
   }
 
   /**
@@ -510,23 +531,37 @@ export function buildRoadElevation(
   // junction instead of diving to the ground and climbing back out of it. A node
   // with even one road at grade is a landing, and everything meeting there comes
   // down to the grade height, which is what makes a ramp join a street.
+  //
+  // A node with ONE road is not aloft, even when that road is raised. It used
+  // to be, and a raised road that simply ended stopped in mid-air at its full
+  // height - thirty units over the grass on a rolling map, with nothing under
+  // its end. A structure that ends comes down to the ground: its free end is a
+  // landing like any other, and the ramp brings it there.
   const aloft = new Set<NodeId>();
   for (const [node, list] of incident) {
-    if (list.length > 0 && list.every((profile) => isRaised(profile.structure))) aloft.add(node);
+    if (list.length > 1 && list.every((profile) => isRaised(profile.structure))) aloft.add(node);
   }
 
   // ------------------------------------------------------ raised deck heights
   /** Free height each raised span wants, before the ramps are fitted. */
   const wanted = new Map<SegmentId, number>();
+  /** The deck a raised span wants at its `a` and at its `b` end. */
+  const wantedA = new Map<SegmentId, number>();
+  const wantedB = new Map<SegmentId, number>();
   for (const profile of profiles) {
     const clearance = roadStructure(profile.structure).clearance;
     if (isRaised(profile.structure)) {
-      let peak = -Infinity;
-      for (const value of profile.ceil) if (value > peak) peak = value;
-      // The span must also clear the ground a little way past its own ends, or a
-      // deck that starts right after a hill is cut by it.
-      const ends = Math.max(landingCeil.get(profile.a) ?? 0, landingCeil.get(profile.b) ?? 0);
-      wanted.set(profile.id, Math.max(peak, ends) + clearance);
+      // What a raised span wants at each of its ends: its own deck line over
+      // the reach of the plate. An aloft node takes the highest of these.
+      const ends = (from: number, to: number): number => {
+        let top = -Infinity;
+        for (let s = from; s <= to + 1e-6; s += profile.step) {
+          top = Math.max(top, profile.deck[stationIndex(profile, s)] as number);
+        }
+        return top;
+      };
+      wantedA.set(profile.id, ends(0, profile.plateA));
+      wantedB.set(profile.id, ends(profile.length - profile.plateB, profile.length));
       continue;
     }
     if (!isSunken(profile.structure)) continue;
@@ -549,7 +584,8 @@ export function buildRoadElevation(
     }
     let height = gradeHeight.get(node) ?? 0;
     for (const profile of incident.get(node) ?? []) {
-      height = Math.max(height, wanted.get(profile.id) ?? height);
+      const end = profile.a === node ? wantedA.get(profile.id) : wantedB.get(profile.id);
+      height = Math.max(height, end ?? height);
     }
     nodeHeight.set(node, height);
   }
@@ -560,7 +596,7 @@ export function buildRoadElevation(
   // only, so the sequence is monotone and settles.
   for (let pass = 0; pass < 3; pass++) {
     for (const profile of profiles) {
-      if (isRaised(profile.structure)) solveRaised(profile, nodeHeight, wanted);
+      if (isRaised(profile.structure)) solveRaised(profile, nodeHeight, aloft);
       else if (isSunken(profile.structure)) solveSunken(profile, nodeHeight, wanted);
       else solveGround(profile, nodeHeight);
     }
@@ -890,50 +926,65 @@ function solveGround(profile: Profile, nodeHeight: Map<NodeId, number>): void {
 }
 
 /**
- * A raised structure: flat at its deck height, with a vertical curve at each end.
+ * A raised structure: its deck line, carried down to the ground at every end
+ * where it lands.
  *
- * The deck is one constant, so it can never ripple. The ramps carry it down to
- * whatever the node at each end is — another raised deck (no ramp at all) or a
- * road at grade (a full ramp). Where the span is too short to hold two ramps at
- * the design gradient the DECK is lowered until they fit, which is what a road
- * designer does; steepening the ramp instead produced the wall of asphalt that
- * read as a broken connection.
+ * ```
+ *        deck line (ground + clearance, bridged over dips)
+ *      .------------------------------.     crest: RAMP_CREST
+ *     /   straight at RAMP_GRADE        \
+ *  --'  sag: RAMP_CURVE                  '--
+ *  plate                               plate
+ * ```
+ *
+ * Each landing contributes a ramp that starts level at the plate edge, bends
+ * up over `RAMP_CURVE` and climbs at `RAMP_GRADE` for as long as it has to;
+ * the deck is the lower of that and the deck line, joined over a rounded crest.
+ * Where the span is too short for two ramps to reach the deck line they meet
+ * over a crest of their own below it - the deck is lowered, never steepened,
+ * which is what a road designer does: steepening the ramp instead produced the
+ * wall of asphalt that read as a broken connection.
+ *
+ * An end that is aloft - every road there is raised - has no ramp: the deck is
+ * carried to the node's height, which is the highest deck meeting there.
  */
 function solveRaised(
   profile: Profile,
   nodeHeight: Map<NodeId, number>,
-  wanted: Map<SegmentId, number>,
+  aloft: ReadonlySet<NodeId>,
 ): void {
-  const { h, ceil, step, length } = profile;
+  const { h, ceil, deck, step, length } = profile;
   const hA = nodeHeight.get(profile.a) ?? 0;
   const hB = nodeHeight.get(profile.b) ?? 0;
-  const run = Math.max(1e-3, length - profile.plateA - profile.plateB);
-  const target = Math.max(wanted.get(profile.id) ?? 0, hA, hB);
+  const landA = !aloft.has(profile.a);
+  const landB = !aloft.has(profile.b);
+  const edgeB = length - profile.plateB;
 
-  // Longest ramp the two ends can share, and the deck height it can reach.
-  const slope = RAMP_GRADE / CURVE_PEAK;
-  const riseA = Math.max(0, target - hA);
-  const riseB = Math.max(0, target - hB);
-  const need = (riseA + riseB) / slope;
-  const scale = need > run ? run / need : 1;
-  const deck = Math.max(hA, hB, target - (1 - scale) * Math.max(riseA, riseB));
-  const rampA = Math.max(0, (deck - hA) / slope);
-  const rampB = Math.max(0, (deck - hB) / slope);
+  for (let i = 0; i < h.length; i++) h[i] = deck[i] as number;
+  // An aloft end: the node settled on the highest deck meeting there, which may
+  // be above this span's own line, so the deck is carried up to it gently.
+  if (!landA || !landB) {
+    for (let i = 0; i < h.length; i++) {
+      const s = step * i;
+      if (!landA && s <= profile.plateA) h[i] = Math.max(h[i] as number, hA);
+      if (!landB && s >= edgeB) h[i] = Math.max(h[i] as number, hB);
+    }
+    gradeEnvelope(h, step, DECK_TIE);
+  }
 
   for (let i = 0; i < h.length; i++) {
     const s = step * i;
-    if (s <= profile.plateA) {
-      h[i] = hA;
-      continue;
-    }
-    if (s >= length - profile.plateB) {
-      h[i] = hB;
-      continue;
-    }
-    const along = s - profile.plateA;
-    const back = run - along;
-    const up = rampA <= 0 ? deck : hA + (deck - hA) * ease(along / rampA);
-    const down = rampB <= 0 ? deck : hB + (deck - hB) * ease(back / rampB);
+    let value = h[i] as number;
+    if (landA) value = smoothMin(value, hA + rampRise(s - profile.plateA), RAMP_CREST);
+    if (landB) value = smoothMin(value, hB + rampRise(edgeB - s), RAMP_CREST);
+    h[i] = value;
+  }
+  // How far each ramp runs, which is how far the ground floor is relaxed.
+  const rampA = landA ? rampLength(Math.max(0, (deck[stationIndex(profile, profile.plateA)] as number) - hA)) : 0;
+  const rampB = landB ? rampLength(Math.max(0, (deck[stationIndex(profile, edgeB)] as number) - hB)) : 0;
+
+  for (let i = 0; i < h.length; i++) {
+    const s = step * i;
     // The ground floor is RELAXED towards each junction.
     //
     // `ceil` is the natural ground, and a ramp must clear it — except where it
@@ -951,10 +1002,102 @@ function solveRaised(
     const floor = near <= 0
       ? (ceil[i] as number)
       : (ceil[i] as number) * (1 - near) + Math.min(ceil[i] as number, level) * near;
-    h[i] = Math.max(Math.min(up, down), floor);
+    h[i] = Math.max(h[i] as number, floor);
   }
   gradeEnvelope(h, step, RAMP_GRADE);
   flattenPlates(profile, hA, hB);
+}
+
+/**
+ * Height a ramp has gained `d` units past the plate edge: level at the edge, a
+ * parabolic sag over `RAMP_CURVE`, then `RAMP_GRADE` for ever. The deck it
+ * climbs to is what stops it (`smoothMin` in `solveRaised`).
+ */
+function rampRise(d: number): number {
+  if (d <= 0) return 0;
+  if (d < RAMP_CURVE) return (RAMP_GRADE * d * d) / (2 * RAMP_CURVE);
+  return RAMP_GRADE * (d - RAMP_CURVE / 2);
+}
+
+/** Plate edge to deck, for a ramp that climbs `rise`: sag, straight and crest. */
+export function rampLength(rise: number): number {
+  return rise <= 0 ? 0 : rise / RAMP_GRADE + RAMP_CURVE;
+}
+
+/**
+ * The smaller of two heights with the corner between them rounded over a band
+ * `k` high (a quadratic smooth minimum). Never above either input, continuous
+ * and with a continuous slope, which is what turns the top of a ramp into a
+ * crest curve instead of a kink.
+ */
+function smoothMin(a: number, b: number, k: number): number {
+  const h = Math.max(k - Math.abs(a - b), 0) / k;
+  return Math.min(a, b) - h * h * k * 0.25;
+}
+
+/**
+ * The lowest line a raised deck may take along its span: the ground under it
+ * plus the clearance, as a designed grade line rather than a copy of the land.
+ *
+ * The deck used to be one constant, the highest ground anywhere under the span
+ * plus the clearance. On rolling ground that is a deck twenty or thirty units
+ * over the low parts and a ramp at each end sized to climb all of it - which
+ * is where the endless ramps came from, measured at 341 units of ramp on a
+ * 900-unit span. Now:
+ *
+ *  - an ELEVATED road is the lowest line over the requirement whose grade
+ *    never exceeds `DECK_GRADE`: it rides the land like an urban flyover does,
+ *    at its clearance over each rise, easing down into a hollow no faster than
+ *    a driver would notice, so a ramp landing in a hollow climbs only its own
+ *    clearance;
+ *  - a BRIDGE is the upper concave hull of the requirement: across a valley or
+ *    a river it spans straight from rim to rim, which is the whole point of a
+ *    bridge, and a deck sagging into the river would not be one.
+ *
+ * The grade breaks are then rounded by a light moving average, lifted by
+ * whatever that average took off, so the line never falls below the ground it
+ * has to clear. It also carries the few hundredths the crest rounding of a
+ * ramp takes off, so a ramp arriving at the deck does not undercut it.
+ */
+function deckLine(ceil: readonly number[], step: number, structure: RoadStructure): number[] {
+  const need = ceil.map((value) => value + roadStructure(structure).clearance);
+  const line = structure === 'bridge' ? upperHull(need) : need;
+  gradeEnvelope(line, step, structure === 'bridge' ? RAMP_GRADE : DECK_GRADE);
+  const smooth = line.slice();
+  smoothProfile(smooth, step, DECK_SMOOTH);
+  let lift = 0;
+  for (let i = 0; i < line.length; i++) lift = Math.max(lift, (line[i] as number) - (smooth[i] as number));
+  return smooth.map((value) => value + lift + RAMP_CREST * 0.25);
+}
+
+/** The least concave function over equally spaced samples, sampled at them. */
+function upperHull(values: readonly number[]): number[] {
+  const n = values.length;
+  if (n < 3) return values.slice();
+  const keep: number[] = [];
+  for (let i = 0; i < n; i++) {
+    // Drop the last kept point while it lies on or under the chord from the
+    // one before it to this one.
+    while (keep.length >= 2) {
+      const j = keep[keep.length - 1] as number;
+      const k = keep[keep.length - 2] as number;
+      const cross = (j - k) * ((values[i] as number) - (values[k] as number)) -
+        ((values[j] as number) - (values[k] as number)) * (i - k);
+      if (cross >= 0) keep.pop();
+      else break;
+    }
+    keep.push(i);
+  }
+  const out = new Array<number>(n);
+  for (let q = 0; q + 1 < keep.length; q++) {
+    const from = keep[q] as number;
+    const to = keep[q + 1] as number;
+    for (let i = from; i <= to; i++) {
+      const t = (i - from) / Math.max(1, to - from);
+      out[i] = (values[from] as number) * (1 - t) + (values[to] as number) * t;
+    }
+  }
+  return out;
 }
 
 /**
