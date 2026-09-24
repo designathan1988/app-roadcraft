@@ -1157,7 +1157,7 @@ function eased(current: number, target: number): number {
 const PED_ACCEL = m(1.1);
 const PED_DECEL = m(2.4);
 /** Deceleration planned for a stop that is seen coming: a kerb, a queue, a place to stop at. */
-const PED_COMFORT = m(1.6);
+const PED_COMFORT = m(1.2);
 
 /**
  * World position, and a body heading turned towards the direction of travel

@@ -13,7 +13,6 @@ import {
   type Material,
 } from 'three';
 
-import { clamp } from '@core/scalar';
 import { pedPose, vehiclePose } from '@sim/pose';
 import {
   ARCHETYPES,
@@ -52,7 +51,6 @@ import { DRIVER_WHEEL } from './riderPoses';
 const MAX_VEHICLES = 1_200;
 const MAX_PEDS = 1_000;
 /** Dogs are flavour, not a second crowd. A hundred bounds the extra work. */
-const MAX_DOGS = 120;
 const MAX_RIDERS = 400;
 
 /**
@@ -187,7 +185,6 @@ export const TROUSER_COLOURS: readonly number[] = [
 ];
 
 const SHOE_COLOURS: readonly number[] = [0x1a1a1c, 0x3b2a1e, 0x6b6e72, 0xe2e4e6];
-const DOG_COATS: readonly number[] = [0x6b4a2c, 0x2a2724, 0xd8c9a8, 0x94734a, 0xe8e4dc];
 const HELMET_COLOURS: readonly number[] = [0x1c1e22, 0xd8dbe0, 0xc0392b, 0x2c5f9e, 0xe0a33a];
 
 /** Tints for parts that are never painted the vehicle's own colour. */
@@ -558,11 +555,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   const thinWheels = instanced('bicycle-wheels', thinTyreGeometry, rubber, MAX_RIDERS * 2);
   const spokes = instanced('bicycle-spokes', spokedGeometry, trim, MAX_RIDERS * 2, false);
   const lamps = instanced('vehicle-lamps', unitBox, lampMaterial, MAX_VEHICLES * 9, false);
-  const torsos = instanced('figure-torsos', torsoGeometry, cloth, MAX_DOGS);
-  const heads = instanced('figure-heads', headGeometry, cloth, MAX_RIDERS + MAX_DOGS, false);
-  const limbs = instanced('figure-limbs', unitBox, cloth, MAX_DOGS * 6, false);
 
-  const parts: readonly Part[] = [wheels, hubs, thinWheels, spokes, lamps, torsos, heads, limbs];
+  const parts: readonly Part[] = [wheels, hubs, thinWheels, spokes, lamps];
   /**
    * One set of instanced meshes per car class, built from its own model
    * (`vehicleModels.ts`): a class is five to thirteen draws for the whole fleet
@@ -1047,32 +1041,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     // the rider's head. A helmet has to be fitted to the posed head bone.
   };
 
-  /** The dog trotting behind a pedestrian, drawn in the walker's own frame. */
-  const placeDog = (phase: number, drive: number, coat: number): void => {
-    const back = -m(0.85);
-    const aside = -m(0.6);
-    place(torsos, back, aside, m(0.36), m(0.66), m(0.26), m(0.22), coat);
-    place(heads, back + m(0.42), aside, m(0.48), m(0.19), m(0.19), m(0.19), coat);
-    place(limbs, back - m(0.38), aside, m(0.46), m(0.05), m(0.3), m(0.05), coat, 0.9);
-    // A dog's cadence is faster than its owner's: the same phase, scaled.
-    const trot = Math.sin(phase * 1.7) * 0.5 * drive;
-    const legLen = m(0.26);
-    for (let i = 0; i < 4; i++) {
-      const fore = i < 2;
-      const angle = i % 2 === 0 ? trot : -trot;
-      place(
-        limbs,
-        back + (fore ? m(0.26) : -m(0.24)) + Math.sin(angle) * legLen * 0.5,
-        aside + (fore ? m(0.07) : -m(0.07)),
-        m(0.3) - Math.cos(angle) * legLen * 0.5,
-        m(0.05),
-        legLen,
-        m(0.05),
-        coat,
-        angle,
-      );
-    }
-  };
+
 
 
   /** Refreshed for every vehicle, read by whichever body builder runs. */
@@ -1149,7 +1118,6 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       // more than the entire fleet does.
       if (band >= 1) {
         let pedCount = 0;
-        let dogsLeft = MAX_DOGS;
         for (const ped of world.pedsInIdOrder()) {
           if (pedCount >= MAX_PEDS) break;
           const pose = pedPose(world, ped, alpha);
@@ -1159,14 +1127,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
             (edge?.kind === 'crossing' ? 0 : FOOTWAY_RISE);
           if (options.pedestrianVisible && !options.pedestrianVisible(pose.p.x, pose.p.y, deck)) continue;
           frameAt(pose.p.x, pose.p.y, pose.angle, deck);
-          const look = pedLook(ped.id);
           pedestrians.draw(ped, pose.p.x, pose.p.y, pose.angle, deck, alpha);
-          const phase = ped.age * ped.v * 1.5;
-          if (band >= 2 && look.dog && dogsLeft > 0) {
-            placeDog(phase, clamp(ped.v / Math.max(ped.speed, 1e-3), 0, 1),
-              from(DOG_COATS, agentHash(ped.id ^ 0x7f4a7c15), 3));
-            dogsLeft--;
-          }
           pedCount++;
         }
       }

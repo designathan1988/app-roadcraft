@@ -133,16 +133,12 @@ export const PED_BEHAVIOUR = {
   /** Angular rate of the slow speed wander, in radians per second. */
   dawdleRate: [0.32, 0.66] as const,
   /** Distance over which someone slows for a kerb or a corner. */
-  kerbSlowDistance: m(1.8),
-  kerbSlowFactor: 0.88,
-  /**
-   * A footway corner is walked at nearly full stride. It was 0.84 and, with
-   * the kerb factor on top, corners were walked at 0.76 m/s on the player
-   * map: everybody all but stopped at every corner.
-   */
-  cornerFactor: 0.96,
-  /** People cross a carriageway faster than they walk a footway. */
-  crossingUrgency: 1.12,
+  kerbSlowDistance: m(2.5),
+  kerbSlowFactor: 0.75,
+  /** Corners are taken at a walk, not at a stride. */
+  cornerFactor: 0.84,
+  /** People cross a carriageway slightly faster than they walk a footway. */
+  crossingUrgency: 1.06,
   /** And faster still when the protected window is closing. */
   hurryGain: 1.32,
   hurryMargin: 1.4,
@@ -180,20 +176,20 @@ export const PED_BEHAVIOUR = {
   familyChance: 0.22,
 
   /** Free-speed distribution for children: bursty — short legs, easily distracted. */
-  childSpeedMean: m(1.22),
-  childSpeedSd: m(0.3),
-  childSpeedMin: m(0.7),
+  childSpeedMean: m(1.05),
+  childSpeedSd: m(0.34),
+  childSpeedMin: m(0.55),
   /** Free-speed distribution for elders: slower, and far steadier than anyone. */
-  elderSpeedMean: m(1.12),
+  elderSpeedMean: m(0.92),
   elderSpeedSd: m(0.14),
-  elderSpeedMin: m(0.7),
-  elderSpeedMax: m(1.35),
+  elderSpeedMin: m(0.5),
+  elderSpeedMax: m(1.15),
   /** Multiplies `dawdleAmplitude`: children wander their pace far more, elders far less. */
   childDawdleFactor: 1.8,
   elderDawdleFactor: 0.45,
   /** Elders slow for a kerb or corner more than the baseline; children barely do. */
-  childKerbFactor: 0.95,
-  elderKerbFactor: 0.78,
+  childKerbFactor: 0.92,
+  elderKerbFactor: 0.6,
 
   // ---- neighbours -------------------------------------------------------
   /**
