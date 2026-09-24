@@ -180,6 +180,14 @@ export function createSceneRenderer(
     crowdBounds.center.set(x, height + 3, -y);
     return crowdFrustum.intersectsSphere(crowdBounds);
   };
+  // A vehicle is tested with its own reach, grown by its height towards the
+  // sun's side: an off-screen truck near the edge still casts a shadow onto it.
+  const vehicleBounds = new Sphere(new Vector3(), 1);
+  const vehicleVisible = (x: number, y: number, height: number, radius: number): boolean => {
+    vehicleBounds.center.set(x, height + radius * 0.3, -y);
+    vehicleBounds.radius = radius;
+    return crowdFrustum.intersectsSphere(vehicleBounds);
+  };
   scene.add(...agents.meshes);
   const signals: SignalHeads = createSignalHeads(scene, deckHeight);
 
@@ -331,6 +339,8 @@ export function createSceneRenderer(
       agents.sync(sim, alpha, detailed, rig.viewport.zoom, {
         pedestrianDetail: quality.pedestrianDetail,
         pedestrianVisible,
+        vehicleVisible,
+        occupantZoom: quality.occupantZoom,
       });
       signals.sync(sim, detailed);
 

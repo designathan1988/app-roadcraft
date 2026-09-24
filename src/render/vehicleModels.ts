@@ -99,6 +99,8 @@ export interface SeatModel {
   /** Room either side of the seat's centre line: to the door or glass, or to the next seat. */
   readonly sideRoom: number;
   readonly driver: boolean;
+  /** Row from the front, 0 for the driver's row: at a middle zoom only the front row is drawn. */
+  readonly row: number;
   /**
    * The posture the seat is made for: `car`, reclined with the legs forward
    * (`riderPoses.ts`), or `chair`, upright with the knees bent (a bus seat,
@@ -912,6 +914,7 @@ export function buildVehicleModel(a: Archetype): VehicleModel {
         floor: floor + M(0.02),
         sideRoom,
         driver: side === -1 && i === 0,
+        row: i,
         pose: 'car',
       });
     }
@@ -1469,7 +1472,7 @@ export function buildBusModel(a: Archetype): VehicleModel {
   const wheelAt = new Vector3(driverX + M(DRIVER_WHEEL.forward), driverHip + M(DRIVER_WHEEL.up), driverZ);
   cabin.push(tint(bar(wheelAt, new Vector3(front - M(0.45), floor + M(0.3), driverZ), M(0.07)), DASH));
   seats.push({ x: driverX, z: driverZ, hipY: driverHip, headroom: cant - M(0.05) - driverHip, legroom: front - M(0.12) - driverX,
-    floor, sideRoom: Math.min(M(0.45), halfW - wall - Math.abs(driverZ)), driver: true, pose: 'car' });
+    floor, sideRoom: Math.min(M(0.45), halfW - wall - Math.abs(driverZ)), driver: true, row: 0, pose: 'car' });
 
   // Passenger seats: pairs either side of the aisle, a row of five at the back.
   const pitch = M(0.78);
@@ -1497,7 +1500,7 @@ export function buildBusModel(a: Archetype): VehicleModel {
     const s = passenger[i]!;
     const ahead = passenger.some((q) => Math.abs(q.z - s.z) < 1e-3 && q.x > s.x && q.x - s.x < pitch * 1.5);
     seats.push({ x: s.x, z: s.z, hipY: seatHip, headroom: cant - M(0.05) - seatHip,
-      legroom: ahead ? pitch - M(0.12) : M(0.9), floor, sideRoom: seatWidth / 2 + M(0.04), driver: false, pose: 'chair' });
+      legroom: ahead ? pitch - M(0.12) : M(0.9), floor, sideRoom: seatWidth / 2 + M(0.04), driver: false, row: 1, pose: 'chair' });
   }
   // Stanchions by the aisle and at the doors, and the ceiling rails.
   const aisle = halfW - wall - M(0.04) - seatWidth * 2 - M(0.03);
@@ -1672,7 +1675,7 @@ export function buildTruckModel(a: Archetype): VehicleModel {
     const h = headrestAt(seatX, hipY, 0.3);
     cabin.push(...headrest(h.x, h.y, z));
     seats.push({ x: seatX, z, hipY, headroom: cabTop - M(0.08) - hipY, legroom: cabFront - M(0.45) - seatX,
-      floor: cabFloor + M(0.02), sideRoom: Math.min(M(0.42), halfW - skin - Math.abs(z)), driver: side === -1, pose: 'car' });
+      floor: cabFloor + M(0.02), sideRoom: Math.min(M(0.42), halfW - skin - Math.abs(z)), driver: side === -1, row: 0, pose: 'car' });
     if (side === -1) {
       const wheel = new Vector3(seatX + M(DRIVER_WHEEL.forward), hipY + M(DRIVER_WHEEL.up), z);
       cabin.push(tint(bar(wheel, new Vector3(cabFront - M(0.5), belt - M(0.1), z), M(0.07)), DASH));

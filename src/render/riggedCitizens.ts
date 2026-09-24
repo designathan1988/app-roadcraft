@@ -596,6 +596,9 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         }
         for (const mesh of batch.meshes) {
           mesh.count = batch.count;
+          // An empty batch is still a program bind and its uniforms in every
+          // pass: with the whole roster loaded, most bodies are empty most frames.
+          mesh.visible = batch.count > 0;
           mesh.castShadow = detail > 0 && lod < 2;
           mesh.instanceMatrix.clearUpdateRanges();
           if (batch.count > 0) mesh.instanceMatrix.addUpdateRange(0, batch.count * 16);

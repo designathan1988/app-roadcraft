@@ -32,6 +32,12 @@ export interface QualitySettings {
   readonly detailCutoffZoom: number;
   /** Crowd detail ceiling: silhouette, wardrobe, or full facial animation. */
   readonly pedestrianDetail: 0 | 1 | 2;
+  /**
+   * Zoom from which the people inside vehicles are drawn. Below it a seated
+   * torso is under two or three pixels behind tinted glass; above twice it
+   * every seat is drawn, between the two only the front row.
+   */
+  readonly occupantZoom: number;
 }
 
 export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
@@ -49,6 +55,7 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     surfaceDetail: false,
     detailCutoffZoom: 0.5,
     pedestrianDetail: 0,
+    occupantZoom: 3,
   },
   medium: {
     pixelRatio: 1.25,
@@ -64,6 +71,7 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     surfaceDetail: true,
     detailCutoffZoom: 0.34,
     pedestrianDetail: 1,
+    occupantZoom: 2.2,
   },
   high: {
     pixelRatio: 1.5,
@@ -79,6 +87,7 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     surfaceDetail: true,
     detailCutoffZoom: 0.26,
     pedestrianDetail: 2,
+    occupantZoom: 1.6,
   },
   ultra: {
     pixelRatio: 2,
@@ -94,6 +103,7 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     surfaceDetail: true,
     detailCutoffZoom: 0.2,
     pedestrianDetail: 2,
+    occupantZoom: 1.3,
   },
 };
 

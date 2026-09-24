@@ -874,6 +874,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     for (let index = 0; index < model.seats.length; index++) {
       if ((vehicle.seats & (1 << index)) === 0 || index === moving) continue;
       const seat = model.seats[index]!;
+      if (seat.row > rowsDrawn) continue;
       seatWorldInto(seat, seatPoint);
       const who = seatPerson(vehicle, index);
       // A car-seat pose (`riderPoses.ts`), sized so the head clears the roof
@@ -904,6 +905,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   };
   /** Seconds of simulation, for the occupants' own motion; set per vehicle. */
   let frameClock = 0;
+  /** Seat rows drawn this frame (`SeatModel.row`); set per sync from the zoom. */
+  let rowsDrawn = Infinity;
 
   /** A steering wheel about its column: yaw with the vehicle, tilt, then the turn. */
   const placeSteeringWheel = (part: Part, along: number, side: number, up: number, tilt: number, turn: number): void => {
@@ -1090,6 +1093,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       // quality tier allows them at.
       const occupantZoom = options.occupantZoom ?? OCCUPANT_ZOOM;
       const vehicleBand = !detailed || zoom < FAR_BODY_ZOOM ? 0 : zoom >= occupantZoom ? 2 : 1;
+      // Between the occupant zoom and 1.6 times it, only the front row.
+      rowsDrawn = zoom >= occupantZoom * 1.6 ? Infinity : 0;
 
       let drawn = 0;
       for (const vehicle of world.vehiclesInIdOrder()) {
@@ -1099,13 +1104,11 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         const lane = world.lanelet(vehicle.lanelet);
         const plan = planOf(vehicle.archetype);
         const twoWheeled = plan.shape === 'motorcycle' || plan.shape === 'bicycle';
-        frameAt(
-          pose.p.x,
-          pose.p.y,
-          pose.angle,
-          elevationAt(world, pose.p.x, pose.p.y, lane?.segment),
-          twoWheeled ? leanOf(world, vehicle) : 0,
-        );
+        const deck = elevationAt(world, pose.p.x, pose.p.y, lane?.segment);
+        // Off screen, and too far from it for its shadow to fall on it:
+        // nothing of this vehicle is written this frame.
+        if (options.vehicleVisible && !options.vehicleVisible(pose.p.x, pose.p.y, deck, plan.length * 0.5 + plan.height * 2)) continue;
+        frameAt(pose.p.x, pose.p.y, pose.angle, deck, twoWheeled ? leanOf(world, vehicle) : 0);
         const paintHex = hexOf(vehicle.color);
         const look = vehicleLook(vehicle.id, plan.seats);
         occupantBand = vehicleBand;
