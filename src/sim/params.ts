@@ -138,6 +138,13 @@ export const SIGNAL = {
   uncontrolledGreen: 3600,
 } as const;
 
+/**
+ * Pedestrians walk as agents that perceive and choose a velocity
+ * (`sim/peds/agent.ts`); false is the older gate-and-nudge walker, kept for
+ * comparison in the lab until the agent wins on every measure.
+ */
+export const PED_AGENT = { on: false };
+
 /** Pedestrian parameters. */
 export const PED = {
   /** Design speed used to size clearance intervals. */

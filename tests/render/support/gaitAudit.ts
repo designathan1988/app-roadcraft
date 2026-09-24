@@ -8,6 +8,7 @@ import { pedHash } from '@sim/peds/behaviour';
 import type { Ped } from '@sim/peds/state';
 import type { SimWorld } from '@sim/world';
 import { m } from '@world/units';
+import { SIGNAL_POST_RADIUS, signalPosts } from '@world/signalPosts';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { decodeRocketboxLibrary } from '@render/citizenWalk';
 import { gaitClipsOf, type GaitClipName, type GaitClips, type GaitPlay } from '@render/citizenGait';
@@ -202,9 +203,11 @@ export interface FlowAudit {
 /** How people get along the pavement: through furniture, into each other, held up. */
 export function auditFlow(seconds: number, seed = 3, breakdown?: Map<string, number>): FlowAudit {
   const sim = simOf(fixtureDoc(), seed, 2);
-  interface Obstacle { x: number; y: number; radius: number; along?: { x: number; y: number }; halfLength?: number; halfWidth?: number }
+  interface Obstacle { x: number; y: number; radius: number; along?: { x: number; y: number }; halfLength?: number; halfWidth?: number; kind?: string }
   const items: Obstacle[] = streetFurniture(sim.net).filter(blocksPedestrians);
-  for (const pole of sim.doc.poles.values()) items.push({ x: pole.x, y: pole.y, radius: m(0.18) });
+  for (const pole of sim.doc.poles.values()) items.push({ x: pole.x, y: pole.y, radius: m(0.18), kind: 'utilityPole' });
+  // Signal posts are furniture too, and the one people meet most: at the kerb.
+  for (const post of signalPosts(sim.net, sim.graph)) items.push({ x: post.x, y: post.y, radius: SIGNAL_POST_RADIUS, kind: 'signalPost' });
   const CELL = m(4);
   const grid = new Map<string, typeof items>();
   for (const item of items) {
@@ -243,9 +246,11 @@ export function auditFlow(seconds: number, seed = 3, breakdown?: Map<string, num
       const seated = p.activity?.kind === 'bench' && p.activity.phase !== 'approach';
       if (!seated && edge?.kind !== 'crossing') {
         let nearest = Infinity;
+        let nearestKind = '';
         let aheadClose = false;
         near(p.x, p.y, (item) => {
           const d = edgeDistance(item, p.x, p.y);
+          if (d < nearest) nearestKind = (item as { kind?: string }).kind ?? '?';
           nearest = Math.min(nearest, d);
           const dx = item.x - p.x, dy = item.y - p.y;
           if (d < m(2) && dx * Math.cos(p.heading) + dy * Math.sin(p.heading) > 0) aheadClose = true;
@@ -253,7 +258,7 @@ export function auditFlow(seconds: number, seed = 3, breakdown?: Map<string, num
         if (nearest < PERSON) {
           flow.insideFurniture += DT;
           if (breakdown) {
-            const key = `${p.state}|${p.activity ? p.activity.kind + ':' + p.activity.phase : '-'}|${edge?.kind ?? '?'}|${p.v < 0.1 ? 'still' : 'moving'}`;
+            const key = `${p.state}|${p.activity ? p.activity.kind + ':' + p.activity.phase : '-'}|${edge?.kind ?? '?'}|${p.v < 0.1 ? 'still' : 'moving'}|${nearestKind}`;
             breakdown.set(key, (breakdown.get(key) ?? 0) + DT);
           }
         }

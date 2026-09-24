@@ -410,7 +410,7 @@ function play(g: Gait, key: PlayKey, phase = 0, fade = FADE): void {
  */
 function standingKey(ped: Ped, g: Gait, hash: number): Single {
   const act = ped.activity;
-  if (act?.kind === 'talk') {
+  if (act?.kind === 'talk' && act.phase === 'hold') {
     // One speaks at a time, and the turn passes round the party.
     const turn = Math.floor((ped.age + (ped.party.id % 7) * 1.3) / 6.5) % Math.max(1, ped.party.size);
     return turn === ped.rank ? 'talk' : 'listen';

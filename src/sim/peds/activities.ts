@@ -1,6 +1,7 @@
 import { clamp } from '@core/scalar';
 import { m } from '@world/units';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
+import { signalPosts } from '@world/signalPosts';
 import { DT } from '../params';
 import type { SimWorld } from '../world';
 import { pedHash } from './behaviour';
@@ -104,6 +105,18 @@ function index(w: SimWorld): Index {
     const pad = edge.halfWidth + FURNITURE_REACH;
     box.x0 -= pad; box.y0 -= pad; box.x1 += pad; box.y1 += pad;
     walks.push({ edge, box });
+  }
+  // Signal posts are furniture a talking circle must keep clear of too: they
+  // stand on the footway beside every signalised crossing.
+  for (const post of signalPosts(w.net, w.graph)) {
+    for (const { edge, box } of walks) {
+      if (post.x < box.x0 || post.x > box.x1 || post.y < box.y0 || post.y > box.y1) continue;
+      const hit = edge.path.closestPoint(post);
+      if (hit.distance > edge.halfWidth + FURNITURE_REACH) continue;
+      const list = built.furniture.get(edge.id) ?? [];
+      list.push(hit.s);
+      built.furniture.set(edge.id, list);
+    }
   }
   let id = 0;
   for (const item of streetFurniture(w.net)) {
@@ -528,6 +541,10 @@ function stepTalk(w: SimWorld, p: Ped, a: PedActivity, stopWithin: (d: number) =
     a.move = p.v < m(0.2) && remaining < TALK_NEAR ? a.move + DT : 0;
     const there = remaining <= ARRIVE &&
       (Math.abs(a.slotLat - p.lat) < TALK_ARRIVE_SIDE || a.move > TALK_SETTLE);
+    // The first to arrive waits for a companion before starting to talk: it
+    // used to stand talking to nobody while the rest of the party, held up
+    // behind, were still walking up.
+    if (there && p.v < m(0.2) && !companionThere(w, p) && a.move <= TALK_GIVE_UP) return 0;
     if ((there && p.v < m(0.2)) || a.move > TALK_GIVE_UP) {
       a.phase = 'hold';
       a.t = 0;
@@ -537,6 +554,16 @@ function stepTalk(w: SimWorld, p: Ped, a: PedActivity, stopWithin: (d: number) =
     return remaining <= ARRIVE ? 0 : stopWithin(Math.max(0, remaining - ARRIVE * 0.5));
   }
   return remaining > m(0.12) ? Math.min(SHUFFLE, stopWithin(remaining - m(0.05))) : 0;
+}
+
+/** Whether another member of this party is at the conversation already, or arriving. */
+function companionThere(w: SimWorld, p: Ped): boolean {
+  for (let k = 0; k < p.party.size; k++) {
+    const q = w.peds.get(p.party.id + k);
+    if (!q || q === p || q.party !== p.party || q.activity?.kind !== 'talk') continue;
+    if (q.activity.phase === 'hold' || q.activity.slotS - q.s <= ARRIVE) return true;
+  }
+  return false;
 }
 
 /**

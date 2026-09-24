@@ -1,6 +1,8 @@
 import { DIV_EPS, clamp, lerp } from '@core/scalar';
 import { dist } from '@core/vec2';
-import { DT, PED } from '../params';
+import { DT, PED, PED_AGENT } from '../params';
+import { PLAN_CAP, plannedLine, stepAgent } from './agent';
+import { type WaitSlot, claimSlot, heldSlot, releaseSlot, waitArea } from './waitArea';
 import { m } from '@world/units';
 import type { SimWorld } from '../world';
 import type { Ped } from './state';
@@ -73,11 +75,14 @@ export function stepPedestrians(w: SimWorld): void {
     gatherParty(w, p);
     const free = desiredSpeed(w, p, edge);
     const desired = cap === null ? free : Math.min(free, cap);
-    steer(w, p, edge, desired, space);
+    const agent = PED_AGENT.on &&
+      ((p.state === 'Walking' && edge.kind !== 'crossing') || (p.state === 'Crossing' && edge.kind === 'crossing'));
+    if (!agent) steer(w, p, edge, desired, space);
 
     switch (p.state) {
       case 'Walking':
-        walk(w, p, edge, desired, space);
+        if (agent) walkAgent(w, p, edge, desired, space);
+        else walk(w, p, edge, desired, space);
         break;
 
       case 'ApproachKerb':
@@ -92,6 +97,15 @@ export function stepPedestrians(w: SimWorld): void {
         p.waited += DT;
         const nextId = p.route[0];
         const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
+        // Waiting at a place in the area behind the kerb, or in the queue
+        // behind it: on the WALK, walk from there to the zebra.
+        if (heldSlot(w, p)) {
+          if (!next || next.kind !== 'crossing' || mayEnterCrossing(w, p, next)) {
+            releaseSlot(w, p);
+            p.state = 'Walking';
+          }
+          break;
+        }
         if (!next) {
           // Nothing planned: pick any onward edge rather than stand forever.
           if (!repath(w, p, space)) remove.push(p);
@@ -119,11 +133,19 @@ export function stepPedestrians(w: SimWorld): void {
       }
 
       case 'Crossing': {
-        const want = followSpeed(Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge)));
-        p.v = eased(p.v, Math.min(want, approachSpeed(w, p, edge, space, want)));
-        const before = p.s;
-        p.s = space.safeStep(w, p, edge, Math.min(edge.length, p.s + p.v * DT));
-        p.v = (p.s - before) / DT;
+        if (agent) {
+          // On the zebra the same agent walks: the rules above decided that
+          // this person may be here; how they get across, round the people
+          // coming the other way, is the agent's choice.
+          const want = Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge));
+          stepAgent(w, p, edge, { along: want, lat: lateralTarget(w, p, edge) }, space);
+        } else {
+          const want = followSpeed(Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge)));
+          p.v = eased(p.v, Math.min(want, approachSpeed(w, p, edge, space, want)));
+          const before = p.s;
+          p.s = space.safeStep(w, p, edge, Math.min(edge.length, p.s + p.v * DT));
+          p.v = (p.s - before) / DT;
+        }
         if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
         if (p.s >= edge.length) {
           if (!advance(w, p, edge, space)) remove.push(p);
@@ -193,6 +215,7 @@ export function stepPedestrians(w: SimWorld): void {
   }
 
   for (const p of remove) {
+    releaseSlot(w, p);
     releaseCrossing(w, p);
     endActivity(w, p);
     w.peds.delete(p.id);
@@ -206,6 +229,106 @@ function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: P
   p.s = space.safeStep(w, p, edge, p.s + p.v * DT);
   p.v = (p.s - before) / DT;
   if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
+  walkTail(w, p, edge, space);
+}
+
+/**
+ * Walking as an agent (`agent.ts`): what the walker wants - its pace, capped
+ * to stop at a kerb or a place ahead, and its line across the footway - and
+ * the agent chooses how to get there round everything it sees.
+ */
+function walkAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {
+  let along = desired * facingShare(p, edge);
+  const toEnd = edge.length - p.s;
+  let line = lateralTarget(w, p, edge);
+  // A crossing ahead that may not be entered yet: walk to a place of one's
+  // own in its waiting area and stop there (`waitArea.ts`).
+  const slot = waitingPlace(w, p, edge);
+  if (slot) {
+    along = Math.min(along, stopWithin(Math.max(0, SLOT_AT.s - p.s)));
+    line = SLOT_AT.lat;
+  } else {
+    const reach = Math.max(PED_PROBE_MIN, (p.v * p.v) / (2 * PED_COMFORT) + p.v);
+    if (toEnd <= reach && mustStopAtEndOf(w, p, edge, space)) along = Math.min(along, stopWithin(toEnd));
+    line = plannedLine(w, p, edge, line, space);
+    along = Math.min(along, PLAN_CAP.speed);
+  }
+  stepAgent(w, p, edge, { along, lat: line }, space);
+  if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
+  if (slot && Math.abs(SLOT_AT.s - p.s) < SLOT_ARRIVED && Math.abs(SLOT_AT.lat - p.lat) < SLOT_ARRIVED * 2 &&
+    p.v < SLOT_STILL) {
+    p.v = 0;
+    p.latV = 0;
+    p.waited = 0;
+    p.state = 'WaitAtKerb';
+    return;
+  }
+  walkTail(w, p, edge, space);
+}
+
+/** The place a walker holds in the waiting area ahead, on its own edge, written here. */
+const SLOT_AT = { s: 0, lat: 0 };
+/** How near its place a walker counts as there, and how still. */
+const SLOT_ARRIVED = m(0.15);
+const SLOT_STILL = m(0.15);
+/** Distance before the kerb at which a place is taken. */
+const SLOT_TAKE = m(12);
+
+
+/**
+ * Whether this walker is heading for a place in the waiting area of the
+ * crossing ahead, with `SLOT_AT` set to it in the walker's own edge frame;
+ * false when the crossing may be entered now, when it is not near, or when
+ * no place is free.
+ */
+function waitingPlace(w: SimWorld, p: Ped, edge: SidewalkEdge): boolean {
+  const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+  if (!next || next.kind !== 'crossing' || edge.kind === 'crossing' || edge.length - p.s > SLOT_TAKE ||
+    mayEnterCrossing(w, p, next)) {
+    releaseSlot(w, p);
+    return false;
+  }
+  const kerb = w.sidewalks.other(edge, p.entry);
+  const rev = p.entry !== edge.from;
+  const place = { s: 0, lat: 0 };
+  const onEdge = (slot: WaitSlot): boolean => {
+    if (!edge.corridor.locate(slot.x, slot.y, rev, edge.length, place)) return false;
+    if (place.s < p.s - m(0.5) || place.s > edge.length) return false;
+    edge.corridor.bounds(place.s, rev, WALLS);
+    return place.lat >= WALLS.lo && place.lat <= WALLS.hi;
+  };
+  const slot = claimSlot(w, p, waitArea(w, next, kerb), onEdge);
+  if (!slot || !edge.corridor.locate(slot.x, slot.y, rev, edge.length, place)) return false;
+  SLOT_AT.s = place.s;
+  SLOT_AT.lat = place.lat;
+  return true;
+}
+
+/**
+ * The line across the footway this walker would like to be on: its place in
+ * its party's formation, the side it is stopping at, its place in a
+ * conversation, lined up for a narrower edge ahead. What is in the way is
+ * the agent's business, not this.
+ */
+function lateralTarget(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
+  const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
+  let target = formation(p, usable);
+  const stopping = p.activity && p.activity.side !== 0 && edge.kind === 'walk' ? p.activity : null;
+  if (stopping) target = stopping.side * usable;
+  const talking = talkLateral(p);
+  if (talking !== null) target = talking;
+  const nextEdge = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+  const narrower = nextEdge ? Math.max(0, nextEdge.halfWidth - PED_BEHAVIOUR.lateralMargin) : usable;
+  const remaining = edge.length - p.s;
+  if (nextEdge && narrower < usable && remaining < LINE_UP_DISTANCE) {
+    const room = lerp(narrower, usable, clamp(remaining / LINE_UP_DISTANCE, 0, 1));
+    target = clamp(target, -room, room);
+  }
+  return target;
+}
+
+/** What happens when a walker reaches the end of its edge, or stands just short of a kerb. */
+function walkTail(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClearance): void {
 
   // Held a step short of a kerb it is waiting to cross from, it is at that
   // kerb: it waits there, and asks for the crossing like anyone standing on
@@ -1024,7 +1147,16 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   // Blocked sideways: hold the line. Stepping the other way instead, as this
   // used to, made a boxed-in walker zigzag on the spot every tick.
   if (space.canShift(w, p, edge, proposed)) p.lat = proposed;
-  else {
+  else if (p.stuck > BACK_OFF_AFTER && p.s > BACK_OFF_STEP
+    && space.canShift(w, p, edge, proposed, p.s - BACK_OFF_STEP)) {
+    // Boxed in against something ahead, and the step aside would bring them
+    // closer to it: a person takes half a step back and goes round. A walker
+    // who came down the narrow side of a street tree stood a hand's breadth
+    // from the trunk for good, once furniture could no longer be walked
+    // through - forward was the tree, and so was every step aside.
+    p.s -= BACK_OFF_STEP;
+    p.lat = proposed;
+  } else {
     p.lat = held;
     p.latV = 0;
     // Committed side blocked too: take the other one next time.
@@ -1041,6 +1173,10 @@ const PLAN = { target: 0, rate: 0 };
 
 /** Seconds held up before committing to a side. */
 const DODGE_AFTER = 0.6;
+/** Held up this long with every step aside refused, a walker backs off a little to get round. */
+const BACK_OFF_AFTER = 1.2;
+/** How far back, per tick, a boxed-in walker steps while moving aside. */
+const BACK_OFF_STEP = m(0.012);
 /** How close to the edge of the usable width counts as pinned against it. */
 const EDGE_PINNED = m(0.05);
 
