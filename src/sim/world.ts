@@ -216,7 +216,56 @@ export class SimWorld {
       .filter((id) => this.sidewalks.crossings.has(id));
   }
 
+  /**
+   * What the signal controllers read about the world, for one pass over them.
+   *
+   * Made afresh at the top of every step (`pipeline.ts`), before anything else
+   * moves, so answers that only read the world can be kept for the rest of the
+   * pass. They are: the controllers asked for the same demand, per stage and
+   * per group, over and over, and the reservation question scanned the whole
+   * fleet on every one of those asks. Nothing here is keyed on the clock,
+   * which does not advance when a test drives `step` directly.
+   */
   signalDeps(): SignalDeps {
+    const demands = new Map<string, { active: number; score: number }>();
+    const demandOf = (node: NodeId, groups: readonly number[], movements?: readonly string[]) => {
+      const key = `${node}|${groups.join(',')}|${movements?.join(',') ?? '*'}`;
+      let value = demands.get(key);
+      if (!value) {
+        value = this.signalDemand(node, groups, movements);
+        demands.set(key, value);
+      }
+      return value;
+    };
+    /** Signal groups some vehicle holding an allocation must acquire next, by node. */
+    let reserved: Map<NodeId, Set<number>> | null = null;
+    const reservedGroups = (): Map<NodeId, Set<number>> => {
+      if (reserved) return reserved;
+      reserved = new Map();
+      for (const vehicle of this.vehicles.values()) {
+        const lane = this.lanelet(vehicle.lanelet);
+        const ownsAllocation =
+          vehicle.admittedConnector !== null ||
+          vehicle.clearingConnectors.length > 0 ||
+          lane?.kind === 'connector';
+        if (!ownsAllocation) continue;
+        // A soft Banker's intent does not occupy its future junctions. Only
+        // expedite the movement the physical holder must acquire next;
+        // advertising the whole chain starves unrelated stages several nodes
+        // before the vehicle can reach them.
+        const next = vehicle.reservedConnectors[0];
+        if (!next) continue;
+        const connector = this.connector(next);
+        if (!connector) continue;
+        let groups = reserved.get(connector.node);
+        if (!groups) {
+          groups = new Set();
+          reserved.set(connector.node, groups);
+        }
+        groups.add(connector.group);
+      }
+      return reserved;
+    };
     return {
       tick: () => this.clock.tick,
       connectorsOf: (id: string) => this.graph.connectors.get(id),
@@ -229,8 +278,8 @@ export class SimWorld {
         .map((ref) => ref.other),
       pedestriansCrossing: (_node, crossings) =>
         crossings.some((x) => (this.pedOccupancy.get(x)?.length ?? 0) > 0),
-      demandOn: (node, groups, movements) => this.signalDemand(node, groups, movements).score > 0,
-      demand: (node, groups, movements) => this.signalDemand(node, groups, movements),
+      demandOn: (node, groups, movements) => demandOf(node, groups, movements).score > 0,
+      demand: (node, groups, movements) => demandOf(node, groups, movements),
       pedestrianWait: (node, crossings) => {
         let longest = 0;
         if (!crossings.length) return 0;
@@ -256,23 +305,8 @@ export class SimWorld {
         return false;
       },
       reservationDemandOn: (node, groups) => {
-        for (const vehicle of this.vehicles.values()) {
-          const lane = this.lanelet(vehicle.lanelet);
-          const ownsAllocation =
-            vehicle.admittedConnector !== null ||
-            vehicle.clearingConnectors.length > 0 ||
-            lane?.kind === 'connector';
-          if (!ownsAllocation) continue;
-          // A soft Banker's intent does not occupy its future junctions. Only
-          // expedite the movement the physical holder must acquire next;
-          // advertising the whole chain starves unrelated stages several nodes
-          // before the vehicle can reach them.
-          const next = vehicle.reservedConnectors[0];
-          if (!next) continue;
-          const connector = this.connector(next);
-          if (connector?.node === node && groups.includes(connector.group)) return true;
-        }
-        return false;
+        const here = reservedGroups().get(node);
+        return !!here && groups.some((group) => here.has(group));
       },
     };
   }

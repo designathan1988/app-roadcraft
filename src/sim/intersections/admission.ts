@@ -68,6 +68,15 @@ const RANK: Record<RowClass, number> = {
  */
 export function stepAdmission(w: SimWorld): void {
   revokeStaleGrants(w);
+  holdings = new Map();
+  try {
+    admit(w);
+  } finally {
+    holdings = null;
+  }
+}
+
+function admit(w: SimWorld): void {
   const requests: Request[] = [];
 
   for (const node of w.junctionNodesInOrder()) {
@@ -139,6 +148,7 @@ export function stepAdmission(w: SimWorld): void {
         r.v.reservedConnectors = reservations.map(
           (reservation) => reservation.connector.id,
         );
+        holdings?.delete(r.v.id);
         // `longitudinalConstraints` has already pushed the signal obstacle
         // for this vehicle from the same `mustStopAtSignal` decision. Pushing
         // a second identical one changes nothing for IDM, which takes the
@@ -173,6 +183,7 @@ export function stepAdmission(w: SimWorld): void {
           .map((reservation) => reservation.connector.id);
       }
       r.v.admittedConnector = r.conn.id;
+      holdings?.delete(r.v.id);
       // Waiting time before admission is ordinary queueing, not time spent
       // holding a reservation.  Start the watchdog clock at the grant.
       r.v.lastMovedTick = w.clock.tick;
@@ -551,6 +562,36 @@ function actualAllocation(w: SimWorld, v: Vehicle): Set<ResourceKey> {
   return resources;
 }
 
+/** What one vehicle holds and may yet claim, for the Banker's test. */
+interface Holding {
+  readonly allocation: Set<ResourceKey>;
+  readonly maximum: Set<ResourceKey>;
+}
+
+/**
+ * Every vehicle's holding, measured once per admission pass and dropped for a
+ * vehicle as soon as a grant or a reservation changes it. Each applicant's
+ * Banker's test used to rebuild every vehicle's sets from the claims table -
+ * the whole fleet, per request, per tick - for answers that only a grant in
+ * this same pass can change. Null outside `stepAdmission`.
+ */
+let holdings: Map<number, Holding> | null = null;
+
+function holdingOf(w: SimWorld, vehicle: Vehicle): Holding {
+  const known = holdings?.get(vehicle.id);
+  if (known) return known;
+  const allocation = actualAllocation(w, vehicle);
+  const maximum = new Set(allocation);
+  for (const id of vehicle.reservedConnectors) {
+    const connector = w.connector(id);
+    if (!connector) continue;
+    for (const resource of connectorResources(w, connector)) maximum.add(resource);
+  }
+  const holding = { allocation, maximum };
+  holdings?.set(vehicle.id, holding);
+  return holding;
+}
+
 /**
  * Banker's safety test over all live maximum claims.
  *
@@ -570,31 +611,25 @@ function bankerSafeAfterGrant(
   const universe = new Set<ResourceKey>();
 
   for (const vehicle of w.vehicles.values()) {
-    const allocation = actualAllocation(w, vehicle);
-    const maximum = new Set(allocation);
-    const intentions =
-      vehicle.id === applicant.id
-        ? proposal
-        : vehicle.reservedConnectors
-            .map((id) => w.connector(id))
-            .filter((connector): connector is Connector => !!connector)
-            .map((connector) => ({
-              connector,
-              points: w.conflicts.refs(connector.id).map((ref) => ref.point),
-            }));
-
+    let allocation: Set<ResourceKey>;
+    let maximum: Set<ResourceKey>;
     if (vehicle.id === applicant.id) {
+      allocation = actualAllocation(w, vehicle);
+      maximum = new Set(allocation);
       const current = proposal[0];
       if (current) {
         for (const resource of connectorResources(w, current.connector)) {
           allocation.add(resource);
         }
       }
-    }
-    for (const intention of intentions) {
-      for (const resource of connectorResources(w, intention.connector)) {
-        maximum.add(resource);
+      for (const intention of proposal) {
+        for (const resource of connectorResources(w, intention.connector)) {
+          maximum.add(resource);
+        }
       }
+    } else {
+      // Read only below: the sets are this pass's, shared across applicants.
+      ({ allocation, maximum } = holdingOf(w, vehicle));
     }
 
     // A process that HOLDS NOTHING cannot be part of a deadlock.
