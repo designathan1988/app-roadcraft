@@ -586,6 +586,8 @@ export function buildScenery(
       for (const [mesh, close, far] of plants) mesh.geometry = near ? close : far;
     },
     cull(frustum, view) {
+      // Grass only when it is shown; it keeps its own record of the view.
+      if (grass.group.visible) grass.cull(frustum, view);
       if (culledFor && culledFor.equals(view)) return;
       culledFor = (culledFor ?? new Matrix4()).copy(view);
       for (const mesh of meshes) {

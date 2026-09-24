@@ -1,4 +1,7 @@
-import { Color, Group, InstancedMesh, Object3D, type BufferGeometry, type Material } from 'three';
+import {
+  Color, DynamicDrawUsage, Group, InstancedMesh, Object3D, Sphere,
+  type BufferGeometry, type Frustum, type Material, type Matrix4,
+} from 'three';
 
 import { Rng } from '@core/rng';
 import type { Network } from '@world/network';
@@ -26,9 +29,12 @@ import { TERRAIN_HALF } from './terrain';
  *
  * ## Chunks
  *
- * One `InstancedMesh` per 96-unit cell, each with its own bounding sphere, so
- * at the zoom grass is drawn at (it is hidden further out - see
- * `GRASS_MIN_ZOOM`) the frustum throws away everything off screen.
+ * Instances are grouped by 96-unit cell, but drawn as ONE instanced mesh per
+ * kind. A mesh per cell was 1 070 meshes on the player map - a draw call per
+ * visible cell per pass whenever grass showed. The cells now only order the
+ * instances: when the camera moves (`cull`), the visible cells' instances are
+ * copied to the front of the buffer as a few contiguous runs, and only those
+ * are drawn.
  */
 
 /**
@@ -50,7 +56,21 @@ const ROADSIDE_SHARE = 0.65;
 export interface GrassField {
   readonly group: Group;
   readonly triangles: number;
+  /**
+   * Keeps only the cells the camera can see. `view` is the camera's projection
+   * times its inverse world matrix; nothing is done while it is unchanged.
+   */
+  cull(frustum: Frustum, view: Matrix4): void;
   dispose(): void;
+}
+
+/** One kind of plant: every instance, cell by cell, and what is drawn. */
+interface Field {
+  readonly mesh: InstancedMesh;
+  readonly matrices: Float32Array;
+  readonly colours: Float32Array;
+  /** Per cell: first instance, count, and a bounding sphere (x, y, z, radius). */
+  readonly cells: { start: number; count: number; sphere: Sphere }[];
 }
 
 interface Tuft {
@@ -162,41 +182,101 @@ export function buildGrass(
   }
 
   let triangles = 0;
-  const meshes: InstancedMesh[] = [];
+  const fields: Field[] = [];
   const object = new Object3D();
   const emit = (bucket: Map<string, Tuft[]>, geometry: BufferGeometry, material: Material, name: string): void => {
+    let total = 0;
+    for (const list of bucket.values()) total += list.length;
+    if (total === 0) return;
     const perInstance = geometry.getAttribute('position').count / 3;
-    for (const [key, list] of bucket) {
-      const mesh = new InstancedMesh(geometry, material, list.length);
-      mesh.name = `${name}-${key}`;
-      mesh.castShadow = false;
-      mesh.receiveShadow = true;
-      list.forEach((tuft, index) => {
+    const mesh = new InstancedMesh(geometry, material, total);
+    mesh.name = name;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    // Culled by cell in `cull`; a sphere round the whole map rejects nothing.
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+    const cells: Field['cells'] = [];
+    let index = 0;
+    for (const list of bucket.values()) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let minZ = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      let maxZ = -Infinity;
+      const first = index;
+      for (const tuft of list) {
         object.position.set(tuft.x, tuft.z, -tuft.y);
         object.rotation.set(0, tuft.yaw, 0);
         object.scale.set(tuft.height * tuft.width, tuft.height, tuft.height * tuft.width);
         object.updateMatrix();
         mesh.setMatrixAt(index, object.matrix);
         mesh.setColorAt(index, tuft.tint);
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      mesh.computeBoundingSphere();
-      group.add(mesh);
-      meshes.push(mesh);
-      triangles += perInstance * list.length;
+        index++;
+        const reach = tuft.height * Math.max(1, tuft.width);
+        minX = Math.min(minX, tuft.x - reach);
+        maxX = Math.max(maxX, tuft.x + reach);
+        minY = Math.min(minY, tuft.z);
+        maxY = Math.max(maxY, tuft.z + tuft.height);
+        minZ = Math.min(minZ, -tuft.y - reach);
+        maxZ = Math.max(maxZ, -tuft.y + reach);
+      }
+      const sphere = new Sphere();
+      sphere.center.set((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+      sphere.radius = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2;
+      cells.push({ start: first, count: list.length, sphere });
     }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) {
+      mesh.instanceColor.setUsage(DynamicDrawUsage);
+      mesh.instanceColor.needsUpdate = true;
+    }
+    group.add(mesh);
+    fields.push({
+      mesh,
+      matrices: Float32Array.from(mesh.instanceMatrix.array as Float32Array),
+      colours: Float32Array.from((mesh.instanceColor?.array ?? new Float32Array(0)) as Float32Array),
+      cells,
+    });
+    triangles += perInstance * total;
   };
   emit(tufts, kit.tuft, kit.grass, 'grass-tufts');
   emit(flowers, kit.flower, kit.flowers, 'wildflowers');
 
+  let culledFor: Matrix4 | null = null;
   return {
     group,
     triangles,
+    cull(frustum, view) {
+      if (culledFor && culledFor.equals(view)) return;
+      culledFor = culledFor ? culledFor.copy(view) : view.clone();
+      for (const field of fields) {
+        const matrices = field.mesh.instanceMatrix.array as Float32Array;
+        const colours = field.mesh.instanceColor?.array as Float32Array | undefined;
+        let n = 0;
+        for (const cell of field.cells) {
+          if (!frustum.intersectsSphere(cell.sphere)) continue;
+          matrices.set(field.matrices.subarray(cell.start * 16, (cell.start + cell.count) * 16), n * 16);
+          if (colours) colours.set(field.colours.subarray(cell.start * 3, (cell.start + cell.count) * 3), n * 3);
+          n += cell.count;
+        }
+        field.mesh.count = n;
+        field.mesh.instanceMatrix.clearUpdateRanges();
+        if (n > 0) field.mesh.instanceMatrix.addUpdateRange(0, n * 16);
+        field.mesh.instanceMatrix.needsUpdate = true;
+        if (field.mesh.instanceColor) {
+          field.mesh.instanceColor.clearUpdateRanges();
+          if (n > 0) field.mesh.instanceColor.addUpdateRange(0, n * 3);
+          field.mesh.instanceColor.needsUpdate = true;
+        }
+        field.mesh.visible = n > 0;
+      }
+    },
     dispose() {
       // Geometry and materials belong to the kit and outlive a rebuild; only
       // the per-instance buffers are this field's.
-      for (const mesh of meshes) mesh.dispose();
+      for (const field of fields) field.mesh.dispose();
       group.clear();
     },
   };
