@@ -200,7 +200,7 @@ export interface FlowAudit {
 }
 
 /** How people get along the pavement: through furniture, into each other, held up. */
-export function auditFlow(seconds: number, seed = 3): FlowAudit {
+export function auditFlow(seconds: number, seed = 3, breakdown?: Map<string, number>): FlowAudit {
   const sim = simOf(fixtureDoc(), seed, 2);
   interface Obstacle { x: number; y: number; radius: number; along?: { x: number; y: number }; halfLength?: number; halfWidth?: number }
   const items: Obstacle[] = streetFurniture(sim.net).filter(blocksPedestrians);
@@ -250,7 +250,13 @@ export function auditFlow(seconds: number, seed = 3): FlowAudit {
           const dx = item.x - p.x, dy = item.y - p.y;
           if (d < m(2) && dx * Math.cos(p.heading) + dy * Math.sin(p.heading) > 0) aheadClose = true;
         });
-        if (nearest < PERSON) flow.insideFurniture += DT;
+        if (nearest < PERSON) {
+          flow.insideFurniture += DT;
+          if (breakdown) {
+            const key = `${p.state}|${p.activity ? p.activity.kind + ':' + p.activity.phase : '-'}|${edge?.kind ?? '?'}|${p.v < 0.1 ? 'still' : 'moving'}`;
+            breakdown.set(key, (breakdown.get(key) ?? 0) + DT);
+          }
+        }
         flow.nearestFurniture = Math.min(flow.nearestFurniture, nearest / m(1));
         if (p.state === 'Walking' && !p.activity && p.pause <= 0) {
           flow.walkingSeconds += DT;
