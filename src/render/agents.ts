@@ -24,7 +24,14 @@ import type { SimWorld } from '@sim/world';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
 import { DT } from '@sim/params';
-import { createRiggedCitizens, CITIZEN_MODELS, SEAT_DRIVE, SEAT_RIDE, SEAT_TALK } from './riggedCitizens';
+import { createRiggedCitizens, SEAT_DRIVE, SEAT_RIDE, SEAT_TALK } from './riggedCitizens';
+
+/**
+ * The bodies the crowd is drawn as while the walk is worked on: one man and
+ * one woman, each pedestrian drawn as the one matching their own sex.
+ * Restore `CITIZEN_MODELS` for the full roster of eighty.
+ */
+const TEST_MODELS = ['male_01', 'female_01'];
 import { FOOTWAY_RISE } from './roadSurfaces';
 import { WheelOdometer, blinkOn, indicatorSide, steerAngle } from './vehicleSignals';
 
@@ -498,7 +505,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     hips,
     limbs,
   ];
-  const pedestrians = createRiggedCitizens(CITIZEN_MODELS, onAssetsReady);
+  const pedestrians = createRiggedCitizens(TEST_MODELS, onAssetsReady);
   const meshes = [...parts.map((part) => part.mesh), pedestrians.group];
 
   const object = new Object3D();

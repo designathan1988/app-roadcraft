@@ -63,20 +63,37 @@ try {
       h = Math.imul(h ^ (h >>> 15), 0x735a2d97);
       return (h ^ (h >>> 15)) >>> 0;
     };
-    const picked = new Map();
-    for (let id = 1; picked.size < 80; id++) {
-      const model = hash(id) % 80;
-      if (!picked.has(model)) picked.set(model, id);
-    }
-    const ids = [...picked.entries()].sort((a, b) => a[0] - b[0]).map(entry => entry[1]);
-    ids.forEach((id, i) => {
+    const names = R.scene().scene.getObjectByName('rigged-citizens').userData.models;
+    const children = [], femaleAdults = [], maleAdults = [];
+    names.forEach((name, index) => {
+      if (name.includes('_child')) children.push(index);
+      else (name.includes('female') ? femaleAdults : maleAdults).push(index);
+    });
+    const used = new Set();
+    let candidate = 1;
+    const picked = names.map((name, index) => {
+      const pool = name.includes('_child') ? children :
+        name.includes('female') ? femaleAdults : maleAdults;
+      const target = pool.indexOf(index);
+      while (used.has(candidate) || hash(candidate) % pool.length !== target) candidate++;
+      const id = candidate++;
+      used.add(id);
+      return { id, ageClass: name.includes('_child') ? 'child' : 'adult',
+        gender: name.includes('female') ? 'f' : 'm' };
+    });
+    const ids = picked.map(person => person.id);
+    picked.forEach(({ id, ageClass, gender }, i) => {
       const edge = edges[i % edges.length];
       const slot = Math.floor(i / edges.length);
       const s = edge.length * (slot + 1) / 16;
+      const frame = R.sim.sidewalks.orientedPath(edge, edge.from).sampleAt(s);
+      const heading = Math.atan2(frame.t.y, frame.t.x);
       const citizen = { ...structuredClone(seed), id, edge: edge.id, entry: edge.from,
         s, lat: 0, age: 0, v: 2.3 + (i % 5) * 0.3, state: 'Walking', route: [], goal: null,
-        party: { id, size: 1, pace: 3.2 }, rank: 0, trailing: null, occupying: null,
-        prev: { edge: edge.id, s, lat: 0 } };
+        ageClass, gender, x: frame.p.x, y: frame.p.y, heading,
+        party: { id, size: 1, pace: 3.2, hasChild: ageClass === 'child' },
+        rank: 0, trailing: null, occupying: null,
+        prev: { edge: edge.id, s, lat: 0, x: frame.p.x, y: frame.p.y, heading } };
       R.sim.peds.set(id, citizen);
     });
     R.scene().setQuality('high');
@@ -87,8 +104,16 @@ try {
     window.__citizenAuditHash = hash;
     return ids.length;
   });
-  await page.waitForFunction(() => window.__roadcraft.scene().scene
-    .getObjectByName('rigged-citizens').userData.loadedModels === 80, null, { timeout: 120_000 });
+  try {
+    await page.waitForFunction(() => window.__roadcraft.scene().scene
+      .getObjectByName('rigged-citizens').userData.loadedModels === 80, null, { timeout: 120_000 });
+  } catch (error) {
+    console.error('Citizen load state', await page.evaluate(() => {
+      const data = window.__roadcraft.scene().scene.getObjectByName('rigged-citizens').userData;
+      return { loaded: data.loadedModels, error: data.error, animationBytes: data.animationBytes };
+    }), errors);
+    throw error;
+  }
   await page.evaluate(() => { window.__roadcraft.runSim(0.75); window.__roadcraft.redraw(); });
   await page.waitForTimeout(500);
   await page.screenshot({ path: 'docs/audit/citizens-production-overview.jpg', type: 'jpeg', quality: 92 });

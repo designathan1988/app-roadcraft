@@ -207,6 +207,25 @@ export interface RoadElevation {
    */
   roadAt(x: number, y: number, structures?: ReadonlySet<RoadStructure>): RoadSample;
   /**
+   * Texture coordinates of (x, y) in the frame of the road nearest to
+   * (pickX, pickY), continued in a straight line past the road's ends.
+   *
+   * `roadAt` answers "which road is this point on", and past the end of a
+   * centreline its `across` is a RADIAL distance and its `along` is stuck at
+   * the end - right for clearances, and the fan of streaks in every junction
+   * corner when used as a texture frame. This extends the frame linearly
+   * instead, and lets the caller pick the road from a different point, so a
+   * whole triangle can be framed by one road (see `uvFrame` in
+   * `render/mesh/surfaceMesh.ts`).
+   */
+  surfaceFrameAt(
+    x: number,
+    y: number,
+    structures: ReadonlySet<RoadStructure> | undefined,
+    pickX: number,
+    pickY: number,
+  ): { along: number; across: number };
+  /**
    * How far the ground should be pulled towards the road at a point, and to
    * what height.
    *
@@ -630,6 +649,18 @@ export function buildRoadElevation(
         type: best.type,
         half: best.half,
         median: best.median,
+      };
+    },
+    surfaceFrameAt(x, y, structures, pickX, pickY) {
+      const best = nearest(pickX, pickY, structures);
+      if (!best) return { along: y, across: x };
+      const hit = best.line.closestPoint({ x, y });
+      const frame = best.line.sampleAt(hit.s);
+      const dx = x - frame.p.x;
+      const dy = y - frame.p.y;
+      return {
+        along: hit.s + dx * frame.t.x + dy * frame.t.y,
+        across: dx * frame.n.x + dy * frame.n.y,
       };
     },
     shapeAt(x, y, naturalGround) {

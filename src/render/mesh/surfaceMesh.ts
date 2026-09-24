@@ -33,6 +33,11 @@ import { intersection, type MultiPoly, type Poly } from '@core/clipper';
 export type HeightFn = (x: number, y: number) => number;
 /** `u` runs across the surface and `v` along it, both in world units. */
 export type UvFn = (x: number, y: number, out: [number, number]) => void;
+/**
+ * The UV of (x, y), in the frame of whichever road is nearest to (pickX, pickY)
+ * rather than to the point itself. See `uvFrame` below.
+ */
+export type UvFrameFn = (x: number, y: number, pickX: number, pickY: number, out: [number, number]) => void;
 /** Writes a linear RGB tint for one vertex. */
 export type TintFn = (x: number, y: number, out: [number, number, number]) => void;
 
@@ -53,6 +58,24 @@ export interface SurfaceMeshOptions {
   /** Longest triangle edge, in world units, before it is refined. */
   readonly maxEdge: number;
   readonly uv: UvFn;
+  /**
+   * Keeps every triangle inside ONE texture frame.
+   *
+   * Road UVs are laid in the frame of the nearest road, which is what makes
+   * slabs and aggregate run along the street. At a junction corner the nearest
+   * road changes between two vertices of the same triangle, and the triangle
+   * then interpolates from one road's coordinates to the other's: tens of
+   * texture tiles squeezed across a metre, which is the zigzag smear a player
+   * saw in every footway corner. A triangle whose UV edges disagree with its
+   * real edges by more than a factor of two is detected here and given its own
+   * vertices, all framed by the road nearest its centroid - so the worst that
+   * can happen is a clean joint where two roads' paving meets, which is what a
+   * real corner looks like anyway.
+   *
+   * `uvWorld` is the world size of one UV unit, needed to compare the two.
+   */
+  readonly uvFrame?: UvFrameFn;
+  readonly uvWorld?: number;
   /**
    * Per-vertex tint, multiplied into the material's colour.
    *
@@ -355,9 +378,25 @@ export function buildSurfaceMesh(options: SurfaceMeshOptions): Mesh | null {
     // scene: taken in order, the triangle's normal points UP, which is what a
     // top face needs. A clockwise ring is emitted the other way round.
     for (let i = 0; i < builder.tris.length; i += 3) {
-      const a = base + (builder.tris[i] as number);
-      const b = base + (builder.tris[i + 1] as number);
-      const c = base + (builder.tris[i + 2] as number);
+      let a = base + (builder.tris[i] as number);
+      let b = base + (builder.tris[i + 1] as number);
+      let c = base + (builder.tris[i + 2] as number);
+      if (options.uvFrame && options.uvWorld && !uvConsistent(positions, uvs, a, b, c, options.uvWorld)) {
+        const cx = (positions[a * 3]! + positions[b * 3]! + positions[c * 3]!) / 3;
+        const cy = -(positions[a * 3 + 2]! + positions[b * 3 + 2]! + positions[c * 3 + 2]!) / 3;
+        const fresh: number[] = [];
+        for (const v of [a, b, c]) {
+          const x = positions[v * 3]!;
+          const y = -positions[v * 3 + 2]!;
+          positions.push(x, positions[v * 3 + 1]!, -y);
+          options.uvFrame(x, y, cx, cy, scratch);
+          uvs.push(scratch[0], scratch[1]);
+          normals.push(0, 1, 0);
+          colors.push(colors[v * 3]!, colors[v * 3 + 1]!, colors[v * 3 + 2]!);
+          fresh.push(positions.length / 3 - 1);
+        }
+        [a, b, c] = fresh as [number, number, number];
+      }
       if (flip) indices.push(a, c, b);
       else indices.push(a, b, c);
     }
@@ -438,6 +477,29 @@ export function buildSurfaceMesh(options: SurfaceMeshOptions): Mesh | null {
   mesh.castShadow = options.castShadow ?? false;
   mesh.receiveShadow = options.receiveShadow ?? true;
   return mesh;
+}
+
+/**
+ * Whether a triangle's UV edges have the lengths its world edges say they
+ * should. A road frame is (almost) an isometry, so a ratio far from one means
+ * the three vertices were framed by different roads.
+ */
+function uvConsistent(
+  positions: readonly number[],
+  uvs: readonly number[],
+  a: number,
+  b: number,
+  c: number,
+  uvWorld: number,
+): boolean {
+  const edge = (p: number, q: number): boolean => {
+    const world = Math.hypot(positions[p * 3]! - positions[q * 3]!, positions[p * 3 + 2]! - positions[q * 3 + 2]!);
+    if (world < 1e-3) return true;
+    const texture = Math.hypot(uvs[p * 2]! - uvs[q * 2]!, uvs[p * 2 + 1]! - uvs[q * 2 + 1]!) * uvWorld;
+    const ratio = texture / world;
+    return ratio > 0.5 && ratio < 2;
+  };
+  return edge(a, b) && edge(b, c) && edge(c, a);
 }
 
 /** Twice the signed area of a ring of [x, y] pairs; positive means CCW. */

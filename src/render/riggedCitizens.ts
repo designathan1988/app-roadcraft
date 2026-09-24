@@ -268,10 +268,26 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   /** Who may take which seat: any citizen rides along; only adults drive. */
   const adults: number[] = [];
   const everyone: number[] = [];
+  /** Bodies a pedestrian may be drawn as, by their sex. */
+  const female: number[] = [];
+  const male: number[] = [];
   models.forEach((id, index) => {
     everyone.push(index);
     if (!id.includes('_child')) adults.push(index);
+    (id.includes('female') ? female : male).push(index);
   });
+
+  /**
+   * The bodies one pedestrian may be drawn as.
+   *
+   * A woman is drawn as a woman: the model was picked by a hash of the id
+   * alone, so with a mixed roster half the women on the street were men.
+   * Falls back to the whole roster when a sex has no model in it.
+   */
+  function poolFor(ped: Pick<Ped, 'gender'>): readonly number[] {
+    const bySex = ped.gender === 'f' ? female : male;
+    return bySex.length ? bySex : everyone;
+  }
   const seatedClips: ClipFrames[] = [];
   const seatedPhases: number[] = [0];
   const SEATED_WEIGHTS = [1];
@@ -337,7 +353,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     },
     draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number) {
       const hash = pedHash(ped.id);
-      const index = hash % models.length;
+      const pool = poolFor(ped);
+      const index = pool[hash % pool.length]!;
       const batch = batches.get(index);
       if (!batch) {
         if (!loading.has(index)) void request(index).catch((error: unknown) => {

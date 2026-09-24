@@ -46,5 +46,7 @@ describe('pedestrian flow', () => {
     // A kerb wait is bounded by the signal cycle, not by a deadlock.
     expect(maxKerb).toBeLessThan(90);
     expect(heldTicks / pedTicks).toBeLessThan(0.05);
-  });
+    // 200 s of the full crowd: about 20 s alone, past the default timeout when
+    // it shares the machine with the rest of the suite under coverage.
+  }, 180_000);
 });

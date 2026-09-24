@@ -16,7 +16,14 @@ import type { RoadElevation } from '@world/elevation';
 import { buildMarkings, disposeMarkings } from './markings';
 import type { SceneMaterials } from './materials';
 import { TERRAIN_CELL } from './terrain';
-import { buildSurfaceMesh, disposeMesh, type HeightFn, type TintFn, type UvFn } from './mesh/surfaceMesh';
+import {
+  buildSurfaceMesh,
+  disposeMesh,
+  type HeightFn,
+  type TintFn,
+  type UvFn,
+  type UvFrameFn,
+} from './mesh/surfaceMesh';
 
 /**
  * The road network's surface bands, per structural level.
@@ -45,8 +52,15 @@ import { buildSurfaceMesh, disposeMesh, type HeightFn, type TintFn, type UvFn } 
  * blends where two classes meet instead of stopping at an invented seam.
  */
 
-/** Height of the kerb face above the carriageway. */
-const KERB_RISE = 0.34;
+/**
+ * Height of the kerb face above the carriageway.
+ *
+ * A hair ABOVE the footway rather than a hair below it. At 0.34 the kerb sat
+ * 0.02 under the footway and read as part of it: nothing on screen said where
+ * the kerb was. Standing 0.04 proud, its inner arris catches the light and
+ * throws a line of shade, and the granite kerb reads as a separate edge.
+ */
+const KERB_RISE = 0.4;
 /** Height of the footway above the carriageway. */
 export const FOOTWAY_RISE = 0.36;
 /** Depth of the verge below the carriageway, where the grass starts. */
@@ -77,7 +91,7 @@ const RAISED_MAX_EDGE = TERRAIN_CELL;
 /** Height of the median island's kerb above the carriageway. */
 const MEDIAN_KERB = 0.4;
 /** Height of the planting inside it. */
-const MEDIAN_PLANTING = 0.62;
+export const MEDIAN_PLANTING = 0.62;
 
 export interface RoadSurfaces {
   readonly group: Group;
@@ -133,10 +147,15 @@ export function buildRoadSurfaces(
       ? (x, y) => deck(x, y) - roadStructure(structure.id).deck - FOOTWAY_RISE
       : (x, y) => Math.min(deck(x, y) - VERGE_SKIRT, terrainAt(x, y) - 0.2);
 
-    const uvFor = (tile: number): UvFn => (x, y, out) => {
-      const road = elevation.roadAt(x, y, only);
-      out[0] = road.across / tile;
-      out[1] = road.along / tile;
+    const frameFor = (tile: number): UvFrameFn => (x, y, pickX, pickY, out) => {
+      const frame = elevation.surfaceFrameAt(x, y, only, pickX, pickY);
+      out[0] = frame.across / tile;
+      out[1] = frame.along / tile;
+    };
+    /** Road-framed UVs, with every triangle kept inside one road's frame. */
+    const uvFor = (tile: number): { uv: UvFn; uvFrame: UvFrameFn; uvWorld: number } => {
+      const uvFrame = frameFor(tile);
+      return { uv: (x, y, out) => uvFrame(x, y, x, y, out), uvFrame, uvWorld: tile };
     };
 
     /**
@@ -164,7 +183,7 @@ export function buildRoadSurfaces(
         bottom: soffit,
         material: raised ? materials.deck : materials.verge,
         maxEdge,
-        uv: uvFor(raised ? materials.scale.deck : materials.scale.verge),
+        ...uvFor(raised ? materials.scale.deck : materials.scale.verge),
         castShadow: raised,
         receiveShadow: true,
         skirtUvScale: raised ? materials.scale.deck : materials.scale.verge,
@@ -178,7 +197,7 @@ export function buildRoadSurfaces(
         bottom: offset(deck, -VERGE_DROP),
         material: materials.footway,
         maxEdge,
-        uv: uvFor(materials.scale.footway),
+        ...uvFor(materials.scale.footway),
         castShadow: raised,
         receiveShadow: true,
         skirtUvScale: materials.scale.footway,
@@ -192,7 +211,7 @@ export function buildRoadSurfaces(
         bottom: deck,
         material: materials.kerb,
         maxEdge,
-        uv: uvFor(materials.scale.kerb),
+        ...uvFor(materials.scale.kerb),
         receiveShadow: true,
         skirtUvScale: materials.scale.kerb,
       }),
@@ -205,7 +224,7 @@ export function buildRoadSurfaces(
         ...(raised ? { bottom: soffit } : {}),
         material: raised ? materials.asphaltRaised : materials.asphalt,
         maxEdge,
-        uv: uvFor(materials.scale.asphalt),
+        ...uvFor(materials.scale.asphalt),
         tint: asphaltTint,
         castShadow: raised,
         receiveShadow: true,
@@ -224,7 +243,7 @@ export function buildRoadSurfaces(
           bottom: deck,
           material: materials.kerb,
           maxEdge,
-          uv: uvFor(materials.scale.kerb),
+          ...uvFor(materials.scale.kerb),
           receiveShadow: true,
           skirtUvScale: materials.scale.kerb,
         }),
@@ -237,7 +256,7 @@ export function buildRoadSurfaces(
           bottom: offset(deck, MEDIAN_KERB),
           material: materials.verge,
           maxEdge,
-          uv: uvFor(materials.scale.verge),
+          ...uvFor(materials.scale.verge),
           receiveShadow: true,
           skirtUvScale: materials.scale.kerb,
         }),

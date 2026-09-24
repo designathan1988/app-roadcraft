@@ -20,6 +20,7 @@ import {
   type TerrainStamp,
 } from '@world/terrain';
 import { bakeSurface, fbm, makeNoise, type SurfaceBake } from './mesh/textureBaker';
+import { DETAIL_GLSL, detailSwitch, detailTextures } from './mesh/detailLayer';
 import { WATER_DEPTH_ATTRIBUTE, createWaterSurface } from './water';
 
 /**
@@ -92,6 +93,14 @@ export interface TerrainSurface {
    * on screen, not what the field says, or it sinks into a triangle.
    */
   renderedHeightAt(x: number, y: number): number;
+  /**
+   * Whether a point is under a river's water.
+   *
+   * NOT "the ground is low": the base relief dips well below zero over whole
+   * valleys with no water in them, and planting was skipped wherever it did -
+   * which left the ground around a crossroads in such a valley bare.
+   */
+  wetAt(x: number, y: number): boolean;
   /**
    * Rewrites the heightfield from the document's stamps alone.
    *
@@ -214,11 +223,14 @@ function terrainBakes(anisotropy: number): {
  *  - **Macro variation.** A slow noise tints wide regions warm or cool, so the
  *    ground has weather in it rather than one flat green.
  */
-function terrainMaterial(bakes: {
-  grass: SurfaceBake;
-  rock: SurfaceBake;
-  dirt: SurfaceBake;
-}): MeshStandardMaterial {
+function terrainMaterial(
+  bakes: {
+    grass: SurfaceBake;
+    rock: SurfaceBake;
+    dirt: SurfaceBake;
+  },
+  anisotropy: number,
+): MeshStandardMaterial {
   const material = new MeshStandardMaterial({
     color: 0xffffff,
     map: bakes.grass.map,
@@ -230,6 +242,8 @@ function terrainMaterial(bakes: {
   });
   material.normalScale.set(1.35, 1.35);
 
+  const grassDetail = detailTextures('grass', anisotropy);
+  const soilDetail = detailTextures('soil', anisotropy);
   const uniforms = {
     uRockMap: { value: bakes.rock.map as Texture },
     uRockNormal: { value: bakes.rock.normalMap as Texture },
@@ -237,6 +251,15 @@ function terrainMaterial(bakes: {
     uGrassScale: { value: 1 / 42 },
     uRockScale: { value: 1 / 58 },
     uDirtScale: { value: 1 / 34 },
+    // The close-zoom layer (see `mesh/detailLayer.ts`): blades over grass,
+    // grit over dirt and rock, faded in by pixel footprint.
+    uDetailOn: detailSwitch,
+    uGrassDetail: { value: grassDetail.map },
+    uGrassDetailN: { value: grassDetail.normalMap },
+    uGrassDetailScale: { value: 1 / grassDetail.worldSize },
+    uSoilDetail: { value: soilDetail.map },
+    uSoilDetailN: { value: soilDetail.normalMap },
+    uSoilDetailScale: { value: 1 / soilDetail.worldSize },
   };
 
   material.onBeforeCompile = (shader) => {
@@ -267,18 +290,31 @@ function terrainMaterial(bakes: {
          uniform float uGrassScale;
          uniform float uRockScale;
          uniform float uDirtScale;
+         uniform sampler2D uGrassDetail;
+         uniform sampler2D uGrassDetailN;
+         uniform float uGrassDetailScale;
+         uniform sampler2D uSoilDetail;
+         uniform sampler2D uSoilDetailN;
+         uniform float uSoilDetailScale;
+         ${DETAIL_GLSL}
+
+         // Set once per fragment, before the first dualScale read: how far the
+         // close-zoom layer has taken over, and so how much softer to read the
+         // magnified macro maps.
+         float terrainDetailW = 0.0;
 
          // Detail plus a sample eight times wider, so the tile never repeats
          // visibly at the distances this camera works at.
          vec4 dualScale(sampler2D tex, vec2 uv) {
-           vec4 near = texture2D(tex, uv);
+           vec4 near = texture2D(tex, uv, terrainDetailW * 2.2);
            vec4 far = texture2D(tex, uv * 0.125);
            return mix(near, far, 0.42);
          }`,
       )
       .replace(
         '#include <map_fragment>',
-        `vec2 tGrass = vTerrainWorld.xz * uGrassScale;
+        `terrainDetailW = detailWeight(vTerrainWorld.xz);
+         vec2 tGrass = vTerrainWorld.xz * uGrassScale;
          vec2 tRock = vTerrainWorld.xz * uRockScale;
          vec2 tDirt = vTerrainWorld.xz * uDirtScale;
          // In DEGREES, not in one-minus-cosine. The cosine of a small angle is
@@ -294,6 +330,13 @@ function terrainMaterial(bakes: {
          vec4 dirtColor = dualScale(uDirtMap, tDirt);
          vec4 blended = mix(grassColor, dirtColor, dirtMix);
          blended = mix(blended, rockColor, rockMix);
+         if (terrainDetailW > 0.001) {
+           vec3 bladeDetail = detailSample(uGrassDetail, vTerrainWorld.xz * uGrassDetailScale);
+           vec3 soilDetail = detailSample(uSoilDetail, vTerrainWorld.xz * uSoilDetailScale);
+           float soilMix = clamp(dirtMix + rockMix, 0.0, 1.0);
+           vec3 fine = mix(bladeDetail, soilDetail, soilMix);
+           blended.rgb *= mix(vec3(1.0), fine, terrainDetailW);
+         }
          // Wide, slow tint so whole regions read warm or cool.
          float macro = texture2D(uDirtMap, vTerrainWorld.xz * 0.0009).r;
          blended.rgb *= mix(0.84, 1.16, macro);
@@ -320,18 +363,24 @@ function terrainMaterial(bakes: {
          vec3 rockN = dualScale(uRockNormal, vTerrainWorld.xz * uRockScale).xyz * 2.0 - 1.0;
          vec3 mapN = normalize(mix(grassN, rockN, rockMix));
          mapN.xy *= normalScale;
+         if (terrainDetailW > 0.001) {
+           vec3 bladeN = detailNormal(uGrassDetailN, vTerrainWorld.xz * uGrassDetailScale);
+           vec3 soilN = detailNormal(uSoilDetailN, vTerrainWorld.xz * uSoilDetailScale);
+           vec3 fineN = mix(bladeN, soilN, clamp(dirtMix + rockMix, 0.0, 1.0));
+           mapN.xy += fineN.xy * 1.2 * terrainDetailW;
+         }
          normal = normalize(tbn * mapN);`,
       );
   };
   // A changed program key forces three to compile this variant separately from
   // any other standard material in the scene.
-  material.customProgramCacheKey = () => 'terrain-splat-v1';
+  material.customProgramCacheKey = () => 'terrain-splat-v2';
   return material;
 }
 
 export function createTerrainSurface(anisotropy: number): TerrainSurface {
   const bakes = terrainBakes(anisotropy);
-  const material = terrainMaterial(bakes);
+  const material = terrainMaterial(bakes, anisotropy);
 
   const geometry = new PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS);
   geometry.rotateX(-Math.PI / 2);
@@ -487,6 +536,18 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
     return moved;
   };
 
+  let wetDiscs: readonly WaterStamp[] = [];
+  const wetAt = (x: number, y: number): boolean => {
+    for (const disc of wetDiscs) {
+      const reach = disc.radius * WATER_SPREAD;
+      if (Math.abs(x - disc.x) > reach || Math.abs(y - disc.y) > reach) continue;
+      if (Math.hypot(x - disc.x, y - disc.y) > reach) continue;
+      // A margin, so nothing stands with its root on the waterline.
+      if (renderedHeightAt(x, y) < disc.level + 0.6) return true;
+    }
+    return false;
+  };
+
   const rebuildWater = (stamps: readonly TerrainStamp[]): void => {
     // A river stands at the level its channel was cut INTO, below the banks: at
     // a fixed world datum it vanished under raised ground, and level with the
@@ -504,6 +565,7 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
       if (bed + TERRAIN_WATER_HEIGHT >= level) continue;
       discs.push({ x: stamp.x, y: stamp.y, radius: stamp.radius * WATER_RADIUS, level });
     }
+    wetDiscs = discs;
     const previous = water.geometry;
     water.geometry = unifiedWaterGeometry(discs, renderedHeightAt);
     previous.dispose();
@@ -515,6 +577,7 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
     heightAt,
     naturalRenderedHeightAt,
     renderedHeightAt,
+    wetAt,
     shapeToRoads(shape) {
       const moved = shapeToRoads(shape);
       // A road that cut through a valley changes where the water's shore is.

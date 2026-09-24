@@ -1,5 +1,6 @@
 import { laneletId, type LaneletId } from '@world/lanelets';
 import type { SimWorld } from '../world';
+import { m } from '@world/units';
 import type { Vehicle } from './state';
 import { JAM_GAP, laneChangeLength } from '../params';
 import { desiredSpeed } from './driver';
@@ -147,10 +148,10 @@ function mandatory(w: SimWorld, v: Vehicle, target: LaneletId): LaneletId | null
     return null;
   }
   // The change is driven over a length of road (`laneChangeLength`), so there
-  // must be at least that much left for every lane still to cross.
-  const here = lane.centre.sampleAt(Math.min(v.s, lane.length)).p;
-  const width = w.lanelet(adjacent)?.centre.closestPoint(here).distance ?? 0;
-  const room = Math.max(LANE_CHANGE_MIN_ROOM, v.v * LANE_CHANGE_TIME, laneChangeLength(width, v.v, v.archetype.length)) * steps;
+  // must be at least that much left for every lane still to cross, and the
+  // stop line is set back from the end of the lane.
+  const room = Math.max(LANE_CHANGE_MIN_ROOM, v.v * LANE_CHANGE_TIME,
+    changeLength(w, v, adjacent) + FINISH_MARGIN) * steps;
   if (lane.length - v.s < room) {
     v.desiredLane = null;
     v.movementIntent = null;
@@ -160,6 +161,20 @@ function mandatory(w: SimWorld, v: Vehicle, target: LaneletId): LaneletId | null
   if (!gapIsSafe(w, v, adjacent)) return null;
   v.lastLaneChangeAge = v.age;
   return adjacent;
+}
+
+/** Kept clear of a stop line or a queue's tail when a change must be finished. */
+const FINISH_MARGIN = m(6);
+/** Below this a vehicle ahead is treated as standing, not as traffic to follow. */
+const CRAWL = m(2);
+
+/** Road a change into `target` from here would be driven over. */
+function changeLength(w: SimWorld, v: Vehicle, target: LaneletId): number {
+  const lane = w.lanelet(v.lanelet);
+  const other = w.lanelet(target);
+  if (!lane || !other) return 0;
+  const here = lane.centre.sampleAt(Math.min(Math.max(0, v.s), lane.length)).p;
+  return laneChangeLength(other.centre.closestPoint(here).distance, v.v, v.archetype.length);
 }
 
 /**
@@ -332,6 +347,12 @@ function followerIn(w: SimWorld, laneId: LaneletId, rear: number, self: number):
  */
 function gapIsSafe(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
   const rear = v.s - v.archetype.length;
+  // Road the change itself will take, to be free of anybody slower ahead in
+  // the new lane. A change started into the tail of a standing queue ended
+  // with the car stopped half across the line, holding BOTH lanes (its
+  // shadow) for as long as the queue stood - measured, a car held an
+  // admitted movement in the old lane through its whole green.
+  const finish = v.s + changeLength(w, v, target) + FINISH_MARGIN;
 
   // Every BODY in the target lane, not just its occupancy list: a vehicle
   // still sliding out of it, and the tail of one whose front has already
@@ -351,6 +372,7 @@ function gapIsSafe(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
       const gap = otherRear - v.s;
       const need = Math.max(JAM_GAP, v.driver.s0) + v.v * v.driver.T * 0.5;
       if (gap < need) return false;
+      if (otherRear < finish && other.v < Math.max(v.v, CRAWL)) return false;
     } else {
       // Overlapping our own body length: no room at all.
       return false;

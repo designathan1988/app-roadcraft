@@ -55,8 +55,12 @@ const SUN_ELEVATION = (38 * Math.PI) / 180;
  */
 const SUN_AZIMUTH = (14 * Math.PI) / 180;
 const SUN_DISTANCE = 1_600;
-/** Smallest half-width of the shadow frustum, world units (16 m). */
-const SHADOW_SPAN_MIN = 40;
+/**
+ * Smallest half-width of the shadow frustum, world units (5 m). Follows the
+ * closest zoom (`MIN_HALF_HEIGHT` in isoViewport.ts), so a person seen close up
+ * still casts a crisp shadow.
+ */
+const SHADOW_SPAN_MIN = 12;
 const WORLD_UP = new Vector3(0, 1, 0);
 
 export interface EnvironmentQuality {

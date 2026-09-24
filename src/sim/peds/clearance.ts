@@ -1,5 +1,6 @@
 import { type Vec2, addScaled } from '@core/vec2';
 import { m } from '@world/units';
+import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { vehiclePose } from '../pose';
 import type { SimWorld } from '../world';
 import type { Ped, PedId } from './state';
@@ -245,33 +246,19 @@ export class PedestrianClearance {
 
   private buildScenery(w: SimWorld): void {
     const items: Footprint[] = [];
-    let column = 0;
     const add = (x: number, y: number, radius: number): void => {
       items.push({ id: -1_000_000 - items.length, x, y, radius, cell: '' });
     };
-    // These are the same positions and dimensions used by buildScenery.
-    for (const ribbon of w.net.ribbons.values()) {
-      const length = ribbon.full.length;
-      const start = Math.min(36, length * 0.24);
-      for (let s = start; s < length - start; s += 88) {
-        const frame = ribbon.full.sampleAt(s);
-        const side = (Math.floor(s / 88) + ribbon.id) % 2 === 0 ? -1 : 1;
-        const out = ribbon.road.width / 2 + ribbon.road.sidewalk * 0.95;
-        const x = frame.p.x + frame.n.x * out * side;
-        const y = frame.p.y + frame.n.y * out * side;
-        add(x, y, m(0.13));
-        const outward = (metres: number): Vec2 => ({ x: x + frame.n.x * side * m(metres), y: y + frame.n.y * side * m(metres) });
-        if (column % 3 === 0) { const at = outward(0.9); add(at.x, at.y, m(0.33)); }
-        if (column % 4 === 1) {
-          const at = outward(1.1);
-          const halfLength = m(0.9), halfWidth = m(0.26);
-          items.push({ id: -1_000_000 - items.length, x: at.x, y: at.y,
-            radius: Math.hypot(halfLength, halfWidth), cell: '',
-            forward: frame.t, halfLength, halfWidth });
-        }
-        if (column % 7 === 2) { const at = outward(-0.35); add(at.x, at.y, m(0.16)); }
-        if (column % 11 === 3) { const at = outward(1); add(at.x, at.y, m(0.33)); }
-        column++;
+    // The same list the renderer draws from (`world/streetFurniture.ts`), so
+    // nothing can stand on the pavement that people walk through.
+    for (const item of streetFurniture(w.net)) {
+      if (!blocksPedestrians(item)) continue;
+      if (item.halfLength !== undefined && item.halfWidth !== undefined) {
+        items.push({ id: -1_000_000 - items.length, x: item.x, y: item.y,
+          radius: item.radius, cell: '',
+          forward: item.along, halfLength: item.halfLength, halfWidth: item.halfWidth });
+      } else {
+        add(item.x, item.y, item.radius);
       }
     }
     for (const pole of w.doc.poles.values()) add(pole.x, pole.y, m(0.18));

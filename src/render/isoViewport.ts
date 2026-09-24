@@ -9,8 +9,12 @@ import {
 import type { Vec2 } from '@core/vec2';
 import type { Facing, Viewport } from '@view/viewport';
 
-/** Close inspection of pedestrian faces and articulated clothing. */
-export const MIN_HALF_HEIGHT = 18;
+/**
+ * Close inspection of pedestrian faces, gaits and the people inside vehicles.
+ * At 18 (a view 14 m tall) a person was about eighty pixels high; at 5 the view
+ * is 4 m tall and a person fills about half of it.
+ */
+export const MIN_HALF_HEIGHT = 5;
 export const MAX_HALF_HEIGHT = 950;
 
 /**
@@ -19,7 +23,7 @@ export const MAX_HALF_HEIGHT = 950;
  * `zoom` is `height / (halfHeight * 2)` and `halfHeight` is clamped to
  * [MIN_HALF_HEIGHT, MAX_HALF_HEIGHT], so this is the rig's own range and NOT the
  * flat camera's `MIN_ZOOM`/`MAX_ZOOM`. Restoring a session clamps against it, so
- * a zoom the rig produced (up to ~22.2 at 800 px tall) is never rejected by a
+ * a zoom the rig produced (up to 80 at 800 px tall) is never rejected by a
  * narrower fallback range. One definition, used by the rig's `zoomBounds` and by
  * the boot-time clamp before the rig exists.
  */

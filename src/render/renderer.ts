@@ -25,7 +25,9 @@ import { createMaterials, type SceneMaterials } from './materials';
 import { createIsoRig } from './isoViewport';
 import { createPostChain, type PostChain } from './postprocess';
 import { buildRoadSurfaces, type RoadSurfaces } from './roadSurfaces';
-import { buildScenery, type Scenery } from './scenery';
+import { PLANT_NEAR_ZOOM, buildScenery, createSceneryKit, type Scenery, type SceneryKit } from './scenery';
+import { GRASS_MIN_ZOOM } from './grass';
+import { advanceWind } from './wind';
 import { createSignalHeads, type SignalHeads } from './signals';
 import { buildStructureDetails, type StructureDetails } from './structures';
 import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
@@ -51,7 +53,7 @@ import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } fro
  * 1. terrain (heightfield, water)
  * 2. road surfaces (four bands per structural level, plus markings)
  * 3. structure details (piers, parapets)
- * 4. scenery (lamps, vegetation)
+ * 4. scenery (furniture, trees, bushes; grass at close zoom only)
  * 5. agents and signal heads, resynced every frame from the simulation
  */
 
@@ -125,6 +127,10 @@ export function createSceneRenderer(
   });
 
   const materials: SceneMaterials = createMaterials(anisotropy);
+  materials.setDetail(quality.surfaceDetail);
+  // Every prop model and material, built once. A rebuild writes only the
+  // instance matrices.
+  const sceneryKit: SceneryKit = createSceneryKit();
   const terrain: TerrainSurface = createTerrainSurface(anisotropy);
   scene.add(...terrain.meshes);
 
@@ -176,6 +182,7 @@ export function createSceneRenderer(
     scenery?.dispose();
     utilities?.dispose();
     for (const mesh of scenery?.meshes ?? []) world.remove(mesh);
+    if (scenery) world.remove(scenery.grass);
     world.clear();
 
     // ONE solve for the whole network, shared by every consumer below. Solving
@@ -198,8 +205,16 @@ export function createSceneRenderer(
     details = buildStructureDetails(net, elevation, terrain.renderedHeightAt, materials);
     world.add(details.group);
 
-    scenery = buildScenery(net, elevation, terrain.renderedHeightAt, quality.vegetation);
+    scenery = buildScenery(
+      net,
+      elevation,
+      terrain.renderedHeightAt,
+      terrain.wetAt,
+      { vegetation: quality.vegetation, grass: quality.grass },
+      sceneryKit,
+    );
     for (const mesh of scenery.meshes) world.add(mesh);
+    world.add(scenery.grass);
 
     // The overhead utility network. It is drawn from the document directly
     // rather than from the Network, because a pole line is not derived from
@@ -224,6 +239,7 @@ export function createSceneRenderer(
     quality = QUALITY[level];
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.pixelRatio));
     renderer.shadowMap.enabled = quality.shadows;
+    materials.setDetail(quality.surfaceDetail);
     environment.setQuality({ shadows: quality.shadows, shadowMapSize: quality.shadowMapSize });
     post?.dispose();
     post = createPostChain(renderer, scene, rig.camera, quality, level);
@@ -247,6 +263,8 @@ export function createSceneRenderer(
 
   const target = new Vector3();
   let fps = 60;
+  /** Wall-clock seconds, for the wind; independent of the simulation speed. */
+  let windClock = 0;
   let lastWidth = 0;
   let lastHeight = 0;
 
@@ -286,6 +304,13 @@ export function createSceneRenderer(
       if (roads) roads.group.visible = true;
       if (details) details.group.visible = true;
       for (const mesh of scenery?.meshes ?? []) mesh.visible = quality.detailProps && detailed;
+      if (scenery) {
+        scenery.grass.visible = quality.detailProps && rig.viewport.zoom >= GRASS_MIN_ZOOM;
+        scenery.setNear(rig.viewport.zoom >= PLANT_NEAR_ZOOM);
+      }
+      // The wind blows in real time: a paused simulation is still a windy day.
+      windClock += Math.min(0.1, Math.max(0, delta));
+      advanceWind(windClock);
 
       crowdProjection.multiplyMatrices(rig.camera.projectionMatrix, rig.camera.matrixWorldInverse);
       crowdFrustum.setFromProjectionMatrix(crowdProjection);
@@ -326,6 +351,7 @@ export function createSceneRenderer(
       roads?.dispose();
       details?.dispose();
       scenery?.dispose();
+      sceneryKit.dispose();
       terrain.dispose();
       materials.dispose();
       environment.dispose();

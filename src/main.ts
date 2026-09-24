@@ -439,6 +439,27 @@ function pointerWorld(e: PointerEvent): Vec2 {
   return worldAtScreen(e.clientX - r.left, e.clientY - r.top);
 }
 
+/**
+ * The point a pan or pinch holds under the pointer.
+ *
+ * Solved on the SAME plane `view.panTo` solves on, which is the `y = 0` plane,
+ * and deliberately not with `worldAtScreen`. That one lifts the point onto the
+ * terrain or deck under the cursor, and `panTo` then compared a point on that
+ * plane with one on `y = 0`: the two differ by `height / tan(48°)` along the
+ * view, so the first move of every drag jerked the map that far — 35 px at
+ * 500 %, 139 px at 2000 % on the default terrain. Under an orthographic camera
+ * a horizontal shift moves every plane identically, so holding the `y = 0`
+ * point under the pointer IS holding what was grabbed.
+ */
+function panAnchor(px: number, py: number): Vec2 {
+  return view.toWorld(px, py, surface.cssW, surface.cssH);
+}
+
+function panAnchorOf(e: PointerEvent): Vec2 {
+  const r = canvas.getBoundingClientRect();
+  return panAnchor(e.clientX - r.left, e.clientY - r.top);
+}
+
 /** Cancels a node drag without leaving its live preview in the document. */
 function cancelMove(): void {
   if (!moving) return;
@@ -588,13 +609,13 @@ canvas.addEventListener('pointerdown', (e) => {
     pinch = {
       d0: Math.hypot(a.x - b.x, a.y - b.y),
       zoom0: view.zoom,
-      world: worldAtScreen(mid.x, mid.y),
+      world: panAnchor(mid.x, mid.y),
     };
     return;
   }
 
   if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2)) {
-    panning = { id: e.pointerId, grabbed: pointerWorld(e) };
+    panning = { id: e.pointerId, grabbed: panAnchor(e.clientX - r.left, e.clientY - r.top) };
     return;
   }
 
@@ -647,7 +668,7 @@ canvas.addEventListener('pointerdown', (e) => {
         const node = doc.node(anchor.node);
         if (node) moving = { node: anchor.node, origin: { x: node.x, y: node.y } };
       } else {
-        panning = { id: e.pointerId, grabbed: pointerWorld(e) };
+        panning = { id: e.pointerId, grabbed: panAnchorOf(e) };
       }
       break;
 

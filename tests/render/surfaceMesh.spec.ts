@@ -168,3 +168,59 @@ describe('buildSurfaceMesh', () => {
     );
   });
 });
+
+describe('texture frames at a junction corner', () => {
+  // Two roads meeting at right angles: along X at y = 0, and along Y at x = 0.
+  // A point takes the frame of whichever is nearer, as the road UVs do.
+  const frame = (x: number, y: number, pickX: number, pickY: number, out: [number, number]): void => {
+    if (Math.abs(pickY) < Math.abs(pickX)) {
+      out[0] = y / 10;
+      out[1] = x / 10;
+    } else {
+      out[0] = -x / 10;
+      out[1] = y / 10;
+    }
+  };
+  const corner: MultiPoly = [[[[4, 4], [70, 4], [70, 70], [4, 70]]]];
+
+  const worstStretch = (mesh: NonNullable<ReturnType<typeof buildSurfaceMesh>>): number => {
+    const index = mesh.geometry.getIndex();
+    const position = mesh.geometry.getAttribute('position');
+    const uv = mesh.geometry.getAttribute('uv');
+    let worst = 1;
+    for (let i = 0; i < (index?.count ?? 0); i += 3) {
+      for (let k = 0; k < 3; k++) {
+        const a = index?.getX(i + k) ?? 0;
+        const b = index?.getX(i + ((k + 1) % 3)) ?? 0;
+        if (position.getY(a) < 0.5 || position.getY(b) < 0.5) continue;
+        const world = Math.hypot(position.getX(a) - position.getX(b), position.getZ(a) - position.getZ(b));
+        const texture = Math.hypot(uv.getX(a) - uv.getX(b), uv.getY(a) - uv.getY(b)) * 10;
+        if (world > 1e-3) worst = Math.max(worst, texture / world, world / Math.max(texture, 1e-6));
+      }
+    }
+    return worst;
+  };
+
+  const make = (framed: boolean) =>
+    buildSurfaceMesh({
+      name: 'corner',
+      polygons: corner,
+      top: () => 1,
+      material: new MeshBasicMaterial(),
+      maxEdge: 6,
+      uv: (x, y, out) => frame(x, y, x, y, out),
+      ...(framed ? { uvFrame: frame, uvWorld: 10 } : {}),
+    });
+
+  it('smears a triangle that straddles two frames, when left alone', () => {
+    const mesh = make(false);
+    expect(mesh).not.toBeNull();
+    if (mesh) expect(worstStretch(mesh)).toBeGreaterThan(2);
+  });
+
+  it('keeps every triangle inside one frame when asked to', () => {
+    const mesh = make(true);
+    expect(mesh).not.toBeNull();
+    if (mesh) expect(worstStretch(mesh)).toBeLessThan(1.01);
+  });
+});

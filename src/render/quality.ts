@@ -24,6 +24,10 @@ export interface QualitySettings {
   readonly detailProps: boolean;
   /** Scatter vegetation over the terrain. */
   readonly vegetation: number;
+  /** Grass clumps (tufts and wildflowers), drawn at close zoom only. */
+  readonly grass: number;
+  /** The close-zoom texture detail layer (`mesh/detailLayer.ts`). */
+  readonly surfaceDetail: boolean;
   /** Zoom below which markings, props and agents stop being drawn. */
   readonly detailCutoffZoom: number;
   /** Crowd detail ceiling: silhouette, wardrobe, or full facial animation. */
@@ -41,6 +45,8 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     anisotropy: 2,
     detailProps: false,
     vegetation: 0,
+    grass: 0,
+    surfaceDetail: false,
     detailCutoffZoom: 0.5,
     pedestrianDetail: 0,
   },
@@ -54,6 +60,8 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     anisotropy: 4,
     detailProps: true,
     vegetation: 600,
+    grass: 600,
+    surfaceDetail: true,
     detailCutoffZoom: 0.34,
     pedestrianDetail: 1,
   },
@@ -67,6 +75,8 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     anisotropy: 8,
     detailProps: true,
     vegetation: 1_400,
+    grass: 1_400,
+    surfaceDetail: true,
     detailCutoffZoom: 0.26,
     pedestrianDetail: 2,
   },
@@ -80,6 +90,8 @@ export const QUALITY: Readonly<Record<QualityLevel, QualitySettings>> = {
     anisotropy: 16,
     detailProps: true,
     vegetation: 2_600,
+    grass: 2_600,
+    surfaceDetail: true,
     detailCutoffZoom: 0.2,
     pedestrianDetail: 2,
   },

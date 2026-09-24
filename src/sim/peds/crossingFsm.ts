@@ -111,6 +111,12 @@ export function stepPedestrians(w: SimWorld): void {
           else if (p.edge !== edge.id) {
             releaseCrossing(w, p);
             p.state = 'Clearing';
+          } else if (p.state !== 'Crossing') {
+            // Turned back at the far kerb onto the same zebra: the edge id
+            // did not change, but this crossing is over and the next has to
+            // be asked for. The claim used to survive the turn and leave with
+            // the walker, and a turning car yielded to that phantom for good.
+            releaseCrossing(w, p);
           }
         }
         break;
@@ -789,6 +795,12 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   // Held up: commit to the side with more room and go there.
   if (p.stuck > DODGE_AFTER && p.state !== 'WaitAtKerb') {
     if (p.dodge === 0) p.dodge = p.lat >= 0 ? -1 : 1;
+    // Already against the edge on the committed side and still shut in: that
+    // side has nothing more to give, so try the other. The flip below only
+    // fires when a sideways step is refused, and at the edge none is ever
+    // attempted - a walker pinned there facing somebody on the same side of a
+    // narrow zebra stood for 9.7 s until the release let them squeeze.
+    else if (p.dodge * p.lat >= usable - EDGE_PINNED) p.dodge = -p.dodge;
     target = p.dodge * usable;
   } else if (p.stuck === 0) {
     p.dodge = 0;
@@ -814,6 +826,8 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
 
 /** Seconds held up before committing to a side. */
 const DODGE_AFTER = 0.6;
+/** How close to the edge of the usable width counts as pinned against it. */
+const EDGE_PINNED = m(0.05);
 
 /** Distance beyond the zebra's edge at which people wait. */
 const KERB_FLANK = m(0.45);

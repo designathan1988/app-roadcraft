@@ -101,6 +101,14 @@ export class SimWorld {
   /** Per-world population timers; simulations must never influence each other. */
   vehicleSpawnClock = 0;
   pedSpawnClock = 0;
+  /**
+   * Traffic waiting to come in at each boundary entry lane: when its next
+   * arrival is due, and the arrival times of vehicles held outside the map
+   * because the entry was full (`sim/vehicles/spawn.ts`).
+   */
+  readonly entryDemand = new Map<LaneletId, { next: number; waiting: number[] }>();
+  /** Arrivals turned away because an entry's outside queue was full. */
+  entryDemandLost = 0;
   /** User-facing density multipliers; topology and physics remain unchanged. */
   trafficIntensity = 1;
   pedestrianIntensity = 1;
