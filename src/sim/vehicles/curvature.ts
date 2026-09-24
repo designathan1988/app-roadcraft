@@ -85,6 +85,20 @@ function bendSpeed(share: number, k: number): number {
 }
 
 /**
+ * The speed this vehicle takes the sharpest bend of a lanelet at, within its
+ * comfort. `Infinity` for a straight one.
+ */
+export function slowestBend(v: Vehicle, lane: Lanelet): number {
+  const share = lateralShare(v);
+  let slowest = Infinity;
+  for (const k of profileOf(lane)) {
+    if (k < 1e-6) continue;
+    slowest = Math.min(slowest, bendSpeed(share, k));
+  }
+  return slowest;
+}
+
+/**
  * Highest speed at which this vehicle can drive on now and still take every
  * bend within its look-ahead at a comfortable lateral acceleration, braking
  * no harder than its comfortable deceleration. `Infinity` on a straight road.

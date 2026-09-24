@@ -9,8 +9,9 @@ import { mustStopAtSignal } from '../signals/permission';
 import { hasDownstreamStorage } from './spillback';
 import { COARSE_EPS } from '@core/scalar';
 import { bodyClassOfArchetype } from '../vehicles/archetypes';
+import { slowestBend } from '../vehicles/curvature';
 import { type Claim, type HolderState, zoneShareable } from './claims';
-import { PED_MIN_PACE, PED_REACH_TIME, pedestrianInSpan } from './crossingSpans';
+import { PED_BODY, PED_MIN_PACE, PED_REACH_TIME, pedestrianInSpan } from './crossingSpans';
 
 export type RowClass = 'signalGreen' | 'priority' | 'stop' | 'yield' | 'none';
 
@@ -342,7 +343,7 @@ function evaluate(w: SimWorld, r: Request): Verdict {
     return { ok: false, reason: 'yield' };
   }
 
-  if (crossingBusy(w, r.conn)) {
+  if (crossingBusy(w, r.conn) || crossingReachedFirst(w, r)) {
     return { ok: false, reason: 'pedestrian' };
   }
   if (pedestrianHasPriority(w, r)) {
@@ -989,6 +990,77 @@ function movementIsActive(w: SimWorld, other: Connector): boolean {
 export function crossingBusy(w: SimWorld, conn: Connector): boolean {
   for (const segment of [conn.inSegment, conn.outSegment]) {
     if (pedestrianInSpan(w, conn.id, `${conn.node}:${segment}`)) return true;
+  }
+  return false;
+}
+
+/** Walking pace below which somebody on a zebra is standing, world units a second. */
+const PED_WALKING = 0.3;
+/** Seconds a walker must have been held still to count as waiting rather than arriving. */
+const PED_HELD = 2;
+/** Allowance over the estimated time for a front to reach a zebra it turns across. */
+const CLEAR_MARGIN = 1.2;
+
+/** Seconds to cover `d` from `v0`, accelerating at `a` up to `top`. */
+function travelTime(d: number, v0: number, top: number, a: number): number {
+  const accel = Math.max(0.5, a);
+  const start = Math.min(v0, top);
+  const reach = (top * top - start * start) / (2 * accel);
+  if (d <= reach) return (-start + Math.sqrt(start * start + 2 * accel * d)) / accel;
+  return (top - start) / accel + (d - reach) / top;
+}
+
+/**
+ * Whether somebody already on a zebra this movement crosses will reach the
+ * stretch it drives over before its body has cleared it.
+ *
+ * `crossingBusy` looks a fixed `PED_REACH_TIME` ahead of each walker, which is
+ * right for a vehicle about to drive over the zebra and wrong for one standing
+ * at its line with the whole junction still to cross: a turning car was
+ * admitted while three people were on the far half of the zebra across its
+ * exit leg, met them there mid-turn, and stood inside the box until they had
+ * gone - five seconds and more, across every other movement. The walker's
+ * arrival is now compared with the time the car needs to get its front over
+ * the stretch - from its speed now, accelerating to the speed it takes the
+ * sharpest bend of the turn at - on the same terms `pedestrianAhead` will
+ * stop it for them.
+ */
+function crossingReachedFirst(w: SimWorld, r: Request): boolean {
+  // Only where stopping on the way blocks somebody: a node of two legs is one
+  // road going on, and a car waiting there for a walker is in nobody's path.
+  if ((w.doc.node(r.conn.node)?.incident.length ?? 0) < 3) return false;
+  const lane = w.lanelet(r.conn.lanelet);
+  if (!lane) return false;
+  let top = 0;
+  for (const segment of [r.conn.inSegment, r.conn.outSegment]) {
+    const crossing = `${r.conn.node}:${segment}`;
+    const occupants = w.pedOccupancy.get(crossing);
+    if (!occupants?.length) continue;
+    const span = w.crossingSpans.span(r.conn.id, crossing);
+    if (!span) continue;
+    const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(crossing) ?? '');
+    if (!edge) continue;
+    if (top === 0) top = Math.max(2, Math.min(lane.speedLimit, slowestBend(r.v, lane)));
+    // `pedestrianAhead` stops a vehicle for anybody within `PED_REACH_TIME`
+    // of the stretch until its front is over it; admit only a vehicle that
+    // gets its front there before that can happen.
+    const front = CLEAR_MARGIN * travelTime(Math.max(0, r.d) + span.along, r.v.v, top, r.v.driver.a);
+    for (const pedId of occupants) {
+      const p = w.peds.get(pedId);
+      // Somebody held still on the zebra is waiting for something - very
+      // often for this very car - and is not arriving. Holding the car for
+      // them made the two wait for each other for good: a walker frozen at the
+      // kerb end of an exit zebra, a turning car refused at its line, and the
+      // stage held green past its maximum because the walker was still
+      // "crossing". Somebody who has only just stepped on and not yet got
+      // going is arriving, and counts.
+      if (!p || (p.v < PED_WALKING && p.stuck > PED_HELD)) continue;
+      const forward = p.entry === edge.from;
+      const at = forward ? p.s : edge.length - p.s;
+      const ahead = forward ? span.s0 - PED_BODY - at : at - span.s1 - PED_BODY;
+      if (ahead <= 0) continue;
+      if (ahead / Math.max(p.v, PED_MIN_PACE) < front + PED_REACH_TIME) return true;
+    }
   }
   return false;
 }
