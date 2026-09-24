@@ -64,5 +64,7 @@ describe('kerb stops', () => {
     expect(movingWithDoorOpen).toBe(0);
     expect(openedIntoSomebody).toBe(0);
     expect(overlaps).toBe(0);
-  }, 180_000);
+    // Five minutes of the whole map with every body checked: under a minute
+    // alone, three under a machine busy with other builds.
+  }, 300_000);
 });

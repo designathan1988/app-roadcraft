@@ -79,7 +79,7 @@ export function integrateAll(w: SimWorld): void {
     } else {
       v.lateralSlope = 0;
     }
-    if (v.shadow && (v.lateral === 0 || Math.abs(v.lateral) < v.shadow.clearAt)) w.clearShadow(v);
+    if (v.shadow && (v.lateral === 0 || Math.abs(v.lateral) + sideReach(v) <= v.shadow.clearAt)) w.clearShadow(v);
     // What "held up" means, for the driver who is about to decide whether to
     // look for another way round: crawling at less than a third of what they
     // wanted. Measured against their own target rather than against a fixed
@@ -248,7 +248,16 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
     // window closed within a second; now that it is driven (`laneChangeLength`)
     // a car stopped half across the line stays there, and the second car drove
     // into it. Until it is fully in its new lane, it is in both.
-    w.addShadow(v, from.id, sOnOld - v.s, 0);
+    //
+    // FULLY IN, measured on the body: the shadow goes when no corner of the
+    // (angled) body is over the line between the two lanes, which lies half
+    // way between their centres. Waiting for the slide to reach exactly zero
+    // instead kept a car that stopped at a stop line 0.4 units short of its
+    // new centre - its whole body long inside the new lane - in the old lane
+    // for ever, and the car standing there, admitted to the junction and
+    // waiting behind that phantom, held the very movement it was waiting for:
+    // traffic merging from a boulevard into a street stood still for minutes.
+    w.addShadow(v, from.id, sOnOld - v.s, Math.abs(v.lateral) / 2);
   }
 
   w.exitLanelet(v, v.lanelet);
@@ -258,6 +267,15 @@ function applyLaneChange(w: SimWorld, v: Vehicle): ReturnType<SimWorld['lanelet'
   v.route = [target];
   planFrom(w, v);
   return lane;
+}
+
+/**
+ * How far the body reaches sideways from its own centreline: half its width,
+ * plus what its heading during a change swings the corners out by.
+ */
+function sideReach(v: Vehicle): number {
+  const angle = Math.atan(Math.abs(v.lateralSlope));
+  return (v.archetype.width / 2) * Math.cos(angle) + (v.archetype.length / 2) * Math.sin(angle);
 }
 
 /** Removes overshoot that the next stop line rejected from newly-created tokens. */

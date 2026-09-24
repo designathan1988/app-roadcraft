@@ -208,7 +208,9 @@ export interface Vehicle {
    * not on the road: `lateral` slides the body across over the next second.
    * Until the body has cleared the old lane, the vehicle is an obstacle in
    * BOTH lanes. `offset` converts its arc position on the new lane to the old
-   * one; the shadow is dropped once `|lateral|` falls to `clearAt`.
+   * one. `clearAt` is where the line between the two lanes lies, as an offset
+   * from the new lane's centre; the shadow is dropped once the whole body,
+   * angled as it is, lies inside it.
    */
   shadow: { readonly lanelet: LaneletId; readonly offset: number; readonly clearAt: number } | null;
 

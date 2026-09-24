@@ -1,5 +1,5 @@
 import type { NodeId } from '@world/ids';
-import type { Connector } from '@world/lanelets';
+import type { Connector, JunctionTopology } from '@world/lanelets';
 import { CONVOY_ROLLING, CRITICAL_GAP, CRITICAL_GAP_FLOOR, IMPATIENCE_MAX, IMPATIENCE_RATE, JAM_GAP, REQUEST_MIN_DISTANCE, REQUEST_TIME, WAIT_CEILING } from '../params';
 import type { SimWorld } from '../world';
 import type { Vehicle } from '../vehicles/state';
@@ -760,15 +760,50 @@ export function rightOfWay(
   if (policy === 'stop') return 'stop';
   if (policy === 'yield') return 'yield';
 
-  // Unsignalised: rank by road class, then by movement.
-  const inRank = w.doc.segment(conn.inSegment)?.type ?? 0;
-  const outRank = w.doc.segment(conn.outSegment)?.type ?? 0;
-  const legs = w.doc.node(node)?.incident ?? [];
-  let major = 0;
-  for (const s of legs) major = Math.max(major, w.doc.segment(s)?.type ?? 0);
-
-  if (inRank >= major && outRank >= major && conn.turn === 'through') return 'priority';
+  // Unsignalised: the road the junction is ON goes first, everything joining
+  // it gives way.
+  //
+  // That road is the pair of legs a straight-on movement links whose LESSER
+  // class is the highest, not "every leg of the highest class". The old rule
+  // required both of a movement's roads to match the node's biggest road, so
+  // where a street simply continues as a bigger road - an urban street
+  // widening into a boulevard, a two-leg node - no movement qualified and
+  // both directions gave way to each other. Traffic crawled through such a
+  // join on gaps in the opposite stream, and queued back along the street.
+  if (junction && conn.inSegment !== conn.outSegment && continues(w, node, conn)) {
+    if (throughRank(w, conn) >= mainRoadRank(w, junction)) return 'priority';
+  }
   return 'yield';
+}
+
+/** The lesser class of the two roads a movement links. */
+function throughRank(w: SimWorld, conn: Connector): number {
+  return Math.min(w.doc.segment(conn.inSegment)?.type ?? 0, w.doc.segment(conn.outSegment)?.type ?? 0);
+}
+
+/**
+ * Whether a movement carries its road on through the node: a straight-on
+ * movement, or any movement at a node of two legs, which is one road going
+ * on however sharply it bends there.
+ */
+function continues(w: SimWorld, node: NodeId, conn: Connector): boolean {
+  return conn.turn === 'through' || (w.doc.node(node)?.incident.length ?? 0) === 2;
+}
+
+/** Rank of the road a junction is on, per topology build. */
+const mainRoads = new WeakMap<JunctionTopology, number>();
+
+function mainRoadRank(w: SimWorld, junction: JunctionTopology): number {
+  let rank = mainRoads.get(junction);
+  if (rank !== undefined) return rank;
+  rank = -Infinity;
+  for (const id of junction.connectors) {
+    const conn = w.connector(id);
+    if (!conn || conn.inSegment === conn.outSegment || !continues(w, junction.node, conn)) continue;
+    rank = Math.max(rank, throughRank(w, conn));
+  }
+  mainRoads.set(junction, rank);
+  return rank;
 }
 
 /**

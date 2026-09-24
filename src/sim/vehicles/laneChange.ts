@@ -456,6 +456,14 @@ function gapIsSafe(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
   // shadow) for as long as the queue stood - measured, a car held an
   // admitted movement in the old lane through its whole green.
   const finish = v.s + changeLength(w, v, target) + FINISH_MARGIN;
+  // And to be over before the lane ends. A change still sliding at the stop
+  // line leaves the car standing across both lanes while it waits there, and
+  // an admitted car in the lane it left waits behind its shadow for a
+  // movement the waiting car cannot take either: measured where a boulevard
+  // merged into a street, a car began a 53-unit change 48 units from the line
+  // and the merge stood still for over a minute.
+  const to = w.lanelet(target);
+  if (to && to.kind === 'link' && finish > to.length) return false;
 
   // Every BODY in the target lane, not just its occupancy list: a vehicle
   // still sliding out of it, and the tail of one whose front has already
