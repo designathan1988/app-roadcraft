@@ -464,21 +464,7 @@ function canLeaveLane(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
   const length = laneChangeLength(start, v.v, v.archetype.length);
   const clear = shadowClearDistance(v, start, length);
   const need = clear + Math.max(JAM_GAP, v.driver.s0);
-  // Where the queue ahead in this lane will come to rest: walked from its
-  // front, each vehicle stopping at the nearest thing standing ahead of it (a
-  // red, a car at the kerb) or at its jam gap behind the one in front. A car
-  // rolling up to the back of a queue is not a car moving off.
-  const order = w.rt(v.lanelet).order;
-  let limit = Infinity;
-  for (let i = order.length - 1; i >= 0; i--) {
-    const ahead = w.veh(order[i] as number);
-    if (!ahead) continue;
-    if (ahead.id === v.id) break;
-    const own = ahead.v <= CRAWL ? ahead.s : ahead.s + restingReach(ahead);
-    const nose = Math.max(ahead.s, Math.min(own, limit));
-    limit = nose - ahead.archetype.length - Math.max(JAM_GAP, ahead.driver.s0);
-    if (nose - ahead.archetype.length - v.s < need) return false;
-  }
+  if (restingRearAhead(w, v.lanelet, v.s, v.id) - v.s < need) return false;
   // And any body still sliding out of this lane ahead of this one.
   for (const body of w.bodiesIn(v.lanelet)) {
     const ahead = body.vehicle;
@@ -487,6 +473,29 @@ function canLeaveLane(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
     if (gap >= -0.05 && gap < need && ahead.v < Math.max(v.v, CRAWL)) return false;
   }
   return true;
+}
+
+/**
+ * Where the rear of the nearest vehicle ahead of `s` in a lane will come to
+ * rest. The queue is walked from its front, each vehicle stopping at the
+ * nearest thing standing ahead of it (a red, a car at the kerb) or at its jam
+ * gap behind the one in front: a car rolling up to the back of a queue is not
+ * a car moving off. Infinity when nothing ahead will stand.
+ */
+function restingRearAhead(w: SimWorld, laneId: LaneletId, s: number, self: number): number {
+  const order = w.rt(laneId).order;
+  let limit = Infinity;
+  let rear = Infinity;
+  for (let i = order.length - 1; i >= 0; i--) {
+    const ahead = w.veh(order[i] as number);
+    if (!ahead || ahead.id === self) continue;
+    if (ahead.s <= s) break;
+    const own = ahead.v <= CRAWL ? ahead.s : ahead.s + restingReach(ahead);
+    const nose = Math.max(ahead.s, Math.min(own, limit));
+    rear = nose - ahead.archetype.length;
+    limit = rear - Math.max(JAM_GAP, ahead.driver.s0);
+  }
+  return rear;
 }
 
 /** How much further a vehicle rolls before something standing holds it; Infinity when nothing does. */
@@ -569,6 +578,10 @@ function gapIsSafe(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
   // and the merge stood still for over a minute.
   const to = w.lanelet(target);
   if (to && to.kind === 'link' && finish > to.length) return false;
+  // Nor to be caught by a queue in the new lane that is still rolling now but
+  // will have stopped before the change is over: the car would stop half way
+  // across, as surely as behind a queue already standing.
+  if (restingRearAhead(w, target, v.s, v.id) < finish) return false;
 
   // Every BODY in the target lane, not just its occupancy list: a vehicle
   // still sliding out of it, and the tail of one whose front has already

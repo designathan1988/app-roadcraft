@@ -191,14 +191,16 @@ const SHADOW_SIDE_MARGIN = 0.4;
 export function shadowLeaderObstacle(w: SimWorld, v: Vehicle): Obstacle | null {
   if (!v.shadow) return null;
   const front = v.s + v.shadow.offset;
-  // How far this body still reaches back towards the old lane's centre: the
-  // lanes are `2 * clearAt` apart (`integrate.ts`), the body centre is
-  // `lateral` short of the new centre, and its angled corners reach
-  // `sideReach` either side of it.
+  // How far the FRONT of this body still reaches back towards the old lane's
+  // centre - the front is what drives into a leader. The lanes are
+  // `2 * clearAt` apart (`integrate.ts`) and the body centre is `lateral`
+  // short of the new centre; the body points into the new lane, so its front
+  // corners are carried further across by half its length, while the rear
+  // corner is the one still swinging over the line.
   const spacing = 2 * v.shadow.clearAt;
   const angle = Math.atan(Math.abs(v.lateralSlope));
-  const sideReach = (v.archetype.width / 2) * Math.cos(angle) + (v.archetype.length / 2) * Math.sin(angle);
-  const nearEdge = spacing - Math.abs(v.lateral) - sideReach;
+  const nearEdge = spacing - Math.abs(v.lateral) +
+    (v.archetype.length / 2) * Math.sin(angle) - (v.archetype.width / 2) * Math.cos(angle);
   let best: Obstacle | null = null;
   for (const body of w.bodiesIn(v.shadow.lanelet)) {
     if (body.vehicle.id === v.id) continue;
