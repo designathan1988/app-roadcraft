@@ -389,6 +389,11 @@ export class PedestrianClearance {
     return blocked;
   }
 
+  /** Distance from a point to a footprint's centre, or to the edge of its box for furniture and vehicles. */
+  distanceTo(other: Readonly<Footprint>, x: number, y: number): number {
+    return this.distance(other as Footprint, x, y);
+  }
+
   private distance(other: Footprint, x: number, y: number): number {
     const dx = x - other.x, dy = y - other.y;
     if (!other.forward || other.halfLength === undefined || other.halfWidth === undefined) {

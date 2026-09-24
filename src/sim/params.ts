@@ -143,7 +143,7 @@ export const SIGNAL = {
  * (`sim/peds/agent.ts`); false is the older gate-and-nudge walker, kept for
  * comparison in the lab until the agent wins on every measure.
  */
-export const PED_AGENT = { on: false };
+export const PED_AGENT = { on: false, crossings: false };
 
 /** Pedestrian parameters. */
 export const PED = {

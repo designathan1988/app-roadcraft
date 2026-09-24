@@ -3,7 +3,7 @@ import { m } from '@world/units';
 import type { SimWorld } from '../world';
 import type { Ped } from './state';
 import type { SidewalkEdge } from './sidewalk';
-import type { PedestrianClearance } from './clearance';
+import { type PedestrianClearance, PERSON_RELEASED_SPACING, STUCK_RELEASE } from './clearance';
 import { PED_BEHAVIOUR } from './behaviour';
 
 /**
@@ -180,6 +180,43 @@ export function plannedLine(w: SimWorld, p: Ped, edge: SidewalkEdge, wanted: num
   return line;
 }
 
+/** Closest two people's centres may be brought, and the room kept from furniture and vehicles. */
+const CONTACT = m(0.45);
+const HARD = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
+
+/**
+ * The last guard: a step is refused only if it takes the body into street
+ * furniture or a vehicle, or brings it closer than `CONTACT` to another
+ * person than it already is. Refusing any step that closes on anybody
+ * within a full personal space froze a party of four that had come off a
+ * zebra bunched together: every move was closer to one of them.
+ */
+function admissible(p: Ped, edge: SidewalkEdge, s: number, lat: number,
+  space: PedestrianClearance): boolean {
+  const rev = p.entry !== edge.from;
+  edge.corridor.place(p.s, p.lat, rev, HARD);
+  const cx = HARD.x, cy = HARD.y;
+  edge.corridor.place(s, lat, rev, HARD);
+  const x = HARD.x, y = HARD.y;
+  let ok = true;
+  space.around(x, y, m(2), (other) => {
+    if (!ok || other.id === p.id) return;
+    const next = space.distanceTo(other, x, y);
+    const now = space.distanceTo(other, cx, cy);
+    if (other.id > 0) {
+      // Held up past the release, people may brush shoulder to shoulder -
+      // never through one another - as the clearance has always allowed.
+      const contact = p.stuck >= STUCK_RELEASE ? PERSON_RELEASED_SPACING : CONTACT;
+      if (next < contact && next < now - 1e-6) ok = false;
+      return;
+    }
+    // Furniture or a vehicle: its edge, and a body's radius from it.
+    const floor = PERSON + (other.halfLength === undefined ? other.radius : 0);
+    if (next < floor && next < now - 1e-6) ok = false;
+  });
+  return ok;
+}
+
 /** Caps the pace so the sideways step from `lat` to `line` is done before `item` is reached. */
 function capFor(item: { along: number; reach: number; half: number; lat: number }, line: number, lat: number): void {
   const room = item.along - item.reach;
@@ -227,7 +264,9 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
       const vy = q ? (q.y - q.prev.y) / DT : 0;
       const friend = q !== undefined && q.party === p.party;
       const oncoming = vx * tx + vy * ty < -m(0.2);
-      push(dx, dy, vx, vy, friend ? COMPANION_RADIUS * 2 : PERSON * 2 + strangerGap, friend ? 0.35 : 1, oncoming);
+      const released = p.stuck >= STUCK_RELEASE;
+      push(dx, dy, vx, vy, released ? PERSON_RELEASED_SPACING : friend ? COMPANION_RADIUS * 2 : PERSON * 2 + strangerGap,
+        friend || released ? 0.35 : 1, oncoming);
       return;
     }
     // Furniture, or a stopped vehicle: a long one as a row of circles.
@@ -306,9 +345,9 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   edge.corridor.bounds(s1, rev, WALLS);
   const lat1 = Math.max(WALLS.lo, Math.min(WALLS.hi, p.lat + l * DT));
   const s0 = p.s, lat0 = p.lat;
-  if (space.canShift(w, p, edge, lat1, s1)) { p.s = s1; p.lat = lat1; }
-  else if (space.canShift(w, p, edge, lat0, s1)) { p.s = s1; }
-  else if (space.canShift(w, p, edge, lat1, s0)) { p.lat = lat1; }
+  if (admissible(p, edge, s1, lat1, space)) { p.s = s1; p.lat = lat1; }
+  else if (admissible(p, edge, s1, lat0, space)) { p.s = s1; }
+  else if (admissible(p, edge, s0, lat1, space)) { p.lat = lat1; }
   p.v = (p.s - s0) / DT;
   p.latV = (p.lat - lat0) / DT;
 }

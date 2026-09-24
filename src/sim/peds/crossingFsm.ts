@@ -76,7 +76,7 @@ export function stepPedestrians(w: SimWorld): void {
     const free = desiredSpeed(w, p, edge);
     const desired = cap === null ? free : Math.min(free, cap);
     const agent = PED_AGENT.on &&
-      ((p.state === 'Walking' && edge.kind !== 'crossing') || (p.state === 'Crossing' && edge.kind === 'crossing'));
+      ((p.state === 'Walking' && edge.kind !== 'crossing') || (PED_AGENT.crossings && p.state === 'Crossing' && edge.kind === 'crossing'));
     if (!agent) steer(w, p, edge, desired, space);
 
     switch (p.state) {
@@ -268,6 +268,8 @@ function walkAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, spa
 
 /** The place a walker holds in the waiting area ahead, on its own edge, written here. */
 const SLOT_AT = { s: 0, lat: 0 };
+/** How far back from the kerb a corner holds people waiting. */
+const CORNER_WAIT = m(1.2);
 /** How near its place a walker counts as there, and how still. */
 const SLOT_ARRIVED = m(0.15);
 const SLOT_STILL = m(0.15);
@@ -295,7 +297,12 @@ function waitingPlace(w: SimWorld, p: Ped, edge: SidewalkEdge): boolean {
     if (!edge.corridor.locate(slot.x, slot.y, rev, edge.length, place)) return false;
     if (place.s < p.s - m(0.5) || place.s > edge.length) return false;
     edge.corridor.bounds(place.s, rev, WALLS);
-    return place.lat >= WALLS.lo && place.lat <= WALLS.hi;
+    if (place.lat < WALLS.lo || place.lat > WALLS.hi) return false;
+    // On a corner - the walkway round the junction's island - people wait at
+    // the kerb itself, not back in the walkway where everybody going round
+    // to the next crossing has to pass.
+    if (edge.kind === 'corner' && edge.length - place.s > CORNER_WAIT) return false;
+    return true;
   };
   const slot = claimSlot(w, p, waitArea(w, next, kerb), onEdge);
   if (!slot || !edge.corridor.locate(slot.x, slot.y, rev, edge.length, place)) return false;
