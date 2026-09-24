@@ -8,7 +8,7 @@ import type { SimWorld } from '../world';
 import type { Ped, PedId } from './state';
 import type { SidewalkEdge } from './sidewalk';
 
-interface Footprint {
+export interface Footprint {
   id: number; x: number; y: number; radius: number; cell: string;
   /** A person's party, while they are in a conversation with it; -1 otherwise. */
   talk?: number;
@@ -397,6 +397,11 @@ export class PedestrianClearance {
     const along = Math.abs(dx * other.forward.x + dy * other.forward.y) - other.halfLength;
     const across = Math.abs(dx * -other.forward.y + dy * other.forward.x) - other.halfWidth;
     return Math.hypot(Math.max(0, along), Math.max(0, across));
+  }
+
+  /** Everything within `range` of a point: people, vehicles, street furniture. */
+  around(x: number, y: number, range: number, call: (item: Readonly<Footprint>) => void): void {
+    this.visit(x, y, range, call);
   }
 
   private visit(x: number, y: number, range: number, call: (item: Footprint) => void): void {
