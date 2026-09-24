@@ -1,4 +1,3 @@
-import { EPS } from './scalar';
 import type { Vec2 } from './vec2';
 import { segSeg } from './intersect';
 
@@ -51,23 +50,6 @@ export function pointInPolygon(p: Vec2, points: readonly Vec2[]): boolean {
     if (p.x < x) inside = !inside;
   }
   return inside;
-}
-
-/** Shortest distance from `p` to the polygon boundary. */
-export function distanceToBoundary(p: Vec2, points: readonly Vec2[]): number {
-  let best = Infinity;
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const a = points[j] as Vec2;
-    const b = points[i] as Vec2;
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const l2 = dx * dx + dy * dy;
-    let t = l2 < EPS ? 0 : ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
-    t = t < 0 ? 0 : t > 1 ? 1 : t;
-    const d = Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
-    if (d < best) best = d;
-  }
-  return best;
 }
 
 /**
