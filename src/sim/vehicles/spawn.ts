@@ -11,6 +11,7 @@ import { ARCHETYPES, type Archetype, archetypeWeights } from './archetypes';
 import { makeDriver } from './driver';
 import { createVehicle, snapshot } from './state';
 import { planFrom } from '../routing/router';
+import { assignOccupancy } from './kerbStops';
 
 /**
  * Arrival rate at one boundary entry lane, vehicles per second, at traffic
@@ -164,6 +165,8 @@ function spawnAt(w: SimWorld, id: string): boolean {
   vehicle.s = arch.length + entryClearance;
   vehicle.v = Math.min(v0 * 0.4, lane.speedLimit * 0.4);
   vehicle.prev = snapshot(vehicle);
+
+  assignOccupancy(w, vehicle);
 
   w.vehicles.set(vehicle.id, vehicle);
   w.enterLanelet(vehicle, id);

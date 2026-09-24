@@ -9,7 +9,6 @@ import {
   PED_BEHAVIOUR,
   edgePreference,
   goalPick,
-  kerbSway,
   preferredLateral,
   strollFactor,
 } from './behaviour';
@@ -18,6 +17,14 @@ import { makeCrossingId } from '../signals/plan';
 import { PedestrianClearance, STUCK_RELEASE } from './clearance';
 import { canStopComfortably } from '../vehicles/idm';
 import { nextTowardGoal } from './route';
+import {
+  activityAnchor,
+  arrivalActivity,
+  considerActivity,
+  endActivity,
+  holdFacing,
+  stepActivity,
+} from './activities';
 
 const SPACES = new WeakMap<SimWorld, PedestrianClearance>();
 
@@ -44,6 +51,15 @@ export function stepPedestrians(w: SimWorld): void {
   if (!space) { space = new PedestrianClearance(); SPACES.set(w, space); }
   space.begin(w);
   const remove: Ped[] = [];
+  // Where each party that has stopped to talk is standing, so its members can
+  // turn to face one another rather than the way they happened to arrive.
+  TALK.clear();
+  for (const p of peds) {
+    if (p.activity?.kind !== 'talk') continue;
+    const at = TALK.get(p.party.id) ?? { x: 0, y: 0, n: 0 };
+    at.x += p.x; at.y += p.y; at.n++;
+    TALK.set(p.party.id, at);
+  }
 
   for (const p of peds) {
     p.age += DT;
@@ -56,7 +72,9 @@ export function stepPedestrians(w: SimWorld): void {
 
     planAhead(w, p, edge);
     scanNeighbours(w, p, edge);
-    const desired = desiredSpeed(w, p, edge);
+    const cap = stepActivity(w, p, edge, stopWithin);
+    const free = desiredSpeed(w, p, edge);
+    const desired = cap === null ? free : Math.min(free, cap);
     steer(w, p, edge, desired, space);
 
     switch (p.state) {
@@ -91,8 +109,11 @@ export function stepPedestrians(w: SimWorld): void {
             occupyCrossing(w, p, next);
           } else {
             // Permitted but boxed in at the kerb: that is being stuck, and it
-            // earns the same release as a jam on the footway.
-            p.stuck += DT;
+            // earns the same release as a jam on the footway — unless what
+            // holds the kerb is people still coming off the crossing, whom a
+            // waiter lets out of the road first. That is giving way, not being
+            // stuck, and squeezing through them is the one thing not to do.
+            if (!space.jammedNear(w, p, MAKE_ROOM_RANGE)) p.stuck += DT;
           }
         }
         if (p.stuck === boxedBefore) p.stuck = Math.max(0, p.stuck - 2 * DT);
@@ -146,6 +167,7 @@ export function stepPedestrians(w: SimWorld): void {
       p.lat = clamp(p.lat, -usable, usable);
     }
     settlePose(w, p, false, space);
+    if (settled?.kind === 'walk' && !p.activity) considerActivity(w, p, settled);
     const wantsToMove = p.state !== 'WaitAtKerb' && desired > 0.05;
     // Held-up time; a released walker keeps its release until it has
     // actually got clear, about a metre of travel at walking pace.
@@ -176,6 +198,7 @@ export function stepPedestrians(w: SimWorld): void {
 
   for (const p of remove) {
     releaseCrossing(w, p);
+    endActivity(w, p);
     w.peds.delete(p.id);
   }
 }
@@ -385,14 +408,51 @@ function chooseGoal(w: SimWorld, p: Ped, here: SidewalkNode | undefined): Sidewa
     p.trip++;
     goal = undefined;
     p.pause = arrivalPause(p);
+    arrivalActivity(p, p.pause);
   }
   if (!goal) {
-    const picked = pool[goalPick(p.party.id, p.trip, pool.length)];
-    goal = picked === undefined ? undefined : w.sidewalks.nodes.get(picked);
+    goal = nextGoal(w, p, here, pool);
     p.goal = goal ? goal.id : null;
   }
   return goal;
 }
+
+/**
+ * A destination worth walking to from here.
+ *
+ * Any kerb on the map used to be drawn with equal odds, including the one a
+ * few metres behind — so somebody arriving somewhere turned round and walked
+ * back the way they came, and a street full of people read as a crowd pacing
+ * up and down. A destination is now somewhere FURTHER ON: some distance away,
+ * and ahead of the way this person is already facing, as a person on their
+ * way somewhere continues. Several hashed candidates are tried in turn, so the
+ * choice is still the party's own and still deterministic.
+ */
+function nextGoal(w: SimWorld, p: Ped, here: SidewalkNode | undefined,
+  pool: readonly string[]): SidewalkNode | undefined {
+  let fallback: SidewalkNode | undefined;
+  let farEnough: SidewalkNode | undefined;
+  const hx = Math.cos(p.heading);
+  const hy = Math.sin(p.heading);
+  for (let k = 0; k < GOAL_TRIES; k++) {
+    const picked = pool[goalPick(p.party.id, p.trip * GOAL_TRIES + k, pool.length)];
+    const node = picked === undefined ? undefined : w.sidewalks.nodes.get(picked);
+    if (!node) continue;
+    fallback ??= node;
+    if (!here) return node;
+    const dx = node.at.x - here.at.x;
+    const dy = node.at.y - here.at.y;
+    const d = Math.hypot(dx, dy);
+    if (d < GOAL_MIN_TRIP) continue;
+    farEnough ??= node;
+    if (dx * hx + dy * hy > d * GOAL_AHEAD) return node;
+  }
+  return farEnough ?? fallback;
+}
+/** Candidates tried for a new destination, the least distance to one, and how far ahead it must lie (cosine). */
+const GOAL_TRIES = 10;
+const GOAL_MIN_TRIP = m(60);
+const GOAL_AHEAD = 0.2;
 
 /**
  * Whether a pedestrian may step off the kerb.
@@ -748,6 +808,9 @@ function crossingUrgency(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
 function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {
   const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
   let target = formation(p, usable);
+  // Going to stop, or stopped, at one side of the footway: that side.
+  const stopping = p.activity && p.activity.side !== 0 && edge.kind === 'walk' ? p.activity : null;
+  if (stopping) target = stopping.side * usable;
   // Line up for a narrower next edge — a zebra is far narrower than a footway
   // — before reaching it, so the entry is walked into rather than cut to.
   const nextEdge = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
@@ -768,9 +831,17 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
       const flank = Math.min(usable, mouth + KERB_FLANK);
       target = (target >= 0 ? 1 : -1) * Math.max(flank, Math.abs(target));
     }
-    target += kerbSway(p.id, p.age);
+    // Somebody going round the corner is held up against this waiter: step
+    // aside for them, as a person at a kerb does. Standing firm left a
+    // through-walker boxed behind the queue for the whole of a long red —
+    // over 40 s once the signal plans stopped pairing approaches.
+    const jam = p.state === 'WaitAtKerb' ? space.jammedNear(w, p, MAKE_ROOM_RANGE) : null;
+    if (jam) {
+      const frame = w.sidewalks.orientedPath(edge, p.entry).sampleAt(p.s);
+      const across = (jam.x - frame.p.x) * frame.n.x + (jam.y - frame.p.y) * frame.n.y;
+      target = p.lat + (across >= p.lat ? -1 : 1) * MAKE_ROOM;
+    }
   } else {
-    target += space.avoidance(w, p, edge, target);
     // Step around somebody slower, towards whichever side has more room.
     if (
       NEAR.leaderGap < PED_BEHAVIOUR.passLook &&
@@ -790,6 +861,11 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
     ) {
       target += PED_BEHAVIOUR.keepSide * PED_BEHAVIOUR.oncomingShift;
     }
+    // Those say where this walker would like to be. What is actually in the
+    // way decides where they can be, and it has the last word: it used to be
+    // applied first, and the two nudges above could put somebody straight
+    // back in front of the bench they had just stepped round.
+    target = space.clearLine(w, p, edge, target, usable);
   }
 
   // Held up: commit to the side with more room and go there.
@@ -801,15 +877,21 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
     // attempted - a walker pinned there facing somebody on the same side of a
     // narrow zebra stood for 9.7 s until the release let them squeeze.
     else if (p.dodge * p.lat >= usable - EDGE_PINNED) p.dodge = -p.dodge;
-    target = p.dodge * usable;
+    // Towards that side, but round whatever stands there: the edge of a
+    // footway is where its lamp columns and tree pits are.
+    target = space.clearLine(w, p, edge, p.dodge * usable, usable);
   } else if (p.stuck === 0) {
     p.dodge = 0;
   }
   const held = clamp(p.lat, -usable, usable);
   // Sideways speed wanted to close the offset, then eased: a step aside
   // starts, carries and settles instead of switching on and off each tick.
-  const wanted = clamp((clamp(target, -usable, usable) - held) / LATERAL_SETTLE,
-    -PED_BEHAVIOUR.lateralRate, PED_BEHAVIOUR.lateralRate);
+  // Standing, it is a side-step, and a side-step is half the pace of one
+  // taken while walking on.
+  const rate = PED_BEHAVIOUR.lateralRate * lerp(SIDESTEP_STANDING, 1, clamp(p.v / SIDESTEP_WALKING, 0, 1));
+  PLAN.target = clamp(target, -usable, usable);
+  PLAN.rate = rate;
+  const wanted = clamp((PLAN.target - held) / LATERAL_SETTLE, -rate, rate);
   const step = LATERAL_ACCEL * DT;
   p.latV = clamp(wanted, p.latV - step, p.latV + step);
   const proposed = clamp(held + p.latV * DT, -usable, usable);
@@ -824,6 +906,13 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   }
 }
 
+/**
+ * Where `steer` is taking this walker across the footway this tick, and how
+ * fast it may get there; read by `approachSpeed` straight after. One record,
+ * reused, as `NEAR` is.
+ */
+const PLAN = { target: 0, rate: 0 };
+
 /** Seconds held up before committing to a side. */
 const DODGE_AFTER = 0.6;
 /** How close to the edge of the usable width counts as pinned against it. */
@@ -831,6 +920,9 @@ const EDGE_PINNED = m(0.05);
 
 /** Distance beyond the zebra's edge at which people wait. */
 const KERB_FLANK = m(0.45);
+/** How near a held-up walker must be for a waiter to make room, and how far they step aside. */
+const MAKE_ROOM_RANGE = m(1.3);
+const MAKE_ROOM = m(0.9);
 
 /** Distance before a narrower edge over which walkers line up for it. */
 const LINE_UP_DISTANCE = m(4);
@@ -838,6 +930,9 @@ const LINE_UP_DISTANCE = m(4);
 /** Seconds over which a lateral offset is closed, and the sideways acceleration. */
 const LATERAL_SETTLE = 0.6;
 const LATERAL_ACCEL = PED_BEHAVIOUR.lateralRate * 2.2;
+/** Share of the sideways rate a standing person steps aside at, and the pace at which it is all of it. */
+const SIDESTEP_STANDING = 0.5;
+const SIDESTEP_WALKING = m(1);
 
 /**
  * Speed at which this person can still stop before whatever is blocking the
@@ -856,7 +951,7 @@ function approachSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge, space: Pedestria
   // Braking distance plus a reaction: people see a knot coming and start
   // slowing well before they reach it. The reaction term matters most for two
   // people walking towards each other, who close at twice walking pace.
-  const brake = (p.v * p.v) / (2 * PED_DECEL);
+  const brake = (p.v * p.v) / (2 * PED_COMFORT);
   const reach = Math.max(PED_PROBE_MIN, brake + p.v * PED_REACTION);
   let limit = command;
 
@@ -864,7 +959,19 @@ function approachSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge, space: Pedestria
   const probe = Math.min(edge.length, p.s + reach);
   if (probe > p.s) {
     const free = space.safeStep(w, p, edge, probe) - p.s;
-    if (free < probe - p.s - 1e-6) limit = Math.min(limit, stopWithin(free));
+    if (free < probe - p.s - 1e-6) {
+      let allowed = stopWithin(free);
+      // Unless the step aside `steer` has planned clears it: then walk on,
+      // no faster than lets that step be finished before it is reached.
+      // Braking for everything on the current line is what stopped people
+      // dead in front of a bench they were about to walk round.
+      const aside = Math.abs(PLAN.target - p.lat);
+      if (aside > 1e-3 && PLAN.rate > 0 &&
+        space.clearAlong(w, p, edge, probe, PLAN.target) >= probe - 1e-6) {
+        allowed = Math.max(allowed, (free - PASS_ROOM) / (aside / PLAN.rate + SIDESTEP_LAG));
+      }
+      limit = Math.min(limit, allowed);
+    }
   }
 
   // The end of the edge itself, when it cannot be walked straight through: a
@@ -878,8 +985,17 @@ function approachSpeed(w: SimWorld, p: Ped, edge: SidewalkEdge, space: Pedestria
   return limit;
 }
 
-/** Speed from which this person can still stop within a distance. */
-const stopWithin = (distance: number): number => Math.sqrt(Math.max(0, 2 * PED_DECEL * distance));
+/**
+ * Speed from which this person can still stop comfortably within a distance.
+ * Planned at a comfortable rate, not the hardest one: a stop braked at
+ * 2.4 m/s² is over in half a metre, a third of a stride — a body halting
+ * while the legs that should be slowing it are still mid-step.
+ */
+const stopWithin = (distance: number): number => Math.sqrt(Math.max(0, 2 * PED_COMFORT * distance));
+/** Distance kept in hand when walking on towards something a planned step aside will clear, u. */
+const PASS_ROOM = m(0.3);
+/** Seconds before a step aside actually gets under way. */
+const SIDESTEP_LAG = 0.35;
 
 /** Whether the next edge cannot simply be walked into right now. */
 function mustStopAtEndOf(
@@ -926,6 +1042,8 @@ function eased(current: number, target: number): number {
 }
 const PED_ACCEL = m(1.1);
 const PED_DECEL = m(2.4);
+/** Deceleration planned for a stop that is seen coming: a kerb, a queue, a place to stop at. */
+const PED_COMFORT = m(1.2);
 
 /**
  * World position, and a body heading turned towards the direction of travel
@@ -959,15 +1077,20 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   // The same holds for a sharp vertex of a corner path: the offset line of a
   // polyline has a gap on the outside of every kink. Any path jump longer
   // than a step is absorbed the same way.
-  const keep = Math.exp(-DT / OFFSET_SETTLE);
-  const settledX = pathX + p.offX * keep;
-  const settledY = pathY + p.offY * keep;
+  //
+  // It closes no faster than a person walks it (`OFFSET_CLOSE`): a catch-up of
+  // a metre or two closed on a time constant alone swept the body across the
+  // pavement at several metres a second — a figure gliding sideways, faster
+  // than anybody can step.
+  const settledX = pathX + p.offX * closing(p.offX, p.offY);
+  const settledY = pathY + p.offY * closing(p.offX, p.offY);
   const step = Math.hypot(settledX - p.x, settledY - p.y);
   if (!first && (p.prev.edge !== p.edge || step > p.v * DT * 1.5 + PATH_JUMP)) {
     p.offX = p.x - pathX;
     p.offY = p.y - pathY;
     if (Math.hypot(p.offX, p.offY) > OFFSET_LIMIT) { p.offX = 0; p.offY = 0; }
   }
+  const keep = closing(p.offX, p.offY);
   p.offX *= keep;
   p.offY *= keep;
   // The catch-up sweep above is a straight line the physical clearance
@@ -985,45 +1108,130 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
     p.offX = 0;
     p.offY = 0;
   }
-  const x = pathX + p.offX;
-  const y = pathY + p.offY;
+  const anchor = activityAnchor(p);
+  // Off the walking line — stepping to a bench, sitting on it — the body is
+  // where the activity has put it, and no path offset applies.
+  if (anchor) { p.offX = 0; p.offY = 0; }
+  const x = anchor ? anchor.x : pathX + p.offX;
+  const y = anchor ? anchor.y : pathY + p.offY;
+  p.x = x;
+  p.y = y;
+  if (first) {
+    p.heading = Math.atan2(frame.t.y, frame.t.x);
+    p.turnV = 0;
+    return;
+  }
+
+  // Which way the body wants to face. While walking it is the direction of
+  // TRAVEL along the path — the tangent, averaged over a stride either side
+  // — leaning a little into a sidestep. It used to be the direction of the
+  // drawn displacement, every tick: each step aside to pass somebody swung
+  // the whole body towards it and back, and the crowd walked in zigzags; and
+  // standing still, a sideways shuffle of a few millimetres turned people
+  // right round on the spot.
   let face: number | null = null;
-  const dx = x - p.x;
-  const dy = y - p.y;
-  if (!first && Math.hypot(dx, dy) > TURN_MIN_TRAVEL) face = Math.atan2(dy, dx);
-  else if (first) face = Math.atan2(frame.t.y, frame.t.x);
-  else if (p.state === 'WaitAtKerb') {
+  let rate = TURN_RATE_STANDING;
+  // Standing on the footway, not placed by an activity: turns are made in
+  // decisive steps rather than tracked by the degree (`steerHeading`).
+  const standing = !anchor && p.v <= FACE_MIN_SPEED;
+  if (anchor) {
+    face = anchor.face;
+    if (p.activity?.move) rate = TURN_RATE;
+  } else if (p.v > FACE_MIN_SPEED) {
+    const lean = Math.atan2(p.latV, Math.max(p.v, m(0.8))) * SIDESTEP_LEAN;
+    face = Math.atan2(ty, tx) + lean;
+    rate = TURN_RATE;
+  } else if (p.state === 'WaitAtKerb') {
     const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
     if (next) {
       const t = w.sidewalks.orientedPath(next, w.sidewalks.other(edge, p.entry)).sampleAt(0).t;
       face = Math.atan2(t.y, t.x);
     }
+  } else if (p.activity?.kind === 'talk') {
+    const party = TALK.get(p.party.id);
+    if (party && party.n > 1) {
+      const cx = (party.x - p.x) / (party.n - 1);
+      const cy = (party.y - p.y) / (party.n - 1);
+      if (Math.hypot(cx - p.x, cy - p.y) > m(0.2)) face = Math.atan2(cy - p.y, cx - p.x);
+    }
+  } else {
+    face = holdFacing(w, p, edge);
   }
-  p.x = x;
-  p.y = y;
-  if (face === null) return;
-  if (first) {
-    p.heading = face;
-    return;
-  }
-  let delta = (face - p.heading) % (2 * Math.PI);
-  if (delta > Math.PI) delta -= 2 * Math.PI;
-  if (delta < -Math.PI) delta += 2 * Math.PI;
-  const limit = TURN_RATE * DT;
-  p.heading += clamp(delta, -limit, limit);
+  steerHeading(p, face, rate, standing);
 }
+
+/**
+ * Turns the body through an angular velocity: towards `face` when there is
+ * one, easing to a stop when there is not. A turn therefore starts, carries
+ * and settles, and `turnV` says how fast the body is turning for the renderer,
+ * which steps the feet round with it.
+ *
+ * Somebody `standing` does not track a target by the degree. They hold their
+ * stance until it is a step round off, then turn — briskly enough that the
+ * feet visibly step — and stop square to it. Tracking it continuously was a
+ * slow swivel of a fraction of a radian a second, too slow to step for, that
+ * went on for as long as a talking party shuffled or a queue settled: a
+ * figure rotating on motionless legs.
+ */
+function steerHeading(p: Ped, face: number | null, rate: number, standing = false): void {
+  let want = 0;
+  if (face !== null) {
+    const delta = Math.atan2(Math.sin(face - p.heading), Math.cos(face - p.heading));
+    const settled = Math.abs(p.turnV) < STAND_SETTLED;
+    if (!(standing && settled && Math.abs(delta) < STAND_DEADBAND)) {
+      want = clamp(delta / TURN_EASE, -rate, rate);
+      if (standing && Math.abs(delta) > STAND_SQUARE) {
+        want = Math.sign(delta) * Math.max(Math.abs(want), Math.min(rate, STAND_TURN_MIN));
+      }
+    }
+  }
+  const step = TURN_ACCEL * DT;
+  p.turnV = clamp(want, p.turnV - step, p.turnV + step);
+  p.heading += p.turnV * DT;
+  p.heading = Math.atan2(Math.sin(p.heading), Math.cos(p.heading));
+}
+
+/** Where each talking party stands: summed positions and a count, rebuilt each tick. */
+const TALK = new Map<number, { x: number; y: number; n: number }>();
+
+/** Travel below which the direction of travel is not a direction worth facing, u/s. */
+const FACE_MIN_SPEED = m(0.12);
+/** Share of a sidestep's angle the body turns into. */
+const SIDESTEP_LEAN = 0.35;
+/** Seconds over which a heading error is closed, and the turning acceleration, rad/s². */
+const TURN_EASE = 0.28;
+const TURN_ACCEL = 7;
+/**
+ * Standing: the error worth a step round (rad), the error a turn stops at, the
+ * slowest a turn is made at (rad/s, above the 0.35 at which the renderer steps
+ * the feet round), and the turning rate below which a body counts as settled.
+ */
+const STAND_DEADBAND = 0.2;
+const STAND_SQUARE = 0.035;
+const STAND_TURN_MIN = 0.6;
+const STAND_SETTLED = 0.05;
+
 /** Half-length of the span a drawn lateral normal is averaged over. */
 const NORMAL_SPAN = 1.5;
 
 /** Seconds over which an edge-change offset closes, and the largest one bridged. */
 const OFFSET_SETTLE = 0.3;
 const OFFSET_LIMIT = 6;
+/** Fastest an offset closes, u/s: a brisk side-step. */
+const OFFSET_CLOSE = m(0.8);
+
+/** Share of a drawn-body offset left after one tick of closing it. */
+function closing(offX: number, offY: number): number {
+  const size = Math.hypot(offX, offY);
+  if (size < 1e-9) return 0;
+  return Math.max(Math.exp(-DT / OFFSET_SETTLE), 1 - OFFSET_CLOSE * DT / size);
+}
 /** Path movement beyond a stride that counts as a discontinuity, world units. */
 const PATH_JUMP = 0.05;
 
-/** Human turning rate while walking, radians a second, and the travel that defines a direction. */
+/** Human turning rate walking, and turning on the spot, radians a second. */
 const TURN_RATE = 2.6;
-const TURN_MIN_TRAVEL = 0.004;
+const TURN_RATE_STANDING = 1.25;
 
 /**
  * Where across the footway this pedestrian wants to be, before anyone is in

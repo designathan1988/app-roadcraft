@@ -6,6 +6,7 @@ import {
   type Material,
 } from 'three';
 
+import { cutAtAxis } from '@core/axisCut';
 import { intersection, type MultiPoly, type Poly } from '@core/clipper';
 
 /**
@@ -278,9 +279,27 @@ function splitToSpan(polygon: Poly, span: number, out: Poly[], depth = 0): void 
     return;
   }
 
-  const pad = span;
   const cutX = width >= height;
   const middle = cutX ? (minX + maxX) / 2 : (minY + maxY) / 2;
+  // A straight cut, done as one (see `cutAtAxis`); the general clipper only
+  // for a polygon the fast path declines.
+  const halves = cutAtAxis(polygon, cutX ? 0 : 1, middle) ?? clipHalves(polygon, span, cutX, middle, minX, minY, maxX, maxY);
+  for (const half of halves) {
+    for (const piece of half) splitToSpan(piece, span, out, depth + 1);
+  }
+}
+
+/** The two sides of a cut, by intersection with a rectangle either side of it. */
+function clipHalves(
+  polygon: Poly,
+  pad: number,
+  cutX: boolean,
+  middle: number,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+): MultiPoly[] {
   const rect = (x0: number, y0: number, x1: number, y1: number): MultiPoly => [
     [[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]],
   ];
@@ -293,20 +312,20 @@ function splitToSpan(polygon: Poly, span: number, out: Poly[], depth = 0): void 
         rect(minX - pad, minY - pad, maxX + pad, middle),
         rect(minX - pad, middle, maxX + pad, maxY + pad),
       ];
-
-  for (const half of halves) {
-    for (const piece of intersection([polygon], half)) splitToSpan(piece, span, out, depth + 1);
-  }
+  return halves.map((half) => intersection([polygon], half));
 }
 
-/** Twice the signed area of a flat [x,y,...] ring slice; positive means CCW. */
-function signedArea(flat: readonly number[], start: number, end: number): number {
+/** Twice the summed signed area of triangles over a flat [x,y,...] list; positive means CCW. */
+function trianglesArea(flat: readonly number[], tris: readonly number[]): number {
   let sum = 0;
-  const count = end - start;
-  for (let i = 0; i < count; i++) {
-    const a = (start + i) * 2;
-    const b = (start + ((i + 1) % count)) * 2;
-    sum += (flat[a] as number) * (flat[b + 1] as number) - (flat[b] as number) * (flat[a + 1] as number);
+  for (let i = 0; i + 2 < tris.length; i += 3) {
+    const a = (tris[i] as number) * 2;
+    const b = (tris[i + 1] as number) * 2;
+    const c = (tris[i + 2] as number) * 2;
+    const ax = flat[a] as number;
+    const ay = flat[a + 1] as number;
+    sum += ((flat[b] as number) - ax) * ((flat[c + 1] as number) - ay)
+      - ((flat[b + 1] as number) - ay) * ((flat[c] as number) - ax);
   }
   return sum;
 }
@@ -347,13 +366,15 @@ export function buildSurfaceMesh(options: SurfaceMeshOptions): Mesh | null {
     const seed = earcut(flat, holes, 2);
     if (seed.length === 0) continue;
 
-    // Which way round the outer ring runs decides which side of every triangle
-    // faces the sky. Clipper is asked for positive-orientation outer rings, but
-    // relying on that is how a whole road network came to be drawn inside-out
-    // and vanished under the terrain — the surfaces were there, back-face
-    // culled. Measuring the ring costs nothing and cannot be wrong.
-    const outerEnd = holes.length > 0 ? (holes[0] as number) : flat.length / 2;
-    const flip = signedArea(flat, 0, outerEnd) < 0;
+    // Which way round the TRIANGLES run decides which side faces the sky, so
+    // that is what is measured. Relying on the clipper's ring orientation is
+    // how a whole road network came to be drawn inside-out and vanished under
+    // the terrain. Measuring the RING instead was wrong the other way: earcut
+    // hands back anticlockwise triangles whatever the ring's winding, so a
+    // clockwise piece was flipped face down — every piece of a horizontal cut,
+    // the day `cutAtAxis` began returning them clockwise. The triangles are
+    // what is drawn; ask them.
+    const flip = trianglesArea(flat, seed) < 0;
 
     const builder: Builder = { xs: [], ys: [], tris: [...seed], midpoints: new Map() };
     for (let i = 0; i < flat.length; i += 2) {

@@ -157,7 +157,9 @@ describe('rendered pose', () => {
         // stopped in a queue has not started the curve yet and points
         // straight, which is right — it is not moving sideways either.
         if (Math.abs(v.lateral) < 3 || v.prev.lanelet !== v.lanelet || Math.abs(v.prev.lateral) < 3) continue;
-        if (v.lateralSlope === 0) continue;
+        // A change committed while standing still has not begun its curve:
+        // the slope is zero to rounding and the body points straight ahead.
+        if (Math.abs(v.lateralSlope) < 1e-4) continue;
         const lane = sim.lanelet(v.lanelet);
         const pose = vehiclePose(sim, v, 1);
         if (!lane || !pose) continue;

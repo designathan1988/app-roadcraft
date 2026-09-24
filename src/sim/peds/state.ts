@@ -35,6 +35,50 @@ export type PedState =
  * alone is a party of one rather than a null case, which is what keeps every
  * pacing and destination rule branch-free.
  */
+/**
+ * Something a pedestrian is doing in a place, rather than walking on.
+ *
+ *   look / phone  stopped at the side of the footway, or where they arrived
+ *   talk          stopped with their party, facing one another
+ *   bench         sitting down on a bench beside the footway, and getting up
+ *
+ * `phase` sequences it; `t` is seconds in the phase. While the body is off
+ * the walking line (`anchor`), it is drawn there instead of on the footway.
+ */
+export type PedActivityKind = 'look' | 'phone' | 'talk' | 'bench';
+export type PedActivityPhase =
+  | 'approach'
+  | 'hold'
+  | 'step'
+  | 'turn'
+  | 'sitDown'
+  | 'seated'
+  | 'standUp'
+  | 'leave';
+export interface PedActivity {
+  readonly kind: PedActivityKind;
+  phase: PedActivityPhase;
+  t: number;
+  /** Seconds the hold (or the seated phase) lasts. */
+  readonly hold: number;
+  /** Arc position on the current edge, oriented from `entry`, where it happens. */
+  readonly at: number;
+  /** Lateral side of the footway it is done on, as a target offset. */
+  readonly side: number;
+  /** Heading to face while holding, or seated; null keeps the current one. */
+  readonly face: number | null;
+  /** Bench seat taken, `benchId:seat`, released when the activity ends. */
+  readonly seat: string | null;
+  /** Where the body stands in front of the seat, world units. */
+  readonly spotX: number;
+  readonly spotY: number;
+  /** Where on the footway it stepped off, to step back on to. */
+  fromX: number;
+  fromY: number;
+  /** Drawn speed of the body while it steps between the footway and the seat. */
+  move: number;
+}
+
 export interface PedParty {
   /** The pacer's id, and the seed every member's destination is drawn from. */
   readonly id: PedId;
@@ -130,6 +174,19 @@ export interface Ped {
    * so nobody stops for no reason on an open footway.
    */
   pause: number;
+  /**
+   * What this person is doing besides walking: sitting on a bench, stopping
+   * at the side of the footway to look round or read a phone, talking with
+   * their party. Null while simply walking. `sim/peds/activities.ts`.
+   */
+  activity: PedActivity | null;
+  /**
+   * How fast the body is turning, radians a second. The heading is steered
+   * through this rather than set, so a turn starts, carries and settles —
+   * and the renderer can tell a person turning on the spot, whose feet must
+   * step round, from one standing still.
+   */
+  turnV: number;
   /** Seconds spent in `WaitAtKerb`, driving gap-acceptance impatience. */
   waited: number;
   /**
@@ -194,6 +251,8 @@ export function createPed(spec: PedSpec): Ped {
     offY: 0,
     dodge: 0,
     pause: 0,
+    activity: null,
+    turnV: 0,
     prev: { edge: spec.edge, s: spec.s, lat: spec.lat, x: 0, y: 0, heading: 0 },
   };
 }

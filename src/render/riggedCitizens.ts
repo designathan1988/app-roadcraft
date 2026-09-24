@@ -1,6 +1,6 @@
 import {
   AnimationMixer, BufferGeometry, DataTexture, DynamicDrawUsage, FloatType, Group, InstancedMesh,
-  Matrix4, MeshDepthMaterial, MeshStandardMaterial, Object3D, RGBAFormat,
+  Matrix4, MeshDepthMaterial, MeshStandardMaterial, Object3D, Quaternion, RGBAFormat,
   RGBADepthPacking, SkinnedMesh, Texture, Vector3, type BufferAttribute,
 } from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
@@ -10,77 +10,86 @@ import type { Ped } from '@sim/peds/state';
 import { DT } from '@sim/params';
 import { m } from '@world/units';
 import { CITIZEN_MODELS } from './citizenCatalog';
+import { RIDER_CLIPS, type RiderClip, type RiderClipKey } from './riderPoses';
 import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
-import { WALK_ADVANCE, neutralWalkFor, walkDuration, type WalkAmplitude, type WalkSex } from './citizenWalk';
+import {
+  WALK_ADVANCE, clipTransferFor, loadRocketboxLibrary, neutralWalkFor, strideShare, walkDuration, walkSource,
+  type LibraryClip, type LibraryClipName, type RocketboxLibrary, type WalkAmplitude, type WalkSex,
+} from './citizenWalk';
+import {
+  ELDER_AMPLITUDE, SHUFFLE_AMPLITUDE, bakeFps, createGait, gaitClipOf, gaitHeading, gaitPlays, stepGait,
+  type Gait, type GaitClipName, type GaitClips, type GaitPlay,
+} from './citizenGait';
 
 export { CITIZEN_MODELS } from './citizenCatalog';
 /**
- * Clips carried by the citizen GLBs. Their walks (`Walk_Loop`,
- * `Walk_Formal_Loop`) are a Quaternius capture converted onto this skeleton,
- * and that conversion is what hunched every walker; they are no longer played.
- * The walk is the Rocketbox capture instead, baked after these (`WALK`).
+ * Clips carried by the citizen GLBs that are still played: the seated poses
+ * of people in vehicles. Their walks, stands and jog are a Quaternius capture
+ * converted onto this skeleton, and that conversion is what hunched every
+ * walker; a pedestrian plays only Rocketbox captures now (`WALK`, `LIBRARY`).
  */
-const CLIPS = [
-  'Idle_Loop', 'Idle_Talking_Loop', 'Jog_Fwd_Loop',
-  // Seated: at the wheel, riding along, and riding along in conversation.
-  'Driving_Loop', 'Sitting_Idle_Loop', 'Sitting_Talking_Loop',
-];
-const IDLE = 0;
-const IDLE_TALK = 1;
-const JOG = 2;
+const CLIPS = ['Driving_Loop', 'Sitting_Idle_Loop', 'Sitting_Talking_Loop'];
 /** Indices into the baked clips for the seated poses. */
-export const SEAT_DRIVE = 3;
-export const SEAT_RIDE = 4;
-export const SEAT_TALK = 5;
+export const SEAT_DRIVE = 0;
+export const SEAT_RIDE = 1;
+export const SEAT_TALK = 2;
 /** The Rocketbox neutral walk of the body's sex, exactly as captured. */
-const WALK = 6;
+const WALK = 3;
 /** The same walk with an older person's shorter step and quieter arms. */
-const WALK_ELDER = 7;
-
+const WALK_ELDER = 4;
+/** The Rocketbox slow walk with its swing shrunk: short steps, for inching along. */
+const WALK_SHUFFLE = 5;
+/** The Rocketbox library clips, baked after the walks in this order. */
+const LIBRARY = [
+  'start', 'stop', 'run', 'turnLeft', 'turnRight',
+  'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp', 'walkSlow',
+] as const satisfies readonly LibraryClipName[];
+type Played = (typeof LIBRARY)[number];
+const LIBRARY_AT = Object.fromEntries(LIBRARY.map((name, i) => [name, WALK_SHUFFLE + 1 + i])) as
+  Readonly<Record<Played, number>>;
+/** Where each clip the gait plays (`citizenGait.ts`) is baked. */
+const GAIT_AT: Readonly<Record<GaitClipName, number>> = {
+  ...LIBRARY_AT, walk: WALK, walkElder: WALK_ELDER, walkShuffle: WALK_SHUFFLE,
+};
 /**
- * An older walker: a step about a fifth shorter, arms that swing about half as
- * far, hips that rise and roll less. The trunk keeps the capture's own
- * upright posture — nothing here leans or bends it.
+ * People in and on vehicles (`riderPoses.ts`): car seats reclined to fit a
+ * cabin, astride a motorcycle, pedalling a bicycle. Baked after the library.
  */
-const ELDER_AMPLITUDE: WalkAmplitude = { arms: 0.5, legs: 0.78, hips: 0.6 };
+const RIDER_AT = Object.fromEntries(RIDER_CLIPS.map((clip, i) => [clip.key, WALK_SHUFFLE + 1 + LIBRARY.length + i])) as
+  Readonly<Record<RiderClipKey, number>>;
+/** Anything `drawClip` can play. */
+export type CitizenClipKey = RiderClipKey | 'walk' | Played;
+
 const CAPACITY = 1000;
 const FPS = 30;
 interface ClipFrames {
-  data: Float32Array; frames: number; duration: number; stride: number;
+  data: Float32Array;
+  /** Intervals between baked frames; `data` holds `frames + 2` rows (the last repeated). */
+  frames: number; duration: number;
+  /** Ground one cycle covers on this body at scale 1, metres. */
+  stride: number;
   /** Height of the pelvis above the model origin in the first frame, metres. */
   pelvisY: number;
+  loop: boolean;
+  /** Ground covered by each baked frame on this body at scale 1, metres (start, stop). */
+  travel?: Float32Array;
+  /** Angle turned by each baked frame, radians, unsigned (turns). */
+  yaw?: Float32Array;
 }
 interface CitizenBatch {
   meshes: InstancedMesh[]; local: Matrix4[]; clips: ClipFrames[];
+  /** The same baked clips, by the name the gait plays them by. */
+  gait: GaitClips;
   texture: DataTexture; pixels: Float32Array; width: number; count: number;
   rows: number; uniform: { value: DataTexture };
   lods: BufferGeometry[][];
 }
-interface Motion {
-  time: number; heading: number; x: number; y: number; phase: number;
-  blend: number; run: number;
-}
-
-/** Speed at which a person breaks into a jog, m/s; fixed for life from their id. */
-const jogAt = (hash: number): number => 1.65 + 0.35 * ((hash >>> 9) & 255) / 255;
 
 /**
  * Size of a child drawn on an adult body, when the roster has no child model
  * of their sex: without it a child walked the street at full adult height.
  */
 const CHILD_ON_ADULT = 0.64;
-
-/** Speeds (m/s) between which the stride fades in from standing. */
-const WALK_FADE_LOW = 0.06;
-const WALK_FADE_HIGH = 0.45;
-/** Seconds over which a figure settles into, or out of, walking. */
-const BLEND_TIME = 0.35;
-const RUN_TIME = 0.6;
-
-const smoothstep = (lo: number, hi: number, x: number): number => {
-  const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
-  return t * t * (3 - 2 * t);
-};
 
 const SKINNING = `
 uniform sampler2D citizenBones;
@@ -106,92 +115,117 @@ function skinMaterial(material: MeshStandardMaterial | MeshDepthMaterial, unifor
   material.customProgramCacheKey = () => 'citizen-skinning-v1';
 }
 
+/** A fresh, unposed copy of the body and its skinned mesh. */
+function restRig(asset: GLTF): { rig: Object3D; mesh: SkinnedMesh } {
+  const rig = clone(asset.scene);
+  let mesh: SkinnedMesh | undefined;
+  rig.traverse(o => { if (o instanceof SkinnedMesh && !mesh) mesh = o; });
+  if (!mesh) throw new Error('Citizen model has no rig');
+  return { rig, mesh };
+}
+
+/**
+ * Bakes a pose function into bone palettes: `frames` intervals over
+ * `duration`, one row more for the end, one more repeated so interpolation
+ * past the last frame reads a real pose.
+ */
+function bakeFrames(rig: Object3D, mesh: SkinnedMesh, pose: (time: number) => void, duration: number,
+  loop: boolean, fps = FPS): { data: Float32Array; frames: number; pelvisY: number } {
+  const skeleton = mesh.skeleton;
+  const frames = Math.max(1, Math.round(duration * fps));
+  const width = skeleton.bones.length * 16;
+  const data = new Float32Array((frames + 2) * width);
+  const pelvis = rig.getObjectByName('Bip01_Pelvis');
+  const position = new Vector3();
+  let pelvisY = 0;
+  for (let i = 0; i <= frames; i++) {
+    pose(loop ? (i % frames) * duration / frames : i * duration / frames);
+    skeleton.update();
+    data.set(skeleton.boneMatrices!, i * width);
+    if (i === 0 && pelvis) pelvisY = pelvis.getWorldPosition(position).y;
+  }
+  data.copyWithin((frames + 1) * width, frames * width, (frames + 1) * width);
+  return { data, frames, pelvisY };
+}
+
 /**
  * Bakes the Rocketbox walk onto one body: `amplitude` untouched is the capture
  * as recorded, anything less the elder's. `stride` is the ground one cycle
  * covers on THIS body, so moving it by that much per cycle plants the feet.
  */
-function bakeWalk(asset: GLTF, sex: WalkSex, amplitude?: WalkAmplitude): ClipFrames & { reach: number } {
-  const rig = clone(asset.scene);
-  let mesh: SkinnedMesh | undefined;
-  rig.traverse(o => { if (o instanceof SkinnedMesh && !mesh) mesh = o; });
-  if (!mesh) throw new Error('Citizen model has no rig');
+function bakeWalk(asset: GLTF, sex: WalkSex, amplitude?: WalkAmplitude): ClipFrames {
+  const { rig, mesh } = restRig(asset);
   const walk = neutralWalkFor(rig, mesh, sex, amplitude);
-  const skeleton = mesh.skeleton;
   const duration = walkDuration(sex);
-  // The capture is 30 fps; sampling on its own keys keeps the loop seamless.
-  const frames = Math.round(duration * FPS);
-  const width = skeleton.bones.length * 16;
-  const data = new Float32Array((frames + 1) * width);
-  const feet = ['Bip01_L_Foot', 'Bip01_R_Foot'].map(name => rig.getObjectByName(name));
-  const pelvis = rig.getObjectByName('Bip01_Pelvis');
-  const position = new Vector3();
-  let low = Infinity, high = -Infinity, pelvisY = 0;
-  for (let i = 0; i <= frames; i++) {
-    walk.pose((i % frames) * duration / frames);
-    skeleton.update();
-    data.set(skeleton.boneMatrices!, i * width);
-    if (i === 0 && pelvis) pelvisY = pelvis.getWorldPosition(position).y;
-    for (const foot of feet) {
-      if (!foot) continue;
-      foot.getWorldPosition(position);
-      low = Math.min(low, position.z);
-      high = Math.max(high, position.z);
-    }
-  }
-  return { data, frames, duration, pelvisY,
-    stride: WALK_ADVANCE[sex] * walk.scale, reach: high - low };
+  const baked = bakeFrames(rig, mesh, time => walk.pose(time), duration, true);
+  const share = amplitude ? strideShare(walkSource(sex), amplitude) : 1;
+  return { ...baked, duration, loop: true, stride: WALK_ADVANCE[sex] * walk.scale * share };
 }
 
-/** Clips were retargeted offline. No skeleton traversal occurs during drawing. */
-function bake(asset: GLTF, sex: WalkSex): ClipFrames[] {
-  const rig = clone(asset.scene);
-  let reference: SkinnedMesh | undefined;
-  rig.traverse(o => { if (o instanceof SkinnedMesh && !reference) reference = o; });
-  if (!reference) throw new Error('Citizen model has no rig');
-  const skeleton = reference.skeleton;
+/**
+ * Bakes one library clip onto one body, with its travel and turn curves
+ * resampled to the baked frames (`gaitClipOf`). A cycle baked with its swing
+ * shrunk to `amplitude` covers that much less ground.
+ */
+function bakeLibraryClip(asset: GLTF, clip: LibraryClip, amplitude?: WalkAmplitude): ClipFrames {
+  const { rig, mesh } = restRig(asset);
+  const transfer = clipTransferFor(rig, mesh, clip, amplitude);
+  // A long standing or seated loop is slow motion, captured at 10 fps in the
+  // library; baking it at 30 tripled the memory and the load for nothing.
+  const baked = bakeFrames(rig, mesh, time => transfer.pose(time), clip.duration, clip.loop, bakeFps(clip));
+  const facts = gaitClipOf(clip, transfer.scale, baked.frames);
+  const share = amplitude ? strideShare(clip.source, amplitude) : 1;
+  return { ...baked, ...facts, stride: facts.stride * share };
+}
+
+/** Bakes everything one body plays. No skeleton traversal occurs during drawing. */
+function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): ClipFrames[] {
+  const { rig, mesh } = restRig(asset);
   const mixer = new AnimationMixer(rig);
-  const left = rig.getObjectByName('Bip01_L_Foot');
-  const right = rig.getObjectByName('Bip01_R_Foot');
-  const pelvis = rig.getObjectByName('Bip01_Pelvis');
-  const position = new Vector3();
   const clips: ClipFrames[] = [];
   for (const name of CLIPS) {
     const clip = asset.animations.find(a => a.name === name);
     if (!clip) throw new Error(`Citizen is missing ${name}`);
     mixer.stopAllAction();
     mixer.clipAction(clip).play();
-    const frames = Math.ceil(clip.duration * FPS);
-    const width = skeleton.bones.length * 16;
-    const data = new Float32Array((frames + 1) * width);
-    let low = Infinity, high = -Infinity;
-    let pelvisY = 0;
-    for (let i = 0; i <= frames; i++) {
-      mixer.setTime((i % frames) * clip.duration / frames);
-      rig.updateMatrixWorld(true);
-      skeleton.update();
-      data.set(skeleton.boneMatrices!, i * width);
-      if (i === 0 && pelvis) pelvisY = pelvis.getWorldPosition(position).y;
-      for (const foot of [left, right]) {
-        if (!foot) continue;
-        foot.getWorldPosition(position);
-        low = Math.min(low, position.z);
-        high = Math.max(high, position.z);
-      }
-    }
-    clips.push({ data, frames, duration: clip.duration,
-      stride: Math.max(0.75, Math.min(2.8, (high - low) * 2)), pelvisY });
+    const baked = bakeFrames(rig, mesh, time => { mixer.setTime(time); rig.updateMatrixWorld(true); },
+      clip.duration, true);
+    clips.push({ ...baked, duration: clip.duration, loop: true, stride: 1 });
   }
   mixer.stopAllAction();
   mixer.uncacheRoot(rig);
-  const walk = bakeWalk(asset, sex);
-  const elder = bakeWalk(asset, sex, ELDER_AMPLITUDE);
-  // The elder's step covers less ground in the same time, in proportion to
-  // how far the feet now reach fore and aft.
-  elder.stride = walk.stride * elder.reach / Math.max(1e-6, walk.reach);
-  clips[WALK] = walk;
-  clips[WALK_ELDER] = elder;
+  // The elder's step, and the shuffle's, cover less ground in the same time,
+  // in proportion to how far the feet then reach fore and aft (`strideShare`).
+  clips[WALK] = bakeWalk(asset, sex);
+  clips[WALK_ELDER] = bakeWalk(asset, sex, ELDER_AMPLITUDE);
+  clips[WALK_SHUFFLE] = bakeLibraryClip(asset, library[sex].walkSlow, SHUFFLE_AMPLITUDE);
+  for (const name of LIBRARY) clips[LIBRARY_AT[name]] = bakeLibraryClip(asset, library[sex][name]);
+  for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = bakeRiderClip(asset, clip);
   return clips;
+}
+
+/**
+ * Bakes one IK pose of a person in or on a vehicle. The rig is put back to its
+ * rest pose before every frame, because the IK aims bones from wherever they
+ * are. A still pose needs two frames, not thirty.
+ */
+function bakeRiderClip(asset: GLTF, clip: RiderClip): ClipFrames {
+  const { rig, mesh } = restRig(asset);
+  const rest = new Map<Object3D, Quaternion>();
+  rig.traverse(o => rest.set(o, o.quaternion.clone()));
+  const pose = (time: number): void => {
+    for (const [o, q] of rest) o.quaternion.copy(q);
+    rig.updateMatrixWorld(true);
+    clip.pose(rig, time);
+  };
+  const still = clip.key !== 'bikePedal';
+  const baked = bakeFrames(rig, mesh, pose, clip.duration, clip.loop, still ? 2 : FPS);
+  return { ...baked, duration: clip.duration, loop: clip.loop, stride: 1 };
+}
+
+/** The baked clips of one body, by the name the gait plays them by. */
+function gaitClips(clips: readonly ClipFrames[]): GaitClips {
+  return Object.fromEntries(Object.entries(GAIT_AT).map(([name, at]) => [name, clips[at]!])) as unknown as GaitClips;
 }
 
 export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
@@ -203,7 +237,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   const slots: Promise<void>[] = [Promise.resolve(), Promise.resolve(), Promise.resolve()];
   let nextSlot = 0;
   const resources = new Set<{ dispose(): void }>();
-  const motion = new WeakMap<Ped, Motion>();
+  const motion = new WeakMap<Ped, Gait>();
+  const plays: GaitPlay[] = [];
   const transform = new Object3D();
   const matrix = new Matrix4();
   let disposed = false;
@@ -217,7 +252,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     const loader = new GLTFLoader();
     const url = CITIZEN_ASSET_URLS[models[index]!];
     if (!url) throw new Error(`Missing citizen asset: ${models[index]}`);
-    const asset = await loader.loadAsync(url);
+    const [asset, library] = await Promise.all([loader.loadAsync(url), loadRocketboxLibrary()]);
       asset.scene.traverse(o => {
         if (!(o instanceof SkinnedMesh)) return;
         resources.add(o.geometry);
@@ -228,7 +263,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         }
       });
     if (disposed) { for (const resource of resources) resource.dispose(); return; }
-      const clips = bake(asset, models[index]!.includes('female') ? 'female' : 'male');
+      const clips = bake(asset, models[index]!.includes('female') ? 'female' : 'male', library);
       let reference: SkinnedMesh | undefined;
       asset.scene.updateMatrixWorld(true);
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh && !reference) reference = o; });
@@ -241,7 +276,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       texture.needsUpdate = true;
       resources.add(texture);
       const uniform = { value: texture };
-      const batch: CitizenBatch = { meshes: [], local: [], clips, texture, pixels, width, rows, uniform, count: 0, lods: [] };
+      const batch: CitizenBatch = { meshes: [], local: [], clips, gait: gaitClips(clips), texture, pixels, width, rows,
+        uniform, count: 0, lods: [] };
       const parts: SkinnedMesh[] = [];
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh) parts.push(o); });
       for (const o of parts) {
@@ -342,23 +378,26 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     }
     return everyone.length ? { index: pick(everyone), size: 1 } : null;
   }
-  const clips3: ClipFrames[] = [];
-  const phases3 = [0, 0, 0];
-  const weights3 = [0, 0, 0];
+  const mixClips: ClipFrames[] = [];
+  const mixPhases: number[] = [];
+  const mixWeights: number[] = [];
   const seatedClips: ClipFrames[] = [];
   const seatedPhases: number[] = [0];
   const SEATED_WEIGHTS = [1];
 
   /** Writes one citizen: blended bone palette plus instance transform. */
   function emit(batch: CitizenBatch, clips: readonly ClipFrames[], phases: readonly number[],
-    weights: readonly number[], x: number, height: number, y: number, heading: number, scale: number): void {
+    weights: readonly number[], x: number, height: number, y: number, heading: number, scale: number,
+    lean = 0): void {
     const offset = batch.count * batch.width;
     batch.pixels.fill(0, offset, offset + batch.width);
+    let total = 0;
+    for (let c = 0; c < clips.length; c++) total += Math.max(0, weights[c]!);
     for (let c = 0; c < clips.length; c++) {
-      const weight = weights[c]!;
+      const weight = Math.max(0, weights[c]!) / (total || 1);
       if (weight < 0.001) continue;
       const clip = clips[c]!;
-      const f = phases[c]!;
+      const f = Math.min(clip.frames, Math.max(0, phases[c]!));
       const fraction = f % 1;
       const start = Math.floor(f) * batch.width;
       for (let k = 0; k < batch.width; k++) {
@@ -367,7 +406,9 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       }
     }
     transform.position.set(x, height, -y);
-    transform.rotation.set(0, heading + Math.PI / 2, 0);
+    // Yaw, then a roll about the body's own forward axis (+Z on the model; a
+    // lean to the left tips +Y towards the model's +X, its left).
+    transform.rotation.set(0, heading + Math.PI / 2, -lean, 'YXZ');
     transform.scale.set(scale, scale, scale);
     transform.updateMatrix();
     for (let i = 0; i < batch.meshes.length; i++) {
@@ -408,6 +449,12 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         }
       }
     },
+    /**
+     * Draws one pedestrian, the body playing what `citizenGait.ts` decides
+     * from how the simulation moves it: walks blended by pace and advanced by
+     * the ground the drawn body covers, the walk start and stop, turns stepped
+     * round by the angle turned, and the stands, talk, phone and bench.
+     */
     draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number) {
       const hash = pedHash(ped.id);
       const body = bodyFor(ped, hash);
@@ -425,51 +472,21 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       if (batch.count >= batch.rows) grow(batch);
       const time = Math.max(0, ped.age - (1 - alpha) * DT);
       const scale = body.size * (0.92 + ((hash >>> 8) & 255) / 255 * 0.17);
-      let state = motion.get(ped);
-      if (!state) {
-        state = { time, x, y, heading, phase: (hash % 997) / 997, blend: ped.v > 0.05 ? 1 : 0, run: 0 };
-        motion.set(ped, state);
+      let gait = motion.get(ped);
+      if (!gait) {
+        gait = createGait(ped, time, heading, hash);
+        motion.set(ped, gait);
       }
-      const elapsed = Math.max(0, time - state.time);
-      const dt = Math.min(elapsed, 0.2);
-      // Distance and speed come from the SIMULATION, not from the difference of
-      // two drawn positions: frame pacing, pauses and interpolation made that
-      // difference noisy, and the noise flipped figures between standing and
-      // walking poses from one frame to the next.
-      const speed = ped.v / m(1);
-      const travel = ped.v * dt;
-      state.time = time; state.x = x; state.y = y;
-      // The simulation already turns the body at a human rate; this only
-      // absorbs frame-to-frame interpolation.
-      const delta = Math.atan2(Math.sin(heading - state.heading), Math.cos(heading - state.heading));
-      state.heading += delta * (1 - Math.exp(-dt * 18));
-      const elder = ped.ageClass === 'elder';
-      state.blend += (smoothstep(WALK_FADE_LOW, WALK_FADE_HIGH, speed) - state.blend) * (1 - Math.exp(-dt / BLEND_TIME));
-      // Older people do not break into a jog to beat a signal.
-      const running = elder ? 0 : smoothstep(jogAt(hash), jogAt(hash) + 0.6, speed);
-      state.run += (running - state.run) * (1 - Math.exp(-dt / RUN_TIME));
-      // The walk is played as captured: one cycle per stride of ground, where
-      // the stride is the capture's own on this body. The cadence therefore
-      // follows from the body — a child's short legs step quickly, an elder's
-      // short step slowly covers little ground — and the feet never skate.
-      const walk = batch.clips[elder ? WALK_ELDER : WALK]!;
-      const jog = batch.clips[JOG]!;
-      const stride = m(scale) * (walk.stride * (1 - state.run) + jog.stride * state.run);
-      state.phase += travel / stride;
-      // Companions who have stopped together talk; everybody else stands.
-      const idle = batch.clips[ped.party.size > 1 && (ped.pause > 0 || (hash & 3) === 0) ? IDLE_TALK : IDLE]!;
-      const idlePhase = (time * (0.88 + ((hash >>> 20) & 15) / 60) / idle.duration + (hash % 701) / 701) % 1;
-      const cycle = state.phase % 1;
-      phases3[0] = idlePhase * idle.frames;
-      phases3[1] = cycle * walk.frames;
-      phases3[2] = cycle * jog.frames;
-      clips3[0] = idle; clips3[1] = walk; clips3[2] = jog;
-      // Walking is the walk alone. Standing poses used to be mixed into every
-      // stride for a "relaxed" look, and they brought the old hunch with them.
-      weights3[0] = 1 - state.blend;
-      weights3[1] = state.blend * (1 - state.run);
-      weights3[2] = state.blend * state.run;
-      emit(batch, clips3, phases3, weights3, x, deck, y, state.heading, m(scale));
+      stepGait(gait, ped, batch.gait, time, heading, m(scale) / m(1), hash);
+      plays.length = 0;
+      gaitPlays(gait, batch.gait, plays);
+      mixClips.length = 0; mixPhases.length = 0; mixWeights.length = 0;
+      for (const play of plays) {
+        mixClips.push(batch.clips[GAIT_AT[play.name]]!);
+        mixPhases.push(play.frame);
+        mixWeights.push(play.weight);
+      }
+      emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale));
     },
     /**
      * A person seated in a vehicle: the driver at the wheel, passengers riding
@@ -499,6 +516,66 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       seatedClips[0] = clip;
       seatedPhases[0] = phase;
       emit(batch, seatedClips, seatedPhases, SEATED_WEIGHTS, x, hipY - clip.pelvisY * m(scale), y, heading, m(scale));
+    },
+    /**
+     * Somebody in or on a vehicle, or stepping between a vehicle and the
+     * footway: any baked clips, blended, with the PELVIS placed at a point.
+     *
+     * `identity` picks the body exactly as `draw` does for a pedestrian of that
+     * id, sex and age, so a passenger who gets out and walks off keeps their
+     * body and their size. `lean` tilts the whole figure about the line where
+     * the vehicle meets the road, as a rider leans into a bend; the pelvis is
+     * given already leaned. `maxScale` shrinks a tall person to fit a cabin.
+     * With `fromGround` the point is where the feet are, not the pelvis.
+     */
+    drawClip(identity: { readonly seed: number; readonly gender: 'f' | 'm'; readonly ageClass: 'child' | 'adult' | 'elder' },
+      pelvisX: number, pelvisY: number, pelvisHeight: number, heading: number,
+      plays: readonly { readonly key: CitizenClipKey; readonly phase: number; readonly weight: number;
+        /** For a walk: ground covered, world units; the phase then follows this body's own stride. */
+        readonly distance?: number }[],
+      lean = 0, maxScale = Infinity, fromGround = false) {
+      const hash = pedHash(identity.seed);
+      const body = bodyFor(identity, hash);
+      if (!body) return;
+      const batch = batches.get(body.index);
+      if (!batch) {
+        if (!loading.has(body.index)) void request(body.index).catch(() => {});
+        return;
+      }
+      if (batch.count >= CAPACITY) return;
+      if (batch.count >= batch.rows) grow(batch);
+      mixClips.length = 0;
+      mixPhases.length = 0;
+      mixWeights.length = 0;
+      let pelvis = 0;
+      let total = 0;
+      const scale = m(Math.min(maxScale, body.size * (0.92 + ((hash >>> 8) & 255) / 255 * 0.17)));
+      for (const play of plays) {
+        const at = play.key === 'walk' ? (identity.ageClass === 'elder' ? WALK_ELDER : WALK)
+          : play.key in RIDER_AT ? RIDER_AT[play.key as RiderClipKey] : LIBRARY_AT[play.key as Played];
+        const clip = batch.clips[at];
+        if (!clip || play.weight <= 0) continue;
+        // A walk played by distance plants the feet: one cycle per stride of
+        // THIS body (the capture's own stride times its drawn size).
+        const phase = play.distance !== undefined ? play.distance / Math.max(1e-6, clip.stride * scale) : play.phase;
+        const f = clip.loop ? ((phase % 1) + 1) % 1 : Math.min(1, Math.max(0, phase));
+        mixClips.push(clip);
+        mixPhases.push(f * clip.frames);
+        mixWeights.push(play.weight);
+        pelvis += clip.pelvisY * play.weight;
+        total += play.weight;
+      }
+      if (!mixClips.length) return;
+      pelvis /= total;
+      // The model's origin, found back from the pelvis along the leaned up
+      // axis - or, `fromGround`, the feet on the given point, as for somebody
+      // standing up out of a seat onto the road.
+      const drop = fromGround ? 0 : pelvis * scale;
+      const leftX = -Math.sin(heading);
+      const leftY = Math.cos(heading);
+      emit(batch, mixClips, mixPhases, mixWeights,
+        pelvisX - leftX * drop * Math.sin(lean), pelvisHeight - drop * Math.cos(lean),
+        pelvisY - leftY * drop * Math.sin(lean), heading, scale, lean);
     },
     finish() {
       for (const batch of batches.values()) {

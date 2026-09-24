@@ -1,6 +1,7 @@
 import { type Vec2, addScaled } from '@core/vec2';
 import { m } from '@world/units';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
+import { DT } from '../params';
 import { vehiclePose } from '../pose';
 import type { SimWorld } from '../world';
 import type { Ped, PedId } from './state';
@@ -43,6 +44,54 @@ const SQUEEZE_SECONDS = 1.2;
  * the steering cannot untie. Vehicles are never passed through.
  */
 export const STUCK_RELEASE = 3;
+/** Seconds held up after which the people standing in the way make room. */
+const JAMMED = 1;
+
+/**
+ * Planning a way round (`clearLine`): seconds of walking looked ahead, the
+ * furthest looked, the pace planned at when slower (a standing walker still
+ * plans the way it will take), the clearance kept from what is passed, and
+ * the closing speed below which somebody ahead is never reached, u/s.
+ */
+const AVOID_SECONDS = 3.5;
+const AVOID_REACH = m(6);
+const AVOID_PACE = m(0.9);
+const AVOID_GAP = m(0.12);
+const AVOID_CLOSING = m(0.15);
+interface Blocked { lo: number; hi: number; meet: number }
+const BLOCKED: Blocked[] = [];
+
+/**
+ * The free point across the footway nearest `target`, against the first
+ * `count` blocked intervals, or null when there is none. Ties go to the side
+ * the walker is already on.
+ */
+function freePoint(blocked: readonly Blocked[], count: number, target: number, lat: number,
+  usable: number): number | null {
+  const clear = (x: number): boolean => {
+    if (x < -usable - 1e-6 || x > usable + 1e-6) return false;
+    for (let i = 0; i < count; i++) if (x > blocked[i]!.lo && x < blocked[i]!.hi) return false;
+    return true;
+  };
+  const at = Math.max(-usable, Math.min(usable, target));
+  if (clear(at)) return at;
+  let best: number | null = null;
+  let cost = Infinity;
+  const consider = (x: number): void => {
+    if (!clear(x)) return;
+    const c = Math.abs(x - target) + STAY_SIDE * Math.abs(x - lat);
+    if (c < cost) { cost = c; best = x; }
+  };
+  for (let i = 0; i < count; i++) {
+    consider(blocked[i]!.lo - 1e-3);
+    consider(blocked[i]!.hi + 1e-3);
+  }
+  consider(-usable);
+  consider(usable);
+  return best;
+}
+/** Weight of staying near where one already is, against going where one wanted to be. */
+const STAY_SIDE = 0.5;
 function squeezeOf(p: Ped): number {
   // Clearing a carriageway, or stepping off a kerb together with the others
   // who were waiting there: people go shoulder to shoulder.
@@ -120,7 +169,17 @@ export class PedestrianClearance {
     const current = this.at(w, p);
     if (!current) return false;
     const at = this.point(w, edge, entry, 0, lat);
-    return !this.blocker(p, at.x, at.y, current);
+    // People waiting at a kerb for the same crossing step off it together,
+    // shoulder to shoulder. Counting each other as obstacles, two of them
+    // standing 0.3 m apart each found the other where they would step and
+    // neither ever went — a party held at a WALK for nine seconds and more.
+    const together = p.state === 'WaitAtKerb' && edge.kind === 'crossing'
+      ? (id: number): boolean => {
+        const q = w.peds.get(id);
+        return q !== undefined && q.state === 'WaitAtKerb' && q.route[0] === edge.id;
+      }
+      : undefined;
+    return !this.blocker(p, at.x, at.y, current, together);
   }
 
   /**
@@ -146,6 +205,30 @@ export class PedestrianClearance {
     return found;
   }
 
+  /**
+   * The nearest person within `range` of `p` who needs the way — held up
+   * trying to get past, or coming off a crossing — and is not waiting at a
+   * kerb themselves; or null. A person waiting at a kerb reads this to step
+   * aside for them.
+   */
+  jammedNear(w: SimWorld, p: Ped, range: number): Vec2 | null {
+    const here = this.people.get(p.id);
+    if (!here) return null;
+    let best: Vec2 | null = null;
+    let nearest = range;
+    this.visit(here.x, here.y, range, (other) => {
+      if (other.id <= 0 || other.id === p.id) return;
+      const q = w.peds.get(other.id);
+      // Somebody coming off a crossing has the right of way over the kerb:
+      // they have to get out of the road, and a queue at a busy zebra's mouth
+      // otherwise holds them on it while it waits to step on itself.
+      if (!q || q.state === 'WaitAtKerb' || (q.state !== 'Crossing' && q.stuck < JAMMED)) return;
+      const d = Math.hypot(other.x - here.x, other.y - here.y);
+      if (d < nearest) { nearest = d; best = { x: other.x, y: other.y }; }
+    });
+    return best;
+  }
+
   canShift(w: SimWorld, p: Ped, edge: SidewalkEdge, lat: number): boolean {
     const current = this.at(w, p);
     if (!current) return false;
@@ -153,29 +236,91 @@ export class PedestrianClearance {
     return !this.blocker(p, at.x, at.y, current);
   }
 
-  /** A stable side to pass an obstruction before walking into it. */
-  avoidance(w: SimWorld, p: Ped, edge: SidewalkEdge, target: number): number {
+  /**
+   * The line across the footway, nearest `target`, that is clear of
+   * everything this walker will reach in the next few seconds: street
+   * furniture, people standing, people walking the same way more slowly, and
+   * people coming the other way, each where they will be when the two meet.
+   *
+   * The old answer looked 2.6 m ahead at the single nearest obstruction, while
+   * the brakes looked three metres and more: people slowed and stopped in
+   * front of a bench or a knot of pedestrians before they ever tried to go
+   * round it, stood there until they counted as stuck, and were then let
+   * through the bench. And shifting round one obstruction could put them in
+   * front of the next. Now every obstruction within `AVOID_SECONDS` of walking
+   * blocks an interval of the footway's width, and the walker takes the free
+   * point nearest where they wanted to be — preferring, all else equal, to
+   * stay on the side they are already on, so the choice does not flicker.
+   * When the whole width is blocked the furthest obstructions are dropped
+   * until it is not: the way through the near ones matters first.
+   */
+  clearLine(w: SimWorld, p: Ped, edge: SidewalkEdge, target: number, usable: number): number {
     const frame = w.sidewalks.orientedPath(edge, p.entry).sampleAt(p.s);
     const near = addScaled(frame.p, frame.n, p.lat);
-    let best = m(2.6);
-    let shift = 0;
-    const usable = Math.max(0, edge.halfWidth - m(0.25));
-    this.visit(near.x, near.y, m(3.6), other => {
+    const pace = Math.max(p.v, AVOID_PACE);
+    const reach = Math.min(AVOID_REACH, pace * AVOID_SECONDS);
+    const blocked = BLOCKED;
+    blocked.length = 0;
+    this.visit(near.x, near.y, reach + m(2), other => {
       if (other.id === p.id) return;
+      // Vehicles are the crossing rules' business, not something to walk round.
+      if (other.id < 0 && other.id > -1_000_000) return;
       const dx = other.x - near.x, dy = other.y - near.y;
       const ahead = dx * frame.t.x + dy * frame.t.y;
-      if (ahead < -m(0.3) || ahead >= best) return;
+      let across = other.radius, along = other.radius;
+      if (other.forward && other.halfLength !== undefined && other.halfWidth !== undefined) {
+        const c = Math.abs(other.forward.x * frame.t.x + other.forward.y * frame.t.y);
+        const s = Math.abs(other.forward.x * frame.n.x + other.forward.y * frame.n.y);
+        across = s * other.halfLength + c * other.halfWidth;
+        along = c * other.halfLength + s * other.halfWidth;
+      }
+      const gap = ahead - along - PERSON;
+      if (ahead + along < -m(0.2)) return;
+      let meet = gap / pace;
+      if (other.id > 0) {
+        const q = w.peds.get(other.id);
+        if (q) {
+          const qAlong = ((q.x - q.prev.x) * frame.t.x + (q.y - q.prev.y) * frame.t.y) / DT;
+          const closing = pace - qAlong;
+          // Going the same way no slower: never reached, so never in the way.
+          if (closing < AVOID_CLOSING) return;
+          meet = gap / closing;
+        }
+      }
+      if (meet > AVOID_SECONDS) return;
       const lateral = dx * frame.n.x + dy * frame.n.y + p.lat;
-      const separation = (other.halfWidth ?? other.radius) + PERSON + m(0.18);
-      if (Math.abs(lateral - target) >= separation) return;
-      const left = lateral - separation;
-      const right = lateral + separation;
-      best = ahead;
-      if (right > usable && left >= -usable) shift = left - target;
-      else if (left < -usable && right <= usable) shift = right - target;
-      else shift = (Math.abs(left - p.lat) < Math.abs(right - p.lat) ? left : right) - target;
+      const half = across + PERSON + AVOID_GAP;
+      blocked.push({ lo: lateral - half, hi: lateral + half, meet: Math.max(0, meet) });
     });
-    return shift;
+    if (!blocked.length) return target;
+    blocked.sort((a, b) => a.meet - b.meet);
+    for (let count = blocked.length; count > 0; count--) {
+      const free = freePoint(blocked, count, target, p.lat, usable);
+      if (free !== null) return free;
+    }
+    return target;
+  }
+
+  /**
+   * How far the next step may go along a given line across the footway, as
+   * `safeStep` does along the walker's own: whether a planned step aside will
+   * be clear by the time it is reached.
+   */
+  clearAlong(w: SimWorld, p: Ped, edge: SidewalkEdge, target: number, lat: number): number {
+    if (target <= p.s) return p.s;
+    const current = this.point(w, edge, p.entry, p.s, p.lat);
+    const free = (s: number): boolean => {
+      const at = this.point(w, edge, p.entry, s, lat);
+      return !this.blocker(p, at.x, at.y, current);
+    };
+    if (free(target)) return target;
+    let lo = p.s, hi = target;
+    for (let i = 0; i < 5; i++) {
+      const mid = (lo + hi) / 2;
+      if (free(mid)) lo = mid;
+      else hi = mid;
+    }
+    return lo;
   }
 
   update(w: SimWorld, p: Ped): void {
@@ -191,7 +336,7 @@ export class PedestrianClearance {
     this.insert(footprint);
   }
 
-  private blocker(p: Ped, x: number, y: number, current: Vec2): boolean {
+  private blocker(p: Ped, x: number, y: number, current: Vec2, ignore?: (id: number) => boolean): boolean {
     let blocked = false;
     const squeeze = squeezeOf(p);
     // Somebody still in the carriageway gets off it first: they may brush
@@ -199,11 +344,14 @@ export class PedestrianClearance {
     const released = p.stuck >= STUCK_RELEASE || p.state === 'Crossing';
     this.visit(x, y, m(6.5), other => {
       if (blocked || other.id === p.id) return;
+      if (ignore && other.id > 0 && ignore(other.id)) return;
       // Vehicles are never squeezed past. People and street furniture are:
       // somebody held up long enough turns a shoulder and slips by.
       const vehicle = other.halfLength !== undefined && other.id < 0 && other.id > -1_000_000;
       // Released: furniture no longer blocks, and people may brush shoulder to
-      // shoulder — but never pass through one another.
+      // shoulder — but never pass through one another. Keeping furniture solid
+      // here as well froze a walker for 145 s in `pedFlow.spec`; `clearLine`
+      // is what keeps people out of it in the first place.
       if (released && !vehicle && other.id <= 0) return;
       const minimum = vehicle
         ? PERSON

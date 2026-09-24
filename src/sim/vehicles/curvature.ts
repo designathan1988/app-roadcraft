@@ -1,7 +1,7 @@
 import { m } from '@world/units';
 import type { Lanelet } from '@world/lanelets';
 import { HEAVY, bodyClassOf } from '@world/conflictPoints';
-import { MAX_LATERAL_ACCEL } from '../params';
+import { LATERAL_ACCEL_FALL, MAX_LATERAL_ACCEL, MIN_LATERAL_ACCEL } from '../params';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 
@@ -56,10 +56,32 @@ function profileOf(lane: Lanelet): Float32Array {
   return out;
 }
 
-/** The lateral acceleration this driver is comfortable with, world units per second squared. */
-export function comfortableLateral(v: Vehicle): number {
+/** Share of the fleet-wide figure this driver accepts: personality and vehicle. */
+function lateralShare(v: Vehicle): number {
   const heavy = bodyClassOf(v.archetype.length, v.archetype.width) === HEAVY;
-  return MAX_LATERAL_ACCEL * (1 + AGGRESSION_SPREAD * v.driver.aggression) * (heavy ? HEAVY_SHARE : 1);
+  return (1 + AGGRESSION_SPREAD * v.driver.aggression) * (heavy ? HEAVY_SHARE : 1);
+}
+
+/**
+ * The lateral acceleration this driver is comfortable with at `speed`, world
+ * units per second squared. Higher at a crawl than at speed (see
+ * `MAX_LATERAL_ACCEL`).
+ */
+export function comfortableLateral(v: Vehicle, speed = 0): number {
+  return lateralShare(v) * Math.max(MIN_LATERAL_ACCEL, MAX_LATERAL_ACCEL - LATERAL_ACCEL_FALL * speed);
+}
+
+/**
+ * Fastest speed at which a bend of curvature `k` is taken within the driver's
+ * speed-dependent comfort: the root of `k v^2 = share * (a0 - c v)`, or of the
+ * floor once the falling figure has reached it.
+ */
+function bendSpeed(share: number, k: number): number {
+  const a0 = share * MAX_LATERAL_ACCEL;
+  const c = share * LATERAL_ACCEL_FALL;
+  const v = (-c + Math.sqrt(c * c + 4 * k * a0)) / (2 * k);
+  const floor = Math.sqrt((share * MIN_LATERAL_ACCEL) / k);
+  return Math.max(v, floor);
 }
 
 /**
@@ -68,15 +90,18 @@ export function comfortableLateral(v: Vehicle): number {
  * no harder than its comfortable deceleration. `Infinity` on a straight road.
  */
 export function curveSpeedCap(w: SimWorld, v: Vehicle): number {
-  const aLat = comfortableLateral(v);
+  const share = lateralShare(v);
   const brake = Math.max(v.driver.b, 1e-3);
   const horizon = (v.v * v.v) / (2 * brake) + v.v * LOOK_TIME + LOOK_MARGIN;
   let cap = Infinity;
 
-  // The body itself: from the rear of the vehicle to its front, distance 0.
-  // Then ahead of the front, along the planned route.
+  // The body itself, from its middle to its front at distance 0, then ahead of
+  // the front along the planned route. From the middle rather than the rear:
+  // a driver unwinds the wheel and accelerates as the car straightens, not
+  // once the rear bumper has left the curve - measured from the rear, a bus
+  // held its lowest speed for twelve metres past the apex.
   let lane = w.lanelet(v.lanelet);
-  let from = v.s - v.archetype.length;
+  let from = v.s - v.archetype.length / 2;
   let ahead = -v.s; // distance from the front to the start of `lane`
   let next = 0;
   while (lane && ahead < horizon) {
@@ -88,7 +113,7 @@ export function curveSpeedCap(w: SimWorld, v: Vehicle): number {
       if (d > horizon) break;
       const k = profile[i]!;
       if (k < 1e-6) continue;
-      const safe = Math.sqrt(aLat / k);
+      const safe = bendSpeed(share, k);
       cap = Math.min(cap, Math.sqrt(safe * safe + 2 * brake * d));
     }
     ahead += lane.length;

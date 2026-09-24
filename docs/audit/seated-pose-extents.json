@@ -1,0 +1,31 @@
+{
+  "carDrive": {
+    "top": 0.934,
+    "bottom": -0.273,
+    "fwd": 0.878,
+    "back": 0.323,
+    "half": 0.256,
+    "worst": {
+      "top": "male_04",
+      "fwd": "male_06",
+      "back": "female_11",
+      "half": "wood_male_01",
+      "bottom": "sports_male_03"
+    }
+  },
+  "carRide": {
+    "top": 0.934,
+    "bottom": -0.273,
+    "fwd": 0.848,
+    "back": 0.321,
+    "half": 0.251,
+    "worst": {
+      "top": "male_04",
+      "fwd": "business_male_04",
+      "back": "female_11",
+      "half": "male_16",
+      "bottom": "sports_male_03"
+    }
+  },
+  "bodies": 77
+}

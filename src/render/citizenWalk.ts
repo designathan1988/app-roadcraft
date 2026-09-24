@@ -1,6 +1,8 @@
 import { Matrix4, Object3D, Quaternion, Vector3, type SkinnedMesh } from 'three';
 import maleSource from './motion/walkMale.json?raw';
 import femaleSource from './motion/walkFemale.json?raw';
+import maleLibraryUrl from './motion/rocketboxMale.json?url';
+import femaleLibraryUrl from './motion/rocketboxFemale.json?url';
 
 /**
  * The official Rocketbox neutral walks — a man's (m_walk_neutral, captured on
@@ -24,6 +26,8 @@ import femaleSource from './motion/walkFemale.json?raw';
  */
 interface WalkFile {
   readonly duration: number;
+  /** A cycle that repeats (the walk); a one-shot holds its last frame. */
+  readonly loop?: boolean;
   readonly bones: readonly string[];
   readonly bind: readonly { readonly q: readonly number[]; readonly p: readonly number[] }[];
   readonly bindLowest: number;
@@ -48,8 +52,12 @@ interface Source {
   /** Mean pelvis position over the cycle. */
   readonly pelvisMean: Vector3;
 }
-function source(text: string): Source {
-  const file = JSON.parse(text) as WalkFile;
+/**
+ * Prepares a capture for transfer. `bindFrom` is the capture whose avatar it
+ * was recorded on: the library clips share their sex's walk avatar (see
+ * `scripts/extract-rocketbox-clips.mjs`), so they share its bind pose.
+ */
+function sourceOf(file: WalkFile, bindFrom: WalkFile = file): Source {
   const pelvis = file.bones.indexOf('Bip01_Pelvis');
   const mean = file.bones.map((_, bone) => {
     const first = quaternion(file.frames[0]!.q[bone]!);
@@ -67,13 +75,17 @@ function source(text: string): Source {
   pelvisMean.divideScalar(file.frames.length);
   return {
     file,
-    bindInverse: file.bind.map(b => quaternion(b.q).invert()),
-    pelvisBind: vector(file.bind[pelvis]?.p ?? [0, 0, 0]),
+    bindInverse: bindFrom.bind.map(b => quaternion(b.q).invert()),
+    pelvisBind: vector(bindFrom.bind[pelvis]?.p ?? [0, 0, 0]),
     mean,
     pelvisMean,
   };
 }
-const SOURCES = { male: source(maleSource), female: source(femaleSource) } as const;
+const WALKS = {
+  male: { ...(JSON.parse(maleSource) as WalkFile), loop: true },
+  female: { ...(JSON.parse(femaleSource) as WalkFile), loop: true },
+} as const;
+const SOURCES = { male: sourceOf(WALKS.male), female: sourceOf(WALKS.female) } as const;
 export type WalkSex = keyof typeof SOURCES;
 /** Length of one cycle of each walk, seconds. */
 export const walkDuration = (sex: WalkSex): number => SOURCES[sex].file.duration;
@@ -121,8 +133,61 @@ export interface NeutralWalk {
  */
 export function neutralWalkFor(rig: Object3D, mesh: SkinnedMesh, sex: WalkSex,
   amplitude: WalkAmplitude = FULL): NeutralWalk {
+  return transferOnto(rig, mesh, SOURCES[sex], amplitude);
+}
+
+/** The same transfer, for a clip of the Rocketbox library (`loadRocketboxLibrary`). */
+export function clipTransferFor(rig: Object3D, mesh: SkinnedMesh, clip: LibraryClip,
+  amplitude: WalkAmplitude = FULL): NeutralWalk {
+  return transferOnto(rig, mesh, clip.source, amplitude);
+}
+
+/** The neutral walk of one sex as a transfer source, for `strideShare`. */
+export const walkSource = (sex: WalkSex): Source => SOURCES[sex];
+
+/**
+ * The share of a cycle's stride left once its swing is shrunk to
+ * `amplitude`: how far the feet reach fore and aft of the hips, against the
+ * capture's own reach.
+ *
+ * Measured on the capture's avatar from its world rotations alone — each leg
+ * bone turned from its bind pose, its bind offset to the next joint carried
+ * along — so the renderer and the tests answer it the same way, with no
+ * skinned body to pose. Scaling a swing about its mean shortens the step in
+ * proportion to how far the feet then travel under the body, and moving the
+ * body by anything else over a cycle skates the feet.
+ */
+export function strideShare(source: Source, amplitude: WalkAmplitude): number {
+  const { file, bindInverse, mean } = source;
+  const reach = (share: number): number => {
+    let low = Infinity, high = -Infinity;
+    const q = new Quaternion();
+    const offset = new Vector3();
+    for (const side of ['L', 'R']) {
+      const chain = ['Thigh', 'Calf', 'Foot'].map(part => file.bones.indexOf(`Bip01_${side}_${part}`));
+      if (chain.some(i => i < 0)) continue;
+      for (const frame of file.frames) {
+        const foot = new Vector3();
+        for (let k = 0; k < chain.length - 1; k++) {
+          const bone = chain[k]!;
+          q.copy(quaternion(frame.q[bone]!));
+          if (share !== 1) q.copy(mean[bone]!.clone().slerp(q, share));
+          q.multiply(bindInverse[bone]!);
+          offset.copy(vector(file.bind[chain[k + 1]!]!.p)).sub(vector(file.bind[bone]!.p)).applyQuaternion(q);
+          foot.add(offset);
+        }
+        low = Math.min(low, foot.z);
+        high = Math.max(high, foot.z);
+      }
+    }
+    return high - low;
+  };
+  return reach(amplitude.legs) / Math.max(1e-6, reach(1));
+}
+
+function transferOnto(rig: Object3D, mesh: SkinnedMesh, from: Source, amplitude: WalkAmplitude): NeutralWalk {
   const { file: WALK, bindInverse: SOURCE_BIND_INVERSE, pelvisBind: SOURCE_PELVIS_BIND,
-    mean: SOURCE_MEAN, pelvisMean: SOURCE_PELVIS_MEAN } = SOURCES[sex];
+    mean: SOURCE_MEAN, pelvisMean: SOURCE_PELVIS_MEAN } = from;
   const untouched = amplitude.arms === 1 && amplitude.legs === 1 && amplitude.hips === 1;
   rig.updateMatrixWorld(true);
   const bones = mesh.skeleton.bones;
@@ -161,7 +226,14 @@ export function neutralWalkFor(rig: Object3D, mesh: SkinnedMesh, sex: WalkSex,
   const scale = (pelvisBind.y - lowestBind) / Math.max(0.1, SOURCE_PELVIS_BIND.y - WALK.bindLowest);
 
   const count = WALK.frames.length;
+  const loop = WALK.loop !== false;
   const at = (time: number): { k0: number; k1: number; f: number } => {
+    if (!loop) {
+      // A one-shot's frames span its whole duration, last frame included.
+      const x = Math.min(1, Math.max(0, time / WALK.duration)) * (count - 1);
+      const k0 = Math.min(count - 1, Math.floor(x));
+      return { k0, k1: Math.min(count - 1, k0 + 1), f: x - k0 };
+    }
     const x = ((time / WALK.duration) % 1 + 1) % 1 * count;
     const k0 = Math.floor(x) % count;
     return { k0, k1: (k0 + 1) % count, f: x - Math.floor(x) };
@@ -221,4 +293,104 @@ export function neutralWalkFor(rig: Object3D, mesh: SkinnedMesh, sex: WalkSex,
     },
     lowestAt,
   };
+}
+
+// ------------------------------------------------------------------ library
+
+/** The clips of the Rocketbox library, by the name the renderer plays them by. */
+export type LibraryClipName =
+  | 'start' | 'stop' | 'run' | 'walkSlow'
+  | 'turnLeft' | 'turnRight' | 'turnLeft180' | 'turnRight180'
+  | 'idle' | 'look' | 'phone' | 'talk' | 'listen'
+  | 'sitDown' | 'sitIdle' | 'standUp';
+
+/**
+ * One clip of the library, decoded and ready to transfer.
+ *
+ * Besides the pose, each carries what the game needs to keep the feet planted
+ * while it moves the body itself: `travel`, the ground covered by each frame
+ * (walk start and stop, the run), and `yaw`, how far the body has turned by
+ * each frame (the turns on the spot), both in the capture's own metres and
+ * radians, one value per frame.
+ */
+export interface LibraryClip {
+  readonly name: LibraryClipName;
+  readonly kind: 'forward' | 'cycle' | 'turn' | 'static' | 'sit';
+  readonly loop: boolean;
+  readonly duration: number;
+  /** Ground covered by the whole clip (a cycle: one cycle), metres. */
+  readonly advance: number;
+  /** Angle turned by the whole clip, radians; positive turns left. */
+  readonly turned: number;
+  readonly travel: Float32Array;
+  readonly yaw: Float32Array;
+  readonly source: Source;
+}
+export type RocketboxLibrary = Readonly<Record<WalkSex, Readonly<Record<LibraryClipName, LibraryClip>>>>;
+
+interface LibraryFile {
+  readonly bones: readonly string[];
+  readonly clips: Readonly<Record<LibraryClipName, {
+    kind: LibraryClip['kind']; loop: boolean; frames: number; duration: number;
+    advance: number; turned: number;
+    q: string; pelvis: string; travel: string; yaw: string; lowest: string;
+  }>>;
+}
+
+function bytes(base64: string): ArrayBuffer {
+  const text = atob(base64);
+  const out = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) out[i] = text.charCodeAt(i);
+  return out.buffer;
+}
+
+/** Decodes both libraries, as fetched (`loadRocketboxLibrary`) or read from disk (tests). */
+export function decodeRocketboxLibrary(male: unknown, female: unknown): RocketboxLibrary {
+  return { male: decode(male as LibraryFile, WALKS.male), female: decode(female as LibraryFile, WALKS.female) };
+}
+
+function decode(file: LibraryFile, walk: WalkFile): Record<LibraryClipName, LibraryClip> {
+  const out = {} as Record<LibraryClipName, LibraryClip>;
+  const bones = file.bones.length;
+  for (const [name, clip] of Object.entries(file.clips) as [LibraryClipName, LibraryFile['clips'][LibraryClipName]][]) {
+    const q = new Int16Array(bytes(clip.q));
+    const pelvis = new Float32Array(bytes(clip.pelvis));
+    const lowest = new Float32Array(bytes(clip.lowest));
+    const frames = [];
+    for (let k = 0; k < clip.frames; k++) {
+      const rotations: number[][] = [];
+      for (let b = 0; b < bones; b++) {
+        const o = (k * bones + b) * 4;
+        rotations.push([q[o]! / 32767, q[o + 1]! / 32767, q[o + 2]! / 32767, q[o + 3]! / 32767]);
+      }
+      frames.push({ q: rotations, pelvis: [pelvis[k * 3]!, pelvis[k * 3 + 1]!, pelvis[k * 3 + 2]!], lowest: lowest[k]! });
+    }
+    const capture: WalkFile = { duration: clip.duration, loop: clip.loop, bones: file.bones, bind: walk.bind,
+      bindLowest: walk.bindLowest, frames };
+    out[name] = {
+      name, kind: clip.kind, loop: clip.loop, duration: clip.duration, advance: clip.advance, turned: clip.turned,
+      travel: new Float32Array(bytes(clip.travel)), yaw: new Float32Array(bytes(clip.yaw)),
+      source: sourceOf(capture, walk),
+    };
+  }
+  return out;
+}
+
+let library: Promise<RocketboxLibrary> | null = null;
+
+/**
+ * The Microsoft Rocketbox clips the citizens play besides the walk: starting
+ * and stopping, running, turning on the spot, standing, looking round, a
+ * phone, talking and listening, sitting down, sitting and standing up, for
+ * each sex, from `scripts/extract-rocketbox-clips.mjs`. About two megabytes a
+ * sex, so they are fetched once, when the first citizen is prepared, rather
+ * than carried in the bundle.
+ */
+export function loadRocketboxLibrary(): Promise<RocketboxLibrary> {
+  library ??= Promise.all([maleLibraryUrl, femaleLibraryUrl].map(async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Rocketbox motion library ${url}: ${response.status}`);
+    return response.json() as Promise<LibraryFile>;
+  })).then(([male, female]) => decodeRocketboxLibrary(male, female));
+  return library;
 }

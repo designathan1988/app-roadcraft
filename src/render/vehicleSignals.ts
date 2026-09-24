@@ -36,8 +36,8 @@ export const MAX_STEER = 0.6;
  * real driver signals most. Three reasons now light it, first match wins:
  *
  *   1. a lane change under way: towards the lane being entered;
- *   2. a lane change wanted but not yet started (`desiredLane`): the driver
- *      is looking for a gap and signals while doing so;
+ *   2. a lane change signalled but not yet started (`laneIntent`), or one
+ *      the route needs (`desiredLane`): the driver signals, then moves;
  *   3. a left or right turn ahead at the next junction, from a few seconds
  *      before the stop line until most of the turn has been driven.
  */
@@ -47,8 +47,9 @@ export function indicatorSide(w: SimWorld, v: Vehicle): IndicatorSide {
   const here = w.lanelet(v.lanelet);
   if (!here) return 0;
 
-  if (v.desiredLane && v.desiredLane !== v.lanelet) {
-    const target = w.lanelet(v.desiredLane);
+  const wanted = v.laneIntent ?? (v.desiredLane !== v.lanelet ? v.desiredLane : null);
+  if (wanted) {
+    const target = w.lanelet(wanted);
     if (target && here.kind === 'link') {
       const frame = here.centre.sampleAt(Math.min(Math.max(0, v.s), here.length));
       const hit = target.centre.closestPoint(frame.p);
@@ -102,8 +103,19 @@ export function blinkOn(age: number, id: number): boolean {
  * over the last step (`lateralSlope` is the tangent of that heading).
  */
 export function steerAngle(w: SimWorld, v: Vehicle, wheelbase: number): number {
+  if (wheelbase <= 0) return 0;
+  const angle = Math.atan(wheelbase * pathCurvature(w, v));
+  return Math.max(-MAX_STEER, Math.min(MAX_STEER, angle));
+}
+
+/**
+ * Curvature of the path the vehicle is driving under its front axle, per
+ * world unit, positive turning left: the lanelet's own bend plus the change
+ * of heading of a lane change over the last step.
+ */
+export function pathCurvature(w: SimWorld, v: Vehicle): number {
   const lane = w.lanelet(v.lanelet);
-  if (!lane || wheelbase <= 0) return 0;
+  if (!lane) return 0;
   const span = Math.min(m(2), lane.length / 2);
   const s = Math.min(Math.max(v.s, span), lane.length - span);
   let curvature = 0;
@@ -117,8 +129,7 @@ export function steerAngle(w: SimWorld, v: Vehicle, wheelbase: number): number {
   if (travelled > 1e-4) {
     curvature += (Math.atan(v.lateralSlope) - Math.atan(v.prev.lateralSlope)) / travelled;
   }
-  const angle = Math.atan(wheelbase * curvature);
-  return Math.max(-MAX_STEER, Math.min(MAX_STEER, angle));
+  return curvature;
 }
 
 /**

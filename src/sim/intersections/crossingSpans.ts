@@ -1,3 +1,4 @@
+import type { Polyline } from '@core/polyline';
 import { BODY_ENVELOPE, HEAVY } from '@world/conflictPoints';
 import type { ConnectorId } from '@world/lanelets';
 import { m } from '@world/units';
@@ -36,9 +37,21 @@ const PERSON_CLEAR = m(0.6);
  */
 export class CrossingSpans {
   private readonly spans = new Map<string, CrossingSpan | null>();
+  /**
+   * Every span of the previous build, with the two paths it was measured on.
+   *
+   * Measuring is a closest-point query against the whole movement for every
+   * half unit of every crossing, for every movement in the map, on every edit:
+   * half a second per road drawn on a 264-segment map, nearly all of it for
+   * junctions the edit never reached. A span depends on nothing but the two
+   * paths, so one whose paths are unchanged is read back instead.
+   */
+  private measured = new Map<string, Measured>();
 
   build(w: SimWorld): void {
     this.spans.clear();
+    const previous = this.measured;
+    this.measured = new Map();
     for (const connector of w.graph.connectors.values()) {
       const path = w.lanelet(connector.lanelet)?.centre;
       if (!path) continue;
@@ -46,22 +59,14 @@ export class CrossingSpans {
         const crossing = `${connector.node}:${segment}`;
         const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(crossing) ?? '');
         if (!edge) continue;
-        let s0 = Infinity;
-        let s1 = -Infinity;
-        let centre = Infinity;
-        for (let s = 0; s <= edge.length; s += SAMPLE) {
-          const hit = path.closestPoint(edge.path.sampleAt(s).p);
-          if (hit.distance > REACH) continue;
-          s0 = Math.min(s0, s);
-          s1 = Math.max(s1, s);
-          centre = Math.min(centre, hit.s);
-        }
-        // Where the FRONT must stop: before the near edge of the painted band
-        // and a person standing on it. Stopping by the zebra centreline put the
-        // bumper inside a walker's clearance; the walker could not pass and the
-        // vehicle would not move until they had — a mutual wait in the box.
-        const along = Math.max(0, centre - CROSSWALK_DEPTH / 2 - PERSON_CLEAR);
-        this.spans.set(key(connector.id, crossing), s0 <= s1 ? { s0, s1, along } : null);
+        const id = key(connector.id, crossing);
+        const known = previous.get(id);
+        const span = known && known.length === edge.length && sameFloats(known.path, path.xy)
+          && sameFloats(known.edge, edge.path.xy)
+          ? known.span
+          : measure(path, edge.path, edge.length);
+        this.measured.set(id, { path: path.xy, edge: edge.path.xy, length: edge.length, span });
+        this.spans.set(id, span);
       }
     }
   }
@@ -73,6 +78,40 @@ export class CrossingSpans {
 }
 
 const key = (connector: ConnectorId, crossing: CrossingId): string => `${connector}|${crossing}`;
+
+interface Measured {
+  readonly path: Float64Array;
+  readonly edge: Float64Array;
+  readonly length: number;
+  readonly span: CrossingSpan | null;
+}
+
+/** The stretch of a crossing `length` long that a movement along `path` drives over. */
+function measure(path: Polyline, crossing: Polyline, length: number): CrossingSpan | null {
+  let s0 = Infinity;
+  let s1 = -Infinity;
+  let centre = Infinity;
+  for (let s = 0; s <= length; s += SAMPLE) {
+    const hit = path.closestPoint(crossing.sampleAt(s).p);
+    if (hit.distance > REACH) continue;
+    s0 = Math.min(s0, s);
+    s1 = Math.max(s1, s);
+    centre = Math.min(centre, hit.s);
+  }
+  // Where the FRONT must stop: before the near edge of the painted band
+  // and a person standing on it. Stopping by the zebra centreline put the
+  // bumper inside a walker's clearance; the walker could not pass and the
+  // vehicle would not move until they had — a mutual wait in the box.
+  const along = Math.max(0, centre - CROSSWALK_DEPTH / 2 - PERSON_CLEAR);
+  return s0 <= s1 ? { s0, s1, along } : null;
+}
+
+function sameFloats(a: Float64Array, b: Float64Array): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 /** A person's radius, a minimum pace assumed for someone about to move, and the look-ahead. */
 export const PED_BODY = 1;

@@ -10,6 +10,7 @@ import {
 import { integrateAll } from './vehicles/integrate';
 import { stepDespawn, stepDispatch } from './vehicles/spawn';
 import { stepLaneChange } from './vehicles/laneChange';
+import { stepKerbStops } from './vehicles/kerbStops';
 import { releaseCrossing, stepPedestrians } from './peds/crossingFsm';
 import { stepPedDispatch } from './peds/spawn';
 import { planFrom, reconsiderRoute, repairRoute } from './routing/router';
@@ -75,6 +76,8 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
   // route, and integration must see its verdict. It only decides — see
   // `stepLaneChange`.
   if (traffic) stepLaneChange(w);
+  // Kerb stops: choosing where, and the doors and people once stopped.
+  if (traffic) stepKerbStops(w);
 
   // 3. Pedestrians arbitrate crossings first.  A vehicle admitted on an
   // earlier tick owns an explicit connector token and keeps them at the kerb;
@@ -227,7 +230,9 @@ function updateStallCounters(w: SimWorld): void {
         o.kind === 'yield' ||
         o.kind === 'conflict' ||
         o.kind === 'pedestrian' ||
-        o.kind === 'spillback',
+        o.kind === 'spillback' ||
+        // Stopped at the kerb on purpose, letting somebody out or in.
+        o.kind === 'kerbStop',
     );
     v.greenStall = green && !impeded ? v.greenStall + DT : 0;
 
@@ -249,7 +254,9 @@ function updateStallCounters(w: SimWorld): void {
     //     held out of a full box is right, and its pathological form already
     //     has `spillbackWedge`.
     const signalised = conn ? w.graph.junctions.get(conn.node)?.signalised === true : false;
-    const heldByDesign = v.constraints.obstacles.some((o) => o.kind === 'spillback');
+    // A car stopped at the kerb to let somebody out is not waiting for the
+    // green either.
+    const heldByDesign = v.constraints.obstacles.some((o) => o.kind === 'spillback' || o.kind === 'kerbStop');
     v.greenDenied = green && signalised && !heldByDesign ? v.greenDenied + DT : 0;
   }
 }

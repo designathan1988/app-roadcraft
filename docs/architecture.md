@@ -102,6 +102,10 @@ The parts worth knowing:
 * **`signals/`** — the phase plan, its state machine, and the query used by both
   the simulation and the signal heads on screen.
 * **`peds/behaviour.ts`** — the pedestrian's traits, parties and steering.
+* **`peds/activities.ts`** — what pedestrians do in the street besides walking:
+  sitting on the benches beside a footway, stopping at its side to look round or
+  read a phone, standing to talk with their party. Decided once per footway
+  walked, from a hash of the person, the footway and the trip.
 
 #### The driver and the vehicle are different objects
 
@@ -162,6 +166,70 @@ and 300 pedestrians on a grid). The neighbour lookups are binary searches over
 the lane's own sorted occupancy list, which is what keeps lane changing from
 becoming quadratic in the length of a queue exactly when there is a queue.
 
+Two more rules sit on top, both measured on the saved player map:
+
+* **Signal, then move.** A change is first an INTENT (`laneIntent`): the
+  indicator comes on, and the car moves only after `SIGNAL_LEAD` (1.4 s; 0.8 s
+  for a mandatory change in a crawling queue) and only if the gap is still
+  there. Before this, 16 of 196 changes had shown the indicator for a second
+  beforehand; now more than three quarters do.
+* **Never overtake out of the lane the route needs.** A discretionary change is
+  refused into a lane with no connector to the street the route turns into
+  next. The keep-to-the-kerb bias used to pull a car out of its turning lane
+  and the route pulled it straight back. A driver with several lanes still to
+  cross eases off until the changes fit (`positioningSpeedCap`) instead of
+  arriving at speed and missing the turn.
+
+#### Following distance and turning speed
+
+* The queue-release response of `idmAccel` (a shorter headway while a queue
+  starts off) only applies at a crawl now. It used to apply to every car
+  following a moving leader, and the fleet cruised at a median of 0.6 s bumper
+  to bumper; it is about 1.5 s now.
+* The lateral acceleration a driver accepts FALLS with speed
+  (`MAX_LATERAL_ACCEL`, `LATERAL_ACCEL_FALL`): about 4 m/s² turning a corner,
+  about 2.6 m/s² at 55 km/h. The cap is applied from the middle of the body,
+  so a car accelerates out of a bend as it straightens.
+* Turn paths are as round as the kerbs allow (`world/turnPaths.ts`): each
+  movement takes the widest cubic whose swept heavy body stays on the
+  carriageway and never swings further over a waiting queue than the old
+  shape did. Free right turns now run at 19 to 22 km/h and lefts at 27 to
+  29 km/h on a crossroads of avenues, where they ran at 12 and 14.
+* The drawn heading is a short chord along the path (`world/heading.ts`), not
+  the tangent of one polyline piece, so a body sweeps round a corner instead of
+  turning in steps; the conflict sweep and the turn-path check read the same
+  chord. Worst yaw rate on the player map: 13.4 rad/s before, 1.6 after.
+
+#### Signal stages never combine crossing movements
+
+`signals/plan.ts` builds stages from the conflict matrix (swept car bodies):
+an approach joins a stage only if none of its movements crosses, merges with or
+sweeps into a movement of an approach already in it. On a crossroads of two-way
+streets that is one approach per stage, because every approach has a left turn
+across the opposite through; two one-way streets, or approaches whose left
+turns are banned, still run together. Every green movement is therefore
+protected, and the only thing a green vehicle yields to is a pedestrian on a
+crossing it turns over. Players had watched a left turn cross the stream the
+opposite light had released.
+
+The cost is capacity. On a saturated 5×5 grid of streets and avenues, link
+entries in 240 s fell from 3190 (paired stages with permissive lefts) to 2420.
+A dedicated left-turn lane with its own arrow would recover much of it; the
+approach is still one signal group.
+
+#### Kerb stops: people get in and out
+
+`vehicles/kerbStops.ts`. A car carries seat occupancy (`seats`, one bit per
+seat in the body model's order) and sometimes an errand: drop a passenger off,
+or pick up somebody walking alone. It chooses a place in the kerb lane at least
+30 m from either end of the link with a footway beside it, stops there (an
+ordinary obstacle, so the traffic behind follows or overtakes), waits until the
+swing of the kerb-side door and the spot on the footway are clear of people,
+opens the door, moves the person across, shuts it and pulls away. A dropped-off
+passenger becomes a pedestrian with the id they had in the seat
+(`seatPerson`), so the body drawn in the seat is the body that walks off; a
+picked-up pedestrian keeps theirs.
+
 #### Reconsidering a route
 
 `routeCost` has always priced congestion, but the question was only asked at a
@@ -210,6 +278,17 @@ and it never calls `Math.random`.
 ### `src/render` — three.js
 
 The only layer allowed to import `three`. See [rendering.md](rendering.md).
+
+Vehicles are built from their class's proportions in `vehicleModels.ts`: a side
+profile with wheel arches extruded with a rounded bevel, doors on hinges with
+their own glass, a glazed greenhouse, seats, a dashboard and a wheel; bus and
+truck bodies the same way; motorcycles and bicycles with a steering assembly and
+(bicycles) cranks. A car with its doors shut is two instances. People in and on
+vehicles play inverse-kinematics poses baked on the citizens' own rig
+(`riderPoses.ts`, drawn by `riggedCitizens.drawClip`): a reclined car seat sized
+to each cabin (`seatFitScale`, against the worst of the roster measured in
+`docs/audit/seated-pose-extents.json`), astride a motorcycle, pedalling a
+bicycle in step with its cranks, a foot down when stopped, leaning into bends.
 
 ### `src/editor` — mutation
 

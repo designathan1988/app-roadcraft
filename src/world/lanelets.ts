@@ -1,7 +1,7 @@
 import { Polyline } from '@core/polyline';
 import { offsetPolyline } from '@core/offset';
-import { type Vec2, addScaled, angleOf, dot, len, normalize, sub } from '@core/vec2';
-import { GEO_EPS, MIN_RIBBON, normalizeAngle } from '@core/scalar';
+import { type Vec2, angleOf, normalize, sub } from '@core/vec2';
+import { MIN_RIBBON, normalizeAngle } from '@core/scalar';
 import type { NodeId, SegmentId } from './ids';
 import { movementKey, type JunctionControl, type RoadDoc } from './doc';
 import type { Network } from './network';
@@ -9,23 +9,7 @@ import { laneOffset, roadProfile, travelLanes } from './roadTypes';
 import { orientedPolyline } from './geometry';
 import { type ApproachGroup, computeApproachGroups } from './approachGroups';
 import { TUNNELS_DRAWN } from './structures';
-
-/**
- * Bezier handle length for a turn path, as a fraction of the chord.
- *
- * Sets how far the curve holds its entry and exit headings before bending.
- * A wider real centreline clears the full vehicle on tight mixed junctions.
- * `tests/world/connectorFootprints.spec.ts` checks 544 body/movement pairs
- * across mixed, skewed, five-leg and one-way junctions.
- */
-const CONNECTOR_HANDLE = 0.65;
-
-/**
- * Samples per turn path, cosine-spaced. Built once per network rebuild, never
- * per frame, so density is cheap; 24 keeps the worst tangent break under half
- * a degree at every road class.
- */
-const CONNECTOR_STEPS = 24;
+import { JunctionSurface, turnPath } from './turnPaths';
 
 /**
  * How far along a leg to look when deciding which approaches share an axis.
@@ -175,7 +159,7 @@ export class LaneletGraph {
     this.outbound.clear();
 
     this.buildLinks(doc, net);
-    this.buildJunctions(doc);
+    this.buildJunctions(doc, net);
     this.revision = net.revision;
   }
 
@@ -252,9 +236,13 @@ export class LaneletGraph {
     }
   }
 
-  private buildJunctions(doc: RoadDoc): void {
+  private buildJunctions(doc: RoadDoc, net: Network): void {
     for (const [nodeId, node] of doc.nodes) {
       if (node.incident.length < 2) continue;
+      // The surface a turn has to stay on, built once per node and only when
+      // the node actually has a movement to shape.
+      let surface: JunctionSurface | null | undefined;
+      const surfaceOf = (): JunctionSurface | null => (surface ??= new JunctionSurface(net, nodeId));
 
       const inbound = (this.inbound.get(nodeId) ?? []).slice().sort();
       const outbound = (this.outbound.get(nodeId) ?? []).slice().sort();
@@ -288,7 +276,10 @@ export class LaneletGraph {
       const addConnector = (inId: LaneletId, inLane: Lanelet, outId: LaneletId, outLane: Lanelet, turn: TurnKind): void => {
         const cid = connectorId(inId, outId);
         if (this.connectors.has(cid)) return;
-        const path = connectorPath(inLane.centre, outLane.centre);
+        const waiting = inbound
+          .map((id) => this.lanelets.get(id))
+          .filter((l): l is Lanelet => !!l && l.id !== inId);
+        const path = turnPath(inLane.centre, outLane.centre, surfaceOf(), waiting);
         const lanelet: Lanelet = {
           id: cid,
           kind: 'connector',
@@ -552,52 +543,3 @@ function fallbackTurnRank(turn: TurnKind): number {
   return 3;
 }
 
-/**
- * Tangent-matched cubic between the inbound stop line and outgoing lane.
- * Its control points bow into the intersection to clear the physical body.
- */
-function connectorPath(inCentre: Polyline, outCentre: Polyline): Polyline {
-  const a = inCentre.sampleAt(inCentre.length).p;
-  const b = outCentre.sampleAt(0).p;
-
-  // The tangents the curve has to match: where the approach lane is pointing
-  // when it ends, and where the exit lane is pointing when it begins.
-  const t0 = inCentre.sampleAt(inCentre.length).t;
-  const t3 = outCentre.sampleAt(0).t;
-
-  const chord = sub(b, a);
-  const d = len(chord);
-  if (d < GEO_EPS) return Polyline.fromPoints([a, b]);
-
-  // A movement already aligned with both lanes is a straight line, and forcing
-  // a curve through it only adds sampling error.
-  const dir = normalize(chord);
-  if (dot(dir, t0) > 0.9999 && dot(dir, t3) > 0.9999) {
-    return Polyline.fromPoints([a, b]);
-  }
-
-  const handle = CONNECTOR_HANDLE * d;
-  const p1 = addScaled(a, t0, handle);
-  const p2 = addScaled(b, t3, -handle);
-
-  const pts: Vec2[] = [];
-  for (let i = 0; i <= CONNECTOR_STEPS; i++) {
-    // Cosine spacing, not uniform. A polyline's tangent at its very end is the
-    // direction of its last chord, so uniform sampling reports a heading that
-    // is off by a chord's worth of curvature however exact the underlying
-    // curve is — 2.75 degrees at sixteen even steps. Clustering the samples at
-    // both ends shrinks the first and last chords to almost nothing and costs
-    // no extra points.
-    const t = 0.5 - 0.5 * Math.cos((Math.PI * i) / CONNECTOR_STEPS);
-    const u = 1 - t;
-    const w0 = u * u * u;
-    const w1 = 3 * u * u * t;
-    const w2 = 3 * u * t * t;
-    const w3 = t * t * t;
-    pts.push({
-      x: w0 * a.x + w1 * p1.x + w2 * p2.x + w3 * b.x,
-      y: w0 * a.y + w1 * p1.y + w2 * p2.y + w3 * b.y,
-    });
-  }
-  return Polyline.fromPoints(pts);
-}

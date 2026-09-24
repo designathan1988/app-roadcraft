@@ -111,7 +111,9 @@ describe('pedestrian motion', () => {
         speeds.set(p.id, Math.max(speeds.get(p.id) ?? 0, p.v));
         if (p.v < 0.05) {
           stoppedWhileWalking++;
-          if (p.pause > 0) pausedAtDestination++;
+          // A pause on arriving somewhere, or a stop made on purpose along the
+          // way: sitting down, looking round, talking (`peds/activities.ts`).
+          if (p.pause > 0 || p.activity) pausedAtDestination++;
         }
       }
     });

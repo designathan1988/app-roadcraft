@@ -3,6 +3,9 @@ import { m } from '@world/units';
 import { PED_BEHAVIOUR, edgePreference } from './behaviour';
 import type { SidewalkEdgeId, SidewalkGraph, SidewalkNodeId } from './sidewalk';
 
+/** Cost of turning back onto the edge just walked, world units of detour. */
+const BACKTRACK = m(60);
+
 interface SearchState { node: SidewalkNodeId; first: SidewalkEdgeId | null; cost: number; estimate: number }
 
 /** The next edge on a shortest walk to a chosen destination. */
@@ -26,7 +29,10 @@ export function nextTowardGoal(graph: SidewalkGraph, start: SidewalkNodeId,
       if (!at) continue;
       const cost = current.cost + edge.length +
         (edge.kind === 'crossing' ? PED_BEHAVIOUR.crossingPenalty : 0) +
-        (edgeId === previous ? m(2) : 0) +
+        // Going back the way just walked is a last resort, not a tie-break:
+        // at two metres any destination a little behind won it, and people
+        // turned round in the middle of the street for no visible reason.
+        (edgeId === previous ? BACKTRACK : 0) +
         edgePreference(party, edgeId) * 0.08;
       if (cost >= (best.get(other) ?? Infinity)) continue;
       best.set(other, cost);

@@ -99,11 +99,15 @@ surface.observe();
 
 // ------------------------------------------------------------------ boot
 const savedSession = persistence.loadSession();
-const saved = savedSession?.document;
+// An autosave that is still the previous build's untouched starter city is
+// replaced by the current starter scenario; anything the player built stays.
+const saved = savedSession?.document && !isUntouchedOldStarter(savedSession.document)
+  ? savedSession.document
+  : null;
 if (saved) {
   restoreInto(doc, saved, net);
 } else {
-  seedDemoWorld();
+  seedStarter(doc);
   net.rebuild();
 }
 
@@ -125,7 +129,7 @@ function bootZoomBounds(): { min: number; max: number } {
   return isoZoomBounds(Math.max(1, canvas.clientHeight || window.innerHeight));
 }
 
-if (savedSession) {
+if (savedSession && saved) {
   camera.x = savedSession.settings.camera.x;
   camera.y = savedSession.settings.camera.y;
   // Clamped against the ACTIVE renderer's range, not always the flat camera's.
@@ -139,43 +143,55 @@ if (savedSession) {
 }
 
 /**
- * A small connected starter city, so the app opens as a road-building game
- * rather than as a gallery of isolated junction fixtures.
+ * The starter scenario: few streets, chosen so that everything the traffic
+ * and the people do can be watched at once.
  *
- * The four outer stubs are genuine sources and exits (degree-one nodes). Cars
- * therefore enter at the edge, route through the shared grid and leave on the
- * other side instead of materialising independently inside disconnected test
- * pieces.
+ *   - an avenue (four lanes) crossed by a two-way street at a signalised
+ *     crossroads: queues at red, protected turns, zebra crossings with WALK;
+ *   - a local street meeting the avenue at an uncontrolled T, where it gives
+ *     way to the avenue;
+ *   - links long enough for queues, overtaking, kerb stops (passengers, buses,
+ *     deliveries) and people walking the footways.
+ *
+ * Every road end is a degree-one node, so vehicles enter at the edge, cross
+ * the scenario and leave on the other side. Six roads in all.
  */
-function seedDemoWorld(): void {
-  const xs = [-360, 0, 360] as const;
-  const ys = [-260, 0, 260] as const;
-  const grid = ys.map((y) => xs.map((x) => doc.addNode({ x, y })));
+function seedStarter(target: RoadDoc): void {
+  const west = target.addNode({ x: -560, y: 0 });
+  const centre = target.addNode({ x: 0, y: 0 });
+  const tee = target.addNode({ x: 330, y: 0 });
+  const east = target.addNode({ x: 600, y: 0 });
+  const north = target.addNode({ x: 0, y: -430 });
+  const south = target.addNode({ x: 0, y: 430 });
+  const lane = target.addNode({ x: 330, y: 360 });
+  // The avenue, east-west, in three pieces: to the crossroads, to the T, on.
+  target.addSegment(west.id, centre.id, 3);
+  target.addSegment(centre.id, tee.id, 3);
+  target.addSegment(tee.id, east.id, 3);
+  // The cross street through the signalised crossroads.
+  target.addSegment(north.id, centre.id, 2);
+  target.addSegment(centre.id, south.id, 2);
+  target.setNodeControl(centre.id, 'signal');
+  // The local street at the T, which gives way to the avenue: no signal
+  // there, so the right of way between the roads is what decides.
+  target.addSegment(tee.id, lane.id, 1);
+  target.setNodeControl(tee.id, 'none');
+}
 
-  // Three east-west streets. The central boulevard is the principal route.
-  for (let row = 0; row < grid.length; row++) {
-    const type = row === 1 ? 3 : 1;
-    for (let column = 0; column < grid[row]!.length - 1; column++) {
-      doc.addSegment(grid[row]![column]!.id, grid[row]![column + 1]!.id, type);
-    }
-  }
-
-  // Three north-south streets. The central avenue forms the main crossroads.
-  for (let column = 0; column < xs.length; column++) {
-    const type = column === 1 ? 2 : 1;
-    for (let row = 0; row < grid.length - 1; row++) {
-      doc.addSegment(grid[row]![column]!.id, grid[row + 1]![column]!.id, type);
-    }
-  }
-
-  const north = doc.addNode({ x: 0, y: -480 });
-  const south = doc.addNode({ x: 0, y: 480 });
-  const west = doc.addNode({ x: -580, y: 0 });
-  const east = doc.addNode({ x: 580, y: 0 });
-  doc.addSegment(north.id, grid[0]![1]!.id, 2);
-  doc.addSegment(grid[2]![1]!.id, south.id, 2);
-  doc.addSegment(west.id, grid[1]![0]!.id, 3);
-  doc.addSegment(grid[1]![2]!.id, east.id, 3);
+/**
+ * Whether an autosave is exactly the starter city an earlier build seeded - a
+ * 3x3 grid with four approach stubs - never edited. Such a save carries
+ * nothing of the player's, so the current starter replaces it.
+ */
+function isUntouchedOldStarter(saved: ReturnType<RoadDoc['toJSON']>): boolean {
+  const nodes = saved.nodes ?? [];
+  const segments = saved.segments ?? [];
+  if (nodes.length !== 13 || segments.length !== 16) return false;
+  const expected = new Set<string>();
+  for (const x of [-360, 0, 360]) for (const y of [-260, 0, 260]) expected.add(`${x},${y}`);
+  for (const [x, y] of [[0, -480], [0, 480], [-580, 0], [580, 0]]) expected.add(`${x},${y}`);
+  return (saved.terrain ?? []).length === 0 && (saved.poles ?? []).length === 0 &&
+    nodes.every((n) => expected.has(`${n.x},${n.y}`));
 }
 
 function worldBounds() {
@@ -366,7 +382,9 @@ function mutateBuilt(fn: () => boolean): boolean {
   if (!fn()) return false;
   history.record(RoadDoc.fromJSON(before));
   net.rebuild();
-  rebuildSimulationTopology();
+  // The simulation catches up in the frame AFTER the one that draws the edit
+  // (see `topologyAfterDraw`), so the player sees the road first.
+  topologyAfterDraw = true;
   persistence.saveSessionSoon(doc, sessionSettings);
   updateHistoryButtons();
   refreshInspector();
@@ -1254,7 +1272,12 @@ congestionButton.classList.toggle('active', congestionOverlay);
   // the one that most needs to be undoable. Opening a file already records;
   // this did not, which left Ctrl+Z unable to recover a map cleared by mistake.
   history.record(doc);
-  applySnapshot({ version: 1, nodes: [], segments: [] });
+  // A new map opens on the starter scenario (`seedStarter`): a handful of
+  // streets to watch the traffic and the people on, which the player can
+  // build from or demolish.
+  const fresh = new RoadDoc();
+  seedStarter(fresh);
+  applySnapshot(fresh.toJSON());
   fitView();
 };
 (document.getElementById('saveMap') as HTMLButtonElement).onclick = () => exportToFile(doc, sessionSettings());
@@ -1512,6 +1535,20 @@ function movePreviewInterval(): number {
   return Math.max(MOVE_PREVIEW_MIN_MS, scene.stats.rebuildMs * 1.6);
 }
 
+/**
+ * Set by an edit: draw the new geometry first, rebuild the simulation after.
+ *
+ * Both are rebuilt from scratch and both block the page. `mutate` used to
+ * rebuild the simulation's topology inside the pointer event, and the scene
+ * was rebuilt in the frame after it, so a drawn road stayed a draft line on
+ * screen for the SUM of the two — measured on a 144-segment map, 2.0 s of
+ * topology and then 1.7 s of meshes before anything changed. The frame that
+ * draws the edit now holds the simulation still, as a node drag already does,
+ * and the next one brings its topology up to date: the road appears after the
+ * mesh rebuild alone, and the traffic pauses for the topology afterwards.
+ */
+let topologyAfterDraw = false;
+
 function requestDraw(): void {
   if (pending) return;
   pending = true;
@@ -1525,7 +1562,10 @@ function frame(now: number): void {
 
   // Moving a node is an authoring preview. Freeze simulation time until the
   // gesture finishes so agents never rebuild against every intermediate shape.
-  const alpha = moving
+  // The frame that first draws an edit is held the same way.
+  const holdSim = moving || topologyAfterDraw;
+  if (!holdSim && sim.topologyRevision !== net.revision) rebuildSimulationTopology();
+  const alpha = holdSim
     ? 1
     : sim.clock.advance(wall, () => step(sim, { traffic, pedestrians: traffic }));
 
@@ -1541,6 +1581,10 @@ function frame(now: number): void {
   }
   scene.draw(net, sim, alpha, wall);
   drawOverlayScreen();
+  if (topologyAfterDraw) {
+    topologyAfterDraw = false;
+    requestDraw();
+  }
 
   // TEN TIMES A SECOND, AND NO FASTER — panning included.
   //

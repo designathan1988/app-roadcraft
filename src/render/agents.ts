@@ -1,7 +1,7 @@
 import {
   BoxGeometry,
   Color,
-  CylinderGeometry,
+  DoubleSide,
   DynamicDrawUsage,
   InstancedMesh,
   MeshBasicMaterial,
@@ -21,19 +21,17 @@ import {
   type VehicleShape,
 } from '@sim/vehicles/archetypes';
 import type { SimWorld } from '@sim/world';
+import type { Vehicle as SimVehicle } from '@sim/vehicles/state';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
 import { DT } from '@sim/params';
-import { createRiggedCitizens, SEAT_DRIVE, SEAT_RIDE, SEAT_TALK } from './riggedCitizens';
-
-/**
- * The bodies the crowd is drawn as while the walk is worked on: one man, one
- * woman, one boy and one girl, each pedestrian drawn as the one matching their
- * own sex and age. Restore `CITIZEN_MODELS` for the full roster of eighty.
- */
-const TEST_MODELS = ['male_01', 'female_01', 'male_child_01', 'female_child_01'];
+import { CITIZEN_MODELS, createRiggedCitizens, type CitizenClipKey } from './riggedCitizens';
+import { kerbTransfer, seatPerson, type KerbStop } from '@sim/vehicles/kerbStops';
 import { FOOTWAY_RISE } from './roadSurfaces';
-import { WheelOdometer, blinkOn, indicatorSide, steerAngle } from './vehicleSignals';
+import { WheelOdometer, blinkOn, indicatorSide, pathCurvature, steerAngle } from './vehicleSignals';
+import {
+  buildBusModel, buildTruckModel, buildTwoWheelerModel, buildVehicleModel, closedBody, seatFitScale, rimGeometry, tyreGeometry, type TwoWheelerModel, type VehicleModel,
+} from './vehicleModels';
 
 /**
  * Vehicles, riders and dogs use the original instanced batches. Citizens use
@@ -96,6 +94,8 @@ interface LampState {
   steer: number;
   /** Rolling angle of the wheels, radians. */
   spin: number;
+  /** Angle of a bicycle's cranks, radians. */
+  crank: number;
 }
 
 export interface AgentRenderOptions {
@@ -193,11 +193,8 @@ const INDICATOR = 0xffa11c;
  * see the nose dip.
  */
 const BRAKE_DECEL = 1.0;
-const SIGN = 0xffe7a8;
 const BOX_BODY = 0xe6e8ea;
 
-/** Height of a seated torso, metres: the seat surface is half of it below `seatY`. */
-const SEAT_TORSO_TALL = m(0.5);
 /** Height of a seated head above the middle of its torso. */
 const SEAT_HEAD_RISE = m(0.38);
 
@@ -316,6 +313,57 @@ export function vehicleLook(id: number, seats: number): VehicleLook {
   };
 }
 
+// ---------------------------------------------------------------- two-wheelers
+
+/** Crank turns per wheel turn of a bicycle. */
+const CRANK_RATIO = 0.57;
+/** Steepest lean drawn, radians (about 35 degrees). */
+const MAX_LEAN = 0.6;
+const GRAVITY = m(9.81);
+/** How fast a lean follows the bend, per second. */
+const LEAN_RATE = 6;
+const leans = new WeakMap<SimVehicle, { lean: number; age: number }>();
+
+/**
+ * How far a two-wheeler leans into the bend it is on: the angle whose tangent
+ * is its sideways acceleration over gravity, which is what balances it, eased
+ * so that it rolls into and out of a bend rather than snapping.
+ */
+function leanOf(world: SimWorld, v: SimVehicle): number {
+  const target = Math.max(-MAX_LEAN, Math.min(MAX_LEAN, Math.atan((v.v * v.v * pathCurvature(world, v)) / GRAVITY)));
+  const state = leans.get(v);
+  if (!state) {
+    leans.set(v, { lean: target, age: v.age });
+    return target;
+  }
+  const dt = Math.max(0, Math.min(0.2, v.age - state.age));
+  state.age = v.age;
+  state.lean += (target - state.lean) * (1 - Math.exp(-dt * LEAN_RATE));
+  return state.lean;
+}
+
+// ---------------------------------------------------------------- people in vehicles
+
+const DRIVE_PLAY = [{ key: 'carDrive', phase: 0, weight: 1 }] as const;
+const RIDE_PLAY = [{ key: 'carRide', phase: 0, weight: 1 }] as const;
+const riderPlays: { key: CitizenClipKey; phase: number; weight: number }[] = [];
+
+
+const smooth01 = (x: number): number => {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
+};
+
+// ---------------------------------------------------------------- doors and seats
+
+/** How far a door swings open, radians. */
+const DOOR_SWING = 1.15;
+
+/** Open fraction of one door, 0 shut to 1 fully open, from the simulation. */
+function doorOpening(v: SimVehicle, door: number): number {
+  return v.doors[door] ?? 0;
+}
+
 // ---------------------------------------------------------------- body plans
 
 /**
@@ -427,8 +475,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   const paint = new MeshStandardMaterial({ roughness: 0.32, metalness: 0.16, envMapIntensity: 1.1 });
   const trim = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.35 });
   const glassMaterial = new MeshStandardMaterial({
-    color: 0x55707a,
-    roughness: 0.08,
+    color: 0x3d5561,
+    roughness: 0.06,
     metalness: 0.05,
     transparent: true,
     // Clear enough to see who is driving.
@@ -444,9 +492,16 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     // they were still only a hint of a face at close zoom. Glass here carries
     // more transmission than reflection, as tinted car glass seen from above
     // on an overcast-bright day does.
-    opacity: 0.18,
-    envMapIntensity: 0.6,
+    opacity: 0.3,
+    envMapIntensity: 0.9,
+    // Panes are single sheets seen from both sides: the windscreen from above,
+    // a door's window from inside when it swings open.
+    side: DoubleSide,
+    depthWrite: false,
   });
+  // The cabin: seats, dashboard, wheel. Dark and matt, so the people sitting in
+  // it are what reads through the glass.
+  const cabinMaterial = new MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.9, metalness: 0.02 });
   const rubber = new MeshStandardMaterial({ roughness: 0.92, metalness: 0.05 });
   // Unlit, so a lamp stays bright inside a shadow — the only thing in the scene
   // for which that is correct. One material serves headlights, tail lights,
@@ -464,8 +519,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   // A torso is the opposite chamfer: shoulders wider than the waist.
   const torsoGeometry = new BoxGeometry(1, 1, 1);
   taper(torsoGeometry, 0.92, 1.2);
-  const wheelGeometry = new CylinderGeometry(0.5, 0.5, 1, 10).rotateX(Math.PI / 2);
-  const hubGeometry = new CylinderGeometry(0.5, 0.5, 1, 8).rotateX(Math.PI / 2);
+  const wheelGeometry = tyreGeometry();
+  const hubGeometry = rimGeometry();
   const headGeometry = new SphereGeometry(0.5, 7, 5);
 
   const bodies = instanced('vehicle-bodies', bodyGeometry, paint, MAX_VEHICLES + 300);
@@ -505,8 +560,80 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     hips,
     limbs,
   ];
-  const pedestrians = createRiggedCitizens(TEST_MODELS, onAssetsReady);
-  const meshes = [...parts.map((part) => part.mesh), pedestrians.group];
+  /**
+   * One set of instanced meshes per car class, built from its own model
+   * (`vehicleModels.ts`): a class is five to thirteen draws for the whole fleet
+   * of it, whatever its size.
+   */
+  interface CarParts {
+    readonly model: VehicleModel;
+    readonly shell: Part;
+    readonly trim: Part;
+    readonly glass: Part;
+    readonly interior: Part;
+    readonly doors: readonly Part[];
+    readonly doorGlass: readonly Part[];
+    /** The body and glazing with every door shut, one instance each. */
+    readonly closedShell: Part;
+    readonly closedGlass: Part;
+  }
+  const carParts = new Map<string, CarParts>();
+  const modelGeometries: BufferGeometry[] = [];
+  for (const archetype of ARCHETYPES) {
+    const model = archetype.shape === 'car' ? buildVehicleModel(archetype)
+      : archetype.shape === 'bus' ? buildBusModel(archetype)
+        : archetype.shape === 'truck' ? buildTruckModel(archetype)
+          : null;
+    if (!model) continue;
+    const id = archetype.id;
+    const closed = closedBody(model);
+    modelGeometries.push(model.shell, model.trim, model.glass, model.interior, closed.shell, closed.glass,
+      ...model.doors.flatMap((d) => [d.panel, d.glass]));
+    carParts.set(id, {
+      closedShell: instanced(`car-${id}-closed`, closed.shell, paint, MAX_VEHICLES),
+      closedGlass: instanced(`car-${id}-closedglass`, closed.glass, glassMaterial, MAX_VEHICLES, false),
+      model,
+      shell: instanced(`car-${id}-shell`, model.shell, paint, MAX_VEHICLES),
+      trim: instanced(`car-${id}-trim`, model.trim, trim, MAX_VEHICLES, false),
+      glass: instanced(`car-${id}-glass`, model.glass, glassMaterial, MAX_VEHICLES, false),
+      interior: instanced(`car-${id}-interior`, model.interior, cabinMaterial, MAX_VEHICLES, false),
+      doors: model.doors.map((d) => instanced(`car-${id}-door${d.index}`, d.panel, paint, MAX_VEHICLES)),
+      doorGlass: model.doors.map((d) => instanced(`car-${id}-doorglass${d.index}`, d.glass, glassMaterial, MAX_VEHICLES, false)),
+    });
+  }
+  const carPartList: Part[] = [...carParts.values()].flatMap((c) =>
+    [c.closedShell, c.closedGlass, c.shell, c.trim, c.glass, c.interior, ...c.doors, ...c.doorGlass]);
+
+  interface TwoWheelerParts {
+    readonly model: TwoWheelerModel;
+    readonly body: Part;
+    readonly trim: Part;
+    readonly steering: Part;
+    readonly cranks: Part | null;
+  }
+  const twoWheelerParts = new Map<string, TwoWheelerParts>();
+  for (const archetype of ARCHETYPES) {
+    if (archetype.shape !== 'motorcycle' && archetype.shape !== 'bicycle') continue;
+    const model = buildTwoWheelerModel(archetype);
+    const id = archetype.id;
+    modelGeometries.push(model.body, model.trim, model.steering, ...(model.cranks ? [model.cranks] : []));
+    twoWheelerParts.set(id, {
+      model,
+      body: instanced(`bike-${id}-body`, model.body, paint, MAX_RIDERS),
+      trim: instanced(`bike-${id}-trim`, model.trim, trim, MAX_RIDERS),
+      steering: instanced(`bike-${id}-steering`, model.steering, trim, MAX_RIDERS, false),
+      cranks: model.cranks ? instanced(`bike-${id}-cranks`, model.cranks, trim, MAX_RIDERS, false) : null,
+    });
+  }
+  const twoWheelerPartList: Part[] = [...twoWheelerParts.values()].flatMap((t) =>
+    [t.body, t.trim, t.steering, ...(t.cranks ? [t.cranks] : [])]);
+  const allParts: readonly Part[] = [...parts, ...carPartList, ...twoWheelerPartList];
+
+  // The whole roster of eighty: a crowd drawn from four test bodies, left in
+  // while the walk was being worked on, read as one family cloned down the
+  // street.
+  const pedestrians = createRiggedCitizens(CITIZEN_MODELS, onAssetsReady);
+  const meshes = [...allParts.map((part) => part.mesh), pedestrians.group];
 
   const object = new Object3D();
   // Yaw outermost, so the third Euler component becomes a rotation about the
@@ -531,10 +658,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
 
   // Frame of the agent currently being written. Held here rather than passed,
   // so `place` takes offsets in the agent's own frame and allocates nothing.
-  // The vehicle whose occupants are being placed, its age (animation clock)
-  // and the detail band it is drawn at.
-  let occupantVehicle = 0;
-  let occupantTime = 0;
+  // The detail band the current vehicle and its occupants are drawn at.
   let occupantBand = 0;
   let fx = 0;
   let fy = 0;
@@ -542,14 +666,22 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   let fdy = 0;
   let fyaw = 0;
   let fdeck = 0;
+  // Lean of a two-wheeler into a bend, radians, positive to the left; the
+  // whole frame rolls about the line where the tyres touch the road.
+  let froll = 0;
+  let fcos = 1;
+  let fsin = 0;
 
-  const frameAt = (x: number, y: number, angle: number, deck: number): void => {
+  const frameAt = (x: number, y: number, angle: number, deck: number, roll = 0): void => {
     fx = x;
     fy = y;
     fyaw = angle;
     fdx = Math.cos(angle);
     fdy = Math.sin(angle);
     fdeck = deck;
+    froll = roll;
+    fcos = Math.cos(roll);
+    fsin = Math.sin(roll);
   };
 
   /**
@@ -573,8 +705,12 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     yaw = 0,
   ): void => {
     if (part.n >= part.mesh.instanceMatrix.count) return;
-    object.position.set(fx + fdx * along - fdy * side, fdeck + up, -(fy + fdy * along + fdx * side));
-    object.rotation.set(0, fyaw + yaw, rake);
+    // Leaning: the offset rolls about the road-level forward axis, and the
+    // part with it (a roll to the left tips +Y towards the left, local -Z).
+    const leanSide = froll === 0 ? side : side * fcos + up * fsin;
+    const leanUp = froll === 0 ? up : up * fcos - side * fsin;
+    object.position.set(fx + fdx * along - fdy * leanSide, fdeck + leanUp, -(fy + fdy * along + fdx * leanSide));
+    object.rotation.set(-froll, fyaw + yaw, rake);
     object.scale.set(sx, sy, sz);
     object.updateMatrix();
     part.mesh.setMatrixAt(part.n, object.matrix);
@@ -620,294 +756,193 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   };
 
   /**
-   * The people inside: real citizens, seated. The driver sits at the wheel in
-   * the driving pose, on the left where right-hand traffic puts them;
-   * passengers fill the rows behind and beside, riding along or talking.
-   *
-   * These used to be a coloured box with a cube for a head. The same rigged
-   * people who walk the footways are drawn here instead, in the seated
-   * animations their assets ship with, so what is visible through the glass is
-   * somebody driving. Only drawn close enough to be seen (`band` >= 1).
+   * Hatchback, sedan, SUV and van, from the class's model (`vehicleModels.ts`):
+   * a shaped body with its wheel arches, doors on hinges, glass you can see
+   * through, and a cabin with seats and a wheel.
    */
-  const placeOccupants = (plan: BodyPlan, look: VehicleLook): void => {
-    if (occupantBand < 1) return;
-    const hipY = fdeck + plan.seatY - SEAT_TORSO_TALL / 2;
-    for (let i = 0; i < look.occupants; i++) {
-      const along = plan.seatAlong + plan.seatPitch * Math.floor(i / 2);
-      const side = (i % 2 === 0 ? 1 : -1) * plan.seatSide;
-      const driver = i === 0;
-      const seed = occupantVehicle * 16 + i;
-      const pose = driver ? SEAT_DRIVE : agentHash(seed ^ 0x5bd1e995) % 3 === 0 ? SEAT_TALK : SEAT_RIDE;
-      pedestrians.drawSeated(seed, fx + fdx * along - fdy * side, fy + fdy * along + fdx * side,
-        fyaw, hipY, pose, occupantTime, driver);
-    }
-  };
-
-  /**
-   * The figure astride a two-wheeler.
-   *
-   * Anatomy is in metres rather than fractions of the machine, because the
-   * difference that matters — a cyclist's feet reach almost to the road while a
-   * motorcyclist's rest on pegs a third of a metre up — only means anything in
-   * real units.
-   */
-  const placeRider = (plan: BodyPlan, look: VehicleLook, cyclist: boolean): void => {
-    const hipY = cyclist ? m(0.92) : m(0.75);
-    const footY = cyclist ? m(0.16) : m(0.34);
-    const lean = cyclist ? -0.42 : -0.26;
-    const seat = -plan.length * 0.06;
-    const shoulderY = hipY + m(0.46);
-    const shirt = look.driverShirt;
-    const trousers = look.passengerShirt;
-
-    place(hips, seat, 0, hipY - m(0.06), m(0.3), m(0.2), m(0.34), trousers);
-    place(torsos, seat + m(0.1), 0, hipY + m(0.28), m(0.28), m(0.52), m(0.42), shirt, lean);
-    place(
-      heads,
-      seat + m(0.26),
-      0,
-      hipY + m(0.62),
-      m(0.26),
-      m(0.26),
-      m(0.26),
-      // A motorcyclist wears a helmet; a cyclist, in this city, does not.
-      cyclist ? look.driverSkin : look.helmet,
-    );
-
-    // One box from hip to foot, angled forward so a knee reads without a joint.
-    // The cyclist's is longer and nearer vertical.
-    const legAngle = cyclist ? 0.22 : 0.62;
-    const legLen = (hipY - footY) / Math.cos(legAngle);
-    const armAngle = cyclist ? 0.85 : 0.72;
-    const armLen = m(0.46);
-    for (const side of SIDES) {
-      place(
-        limbs,
-        seat + Math.sin(legAngle) * legLen * 0.5,
-        side * m(0.18),
-        hipY - Math.cos(legAngle) * legLen * 0.5,
-        m(0.15),
-        legLen,
-        m(0.15),
-        trousers,
-        legAngle,
-      );
-      place(
-        limbs,
-        seat + m(0.14) + Math.sin(armAngle) * armLen * 0.5,
-        side * m(0.2),
-        shoulderY - Math.cos(armAngle) * armLen * 0.5,
-        m(0.12),
-        armLen,
-        m(0.12),
-        shirt,
-        armAngle,
-      );
-    }
-  };
-
-  /**
-   * Hatchback, sedan, SUV and van.
-   *
-   * The lower body is narrower than the track so the tyres show, and from band
-   * 1 the greenhouse is a roof slab carried on four panes of glass rather than
-   * a solid box, because nobody can sit inside a solid box.
-   */
-  const drawCar = (plan: BodyPlan, paintHex: number, look: VehicleLook, band: number): void => {
-    const L = plan.length;
-    const W = plan.width;
-    const H = plan.height;
-    place(bodies, 0, 0, H * 0.34, L, H * 0.46, W * 0.95, paintHex);
-    if (band < 1) {
-      place(cabins, plan.cabinAlong, 0, H * 0.71, plan.cabinLength, H * 0.4, W * 0.9, paintHex);
-      return;
-    }
-
-    const nose = plan.cabinAlong + plan.cabinLength * 0.5;
-    const tail = plan.cabinAlong - plan.cabinLength * 0.5;
-    if (look.glassRoof) {
-      // A painted frame round a glass panel.
-      for (const side of SIDES) {
-        place(cabins, plan.cabinAlong, side * W * 0.39, H * 0.9, plan.cabinLength * 0.96, H * 0.13, W * 0.07, paintHex);
-        place(cabins, plan.cabinAlong + side * plan.cabinLength * 0.44, 0, H * 0.9,
-          plan.cabinLength * 0.08, H * 0.13, W * 0.85, paintHex);
-      }
-      place(glass, plan.cabinAlong, 0, H * 0.94, plan.cabinLength * 0.82, H * 0.03, W * 0.72, -1);
+  const drawCar = (vehicle: SimVehicle, plan: BodyPlan, paintHex: number, look: VehicleLook, band: number): void => {
+    const car = carParts.get(vehicle.archetype.id);
+    if (!car) return;
+    const model = car.model;
+    if (vehicle.doors.length === 0) {
+      place(car.closedShell, 0, 0, 0, 1, 1, 1, paintHex);
+      place(car.closedGlass, 0, 0, 0, 1, 1, 1, -1);
     } else {
-      place(cabins, plan.cabinAlong, 0, H * 0.9, plan.cabinLength * 0.96, H * 0.13, W * 0.85, paintHex);
-    }
-    place(glass, nose - L * 0.03, 0, H * 0.72, L * 0.05, H * 0.3, W * 0.8, -1, 0.5);
-    place(glass, tail + L * 0.03, 0, H * 0.72, L * 0.045, H * 0.28, W * 0.78, -1, -0.46);
-    for (let i = 0; i < 2; i++) {
-      // A window that is down is simply not written. No second material, no
-      // second geometry, and an open window is a dark opening anyway.
-      if ((look.windowsDown & (1 << i)) !== 0) continue;
-      place(
-        glass,
-        plan.cabinAlong,
-        (i === 0 ? 1 : -1) * W * 0.44,
-        H * 0.72,
-        plan.cabinLength * 0.8,
-        H * 0.27,
-        W * 0.02,
-        -1,
-      );
-    }
-    for (const side of SIDES) {
-      place(trims, side * L * 0.49, 0, H * 0.22, L * 0.035, H * 0.17, W * 0.99, TRIM);
-      place(lamps, L * 0.495, side * W * 0.31, H * 0.36, L * 0.02, H * 0.1, W * 0.2, HEADLAMP);
-      place(lamps, -L * 0.495, side * W * 0.33, H * 0.38, L * 0.018, H * 0.09, W * 0.17, lamp.tail);
-      if (lamp.indicate === side) {
-        place(lamps, -L * 0.49, side * W * 0.42, H * 0.38, L * 0.016, H * 0.08, W * 0.08, INDICATOR);
-        place(lamps, L * 0.49, side * W * 0.4, H * 0.36, L * 0.016, H * 0.08, W * 0.08, INDICATOR);
-      }
+      place(car.shell, 0, 0, 0, 1, 1, 1, paintHex);
+      place(car.glass, 0, 0, 0, 1, 1, 1, -1);
+      model.doors.forEach((door, i) => {
+        // Swung about the hinge, outwards on its own side.
+        const open = doorOpening(vehicle, door.index) * DOOR_SWING;
+        place(car.doors[i]!, door.hingeX, -door.hingeZ, 0, 1, 1, 1, paintHex, 0, door.side * open);
+        place(car.doorGlass[i]!, door.hingeX, -door.hingeZ, 0, 1, 1, 1, -1, 0, door.side * open);
+      });
     }
     placeWheels(plan, band);
-    if (band < 2) return;
-
-    place(lamps, -L * 0.507, 0, H * 0.2, L * 0.012, H * 0.07, W * 0.3, PLATE);
-    for (const side of SIDES) {
-      // A B-pillar, so the roof still has something holding it up on the side
-      // whose window is down.
-      place(trims, plan.cabinAlong, side * W * 0.44, H * 0.72, L * 0.02, H * 0.27, W * 0.03, TRIM);
-      place(trims, nose - L * 0.06, side * W * 0.57, H * 0.64, L * 0.035, H * 0.06, W * 0.1, TRIM);
-    }
-    placeOccupants(plan, look);
-  };
-
-  const drawBus = (plan: BodyPlan, paintHex: number, look: VehicleLook, band: number): void => {
-    const L = plan.length;
-    const W = plan.width;
-    const H = plan.height;
-    if (band < 1) {
-      place(bodies, 0, 0, H * 0.5, L, H * 0.82, W, paintHex);
-      place(cabins, 0, 0, H * 0.95, L * 0.99, H * 0.1, W * 0.96, look.accent);
-      return;
-    }
-
-    place(bodies, 0, 0, H * 0.31, L, H * 0.44, W, paintHex);
-    place(cabins, 0, 0, H * 0.92, L * 0.98, H * 0.16, W * 0.97, look.accent);
-    // Glazing runs nearly the full length down both flanks, which is the single
-    // feature that separates a bus from a very large van at any distance.
-    for (const side of SIDES) {
-      place(glass, 0, side * W * 0.49, H * 0.69, L * 0.94, H * 0.3, W * 0.02, -1);
-    }
-    place(glass, L * 0.49, 0, H * 0.69, L * 0.03, H * 0.32, W * 0.92, -1, 0.12);
-    place(glass, -L * 0.49, 0, H * 0.69, L * 0.03, H * 0.26, W * 0.9, -1, -0.1);
-    place(trims, 0, 0, H * 0.11, L * 0.99, H * 0.16, W * 1.01, TRIM);
-    for (const side of SIDES) {
-      place(lamps, L * 0.5, side * W * 0.36, H * 0.16, L * 0.012, H * 0.08, W * 0.16, HEADLAMP);
-      place(lamps, -L * 0.5, side * W * 0.38, H * 0.2, L * 0.012, H * 0.08, W * 0.14, lamp.tail);
-      if (lamp.indicate === side) {
-        place(lamps, -L * 0.5, side * W * 0.46, H * 0.2, L * 0.012, H * 0.07, W * 0.07, INDICATOR);
-      }
-    }
-    placeWheels(plan, band);
-    if (band < 2) return;
-
-    place(lamps, L * 0.5, 0, H * 0.86, L * 0.012, H * 0.1, W * 0.52, SIGN);
-    // Doors are on the kerb side, which in right-hand traffic is the vehicle's
-    // right — negative on an axis that runs to its left.
-    place(trims, L * 0.31, -W * 0.5, H * 0.44, L * 0.07, H * 0.62, W * 0.03, TRIM);
-    place(trims, -L * 0.06, -W * 0.5, H * 0.44, L * 0.07, H * 0.62, W * 0.03, TRIM);
-    placeOccupants(plan, look);
-  };
-
-  const drawTruck = (plan: BodyPlan, paintHex: number, look: VehicleLook, band: number): void => {
-    const L = plan.length;
-    const W = plan.width;
-    const H = plan.height;
-    const cab = plan.cabinAlong;
-    const cabLen = plan.cabinLength;
-    // Cab and box are separate bodies with daylight between them, which is what
-    // stops a truck reading as one long bus.
-    const boxLen = L * 0.52;
-    const boxAt = -L * 0.21;
-    place(bodies, boxAt, 0, H * 0.62, boxLen, H * 0.62, W * 0.98, look.accent);
-    if (band < 1) {
-      place(bodies, cab, 0, H * 0.42, cabLen, H * 0.62, W, paintHex);
-      place(cabins, cab, 0, H * 0.83, cabLen * 0.92, H * 0.28, W * 0.94, paintHex);
-      return;
-    }
-
-    place(bodies, cab, 0, H * 0.3, cabLen, H * 0.38, W, paintHex);
-    place(cabins, cab, 0, H * 0.83, cabLen * 0.92, H * 0.28, W * 0.94, paintHex);
-    place(glass, cab + cabLen * 0.46, 0, H * 0.6, L * 0.02, H * 0.24, W * 0.86, -1, 0.16);
-    for (let i = 0; i < 2; i++) {
-      if ((look.windowsDown & (1 << i)) !== 0) continue;
-      place(
-        glass,
-        cab,
-        (i === 0 ? 1 : -1) * W * 0.47,
-        H * 0.6,
-        cabLen * 0.6,
-        H * 0.22,
-        W * 0.02,
-        -1,
-      );
-    }
-    place(trims, L * 0.1, 0, H * 0.2, L * 0.22, H * 0.06, W * 0.45, TRIM);
-    for (const side of SIDES) {
-      place(lamps, L * 0.49, side * W * 0.34, H * 0.26, L * 0.014, H * 0.09, W * 0.18, HEADLAMP);
-      place(lamps, -L * 0.49, side * W * 0.36, H * 0.34, L * 0.014, H * 0.08, W * 0.16, lamp.tail);
-      if (lamp.indicate === side) {
-        place(lamps, -L * 0.49, side * W * 0.44, H * 0.34, L * 0.014, H * 0.07, W * 0.07, INDICATOR);
-      }
-    }
-    placeWheels(plan, band);
-    if (band < 2) return;
-
-    for (const side of SIDES) {
-      place(trims, cab + cabLen * 0.42, side * W * 0.58, H * 0.62, L * 0.02, H * 0.12, W * 0.08, TRIM);
-    }
-    place(lamps, -L * 0.505, 0, H * 0.32, L * 0.01, H * 0.05, W * 0.24, PLATE);
-    placeOccupants(plan, look);
-  };
-
-  const drawMotorcycle = (
-    plan: BodyPlan,
-    paintHex: number,
-    look: VehicleLook,
-    band: number,
-  ): void => {
-    const L = plan.length;
-    const W = plan.width;
-    const H = plan.height;
-    place(bodies, -L * 0.02, 0, H * 0.5, L * 0.6, H * 0.3, W * 0.46, paintHex);
-    place(cabins, L * 0.3, 0, H * 0.7, L * 0.1, H * 0.3, W * 0.42, paintHex, 0.32);
     if (band < 1) return;
 
-    placeWheels(plan, band);
-    place(trims, L * 0.33, 0, H * 0.47, L * 0.05, H * 0.55, W * 0.16, CHROME, 0.22);
-    place(lamps, L * 0.4, 0, H * 0.66, L * 0.03, H * 0.14, W * 0.3, HEADLAMP);
-    place(lamps, -L * 0.4, 0, H * 0.55, L * 0.025, H * 0.1, W * 0.22, lamp.tail);
-    placeRider(plan, look, false);
+    place(car.trim, 0, 0, 0, 1, 1, 1, TRIM);
+    place(car.interior, 0, 0, 0, 1, 1, 1, -1);
+    for (const l of model.headlamps) place(lamps, l.x, -l.z, l.y, l.sx, l.sy, l.sz, HEADLAMP);
+    for (const l of model.taillamps) place(lamps, l.x, -l.z, l.y, l.sx, l.sy, l.sz, lamp.tail);
+    for (const l of model.indicators) {
+      // `lamp.indicate` is +1 for left, and the model's left is -Z.
+      if (lamp.indicate !== 0 && lamp.indicate === -l.side) {
+        place(lamps, l.x, -l.z, l.y, l.sx * 1.2, l.sy, l.sz, INDICATOR);
+      }
+    }
     if (band < 2) return;
-
-    place(trims, L * 0.3, 0, H * 0.87, L * 0.04, H * 0.05, W * 1.05, CHROME);
-    place(trims, -L * 0.22, -W * 0.28, H * 0.24, L * 0.42, H * 0.07, W * 0.12, CHROME);
+    place(lamps, -plan.length * 0.505, 0, plan.height * 0.3, plan.length * 0.01, plan.height * 0.07, plan.width * 0.3, PLATE);
+    placeCarOccupants(vehicle, model, look);
   };
 
-  const drawBicycle = (
-    plan: BodyPlan,
-    paintHex: number,
-    look: VehicleLook,
-    band: number,
-  ): void => {
-    const L = plan.length;
-    const W = plan.width;
-    const H = plan.height;
-    place(cabins, -L * 0.02, 0, H * 0.52, L * 0.55, H * 0.07, W * 0.14, paintHex);
-    place(bodies, -L * 0.12, 0, H * 0.62, L * 0.06, H * 0.55, W * 0.12, paintHex, 0.22);
-    if (band < 1) return;
+  /**
+   * The people in a car, each in a seat of the model: the driver at the wheel
+   * on the left, then the front passenger, then the rear bench.
+   */
+  const placeCarOccupants = (vehicle: SimVehicle, model: VehicleModel, look: VehicleLook): void => {
+    if (occupantBand < 1) return;
+    // Who is sitting where is the simulation's (`Vehicle.seats`): people get
+    // in and out at the kerb, and somebody on the way in or out is drawn by
+    // `placeKerbPerson`, not in the seat.
+    const moving = vehicle.kerbStop?.phase === 'transfer' ? vehicle.kerbStop.seat : -1;
+    for (let index = 0; index < model.seats.length; index++) {
+      if ((vehicle.seats & (1 << index)) === 0 || index === moving) continue;
+      const seat = model.seats[index]!;
+      const at = seatWorld(seat);
+      // A car-seat pose (`riderPoses.ts`), sized so the head clears the roof
+      // lining: the chair poses the assets ship with put heads through roofs
+      // and feet through floors.
+      pedestrians.drawClip(seatPerson(vehicle, index), at.x, at.y, fdeck + seat.hipY, fyaw,
+        seat.driver ? DRIVE_PLAY : RIDE_PLAY, 0, seatFitScale(seat));
+    }
+    const stop = vehicle.kerbStop;
+    if (stop) placeKerbPerson(model, stop);
+    void look;
+  };
 
+  const seatWorld = (seat: { x: number; z: number }): { x: number; y: number } =>
+    ({ x: fx + fdx * seat.x + fdy * seat.z, y: fy + fdy * seat.x - fdx * seat.z });
+
+  /**
+   * Somebody getting out at the kerb, or in: up out of the seat turning to
+   * face the open door and stepping out beside the car, then across to the
+   * footway - or the same the other way round. Positions come from the body
+   * model's seat and door, the timing from the simulation (`kerbTransfer`).
+   */
+  const placeKerbPerson = (model: VehicleModel, stop: KerbStop): void => {
+    const progress = kerbTransfer(stop);
+    const person = stop.person;
+    const door = model.doors.find((d) => d.index === stop.door);
+    if (!progress || !person || !door) return;
+    const side = door.side;
+    const along = door.hingeX - door.length / 2;
+    const flank = Math.abs(door.hingeZ);
+    // Just outside the door opening on the road, and just inside it.
+    const outside = seatWorld({ x: along, z: side * (flank + m(0.45)) });
+    const seat = stop.seatStage ? model.seats[stop.seat] : undefined;
+    const inside = seat ? seatWorld(seat) : seatWorld({ x: along, z: side * (flank - m(0.4)) });
+    const identity = { seed: person.seed, gender: person.gender, ageClass: person.ageClass };
+    const walkTo = (fromX: number, fromY: number, toX: number, toY: number, t: number, height: number): void => {
+      const x = fromX + (toX - fromX) * t;
+      const y = fromY + (toY - fromY) * t;
+      const distance = Math.hypot(toX - fromX, toY - fromY);
+      const heading = Math.atan2(toY - fromY, toX - fromX);
+      pedestrians.drawClip(identity, x, y, height, heading,
+        [{ key: 'walk', phase: 0, distance: distance * t, weight: 1 }], 0, Infinity, true);
+    };
+    if (progress.walked >= 1 && (stop.phase === 'hold' || stop.phase === 'close')) {
+      // Standing on the footway: the truck's mate with the load, facing the truck.
+      pedestrians.drawClip(identity, person.footX, person.footY, fdeck,
+        Math.atan2(outside.y - person.footY, outside.x - person.footX),
+        [{ key: 'idle', phase: (stop.t * 0.1) % 1, weight: 1 }], 0, Infinity, true);
+      return;
+    }
+    if (progress.walked > 0 || progress.seated <= 0) {
+      // Between the door and the footway.
+      if (stop.kind === 'drop') walkTo(outside.x, outside.y, person.footX, person.footY, progress.walked, fdeck);
+      else walkTo(person.footX, person.footY, outside.x, outside.y, 1 - progress.walked, fdeck);
+      return;
+    }
+    if (!seat) {
+      // A bus: stepping up through the door, then gone inside.
+      const t = stop.kind === 'drop' ? 1 - progress.seated : progress.seated;
+      if (stop.kind === 'pick' && t > 0.9) return;
+      walkTo(outside.x, outside.y, inside.x, inside.y, stop.kind === 'pick' ? t : 1 - t, fdeck + m(0.25) * t);
+      return;
+    }
+    // Rising from (or sinking into) the seat, sliding across the sill and
+    // down to the road (a truck's cab floor is a metre up).
+    const rise = 1 - progress.seated;
+    const slide = Math.min(1, rise * 1.4);
+    const x = inside.x + (outside.x - inside.x) * slide;
+    const y = inside.y + (outside.y - inside.y) * slide;
+    const key = stop.kind === 'drop' ? 'standUp' : 'sitDown';
+    const phase = stop.kind === 'drop' ? rise : 1 - rise;
+    pedestrians.drawClip(identity, x, y, fdeck + seat.floor * (1 - slide), fyaw - side * Math.PI / 2,
+      [{ key, phase, weight: 1 }], 0, seatFitScale(seat), true);
+  };
+
+  /**
+   * A motorcycle or a bicycle from its model: the frame and bodywork, the
+   * steering assembly turned about the head tube, the cranks of a bicycle
+   * turned by the pedalling, and the rider astride it. The frame state
+   * already carries the lean (`frameAt`), so every part tips with it.
+   */
+  const drawTwoWheeler = (vehicle: SimVehicle, plan: BodyPlan, paintHex: number, look: VehicleLook, band: number): void => {
+    const bike = twoWheelerParts.get(vehicle.archetype.id);
+    if (!bike) return;
+    const model = bike.model;
+    place(bike.body, 0, 0, 0, 1, 1, 1, paintHex);
+    place(bike.steering, model.headX, 0, model.headY, 1, 1, 1, CHROME, 0, lamp.steer);
     placeWheels(plan, band);
-    place(trims, L * 0.3, 0, H * 0.6, L * 0.04, H * 0.6, W * 0.12, CHROME, 0.16);
-    place(trims, -L * 0.16, 0, H * 0.8, L * 0.18, H * 0.05, W * 0.22, TRIM);
-    placeRider(plan, look, true);
-    if (band < 2) return;
+    if (band < 1) return;
+    place(bike.trim, 0, 0, 0, 1, 1, 1, TRIM);
+    if (bike.cranks) place(bike.cranks, model.bracketX, 0, model.bracketY, 1, 1, 1, CHROME, -lamp.crank);
+    const h = model.headlamp;
+    place(lamps, h.x, 0, h.y, h.sx, h.sy, h.sz, HEADLAMP, 0, lamp.steer);
+    const t = model.taillamp;
+    place(lamps, t.x, 0, t.y, t.sx, t.sy, t.sz, lamp.tail);
+    placeRiderFigure(vehicle, model, plan.shape === 'bicycle', look);
+  };
 
-    place(trims, L * 0.3, 0, H * 0.9, L * 0.03, H * 0.04, W, TRIM);
+  /**
+   * The person astride: a baked IK pose (`riderPoses.ts`) with the hands on
+   * the grips and the feet on the pegs or pedals, blended towards the stopped
+   * pose (a foot down) as the machine comes to rest and towards the steering
+   * poses as the bars turn; pedalling follows the cranks exactly. The pelvis
+   * is placed on the seat with the frame's lean, and the figure leans with it.
+   */
+  const placeRiderFigure = (vehicle: SimVehicle, model: TwoWheelerModel, cyclist: boolean, look: VehicleLook): void => {
+    if (occupantBand < 1) return;
+    const pelvisUp = model.seatY + m(0.02);
+    // The seat point rolled about the road-level forward axis (`place`).
+    const sideOffset = pelvisUp * fsin;
+    const x = fx + fdx * model.seatX - fdy * sideOffset;
+    const y = fy + fdy * model.seatX + fdx * sideOffset;
+    const height = fdeck + pelvisUp * fcos;
+    const moving = smooth01((vehicle.v / m(1) - 0.2) / 0.8);
+    const steer = Math.max(-1, Math.min(1, lamp.steer / 0.35));
+    const plays = riderPlays;
+    plays.length = 0;
+    if (cyclist) {
+      const phase = (-lamp.crank - Math.PI) / (2 * Math.PI);
+      plays.push({ key: 'bikePedal', phase, weight: moving * (1 - Math.abs(steer) * 0.4) });
+      if (steer > 0) plays.push({ key: 'bikeLeft', phase: 0, weight: moving * steer * 0.4 });
+      if (steer < 0) plays.push({ key: 'bikeRight', phase: 0, weight: moving * -steer * 0.4 });
+      plays.push({ key: 'bikeStop', phase: 0, weight: 1 - moving });
+    } else {
+      plays.push({ key: 'motoRide', phase: 0, weight: moving * (1 - Math.abs(steer)) });
+      if (steer > 0) plays.push({ key: 'motoLeft', phase: 0, weight: moving * steer });
+      if (steer < 0) plays.push({ key: 'motoRight', phase: 0, weight: moving * -steer });
+      plays.push({ key: 'motoStop', phase: 0, weight: 1 - moving });
+    }
+    pedestrians.drawClip(seatPerson(vehicle, 0), x, y, height, fyaw, plays, froll);
+    if (!cyclist) {
+      // A motorcyclist's helmet, over the head of the riding pose.
+      const headAlong = model.seatX + m(0.24);
+      const headUp = pelvisUp + m(0.72);
+      place(heads, headAlong, 0, headUp, m(0.3), m(0.3), m(0.32), look.helmet);
+    }
   };
 
   /** The dog trotting behind a pedestrian, drawn in the walker's own frame. */
@@ -939,14 +974,14 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
 
 
   /** Refreshed for every vehicle, read by whichever body builder runs. */
-  const lamp: LampState = { tail: TAILLAMP, indicate: 0, steer: 0, spin: 0 };
+  const lamp: LampState = { tail: TAILLAMP, indicate: 0, steer: 0, spin: 0, crank: 0 };
   const odometer = new WheelOdometer();
 
   return {
     meshes,
     sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY, options = {}) {
       pedestrians.begin(options.pedestrianDetail ?? 2, zoom);
-      for (const part of parts) part.n = 0;
+      for (const part of allParts) part.n = 0;
       const band = !detailed ? 0 : zoom >= NEAR_DETAIL_ZOOM ? 2 : 1;
 
       let drawn = 0;
@@ -955,17 +990,17 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         const pose = vehiclePose(world, vehicle, alpha);
         if (!pose) continue;
         const lane = world.lanelet(vehicle.lanelet);
+        const plan = planOf(vehicle.archetype);
+        const twoWheeled = plan.shape === 'motorcycle' || plan.shape === 'bicycle';
         frameAt(
           pose.p.x,
           pose.p.y,
           pose.angle,
           elevationAt(world, pose.p.x, pose.p.y, lane?.segment),
+          twoWheeled ? leanOf(world, vehicle) : 0,
         );
-        const plan = planOf(vehicle.archetype);
         const paintHex = hexOf(vehicle.color);
         const look = vehicleLook(vehicle.id, plan.seats);
-        occupantVehicle = vehicle.id;
-        occupantTime = vehicle.age;
         occupantBand = band;
 
         // Brakes and indicators, straight off the simulation. `prev` is the
@@ -982,22 +1017,20 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         lamp.indicate = side !== 0 && blinkOn(vehicle.age, vehicle.id) ? side : 0;
         const axles = plan.axleAlong;
         lamp.steer = steerAngle(world, vehicle, (axles[0] ?? 0) - (axles[axles.length - 1] ?? 0));
-        lamp.spin = -odometer.advance(vehicle) / Math.max(plan.wheelRadius, 1e-3);
+        const driven = odometer.advance(vehicle);
+        lamp.spin = -driven / Math.max(plan.wheelRadius, 1e-3);
+        // A bicycle's cranks turn a little over half a turn per turn of the
+        // wheel: about 80 rpm at a city cyclist's 18 km/h.
+        lamp.crank = (driven / (2 * Math.PI * Math.max(plan.wheelRadius, 1e-3))) * CRANK_RATIO * 2 * Math.PI;
         switch (plan.shape) {
-          case 'bus':
-            drawBus(plan, paintHex, look, band);
-            break;
-          case 'truck':
-            drawTruck(plan, paintHex, look, band);
-            break;
           case 'motorcycle':
-            drawMotorcycle(plan, paintHex, look, band);
-            break;
           case 'bicycle':
-            drawBicycle(plan, paintHex, look, band);
+            drawTwoWheeler(vehicle, plan, paintHex, look, band);
             break;
           case 'car':
-            drawCar(plan, paintHex, look, band);
+          case 'bus':
+          case 'truck':
+            drawCar(vehicle, plan, paintHex, look, band);
             break;
         }
         drawn++;
@@ -1038,7 +1071,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       // attribute. These buffers are sized for the population ceiling, so
       // uploading their entire capacity wastes bandwidth on unused instances.
       // The written prefix is usually a tiny fraction of that.
-      for (const part of parts) {
+      for (const part of allParts) {
         part.mesh.count = part.n;
         const matrix = part.mesh.instanceMatrix;
         matrix.clearUpdateRanges();
@@ -1066,7 +1099,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       ]) {
         geometry.dispose();
       }
-      for (const material of [paint, trim, glassMaterial, rubber, lampMaterial, cloth]) {
+      for (const geometry of modelGeometries) geometry.dispose();
+      for (const material of [paint, trim, glassMaterial, rubber, lampMaterial, cloth, cabinMaterial]) {
         material.dispose();
       }
     },

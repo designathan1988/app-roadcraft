@@ -1,5 +1,6 @@
 import { DT, laneChangeLength, laneChangeOffset, laneChangeSlope } from '../params';
 import { curveSpeedCap } from './curvature';
+import { positioningSpeedCap } from './laneChange';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import { desiredSpeed } from './driver';
@@ -55,7 +56,11 @@ export function integrateAll(w: SimWorld): void {
     // but a route change can bring one into view suddenly, so a single step
     // never demands more than an emergency stop's worth of braking.
     const curveCap = Math.max(curveSpeedCap(w, v), v.v - v.driver.bEmergency * DT);
-    const speedCap = Math.min(wanted, here.speedLimit, curveCap);
+    // A driver still working across to the lane their turn needs eases off
+    // until the changes fit (`positioningSpeedCap`), never harder than
+    // comfortable braking.
+    const positioning = Math.max(positioningSpeedCap(w, v), v.v - v.driver.b * DT);
+    const speedCap = Math.min(wanted, here.speedLimit, curveCap, positioning);
     const next = resolveSpeed(v.driver, v.v, speedCap, v.constraints.obstacles, DT);
     const ds = Math.max(0, 0.5 * (v.v + next) * DT);
     const clearancesAtStart = new Set(v.clearingConnectors);

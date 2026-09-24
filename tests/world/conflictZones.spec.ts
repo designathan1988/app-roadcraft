@@ -31,11 +31,12 @@ describe('swept conflict zones', () => {
     const { graph, conflicts } = indexOf(layoutDoc(LAYOUTS[0]!).doc);
     const swept = conflicts.points.filter((p) => p?.kind === 'swept');
     expect(swept.length).toBeGreaterThan(0);
-    // Opposing left turns on a four-way avenue pass close enough for two
-    // ordinary cars to touch. The centreline index never saw them.
-    const lefts = swept.filter((p) =>
-      graph.connectors.get(p.a)?.turn === 'left' && graph.connectors.get(p.b)?.turn === 'left');
-    expect(lefts.some((p) => p.zone(p.a, 1, 1) !== null)).toBe(true);
+    // Paths whose centrelines never meet, yet whose bodies do - a bus's tail
+    // swinging over the movement beside it. The centreline index never saw
+    // them. (Opposing left turns used to be the example; since turn paths are
+    // as round as the kerbs allow, they now pass clear of each other.)
+    expect(swept.some((p) => p.zone(p.a, 2, 2) !== null && graph.connectors.get(p.a)?.inSegment !==
+      graph.connectors.get(p.b)?.inSegment)).toBe(true);
   });
 
   it('nests: a smaller body is inside the zone of a larger one', () => {

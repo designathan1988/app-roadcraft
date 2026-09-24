@@ -197,5 +197,21 @@ export const STUCK_SECONDS = 10;
 /** Free-flow speed sampling. */
 export const DRIVER_NOISE = { lo: 0.92, hi: 1.08 } as const;
 
-/** Speed cap through curvature, expressed as lateral acceleration. */
-export const MAX_LATERAL_ACCEL = m(2.5);
+/**
+ * Speed cap through curvature, expressed as the lateral acceleration a driver
+ * accepts, which FALLS with speed.
+ *
+ * It was one number, 2.5 m/s², at every speed. That is a fair figure for a
+ * motorway curve and far below what anybody accepts turning a street corner:
+ * observed intersection turns run at 3.5 to 4.5 m/s² at 15 to 25 km/h, and
+ * the comfortable figure falls towards 2 m/s² by motorway speeds. With the old
+ * constant a right turn of 7 m radius was taken at 15 km/h and a left of 14 m
+ * at 21 km/h - the "extremely slow" turns players reported.
+ *
+ * `MAX_LATERAL_ACCEL` is the figure at a crawl; each world unit per second of
+ * speed takes `LATERAL_ACCEL_FALL` off it, down to `MIN_LATERAL_ACCEL`.
+ */
+export const MAX_LATERAL_ACCEL = m(4.0);
+/** Reduction of the accepted lateral acceleration per unit of speed, per second. */
+export const LATERAL_ACCEL_FALL = 0.09;
+export const MIN_LATERAL_ACCEL = m(1.8);

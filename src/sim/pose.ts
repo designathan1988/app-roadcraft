@@ -4,6 +4,7 @@ import type { Frame } from '@core/polyline';
 import type { SimWorld } from '@sim/world';
 import type { Kinematics, Vehicle } from '@sim/vehicles/state';
 import type { Ped } from '@sim/peds/state';
+import { HEADING_CHORD, chordHeading } from '@world/heading';
 
 export interface Pose {
   readonly p: Vec2;
@@ -84,7 +85,7 @@ function bodyOffset(k: Kinematics, length: number): number {
  * spinning the long way through 359 degrees.
  */
 export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null {
-  const frame = bodyFrame(w, v, v.archetype.length / 2);
+  const frame = axleFrame(w, v, v.archetype.length);
   if (!frame) return null;
   const t = clamp(alpha, 0, 1);
 
@@ -97,7 +98,7 @@ export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null
   const heading = angleOf(frame.t);
   const here: Pose = { p: at, angle: heading };
 
-  const before = bodyFrame(w, v.prev, v.archetype.length / 2);
+  const before = axleFrame(w, v.prev, v.archetype.length);
   if (!before) return here;
   const beforeAt = addScaled(before.p, perp(before.t), bodyOffset(v.prev, v.archetype.length));
   if (dist(beforeAt, at) > POSE_JUMP_LIMIT) return here;
@@ -109,6 +110,28 @@ export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null
     p: lerpVec(beforeAt, at, t),
     angle: lerpAngle(angleOf(before.t), heading, t) + yaw,
   };
+}
+
+/**
+ * The body centre on the path, pointing along a short chord centred on it.
+ *
+ * The heading used to be the tangent of the path under the centre. Paths are
+ * polylines, so that tangent is constant along each piece and jumps at every
+ * vertex: a car driving round a junction turned in steps of three to six
+ * degrees, each in a single tick - measured as yaw rates up to 13 rad/s, and
+ * seen as a body that ticks round a corner instead of sweeping. The chord
+ * (`HEADING_CHORD`) turns continuously as the body moves along the path, and on
+ * a circular arc it is the tangent at the centre, so the body stays where it
+ * was and only the stepping is gone.
+ */
+function axleFrame(w: SimWorld, kinematics: Kinematics, length: number): Frame | null {
+  const centre = bodyFrame(w, kinematics, length / 2);
+  if (!centre) return null;
+  const ahead = bodyFrame(w, kinematics, length / 2 - HEADING_CHORD);
+  const behind = bodyFrame(w, kinematics, length / 2 + HEADING_CHORD);
+  if (!ahead || !behind) return centre;
+  const t = chordHeading(behind.p, ahead.p, centre.t);
+  return { ...centre, t, n: { x: -t.y, y: t.x } };
 }
 
 function bodyFrame(w: SimWorld, kinematics: Kinematics, behindFront: number): Frame | null {

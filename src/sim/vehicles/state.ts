@@ -2,6 +2,8 @@ import type { ConnectorId, LaneletId } from '@world/lanelets';
 import type { Archetype } from './archetypes';
 import type { Driver } from './driver';
 import { type ConstraintSet, emptyConstraints } from './idm';
+import type { ErrandKind, KerbStop } from './kerbStops';
+import type { PedAgeClass } from '../peds/state';
 
 export type VehicleId = number;
 
@@ -166,6 +168,40 @@ export interface Vehicle {
   laneChange: LaneletId | null;
 
   /**
+   * The lane this driver is signalling towards, and their age when they began.
+   *
+   * A change used to be decided and started in the same tick, so the
+   * indicator came on as the car was already moving across - measured, 16 of
+   * 196 changes had shown the indicator for a second beforehand. A driver
+   * signals first, checks the gap again, and only then moves
+   * (`SIGNAL_LEAD` in `laneChange.ts`).
+   */
+  laneIntent: LaneletId | null;
+  laneIntentSince: number;
+
+  /**
+   * How far each door is open, 0 shut to 1 fully open, indexed as the body
+   * model numbers them (driver's side first, front to back). Written by the
+   * kerb-stop stage when somebody gets in or out; empty while all are shut.
+   */
+  doors: number[];
+
+  /** Seats taken, one bit per seat in the body model's order; bit 0 is the driver. */
+  seats: number;
+  /** Pedestrian ids of people picked up, by seat; others are `seatPerson`'s default. */
+  people: number[];
+  /** Age class of the people in `people`, by seat. */
+  peopleAge: PedAgeClass[];
+  /** What this trip stops for at a kerb, if anything (`kerbStops.ts`). */
+  errand: ErrandKind | null;
+  /** The kerb stop under way, from choosing the place to pulling away. */
+  kerbStop: KerbStop | null;
+  /** Further tasks of the same stop: the next passenger of a bus, the mate's return. */
+  kerbQueue: KerbStop[];
+  /** Own age at the last bus stop served. */
+  lastServiceAge: number;
+
+  /**
    * The lane this vehicle is sliding OUT of, while its body still overlaps it.
    *
    * The transfer to the new lane is instantaneous in the occupancy index but
@@ -229,6 +265,16 @@ export function createVehicle(
     lastLaneChangeAge: 0,
     heldUp: 0,
     laneChange: null,
+    laneIntent: null,
+    laneIntentSince: 0,
+    doors: [],
+    seats: 1,
+    people: [],
+    peopleAge: [],
+    errand: null,
+    kerbStop: null,
+    kerbQueue: [],
+    lastServiceAge: 0,
     shadow: null,
     constraints: emptyConstraints(),
     prev: base,

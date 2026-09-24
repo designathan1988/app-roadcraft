@@ -55,7 +55,7 @@ export function buildSignalPlan(
   connectorsOf: (id: string) => Connector | undefined,
   conflictsOf?: (id: string) => readonly string[],
 ): SignalPlan {
-  const raw = buildStages(junction, crossings, connectorsOf);
+  const raw = buildStages(junction, crossings, connectorsOf, conflictsOf);
   return validate(annotate(raw, junction, connectorsOf, conflictsOf));
 }
 
@@ -145,6 +145,7 @@ function buildStages(
   junction: JunctionTopology,
   crossings: readonly CrossingId[],
   connectorsOf: (id: string) => Connector | undefined,
+  conflictsOf?: (id: string) => readonly string[],
 ): SignalPlan {
   const groups = junction.groups.map((g) => g.id);
 
@@ -207,7 +208,10 @@ function buildStages(
 
   const stages: Stage[] = [];
   const covered = new Set<CrossingId>();
-  for (const together of pairOpposingGroups(junction)) {
+  const together_ = conflictsOf
+    ? conflictFreeStages(junction, connectorsOf, conflictsOf)
+    : pairOpposingGroups(junction);
+  for (const together of together_) {
     const green = clamp(SIGNAL.baseGreen, SIGNAL.minGreen, SIGNAL.maxGreen);
     const walk = crossingsCompatibleWith(junction, together, crossings, connectorsOf);
     for (const crossing of walk) covered.add(crossing);
@@ -237,6 +241,86 @@ function buildStages(
 
   const cycle = stages.reduce((s, st) => s + st.targetGreen + st.amber + st.allRed, 0);
   return validate({ stages, cycle, groups, crossings });
+}
+
+/**
+ * Groups that may take green together WITHOUT any two of their movements
+ * crossing, merging or sweeping into one another.
+ *
+ * Opposing approaches used to share every stage, with the left turn left to
+ * find a gap in the opposing through traffic (`pairOpposingGroups`). That is a
+ * permissive left, and it is exactly what players reported as a fault: two
+ * facing greens, a car turning left across the stream the other light had
+ * just released, and that stream carrying on. Whether the gap logic held or
+ * not, the plan itself put two conflicting movements on green at once.
+ *
+ * Stages are now built from the real conflict matrix (`conflictsOf`, swept car
+ * bodies): a group joins a stage only if none of its movements meets any
+ * movement of a group already in it. Opposing approaches whose movements do
+ * not meet - two through-and-right approaches, a pair of one-way streets -
+ * still run together; an approach with a left turn across the opposite one
+ * gets a stage of its own. Every green movement is therefore protected from
+ * every other green movement, and the only thing a green vehicle yields to is
+ * a pedestrian on a crossing it turns over, which is the rule of the road.
+ *
+ * Groups are taken in order of approach angle so the stages rotate round the
+ * junction, and the partner chosen for a stage is the most nearly opposed
+ * compatible group, which is the one a driver expects to move with theirs.
+ */
+function conflictFreeStages(
+  junction: JunctionTopology,
+  connectorsOf: (id: string) => Connector | undefined,
+  conflictsOf: (id: string) => readonly string[],
+): GroupId[][] {
+  const movements = new Map<GroupId, Connector[]>();
+  for (const id of junction.connectors) {
+    const c = connectorsOf(id);
+    if (!c) continue;
+    const list = movements.get(c.group);
+    if (list) list.push(c);
+    else movements.set(c.group, [c]);
+  }
+  const compatible = (a: GroupId, b: GroupId): boolean => {
+    const theirs = new Set((movements.get(b) ?? []).map((c) => c.id));
+    for (const c of movements.get(a) ?? []) {
+      for (const other of conflictsOf(c.id)) {
+        if (!theirs.has(other)) continue;
+        const o = connectorsOf(other);
+        // Two movements of one approach leave side by side; that is lane
+        // discipline and car-following, not a signal conflict.
+        if (o && o.inSegment === c.inSegment) continue;
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const pending = junction.groups.slice().sort((a, b) => a.meanAngle - b.meanAngle || a.id - b.id);
+  const byId = new Map(pending.map((g) => [g.id, g] as const));
+  const stages: GroupId[][] = [];
+  while (pending.length) {
+    const head = pending.shift();
+    if (!head) break;
+    const stage = [head.id];
+    for (;;) {
+      let best = -1;
+      let bestError = Infinity;
+      for (let i = 0; i < pending.length; i++) {
+        const candidate = pending[i]!;
+        if (!stage.every((g) => compatible(g, candidate.id) && compatible(candidate.id, g))) continue;
+        const error = Math.min(...stage.map((g) => Math.abs(
+          Math.abs(normaliseAngle(candidate.meanAngle - (byId.get(g)?.meanAngle ?? 0))) - Math.PI)));
+        if (error < bestError) {
+          bestError = error;
+          best = i;
+        }
+      }
+      if (best < 0) break;
+      stage.push(pending.splice(best, 1)[0]!.id);
+    }
+    stages.push(stage);
+  }
+  return stages;
 }
 
 /**

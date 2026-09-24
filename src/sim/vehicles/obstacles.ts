@@ -6,6 +6,7 @@ import { divergeObstacle, findLeader, shadowLeaderObstacle } from './leaderIndex
 import { signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
 import { nextConnector } from '../intersections/admission';
+import { kerbStopObstacle } from './kerbStops';
 
 /** Stop short of a zebra span somebody is on; null when the path is clear. */
 function pedestrianAhead(w: SimWorld, v: Vehicle): Obstacle | null {
@@ -76,6 +77,10 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
   // path afterwards used to be driven through at full speed.
   const walker = pedestrianAhead(w, v);
   if (walker) constraints.obstacles.push(walker);
+
+  // Pulling in to the kerb to let somebody out or in (`kerbStops.ts`).
+  const kerb = kerbStopObstacle(v);
+  if (kerb) constraints.obstacles.push(kerb);
 
   const lane = w.lanelet(v.lanelet);
   if (!lane) return constraints;

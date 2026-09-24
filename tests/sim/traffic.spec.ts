@@ -222,26 +222,53 @@ describe('traffic', () => {
       expect(longestTurnWait).toBeLessThan(bound);
     });
 
-    it('pairs opposing approaches instead of giving each its own stage', () => {
-      // A four-leg cross has four approach groups. Serving them one at a time
-      // is a 97.6 s cycle in which each leg is green for a fifth of the time.
-      // Opposing approaches share a stage, as a real crossroads does, which
-      // halves the cycle and doubles each approach's share of it.
+    it('never shows green to two approaches whose movements cross', () => {
+      // A four-leg cross of two-way roads: every approach has a left turn
+      // across the opposite approach's through movement, so no two approaches
+      // may share a green. Opposing approaches used to share every stage with
+      // the left turn looking for a gap, and players watched a turning car
+      // cross the stream the other light had released.
       const fixture = crossroads('signal');
-      const controller = [...fixture.sim.controllers.values()][0];
-      expect(controller).toBeDefined();
+      const controller = [...fixture.sim.controllers.values()][0]!;
+      expect(controller.plan.groups.length).toBe(4);
+      const vehicleStages = controller.plan.stages.filter((s) => !s.exclusivePed && s.greenGroups.length > 0);
+      expect(vehicleStages.length).toBe(4);
+      for (const s of vehicleStages) expect(s.greenGroups.length).toBe(1);
+      // Every green movement is protected: nothing it could meet is green.
+      for (const s of vehicleStages) {
+        const green = [...fixture.sim.graph.connectors.values()].filter((c) => s.greenGroups.includes(c.group));
+        expect(green.every((c) => s.protectedMovements.includes(c.id))).toBe(true);
+      }
+    });
 
-      const vehicleStages = (controller?.plan.stages ?? []).filter(
-        (s) => !s.exclusivePed && s.greenGroups.length > 0 && !s.demandMovements,
-      );
-      expect(controller?.plan.groups.length).toBe(4);
-      expect(vehicleStages.length).toBe(2);
-      for (const s of vehicleStages) expect(s.greenGroups.length).toBe(2);
-      // Exclusive turn stages: one approach each, gated on its own turns.
-      for (const s of controller?.plan.stages ?? []) {
-        if (!s.demandMovements) continue;
-        expect(s.greenGroups.length).toBe(1);
-        expect(s.demandMovements.length).toBeGreaterThan(0);
+    it('still runs opposing approaches together when their movements never meet', () => {
+      // Ban the two left turns of the major road and its opposing approaches
+      // no longer cross: through and right from both sides share one green,
+      // which is what keeps a corridor's capacity.
+      const fixture = crossroads('signal');
+      const { doc, sim } = fixture;
+      const centre = [...doc.nodes.values()].find((n) => n.incident.length === 4)!;
+      const [north, south] = centre.incident;
+      // Which exit is a LEFT turn is the network's answer, not an assumption
+      // about which way the axes run.
+      for (const c of sim.graph.connectors.values()) {
+        if (c.turn === 'left' && (c.inSegment === north || c.inSegment === south)) {
+          doc.setMovementBlocked(centre.id, c.inSegment, c.outSegment, true);
+        }
+      }
+      fixture.net.rebuild();
+      sim.rebuildTopology();
+      const controller = sim.controller(centre.id)!;
+      const shared = controller.plan.stages.filter((s) => s.greenGroups.length === 2);
+      expect(shared.length).toBe(1);
+      for (const s of controller.plan.stages) {
+        const green = [...sim.graph.connectors.values()].filter((c) => s.greenGroups.includes(c.group));
+        for (const a of green) for (const b of green) {
+          if (a.inSegment === b.inSegment) continue;
+          const car = sim.conflicts.refs(a.id).filter((r) => r.other === b.id)
+            .some((r) => sim.conflicts.points[r.point]?.zone(a.id, 1, 1));
+          expect(car, `${a.id} vs ${b.id}`).toBe(false);
+        }
       }
     });
 

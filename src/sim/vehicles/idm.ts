@@ -1,4 +1,5 @@
 import { clamp } from '@core/scalar';
+import { m } from '@world/units';
 import type { DriverParams } from './driver';
 
 /**
@@ -30,13 +31,21 @@ export type ObstacleKind =
   | 'spillback'
   | 'yield'
   | 'endOfRoute'
-  | 'curvature';
+  | 'curvature'
+  | 'kerbStop';
 
 export interface ConstraintSet {
   obstacles: Obstacle[];
 }
 
 export const emptyConstraints = (): ConstraintSet => ({ obstacles: [] });
+
+/** Follower speed by which the queue-release response has faded out, world units a second. */
+const RELEASE_FADE = m(4);
+const smooth = (x: number): number => {
+  const t = clamp(x, 0, 1);
+  return t * t * (3 - 2 * t);
+};
 
 /**
  * Intelligent Driver Model acceleration for one obstacle.
@@ -48,9 +57,18 @@ export function idmAccel(p: DriverParams, v: number, v0: number, o: Obstacle): n
   // the preceding car to open several extra metres, which turns a green into
   // one vehicle every four or five seconds. `safeSpeed` still uses the full
   // `s0`, so this only improves the start wave and never reduces clearance.
-  const releasingQueue = o.kind === 'vehicle' && o.speed > 0.25 && v < o.speed + 2;
-  const standstill = releasingQueue ? p.s0 * 0.4 : p.s0;
-  const headway = releasingQueue ? p.T * 0.4 : p.T;
+  //
+  // ONLY while starting off. The test used to be "the leader is moving and I
+  // am not much faster", which is also every car following another at a
+  // steady speed: the whole fleet cruised at 0.4 of its own headway, measured
+  // at a median of 0.6 s bumper to bumper where urban drivers keep 1.2 to 2 s.
+  // The release now fades out as the follower gets going, and is gone by
+  // `RELEASE_FADE`, a little over a walking-pace crawl.
+  const releasing = o.kind === 'vehicle' && o.speed > 0.25 && v < o.speed + 2
+    ? 1 - smooth(v / RELEASE_FADE)
+    : 0;
+  const standstill = p.s0 * (1 - 0.6 * releasing);
+  const headway = p.T * (1 - 0.6 * releasing);
   const sStar = standstill + Math.max(0, v * headway + (v * dv) / (2 * Math.sqrt(p.a * p.b)));
   const s = Math.max(o.gap, 0.05);
   return p.a * (1 - Math.pow(v / Math.max(v0, 0.01), 4) - (sStar / s) ** 2);

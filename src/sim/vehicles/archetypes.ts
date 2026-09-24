@@ -34,10 +34,15 @@ import { m } from '@world/units';
  */
 export type VehicleShape = 'car' | 'bus' | 'truck' | 'motorcycle' | 'bicycle';
 
+/** Silhouette of a `car`: where the roof ends and how the tail is cut. */
+export type BodyStyle = 'hatch' | 'sedan' | 'suv' | 'van';
+
 export interface Archetype {
   readonly id: string;
   /** Which body plan the renderer assembles for this class. */
   readonly shape: VehicleShape;
+  /** For a `car`, the silhouette it is drawn with. */
+  readonly style?: BodyStyle;
   readonly length: number;
   readonly width: number;
   /** Overall height above the road surface, roof included. */
@@ -59,6 +64,12 @@ export interface Archetype {
   readonly wheelRadius: number;
   /** Seats the renderer may fill with occupants, driver included. */
   readonly seats: number;
+  /**
+   * Doors on each side, each serving the seat behind it (a car's body model
+   * has `2 * doorsPerSide` seats). Zero for a vehicle nobody gets out of at
+   * the kerb in this game: buses, trucks, two-wheelers.
+   */
+  readonly doorsPerSide: number;
   /** Comfortable acceleration. */
   readonly a: number;
   /** Comfortable deceleration, used by the IDM interaction term. */
@@ -79,6 +90,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   {
     id: 'hatch',
     shape: 'car',
+    style: 'hatch',
     length: m(3.9),
     width: m(1.72),
     height: m(1.48),
@@ -86,7 +98,8 @@ export const ARCHETYPES: readonly Archetype[] = [
     cabinShift: -0.04,
     axles: 2,
     wheelRadius: m(0.31),
-    seats: 2,
+    seats: 4,
+    doorsPerSide: 2,
     a: m(2.9),
     b: m(3.2),
     bEmergency: m(6.5),
@@ -99,6 +112,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   {
     id: 'sedan',
     shape: 'car',
+    style: 'sedan',
     length: m(4.7),
     width: m(1.84),
     height: m(1.45),
@@ -106,7 +120,8 @@ export const ARCHETYPES: readonly Archetype[] = [
     cabinShift: -0.02,
     axles: 2,
     wheelRadius: m(0.33),
-    seats: 2,
+    seats: 4,
+    doorsPerSide: 2,
     a: m(2.4),
     b: m(2.9),
     bEmergency: m(6.0),
@@ -119,6 +134,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   {
     id: 'suv',
     shape: 'car',
+    style: 'suv',
     length: m(4.9),
     width: m(1.95),
     height: m(1.78),
@@ -126,7 +142,8 @@ export const ARCHETYPES: readonly Archetype[] = [
     cabinShift: -0.01,
     axles: 2,
     wheelRadius: m(0.37),
-    seats: 2,
+    seats: 4,
+    doorsPerSide: 2,
     a: m(2.2),
     b: m(2.8),
     bEmergency: m(5.8),
@@ -139,6 +156,7 @@ export const ARCHETYPES: readonly Archetype[] = [
   {
     id: 'van',
     shape: 'car',
+    style: 'van',
     length: m(5.6),
     width: m(2.0),
     height: m(2.35),
@@ -149,6 +167,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     axles: 2,
     wheelRadius: m(0.35),
     seats: 2,
+    doorsPerSide: 1,
     a: m(1.9),
     b: m(2.6),
     bEmergency: m(5.5),
@@ -170,7 +189,8 @@ export const ARCHETYPES: readonly Archetype[] = [
     cabinShift: 0,
     axles: 3,
     wheelRadius: m(0.5),
-    seats: 6,
+    seats: 7,
+    doorsPerSide: 0,
     a: m(0.9),
     b: m(1.6),
     bEmergency: m(4.2),
@@ -191,6 +211,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     axles: 3,
     wheelRadius: m(0.52),
     seats: 2,
+    doorsPerSide: 0,
     a: m(0.85),
     b: m(1.7),
     bEmergency: m(4.4),
@@ -211,6 +232,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     axles: 2,
     wheelRadius: m(0.3),
     seats: 1,
+    doorsPerSide: 0,
     a: m(3.6),
     b: m(3.6),
     bEmergency: m(7.0),
@@ -231,6 +253,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     axles: 2,
     wheelRadius: m(0.34),
     seats: 1,
+    doorsPerSide: 0,
     // A bicycle is not a slow car: it accelerates gently, brakes far worse
     // than anything with four wheels, and tops out near a fifth of an urban
     // limit. `speedFactor` is what keeps it out of the way of the fleet.

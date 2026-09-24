@@ -3,7 +3,7 @@ import type { NodeId, SegmentId } from '@world/ids';
 import type { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { type Connector, type Lanelet, type LaneletId, LaneletGraph } from '@world/lanelets';
-import { ConflictIndex } from '@world/conflictPoints';
+import { ConflictIndex, type BodyClass } from '@world/conflictPoints';
 import { SimClock } from './clock';
 import { ClaimTable } from './intersections/claims';
 import type { Vehicle, VehicleId } from './vehicles/state';
@@ -15,6 +15,7 @@ import { SidewalkGraph } from './peds/sidewalk';
 import { hasDownstreamStorage } from './intersections/spillback';
 import { CrossingSpans } from './intersections/crossingSpans';
 import { m } from '@world/units';
+/** The body class a signal plan is protected for: an ordinary car. */const CAR_CLASS: BodyClass = 1;
 
 /** A queue is counted this far back from the stop line. */
 const DEMAND_QUEUE_REACH = m(80);
@@ -94,6 +95,7 @@ export class SimWorld {
     readonly pedParams: Rng;
     readonly courtesy: Rng;
     readonly signalOffsets: Rng;
+    readonly occupancy: Rng;
   };
 
   nextVehicleId = 1;
@@ -137,6 +139,7 @@ export class SimWorld {
       pedParams: root.fork('pedParams'),
       courtesy: root.fork('courtesy'),
       signalOffsets: root.fork('signalOffsets'),
+      occupancy: root.fork('occupancy'),
     };
   }
 
@@ -217,7 +220,13 @@ export class SimWorld {
     return {
       tick: () => this.clock.tick,
       connectorsOf: (id: string) => this.graph.connectors.get(id),
-      conflictsOf: (id: string) => this.conflicts.refs(id).map((ref) => ref.other),
+      // Conflicts between two CARS. A tail swing only a bus or a truck can
+      // make is serialised by the claim table as the bus arrives; letting it
+      // split two approaches into separate stages would halve their green for
+      // a vehicle that is one in forty.
+      conflictsOf: (id: string) => this.conflicts.refs(id)
+        .filter((ref) => this.conflicts.points[ref.point]?.zone(id, CAR_CLASS, CAR_CLASS))
+        .map((ref) => ref.other),
       pedestriansCrossing: (_node, crossings) =>
         crossings.some((x) => (this.pedOccupancy.get(x)?.length ?? 0) > 0),
       demandOn: (node, groups, movements) => this.signalDemand(node, groups, movements).score > 0,

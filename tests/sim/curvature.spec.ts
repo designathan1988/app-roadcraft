@@ -42,23 +42,30 @@ function bendDoc(): RoadDoc {
 
 describe('curvature speed', () => {
   it('keeps the sideways pull of every bend within what a driver accepts', () => {
-    // The most any driver accepts: the comfortable figure at full aggression,
-    // plus what the chord estimate and one step of lag add.
-    const ceiling = MAX_LATERAL_ACCEL * 1.2 * 1.35;
+    // The sideways pull as a share of what THIS driver accepts at THIS speed
+    // (the figure falls with speed, `MAX_LATERAL_ACCEL`), plus what the chord
+    // estimate and one step of lag add; and never beyond the most anybody
+    // accepts at a crawl. The share is read against the speed AFTER the step,
+    // one step later than the cap was set from, which is worth a few per cent.
+    const ceiling = 1.4;
+    const absolute = MAX_LATERAL_ACCEL * 1.2 * 1.35;
     for (const [name, doc] of [['bend', bendDoc()], ['player-map', fixtureDoc()]] as const) {
       const sim = simOf(doc, 5, 2);
       let worst = 0;
+      let worstAbsolute = 0;
       let inBend = 0;
       sim.clock.run(Math.round(150 / DT), () => {
         step(sim, { traffic: true, pedestrians: false });
         for (const v of sim.vehicles.values()) {
           const k = curvatureAt(sim, v.lanelet, v.s - v.archetype.length / 2);
           if (k > 0.002) inBend++;
-          worst = Math.max(worst, v.v * v.v * k);
+          worst = Math.max(worst, (v.v * v.v * k) / comfortableLateral(v, v.v));
+          worstAbsolute = Math.max(worstAbsolute, v.v * v.v * k);
         }
       });
       expect(inBend, name).toBeGreaterThan(1000);
       expect(worst, name).toBeLessThan(ceiling);
+      expect(worstAbsolute, name).toBeLessThan(absolute);
     }
   });
 

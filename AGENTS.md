@@ -92,7 +92,13 @@ that `world` and `sim` never call `Math.random` (invariant 5, which
 | how one driver differs from another | `src/sim/vehicles/driver.ts` | [docs/architecture.md](docs/architecture.md) |
 | overtaking and lane discipline | `src/sim/vehicles/laneChange.ts` | [docs/architecture.md](docs/architecture.md) |
 | pedestrian pace, parties, steering, destinations | `src/sim/peds/behaviour.ts` | [docs/architecture.md](docs/architecture.md) |
+| what pedestrians do in places — benches, stopping to look, talking | `src/sim/peds/activities.ts` | [docs/architecture.md](docs/architecture.md) |
+| how a pedestrian's body moves — walk, start, stop, turns, sit, talk | `src/render/riggedCitizens.ts` + `src/render/citizenWalk.ts` | `scripts/extract-rocketbox-clips.mjs` |
 | right of way, gap acceptance, deadlock | `src/sim/intersections/admission.ts` | [docs/architecture.md](docs/architecture.md) |
+| the path a turn takes through a junction | `src/world/turnPaths.ts` | `tests/world/connectorFootprints.spec.ts` |
+| cars stopping at the kerb, doors, people getting in and out | `src/sim/vehicles/kerbStops.ts` | `tests/sim/kerbStops.spec.ts` |
+| vehicle bodies, doors, seats, two-wheeler frames | `src/render/vehicleModels.ts` | `tests/render/occupantFit.spec.ts` |
+| drivers', passengers' and riders' poses | `src/render/riderPoses.ts` | `docs/audit/seated-pose-extents.json` |
 | which movements physically conflict, and where | `src/world/conflictPoints.ts` | `tests/sim/collisions.spec.ts` |
 | signal plans and phases | `src/sim/signals/` | [docs/architecture.md](docs/architecture.md) |
 | tools, undo, save/load | `src/editor/` | [docs/architecture.md](docs/architecture.md) |
@@ -293,6 +299,26 @@ download is not available.
   was still across the other lane. If you change the vehicle pose in
   `sim/pose.ts`, the sweep in `conflictPoints.ts` must change with it, and
   `tests/sim/collisions.spec.ts` is what will tell you.
+* **A pedestrian faces where they are GOING, not where the body moved.**
+  `settlePose` steers the heading through `turnV` towards the path tangent
+  (leaning a little into a sidestep), and holds it while standing. It used to
+  face each tick's drawn displacement: every step aside swung the whole body
+  and back (the zigzag), and a millimetre shuffle turned a standing person
+  round on motionless legs. The renderer reads `turnV` to step the feet round.
+* **Pedestrian clips are Rocketbox captures, transferred, not retargeted.**
+  `scripts/extract-rocketbox-clips.mjs` writes `src/render/motion/rocketbox*.json`
+  as world rotations relative to the walk avatar's bind pose — measured equal
+  to the user's walk package to 0.6°. Do not play the Quaternius clips inside
+  the citizen GLBs for a pedestrian; their conversion is what hunched them.
+* **A signal stage never holds two movements whose cars could meet.**
+  `signals/plan.ts` groups approaches from the conflict matrix, so a crossroads
+  of two-way streets runs one approach at a time. Pairing opposing approaches
+  again (for capacity) brings back the permissive left turn players reported
+  as a fault; `tests/sim/fourWay.spec.ts` will fail.
+* **A seated person must fit the seat's room.** Car-seat poses are IK poses
+  sized by `seatFitScale` against measured extents; the chair clips inside the
+  citizen GLBs put heads through roofs. If you change a body profile or a pose,
+  rerun `scripts/measure-seated-poses.mjs` (against `npm run dev`) and `occupantFit.spec.ts`.
 * **A lane change occupies two lanes.** The transfer moves the occupancy index
   at once; the body slides across over the next second. `Vehicle.shadow`
   keeps it in the old lane until a heavy vehicle could pass beside it, and

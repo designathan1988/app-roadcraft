@@ -4,6 +4,7 @@ import type { Polyline } from '@core/polyline';
 import type { NodeId } from './ids';
 import type { Connector, ConnectorId, Lanelet, LaneletGraph } from './lanelets';
 import { m } from './units';
+import { HEADING_CHORD, chordHeading } from './heading';
 
 /**
  * `cross`: the two centrelines intersect. `merge`: both end in the same lane.
@@ -145,20 +146,40 @@ export class ConflictIndex {
   private readonly idByKey = new Map<string, number>();
   private nextId = 0;
 
+  /**
+   * The zones of every pair measured by the previous build, keyed by the two
+   * sweeps' sampled geometry.
+   *
+   * `pairZones` is two thirds of a topology rebuild, and a topology rebuild ran
+   * it for every pair of movements at EVERY junction on every edit. Measured on
+   * a 144-segment grid: 2.0 s per road drawn, of which the one or two junctions
+   * the road actually touched were a few per cent. A pair's zones depend on
+   * nothing but its two sweeps, so an unchanged junction now reads back the
+   * answer it already had — the same object, so the result is identical — and
+   * only the movements whose geometry moved are swept again. Each build keeps
+   * exactly the pairs it used, so the cache never outgrows the map.
+   */
+  private pairCache = new Map<string, CachedPair>();
+
   build(graph: LaneletGraph): void {
     this.points.length = 0;
     this.byConnector.clear();
     this.diverges.clear();
     this.queueIntrusions.length = 0;
+    const previous = this.pairCache;
+    const next = new Map<string, CachedPair>();
 
     for (const junction of graph.junctions.values()) {
       const ids = junction.connectors.slice().sort();
       const sweeps = new Map<ConnectorId, Sweep>();
+      const shapes = new Map<ConnectorId, SweepShape>();
       for (const id of ids) {
         const c = graph.connectors.get(id);
         if (!c) continue;
         const sweep = sweepOf(graph, c);
-        if (sweep) sweeps.set(id, sweep);
+        if (!sweep) continue;
+        sweeps.set(id, sweep);
+        shapes.set(id, shapeOf(sweep));
       }
 
       for (let i = 0; i < ids.length; i++) {
@@ -169,7 +190,14 @@ export class ConflictIndex {
           const sb = b && sweeps.get(b.id);
           if (!a || !b || !sa || !sb) continue;
 
-          const zones = pairZones(sa, sb);
+          const zones = cachedPairZones(
+            previous,
+            next,
+            sa,
+            shapes.get(a.id) as SweepShape,
+            sb,
+            shapes.get(b.id) as SweepShape,
+          );
           if (!zones) continue;
 
           if (a.fromLane === b.fromLane) {
@@ -197,6 +225,7 @@ export class ConflictIndex {
       }
     }
 
+    this.pairCache = next;
     for (const list of this.byConnector.values()) list.sort((p, q) => p.s - q.s);
   }
 
@@ -298,14 +327,17 @@ function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
   const grid = new Map<number, number[]>();
 
   for (let i = 0; i < count; i++) {
-    const f = path.sampleAt(c0 + i * SWEEP_STEP);
+    const c = c0 + i * SWEEP_STEP;
+    const f = path.sampleAt(c);
+    // Pointed along the same chord the drawn body is (`HEADING_CHORD`).
+    const t = chordHeading(path.sampleAt(c - HEADING_CHORD).p, path.sampleAt(c + HEADING_CHORD).p, f.t);
     frame[i * 4] = f.p.x;
     frame[i * 4 + 1] = f.p.y;
-    frame[i * 4 + 2] = f.t.x;
-    frame[i * 4 + 3] = f.t.y;
+    frame[i * 4 + 2] = t.x;
+    frame[i * 4 + 3] = t.y;
     const [hl, hw] = halfExtent(HEAVY);
-    const ex = Math.abs(f.t.x) * hl + Math.abs(f.t.y) * hw;
-    const ey = Math.abs(f.t.y) * hl + Math.abs(f.t.x) * hw;
+    const ex = Math.abs(t.x) * hl + Math.abs(t.y) * hw;
+    const ey = Math.abs(t.y) * hl + Math.abs(t.x) * hw;
     for (let gx = Math.floor((f.p.x - ex) / CELL); gx <= Math.floor((f.p.x + ex) / CELL); gx++) {
       for (let gy = Math.floor((f.p.y - ey) / CELL); gy <= Math.floor((f.p.y + ey) / CELL); gy++) {
         const key = cellKey(gx, gy);
@@ -320,9 +352,72 @@ function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
 
 const cellKey = (x: number, y: number): number => (x + 32768) * 65536 + (y + 32768);
 
-function halfExtent(cls: BodyClass): [number, number] {
+/** Everything `pairZones` reads from a sweep. Two equal shapes give equal zones. */
+interface SweepShape {
+  /** Hash of the fields below, for the cache key; equality is still checked in full. */
+  readonly hash: string;
+  readonly c0: number;
+  readonly count: number;
+  readonly length: number;
+  readonly frame: Float64Array;
+}
+
+interface CachedPair {
+  readonly a: SweepShape;
+  readonly b: SweepShape;
+  readonly zones: PairZones | null;
+}
+
+function shapeOf(s: Sweep): SweepShape {
+  // FNV-1a over the frame's bytes. Only a key: a collision costs a recompute,
+  // never a wrong answer, because a hit is confirmed by `sameShape`.
+  const words = new Uint32Array(s.frame.buffer, s.frame.byteOffset, s.frame.length * 2);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < words.length; i++) h = Math.imul(h ^ (words[i] as number), 0x01000193);
+  return {
+    hash: `${(h >>> 0).toString(36)}:${s.count}:${s.c0}:${s.crossing.length}`,
+    c0: s.c0,
+    count: s.count,
+    length: s.crossing.length,
+    frame: s.frame,
+  };
+}
+
+function sameShape(p: SweepShape, q: SweepShape): boolean {
+  if (p.count !== q.count || p.c0 !== q.c0 || p.length !== q.length) return false;
+  if (p.frame.length !== q.frame.length) return false;
+  for (let i = 0; i < p.frame.length; i++) if (p.frame[i] !== q.frame[i]) return false;
+  return true;
+}
+
+/** `pairZones`, answered from the previous build when neither sweep moved. */
+function cachedPairZones(
+  previous: Map<string, CachedPair>,
+  next: Map<string, CachedPair>,
+  a: Sweep,
+  shapeA: SweepShape,
+  b: Sweep,
+  shapeB: SweepShape,
+): PairZones | null {
+  const key = `${shapeA.hash}|${shapeB.hash}`;
+  const known = next.get(key) ?? previous.get(key);
+  if (known && sameShape(known.a, shapeA) && sameShape(known.b, shapeB)) {
+    next.set(key, known);
+    return known.zones;
+  }
+  const zones = pairZones(a, b);
+  next.set(key, { a: shapeA, b: shapeB, zones });
+  return zones;
+}
+
+/** Half length and half width of each class's swept rectangle, built once. */
+const HALF_EXTENT: readonly (readonly [number, number])[] = BODY_CLASSES.map((cls) => {
   const e = BODY_ENVELOPE[cls] as { length: number; width: number };
-  return [e.length / 2 + SWEEP_STEP / 2 + SWEEP_MARGIN, e.width / 2 + SWEEP_MARGIN];
+  return [e.length / 2 + SWEEP_STEP / 2 + SWEEP_MARGIN, e.width / 2 + SWEEP_MARGIN] as const;
+});
+
+function halfExtent(cls: BodyClass): readonly [number, number] {
+  return HALF_EXTENT[cls] as readonly [number, number];
 }
 
 /** Whether sample `i` is a legal centre for a body of this class. */
@@ -367,15 +462,25 @@ function overlap(
   const bx = b.frame[j * 4] as number, by = b.frame[j * 4 + 1] as number;
   const bux = b.frame[j * 4 + 2] as number, buy = b.frame[j * 4 + 3] as number;
   const dx = bx - ax, dy = by - ay;
-  const axes = [aux, auy, -auy, aux, bux, buy, -buy, bux];
-  for (let k = 0; k < 8; k += 2) {
-    const nx = axes[k] as number, ny = axes[k + 1] as number;
-    const d = Math.abs(dx * nx + dy * ny);
-    const ra = ahl * Math.abs(aux * nx + auy * ny) + ahw * Math.abs(-auy * nx + aux * ny);
-    const rb = bhl * Math.abs(bux * nx + buy * ny) + bhw * Math.abs(-buy * nx + bux * ny);
-    if (d >= ra + rb) return false;
-  }
-  return true;
+  // The four edge normals of the two rectangles, unrolled: this runs millions
+  // of times per rebuild, and an array of axes per call was a large share of
+  // the garbage the rebuild made.
+  return !separatedOn(aux, auy, dx, dy, aux, auy, ahl, ahw, bux, buy, bhl, bhw)
+    && !separatedOn(-auy, aux, dx, dy, aux, auy, ahl, ahw, bux, buy, bhl, bhw)
+    && !separatedOn(bux, buy, dx, dy, aux, auy, ahl, ahw, bux, buy, bhl, bhw)
+    && !separatedOn(-buy, bux, dx, dy, aux, auy, ahl, ahw, bux, buy, bhl, bhw);
+}
+
+/** Whether axis (nx, ny) separates two rectangles `d = (dx, dy)` apart. */
+function separatedOn(
+  nx: number, ny: number, dx: number, dy: number,
+  aux: number, auy: number, ahl: number, ahw: number,
+  bux: number, buy: number, bhl: number, bhw: number,
+): boolean {
+  const d = Math.abs(dx * nx + dy * ny);
+  const ra = ahl * Math.abs(aux * nx + auy * ny) + ahw * Math.abs(-auy * nx + aux * ny);
+  const rb = bhl * Math.abs(bux * nx + buy * ny) + bhw * Math.abs(-buy * nx + bux * ny);
+  return d >= ra + rb;
 }
 
 // ------------------------------------------------------------------- zones
@@ -392,19 +497,23 @@ interface PairZones {
 function pairZones(a: Sweep, b: Sweep): PairZones | null {
   // Heavy against heavy, through the grid.
   const hits: number[] = [];
-  const seen = new Set<number>();
+  // Which of b's samples this sample of a has already tested: a stamp per
+  // sample instead of a set cleared per sample.
+  const seen = new Int32Array(b.count);
+  const [hl, hw] = halfExtent(HEAVY);
   for (let i = 0; i < a.count; i++) {
-    const [hl, hw] = halfExtent(HEAVY);
     const x = a.frame[i * 4] as number, y = a.frame[i * 4 + 1] as number;
     const tx = a.frame[i * 4 + 2] as number, ty = a.frame[i * 4 + 3] as number;
     const ex = Math.abs(tx) * hl + Math.abs(ty) * hw;
     const ey = Math.abs(ty) * hl + Math.abs(tx) * hw;
-    seen.clear();
+    const stamp = i + 1;
     for (let gx = Math.floor((x - ex) / CELL); gx <= Math.floor((x + ex) / CELL); gx++) {
       for (let gy = Math.floor((y - ey) / CELL); gy <= Math.floor((y + ey) / CELL); gy++) {
-        for (const j of b.grid.get(cellKey(gx, gy)) ?? []) {
-          if (seen.has(j)) continue;
-          seen.add(j);
+        const cell = b.grid.get(cellKey(gx, gy));
+        if (!cell) continue;
+        for (const j of cell) {
+          if (seen[j] === stamp) continue;
+          seen[j] = stamp;
           if (overlap(a, i, HEAVY, b, j, HEAVY)) hits.push(i, j);
         }
       }

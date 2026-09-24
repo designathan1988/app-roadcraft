@@ -35,8 +35,8 @@ import type { PedAgeClass } from './state';
  *   because a party that can never give up on a member is a party that can be
  *   a block long, and a member that can stop dead for one is a jam.
  *
- * Cost, per pedestrian per tick: a handful of integer hashes, two `Math.sin`
- * calls walking or one waiting, one `Map.get` for the companion, and a bounded
+ * Cost, per pedestrian per tick: a handful of integer hashes, one `Math.sin`
+ * call walking, one `Map.get` for the companion, and a bounded
  * walk over at most `scanAhead` entries of the pedestrian's own sidewalk edge.
  * No allocation, no scan over the population, nothing that grows with the
  * crowd. Measured at 1024 pedestrians on a four-leg network: 1.1 microseconds
@@ -92,8 +92,13 @@ export const PED_BEHAVIOUR = {
   cohesionBreak: m(9),
 
   // ---- lateral position -------------------------------------------------
-  /** How fast a pedestrian may slide across the footway. */
-  lateralRate: m(1.15),
+  /**
+   * How fast a pedestrian may move across the footway. A person steps aside
+   * at a fraction of their walking pace; at 1.15 m/s — nearly walking pace —
+   * a pass was a sideways lunge, the legs walking straight ahead while the
+   * body slid across under them.
+   */
+  lateralRate: m(0.7),
   /** Clearance kept from the edge of the footway. */
   lateralMargin: m(0.25),
   /** Lateral separation at which two people no longer obstruct each other. */
@@ -138,17 +143,10 @@ export const PED_BEHAVIOUR = {
   hurryGain: 1.32,
   hurryMargin: 1.4,
 
-  // ---- waiting ----------------------------------------------------------
-  /**
-   * Amplitude of the weight shift of somebody standing at a kerb.
-   *
-   * The renderer freezes the gait at zero speed, which is right — a figure
-   * marching on the spot is worse than a still one. This is what keeps the
-   * still one from reading as a mannequin: a few centimetres of sway, slow
-   * enough to be a person shifting their weight rather than a jitter.
-   */
-  swayAmplitude: m(0.07),
-  swayRate: [0.7, 1.5] as const,
+  // Somebody waiting at a kerb used to sway a few centimetres from side to
+  // side here, so the still figure would not read as a mannequin. The whole
+  // body slid while its feet stood — and the Rocketbox stand the renderer
+  // plays shifts the weight from foot to foot by itself.
 
   // ---- destinations -----------------------------------------------------
   /** Distance at which a destination counts as reached. */
@@ -265,15 +263,6 @@ export function strollFactor(id: number, age: number, ageClass: PedAgeClass): nu
       Math.sin(age * span(PED_BEHAVIOUR.dawdleRate, frac(h, 0)) + frac(h, 8) * TAU);
 
   return wander;
-}
-
-/** Weight shift of somebody standing still, in world units. */
-export function kerbSway(id: number, age: number): number {
-  const h = pedHash(id ^ 0x1d2c6f3b);
-  return (
-    PED_BEHAVIOUR.swayAmplitude *
-    Math.sin(age * span(PED_BEHAVIOUR.swayRate, frac(h, 0)) + frac(h, 8) * TAU)
-  );
 }
 
 /** Which destination a party wants on its `trip`-th outing. */

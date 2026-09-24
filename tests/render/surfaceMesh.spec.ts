@@ -112,6 +112,28 @@ describe('buildSurfaceMesh', () => {
     }
   });
 
+  it('winds every top face upwards whatever the winding and whichever way it is cut', () => {
+    // Wide shapes are cut along x, tall ones along y; a cut along y is the
+    // mirror of one along x, and clockwise pieces from it were once drawn face
+    // down — whole stretches of road vanished. Both windings, both cuts, holes.
+    const cw = (polygons: MultiPoly): MultiPoly =>
+      polygons.map((polygon) => polygon.map((ring) => [...ring].reverse()));
+    const shapes: MultiPoly[] = [rect(160, 70), rect(70, 160), rect(30, 400), withHole()];
+    for (const shape of [...shapes, ...shapes.map(cw)]) {
+      const mesh = build(shape, 4);
+      let up = 0;
+      for (const t of triangles(mesh!)) {
+        const ux = (t[3] as number) - (t[0] as number);
+        const uz = (t[5] as number) - (t[2] as number);
+        const vx = (t[6] as number) - (t[0] as number);
+        const vz = (t[8] as number) - (t[2] as number);
+        expect(uz * vx - ux * vz).toBeGreaterThan(-1e-9);
+        up++;
+      }
+      expect(up).toBeGreaterThan(0);
+    }
+  });
+
   it('carries a hole through to the mesh', () => {
     const solid = build(rect(120, 120), 12)!;
     const holed = build(withHole(), 12)!;
