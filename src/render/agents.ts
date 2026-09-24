@@ -27,11 +27,11 @@ import { DT } from '@sim/params';
 import { createRiggedCitizens, SEAT_DRIVE, SEAT_RIDE, SEAT_TALK } from './riggedCitizens';
 
 /**
- * The bodies the crowd is drawn as while the walk is worked on: one man and
- * one woman, each pedestrian drawn as the one matching their own sex.
- * Restore `CITIZEN_MODELS` for the full roster of eighty.
+ * The bodies the crowd is drawn as while the walk is worked on: one man, one
+ * woman, one boy and one girl, each pedestrian drawn as the one matching their
+ * own sex and age. Restore `CITIZEN_MODELS` for the full roster of eighty.
  */
-const TEST_MODELS = ['male_01', 'female_01'];
+const TEST_MODELS = ['male_01', 'female_01', 'male_child_01', 'female_child_01'];
 import { FOOTWAY_RISE } from './roadSurfaces';
 import { WheelOdometer, blinkOn, indicatorSide, steerAngle } from './vehicleSignals';
 

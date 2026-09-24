@@ -11,17 +11,38 @@ import { DT } from '@sim/params';
 import { m } from '@world/units';
 import { CITIZEN_MODELS } from './citizenCatalog';
 import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
+import { WALK_ADVANCE, neutralWalkFor, walkDuration, type WalkAmplitude, type WalkSex } from './citizenWalk';
 
 export { CITIZEN_MODELS } from './citizenCatalog';
+/**
+ * Clips carried by the citizen GLBs. Their walks (`Walk_Loop`,
+ * `Walk_Formal_Loop`) are a Quaternius capture converted onto this skeleton,
+ * and that conversion is what hunched every walker; they are no longer played.
+ * The walk is the Rocketbox capture instead, baked after these (`WALK`).
+ */
 const CLIPS = [
-  'Idle_Loop', 'Idle_Talking_Loop', 'Walk_Loop', 'Walk_Formal_Loop', 'Jog_Fwd_Loop',
+  'Idle_Loop', 'Idle_Talking_Loop', 'Jog_Fwd_Loop',
   // Seated: at the wheel, riding along, and riding along in conversation.
   'Driving_Loop', 'Sitting_Idle_Loop', 'Sitting_Talking_Loop',
 ];
+const IDLE = 0;
+const IDLE_TALK = 1;
+const JOG = 2;
 /** Indices into the baked clips for the seated poses. */
-export const SEAT_DRIVE = 5;
-export const SEAT_RIDE = 6;
-export const SEAT_TALK = 7;
+export const SEAT_DRIVE = 3;
+export const SEAT_RIDE = 4;
+export const SEAT_TALK = 5;
+/** The Rocketbox neutral walk of the body's sex, exactly as captured. */
+const WALK = 6;
+/** The same walk with an older person's shorter step and quieter arms. */
+const WALK_ELDER = 7;
+
+/**
+ * An older walker: a step about a fifth shorter, arms that swing about half as
+ * far, hips that rise and roll less. The trunk keeps the capture's own
+ * upright posture — nothing here leans or bends it.
+ */
+const ELDER_AMPLITUDE: WalkAmplitude = { arms: 0.5, legs: 0.78, hips: 0.6 };
 const CAPACITY = 1000;
 const FPS = 30;
 interface ClipFrames {
@@ -40,37 +61,14 @@ interface Motion {
   blend: number; run: number;
 }
 
-/**
- * How one person walks, fixed for life from their id.
- *
- * Every citizen used to play one of two walk cycles, chosen by a single bit,
- * at a cadence set by one shared stride: a crowd marching in step, stiff and
- * identical, the reported "hard, angry" gait. The cycles are now MIXED per
- * person, continuously: how formal the stride is, how much of the relaxed
- * standing pose rides on the upper body (looser arms, softer posture), how
- * long the stride is (which sets the cadence at a given speed), and a phase
- * of their own. None of it is re-rolled; it is who they are.
- */
-interface Gait {
-  /** Share of the formal walk cycle in the stride, 0..0.65. */
-  readonly formal: number;
-  /** Share of the standing pose blended into walking, 0..0.2: arm swing and posture. */
-  readonly relaxed: number;
-  /** Stride length relative to the clip's, 0.87..1.13. */
-  readonly stride: number;
-  /** Speed at which this person breaks into a jog, m/s. */
-  readonly jogAt: number;
-}
+/** Speed at which a person breaks into a jog, m/s; fixed for life from their id. */
+const jogAt = (hash: number): number => 1.65 + 0.35 * ((hash >>> 9) & 255) / 255;
 
-function gaitOf(hash: number): Gait {
-  const byte = (shift: number): number => ((hash >>> shift) & 255) / 255;
-  return {
-    formal: 0.65 * byte(3) * byte(11),
-    relaxed: 0.2 * byte(17),
-    stride: 0.87 + 0.26 * byte(25),
-    jogAt: 1.65 + 0.35 * byte(9),
-  };
-}
+/**
+ * Size of a child drawn on an adult body, when the roster has no child model
+ * of their sex: without it a child walked the street at full adult height.
+ */
+const CHILD_ON_ADULT = 0.64;
 
 /** Speeds (m/s) between which the stride fades in from standing. */
 const WALK_FADE_LOW = 0.06;
@@ -108,8 +106,45 @@ function skinMaterial(material: MeshStandardMaterial | MeshDepthMaterial, unifor
   material.customProgramCacheKey = () => 'citizen-skinning-v1';
 }
 
+/**
+ * Bakes the Rocketbox walk onto one body: `amplitude` untouched is the capture
+ * as recorded, anything less the elder's. `stride` is the ground one cycle
+ * covers on THIS body, so moving it by that much per cycle plants the feet.
+ */
+function bakeWalk(asset: GLTF, sex: WalkSex, amplitude?: WalkAmplitude): ClipFrames & { reach: number } {
+  const rig = clone(asset.scene);
+  let mesh: SkinnedMesh | undefined;
+  rig.traverse(o => { if (o instanceof SkinnedMesh && !mesh) mesh = o; });
+  if (!mesh) throw new Error('Citizen model has no rig');
+  const walk = neutralWalkFor(rig, mesh, sex, amplitude);
+  const skeleton = mesh.skeleton;
+  const duration = walkDuration(sex);
+  // The capture is 30 fps; sampling on its own keys keeps the loop seamless.
+  const frames = Math.round(duration * FPS);
+  const width = skeleton.bones.length * 16;
+  const data = new Float32Array((frames + 1) * width);
+  const feet = ['Bip01_L_Foot', 'Bip01_R_Foot'].map(name => rig.getObjectByName(name));
+  const pelvis = rig.getObjectByName('Bip01_Pelvis');
+  const position = new Vector3();
+  let low = Infinity, high = -Infinity, pelvisY = 0;
+  for (let i = 0; i <= frames; i++) {
+    walk.pose((i % frames) * duration / frames);
+    skeleton.update();
+    data.set(skeleton.boneMatrices!, i * width);
+    if (i === 0 && pelvis) pelvisY = pelvis.getWorldPosition(position).y;
+    for (const foot of feet) {
+      if (!foot) continue;
+      foot.getWorldPosition(position);
+      low = Math.min(low, position.z);
+      high = Math.max(high, position.z);
+    }
+  }
+  return { data, frames, duration, pelvisY,
+    stride: WALK_ADVANCE[sex] * walk.scale, reach: high - low };
+}
+
 /** Clips were retargeted offline. No skeleton traversal occurs during drawing. */
-function bake(asset: GLTF): ClipFrames[] {
+function bake(asset: GLTF, sex: WalkSex): ClipFrames[] {
   const rig = clone(asset.scene);
   let reference: SkinnedMesh | undefined;
   rig.traverse(o => { if (o instanceof SkinnedMesh && !reference) reference = o; });
@@ -149,6 +184,13 @@ function bake(asset: GLTF): ClipFrames[] {
   }
   mixer.stopAllAction();
   mixer.uncacheRoot(rig);
+  const walk = bakeWalk(asset, sex);
+  const elder = bakeWalk(asset, sex, ELDER_AMPLITUDE);
+  // The elder's step covers less ground in the same time, in proportion to
+  // how far the feet now reach fore and aft.
+  elder.stride = walk.stride * elder.reach / Math.max(1e-6, walk.reach);
+  clips[WALK] = walk;
+  clips[WALK_ELDER] = elder;
   return clips;
 }
 
@@ -186,7 +228,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         }
       });
     if (disposed) { for (const resource of resources) resource.dispose(); return; }
-      const clips = bake(asset);
+      const clips = bake(asset, models[index]!.includes('female') ? 'female' : 'male');
       let reference: SkinnedMesh | undefined;
       asset.scene.updateMatrixWorld(true);
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh && !reference) reference = o; });
@@ -268,26 +310,41 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   /** Who may take which seat: any citizen rides along; only adults drive. */
   const adults: number[] = [];
   const everyone: number[] = [];
-  /** Bodies a pedestrian may be drawn as, by their sex. */
-  const female: number[] = [];
-  const male: number[] = [];
+  /** Bodies a pedestrian may be drawn as, by sex and by whether it is a child's. */
+  const pools = { f: { adult: [] as number[], child: [] as number[] }, m: { adult: [] as number[], child: [] as number[] } };
   models.forEach((id, index) => {
     everyone.push(index);
-    if (!id.includes('_child')) adults.push(index);
-    (id.includes('female') ? female : male).push(index);
+    const child = id.includes('_child');
+    if (!child) adults.push(index);
+    pools[id.includes('female') ? 'f' : 'm'][child ? 'child' : 'adult'].push(index);
   });
 
   /**
-   * The bodies one pedestrian may be drawn as.
+   * The body one pedestrian is drawn as, and at what size.
    *
-   * A woman is drawn as a woman: the model was picked by a hash of the id
-   * alone, so with a mixed roster half the women on the street were men.
-   * Falls back to the whole roster when a sex has no model in it.
+   * A woman is drawn as a woman and a child as a child: the model used to be
+   * picked from the id alone, so half the women were men and children walked
+   * at full adult height. A child with no child body of their sex in the
+   * roster is drawn on an adult one, scaled down to a child's height; an
+   * older person walks on an adult body with the elder's walk.
    */
-  function poolFor(ped: Pick<Ped, 'gender'>): readonly number[] {
-    const bySex = ped.gender === 'f' ? female : male;
-    return bySex.length ? bySex : everyone;
+  function bodyFor(ped: Pick<Ped, 'gender' | 'ageClass'>, hash: number): { index: number; size: number } | null {
+    const sex = pools[ped.gender === 'f' ? 'f' : 'm'];
+    const other = pools[ped.gender === 'f' ? 'm' : 'f'];
+    const pick = (pool: readonly number[]): number => pool[hash % pool.length]!;
+    if (ped.ageClass === 'child') {
+      if (sex.child.length) return { index: pick(sex.child), size: 1 };
+      if (sex.adult.length) return { index: pick(sex.adult), size: CHILD_ON_ADULT };
+      if (other.child.length) return { index: pick(other.child), size: 1 };
+    } else {
+      if (sex.adult.length) return { index: pick(sex.adult), size: 1 };
+      if (other.adult.length) return { index: pick(other.adult), size: 1 };
+    }
+    return everyone.length ? { index: pick(everyone), size: 1 } : null;
   }
+  const clips3: ClipFrames[] = [];
+  const phases3 = [0, 0, 0];
+  const weights3 = [0, 0, 0];
   const seatedClips: ClipFrames[] = [];
   const seatedPhases: number[] = [0];
   const SEATED_WEIGHTS = [1];
@@ -353,8 +410,9 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     },
     draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number) {
       const hash = pedHash(ped.id);
-      const pool = poolFor(ped);
-      const index = pool[hash % pool.length]!;
+      const body = bodyFor(ped, hash);
+      if (!body) return;
+      const index = body.index;
       const batch = batches.get(index);
       if (!batch) {
         if (!loading.has(index)) void request(index).catch((error: unknown) => {
@@ -366,7 +424,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       if (batch.count >= CAPACITY) return;
       if (batch.count >= batch.rows) grow(batch);
       const time = Math.max(0, ped.age - (1 - alpha) * DT);
-      const scale = 0.92 + ((hash >>> 8) & 255) / 255 * 0.17;
+      const scale = body.size * (0.92 + ((hash >>> 8) & 255) / 255 * 0.17);
       let state = motion.get(ped);
       if (!state) {
         state = { time, x, y, heading, phase: (hash % 997) / 997, blend: ped.v > 0.05 ? 1 : 0, run: 0 };
@@ -385,28 +443,33 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       // absorbs frame-to-frame interpolation.
       const delta = Math.atan2(Math.sin(heading - state.heading), Math.cos(heading - state.heading));
       state.heading += delta * (1 - Math.exp(-dt * 18));
-      const gait = gaitOf(hash);
+      const elder = ped.ageClass === 'elder';
       state.blend += (smoothstep(WALK_FADE_LOW, WALK_FADE_HIGH, speed) - state.blend) * (1 - Math.exp(-dt / BLEND_TIME));
-      state.run += (smoothstep(gait.jogAt, gait.jogAt + 0.6, speed) - state.run) * (1 - Math.exp(-dt / RUN_TIME));
-      const walk = batch.clips[2]!;
-      const formal = batch.clips[3]!;
-      const jog = batch.clips[4]!;
-      const stride = m(scale) * gait.stride *
-        ((walk.stride * (1 - gait.formal) + formal.stride * gait.formal) * (1 - state.run) + jog.stride * state.run);
+      // Older people do not break into a jog to beat a signal.
+      const running = elder ? 0 : smoothstep(jogAt(hash), jogAt(hash) + 0.6, speed);
+      state.run += (running - state.run) * (1 - Math.exp(-dt / RUN_TIME));
+      // The walk is played as captured: one cycle per stride of ground, where
+      // the stride is the capture's own on this body. The cadence therefore
+      // follows from the body — a child's short legs step quickly, an elder's
+      // short step slowly covers little ground — and the feet never skate.
+      const walk = batch.clips[elder ? WALK_ELDER : WALK]!;
+      const jog = batch.clips[JOG]!;
+      const stride = m(scale) * (walk.stride * (1 - state.run) + jog.stride * state.run);
       state.phase += travel / stride;
       // Companions who have stopped together talk; everybody else stands.
-      const idle = batch.clips[ped.party.size > 1 && (ped.pause > 0 || (hash & 3) === 0) ? 1 : 0]!;
+      const idle = batch.clips[ped.party.size > 1 && (ped.pause > 0 || (hash & 3) === 0) ? IDLE_TALK : IDLE]!;
       const idlePhase = (time * (0.88 + ((hash >>> 20) & 15) / 60) / idle.duration + (hash % 701) / 701) % 1;
       const cycle = state.phase % 1;
-      const phases = [idlePhase * idle.frames, cycle * walk.frames, cycle * formal.frames, cycle * jog.frames];
-      const clips = [idle, walk, formal, jog];
-      const walking = state.blend * (1 - state.run);
-      // The standing pose keeps a share of the upper body while walking: a
-      // looser, less drilled stride for the relaxed walkers.
-      const standing = 1 - state.blend + walking * gait.relaxed;
-      const striding = walking * (1 - gait.relaxed);
-      const weights = [standing, striding * (1 - gait.formal), striding * gait.formal, state.blend * state.run];
-      emit(batch, clips, phases, weights, x, deck, y, state.heading, m(scale));
+      phases3[0] = idlePhase * idle.frames;
+      phases3[1] = cycle * walk.frames;
+      phases3[2] = cycle * jog.frames;
+      clips3[0] = idle; clips3[1] = walk; clips3[2] = jog;
+      // Walking is the walk alone. Standing poses used to be mixed into every
+      // stride for a "relaxed" look, and they brought the old hunch with them.
+      weights3[0] = 1 - state.blend;
+      weights3[1] = state.blend * (1 - state.run);
+      weights3[2] = state.blend * state.run;
+      emit(batch, clips3, phases3, weights3, x, deck, y, state.heading, m(scale));
     },
     /**
      * A person seated in a vehicle: the driver at the wheel, passengers riding
