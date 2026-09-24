@@ -128,7 +128,9 @@ export function waitArea(w: SimWorld, crossing: SidewalkEdge, kerb: SidewalkNode
   const frame = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
   const walls = { lo: 0, hi: 0 };
   for (const e of w.sidewalks.edges.values()) {
-    if (e.kind === 'crossing' || (e.from !== kerb && e.to !== kerb)) continue;
+    // Along footways only: a corner is the junction's walkway round the
+    // island, narrow and busy both ways, and a queue on it blocked it.
+    if (e.kind !== 'walk' || (e.from !== kerb && e.to !== kerb)) continue;
     const rev = e.from === kerb;
     for (let k = 0; k < QUEUE_PLACES; k++) {
       const s = e.length - (FIRST_ROW + k * ROW_SPACING);
