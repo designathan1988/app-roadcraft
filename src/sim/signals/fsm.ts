@@ -162,6 +162,20 @@ const isStrict = (): boolean =>
  * Advances one controller. This is the ONLY function permitted to mutate
  * `stageIndex`, `sub` or `elapsed`.
  */
+/**
+ * Longest a green is held past its maximum for people still on its crossings,
+ * seconds.
+ *
+ * A green is never cut over somebody it released, on the grounds that walkers
+ * always finish. They do not always: two people met face to face at a kerb,
+ * one on the zebra and one on the footway, and each waited for the other for
+ * good. The stage that had released the one on the zebra held green for
+ * minutes and every other approach starved (`groupStarved`, hundreds of times
+ * in five minutes). Anybody who stepped on at the last WALK finishes well
+ * inside this, so it bounds only the case where nobody is actually crossing.
+ */
+const PED_HOLD_LIMIT = 30;
+
 export function stepController(c: SignalController, deps: SignalDeps): void {
   c.elapsed += DT;
   const st = c.plan.stages[c.stageIndex];
@@ -172,7 +186,9 @@ export function stepController(c: SignalController, deps: SignalDeps): void {
 
   switch (c.sub) {
     case 'GREEN': {
-      const pedestriansInside = deps.pedestriansCrossing(c.node, st.pedWalk);
+      // Bounded: see `PED_HOLD_LIMIT`.
+      const pedestriansInside = c.elapsed < st.maxGreen + PED_HOLD_LIMIT &&
+        deps.pedestriansCrossing(c.node, st.pedWalk);
       const mayEnd = c.elapsed >= st.minGreen && !pedestriansInside;
       const reservedHere = deps.reservationDemandOn(c.node, st.greenGroups);
       const reservedElsewhere = c.plan.groups.some(

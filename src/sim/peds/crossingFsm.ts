@@ -668,7 +668,15 @@ function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): 
       // When it can comfortably stop before this zebra, a waiting person may
       // take the gap; pedestrianAhead then keeps the admitted vehicle behind
       // the person. A vehicle already on the connector retains the hard gate.
-      if (span && lane?.kind === 'link' && connectorId === v.admittedConnector) {
+      //
+      // Only at the zebra of its OWN approach, which it meets before the box.
+      // The zebra across the leg it is turning into lies beyond the box, and a
+      // car that stops short of it stops inside the junction, across every
+      // other movement there: measured on a grid of streets, admitted cars
+      // stood mid-turn for five seconds and more behind somebody who had
+      // stepped out on the exit zebra because the car "could still stop".
+      if (span && lane?.kind === 'link' && connectorId === v.admittedConnector &&
+        connector.inSegment === segment && connector.outSegment !== segment) {
         const distance = Math.max(0, lane.length - v.s) + span.along;
         if (distance > m(2) && canStopComfortably(v.driver, v.v, distance)) continue;
       }

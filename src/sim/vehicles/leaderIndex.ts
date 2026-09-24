@@ -3,6 +3,7 @@ import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import type { Obstacle } from './idm';
 import { bodyClassOfArchetype } from './archetypes';
+import { pullOutRoom } from './laneChange';
 
 /** How many lanelets ahead the leader search will walk. */
 const LOOKAHEAD_HOPS = 3;
@@ -39,8 +40,10 @@ export function findLeader(w: SimWorld, v: Vehicle): Obstacle | null {
     const aheadId = rt.order[idx + 1];
     const lead = aheadId === undefined ? undefined : w.veh(aheadId);
     if (lead) {
+      // Stopped at the kerb: hold back far enough to pull out round it.
+      const standing = lead.kerbStop && lead.kerbStop.phase !== 'approach' ? pullOutRoom(w, v) : 0;
       consider({
-        gap: lead.s - lead.archetype.length - v.s,
+        gap: lead.s - lead.archetype.length - v.s - Math.max(0, standing - Math.max(v.driver.s0, 0)),
         speed: lead.v,
         kind: 'vehicle',
       });
@@ -167,6 +170,9 @@ export function divergeObstacle(w: SimWorld, v: Vehicle): Obstacle | null {
   return best;
 }
 
+/** Sideways clearance kept from a body in the lane being left, world units. */
+const SHADOW_SIDE_MARGIN = 0.4;
+
 /**
  * A vehicle mid-lane-change is itself an obstacle for its OWN forward motion
  * against whatever it still overlaps in the lane it is leaving.
@@ -185,9 +191,24 @@ export function divergeObstacle(w: SimWorld, v: Vehicle): Obstacle | null {
 export function shadowLeaderObstacle(w: SimWorld, v: Vehicle): Obstacle | null {
   if (!v.shadow) return null;
   const front = v.s + v.shadow.offset;
+  // How far this body still reaches back towards the old lane's centre: the
+  // lanes are `2 * clearAt` apart (`integrate.ts`), the body centre is
+  // `lateral` short of the new centre, and its angled corners reach
+  // `sideReach` either side of it.
+  const spacing = 2 * v.shadow.clearAt;
+  const angle = Math.atan(Math.abs(v.lateralSlope));
+  const sideReach = (v.archetype.width / 2) * Math.cos(angle) + (v.archetype.length / 2) * Math.sin(angle);
+  const nearEdge = spacing - Math.abs(v.lateral) - sideReach;
   let best: Obstacle | null = null;
   for (const body of w.bodiesIn(v.shadow.lanelet)) {
     if (body.vehicle.id === v.id) continue;
+    // Only a body this one can still touch. A car already most of the way
+    // across is clear of the car in front in the old lane, and holding it
+    // there - as if its whole body were still in that lane - is how a car
+    // stood across both lanes behind a car stopped at the kerb, for as long
+    // as that car stood.
+    const reach = body.vehicle.archetype.width / 2 + Math.abs(body.vehicle.lateral) + SHADOW_SIDE_MARGIN;
+    if (nearEdge >= reach) continue;
     const rear = body.s - body.vehicle.archetype.length;
     const gap = rear - front;
     if (gap < -v.archetype.length) continue; // already well behind: not a leader.

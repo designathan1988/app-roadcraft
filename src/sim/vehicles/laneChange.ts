@@ -2,7 +2,7 @@ import { laneletId, type LaneletId } from '@world/lanelets';
 import type { SimWorld } from '../world';
 import { m } from '@world/units';
 import type { Vehicle } from './state';
-import { JAM_GAP, laneChangeLength } from '../params';
+import { JAM_GAP, laneChangeLength, laneChangeOffset, laneChangeSlope } from '../params';
 import { desiredSpeed } from './driver';
 import { idmAccel, type Obstacle } from './idm';
 
@@ -442,6 +442,110 @@ function followerIn(w: SimWorld, laneId: LaneletId, rear: number, self: number):
 }
 
 /**
+ * Whether the body can get out of the lane it is in before whatever stands in
+ * that lane stops it.
+ *
+ * A change is a curve driven over road, and until no corner of the body is
+ * over the line it is still in the old lane (its `shadow`) and still follows
+ * whatever is ahead there (`shadowLeaderObstacle`). The target lane was the
+ * only one checked, so a car queued a few metres behind a car stopped at the
+ * kerb pulled out, got a body length sideways and stopped - held by the very
+ * car it was passing - across both lanes, blocking the one it had moved into
+ * as well: measured on a straight avenue with a signal at its end, one car
+ * stood like that for 47 s. A driver who cannot get round in the room there
+ * is waits behind in its own lane, so the change is not started.
+ */
+function canLeaveLane(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
+  const lane = w.lanelet(v.lanelet);
+  const other = w.lanelet(target);
+  if (!lane || !other) return true;
+  const here = lane.centre.sampleAt(Math.min(Math.max(0, v.s), lane.length)).p;
+  const start = other.centre.closestPoint(here).distance;
+  const length = laneChangeLength(start, v.v, v.archetype.length);
+  const clear = shadowClearDistance(v, start, length);
+  const need = clear + Math.max(JAM_GAP, v.driver.s0);
+  // Where the queue ahead in this lane will come to rest: walked from its
+  // front, each vehicle stopping at the nearest thing standing ahead of it (a
+  // red, a car at the kerb) or at its jam gap behind the one in front. A car
+  // rolling up to the back of a queue is not a car moving off.
+  const order = w.rt(v.lanelet).order;
+  let limit = Infinity;
+  for (let i = order.length - 1; i >= 0; i--) {
+    const ahead = w.veh(order[i] as number);
+    if (!ahead) continue;
+    if (ahead.id === v.id) break;
+    const own = ahead.v <= CRAWL ? ahead.s : ahead.s + restingReach(ahead);
+    const nose = Math.max(ahead.s, Math.min(own, limit));
+    limit = nose - ahead.archetype.length - Math.max(JAM_GAP, ahead.driver.s0);
+    if (nose - ahead.archetype.length - v.s < need) return false;
+  }
+  // And any body still sliding out of this lane ahead of this one.
+  for (const body of w.bodiesIn(v.lanelet)) {
+    const ahead = body.vehicle;
+    if (ahead.id === v.id || !ahead.shadow || ahead.shadow.lanelet !== v.lanelet) continue;
+    const gap = body.s - ahead.archetype.length - v.s;
+    if (gap >= -0.05 && gap < need && ahead.v < Math.max(v.v, CRAWL)) return false;
+  }
+  return true;
+}
+
+/** How much further a vehicle rolls before something standing holds it; Infinity when nothing does. */
+function restingReach(v: Vehicle): number {
+  let reach = Infinity;
+  for (const o of v.constraints.obstacles) {
+    if (o.speed > CRAWL) continue;
+    reach = Math.min(reach, Math.max(0, o.gap));
+  }
+  return reach;
+}
+
+/**
+ * Room a driver leaves behind a vehicle standing at the kerb, to pull out and
+ * round it from a standstill into the lane beside: the road a crawling change
+ * needs before the body is out of this lane (`canLeaveLane`), plus the jam
+ * gap. Zero where there is no lane to pull out into.
+ *
+ * Without it the queue closed up to a jam gap behind the stopped car, and the
+ * first car in it could never get round: every change it could start from
+ * there would stop across both lanes, so it either did that or waited the
+ * whole stop out.
+ */
+export function pullOutRoom(w: SimWorld, v: Vehicle): number {
+  const lane = w.lanelet(v.lanelet);
+  if (!lane || lane.kind !== 'link') return 0;
+  let best = 0;
+  for (const sibling of w.graph.siblingLanes(lane.id)) {
+    const other = w.lanelet(sibling);
+    if (!other || Math.abs((other.laneIndex ?? 0) - (lane.laneIndex ?? 0)) !== 1) continue;
+    const here = lane.centre.sampleAt(Math.min(Math.max(0, v.s), lane.length)).p;
+    const start = other.centre.closestPoint(here).distance;
+    const length = laneChangeLength(start, 0, v.archetype.length);
+    const room = shadowClearDistance(v, start, length) + Math.max(JAM_GAP, v.driver.s0);
+    best = best === 0 ? room : Math.min(best, room);
+  }
+  return best;
+}
+
+/**
+ * Road driven before no corner of the body is over the line between two lanes
+ * `start` apart, on a change `length` long: where the shadow is released
+ * (`integrate.ts`).
+ */
+function shadowClearDistance(v: Vehicle, start: number, length: number): number {
+  const line = Math.abs(start) / 2;
+  const steps = 24;
+  for (let i = 1; i <= steps; i++) {
+    const x = (length * i) / steps;
+    const offset = Math.abs(laneChangeOffset(start, x, length));
+    const slope = Math.abs(laneChangeSlope(start, x, length));
+    const angle = Math.atan(slope);
+    const reach = (v.archetype.width / 2) * Math.cos(angle) + (v.archetype.length / 2) * Math.sin(angle);
+    if (offset + reach <= line) return x;
+  }
+  return length;
+}
+
+/**
  * Whether the target lane has room beside this vehicle right now.
  *
  * Both gaps are measured bumper to bumper and both must hold: moving in front
@@ -449,6 +553,7 @@ function followerIn(w: SimWorld, laneId: LaneletId, rear: number, self: number):
  * the back of a leader.
  */
 function gapIsSafe(w: SimWorld, v: Vehicle, target: LaneletId): boolean {
+  if (!canLeaveLane(w, v, target)) return false;
   const rear = v.s - v.archetype.length;
   // Road the change itself will take, to be free of anybody slower ahead in
   // the new lane. A change started into the tail of a standing queue ended

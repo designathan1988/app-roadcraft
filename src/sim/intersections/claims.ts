@@ -97,11 +97,14 @@ export class ClaimTable {
     cls: BodyClass,
     conflicts: ConflictIndex,
     locate: LocateHolder,
+    share?: (point: ConflictPoint, claim: Claim) => boolean,
   ): boolean {
     for (const p of points) {
       const point = conflicts.points[p];
       for (const claim of this.byPoint.get(p) ?? []) {
         if (claim.vehicle === vehicle || claim.connector === connector) continue;
+        // A follower the caller has placed behind this holder (a merge).
+        if (point && share?.(point, claim)) continue;
         const state = locate(claim);
         if (!point || !state) return false;
         // The applicant has not entered yet, so its whole zone is ahead of it.

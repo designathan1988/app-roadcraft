@@ -83,6 +83,11 @@ export class SimWorld {
    * is genuinely stuck.
    */
   readonly lastAdmission = new Map<NodeId, number>();
+  /**
+   * The lane that last sent a vehicle into each lane two or more lanes merge
+   * into, for the zipper (`zipperHolds` in `intersections/admission.ts`).
+   */
+  readonly mergeTurn = new Map<LaneletId, LaneletId>();
   /** Cumulative link entries since the current simulation session began. */
   readonly segmentVolume = new Map<number, number>();
 
