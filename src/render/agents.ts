@@ -1017,7 +1017,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
    * poses as the bars turn; pedalling follows the cranks exactly. The pelvis
    * is placed on the seat with the frame's lean, and the figure leans with it.
    */
-  const placeRiderFigure = (vehicle: SimVehicle, model: TwoWheelerModel, cyclist: boolean, look: VehicleLook): void => {
+  const placeRiderFigure = (vehicle: SimVehicle, model: TwoWheelerModel, cyclist: boolean, _look: VehicleLook): void => {
     if (occupantBand < 1) return;
     const pelvisUp = model.seatY + m(0.02);
     // The seat point rolled about the road-level forward axis (`place`).
@@ -1042,12 +1042,9 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       plays.push({ key: 'motoStop', phase: 0, weight: 1 - moving });
     }
     pedestrians.drawClip(seatPerson(vehicle, 0), x, y, height, fyaw, plays, froll);
-    if (!cyclist) {
-      // A motorcyclist's helmet, over the head of the riding pose.
-      const headAlong = model.seatX + m(0.24);
-      const headUp = pelvisUp + m(0.72);
-      place(heads, headAlong, 0, headUp, m(0.3), m(0.3), m(0.32), look.helmet);
-    }
+    // No helmet sphere: it was placed at a fixed offset from the saddle, never
+    // where the posed head actually was, and showed as a ball stuck through
+    // the rider's head. A helmet has to be fitted to the posed head bone.
   };
 
   /** The dog trotting behind a pedestrian, drawn in the walker's own frame. */
