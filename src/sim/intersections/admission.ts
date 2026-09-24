@@ -73,8 +73,12 @@ export function stepAdmission(w: SimWorld): void {
     admit(w);
   } finally {
     holdings = null;
+    pending = null;
   }
 }
+
+/** This pass's requests, by node. Null outside `stepAdmission`. */
+let pending: Map<NodeId, Request[]> | null = null;
 
 function admit(w: SimWorld): void {
   const requests: Request[] = [];
@@ -129,6 +133,12 @@ function admit(w: SimWorld): void {
   // on the resources a holder needs next. Oldest request first makes that
   // preemption finite; ROW, distance and id remain deterministic tie-breakers.
   requests.sort(byPriority);
+  pending = new Map();
+  for (const r of requests) {
+    const list = pending.get(r.conn.node);
+    if (list) list.push(r);
+    else pending.set(r.conn.node, [r]);
+  }
 
   // A zone that reaches back over a stop line cannot be protected by a claim
   // alone: the vehicle standing in it has not been admitted to anything.
@@ -312,6 +322,9 @@ function evaluate(w: SimWorld, r: Request): Verdict {
   if (!hasDownstreamStorage(w, r.v, r.conn)) {
     return { ok: false, reason: 'spillback', reservations };
   }
+  if (outranksForExit(r)) {
+    return { ok: false, reason: 'yield', reservations };
+  }
 
   if (!bankerSafeAfterGrant(w, r.v, reservations)) {
     return { ok: false, reason: 'conflict', reservations };
@@ -337,6 +350,30 @@ function evaluate(w: SimWorld, r: Request): Verdict {
   }
 
   return { ok: true, reservations };
+}
+
+/**
+ * Whether a vehicle with a better right of way is waiting for the same lane out.
+ *
+ * Gap acceptance deliberately ignores a vehicle standing still at its own line:
+ * it is not arriving, and counting it made two waiting drivers block each other
+ * for ever. But a vehicle on the main road standing at the line because the
+ * lane beyond is full is not "not coming" - it is waiting for exactly the room
+ * this one is about to take. Letting the side road have it whenever it asked
+ * first handed every freed place to whichever driver had waited longest, main
+ * road or not, and on a ring that is the lock: the arms fed the circulating
+ * links as fast as they emptied, until every link was full of vehicles waiting
+ * for the next. A driver joining a main road leaves the gap to the car already
+ * queued on it.
+ */
+function outranksForExit(r: Request): boolean {
+  if (r.row !== 'yield' && r.row !== 'stop') return false;
+  for (const other of pending?.get(r.conn.node) ?? []) {
+    if (other.v.id === r.v.id || other.v.admittedConnector) continue;
+    if (RANK[other.row] <= RANK[r.row]) continue;
+    if (other.conn.toLane === r.conn.toLane) return true;
+  }
+  return false;
 }
 
 /**
@@ -818,11 +855,14 @@ function throughRank(w: SimWorld, conn: Connector): number {
 
 /**
  * Whether a movement carries its road on through the node: a straight-on
- * movement, or any movement at a node of two legs, which is one road going
- * on however sharply it bends there.
+ * movement, any movement at a node of two legs, which is one road going on
+ * however sharply it bends there, or the pair of legs a road bends through
+ * at a junction with no straight-on movement at all (`carried`) - a ring of
+ * streets drawn as a roundabout, whose circulating carriageway turns at
+ * every node and used to give way to its own arms.
  */
 function continues(w: SimWorld, node: NodeId, conn: Connector): boolean {
-  return conn.turn === 'through' || (w.doc.node(node)?.incident.length ?? 0) === 2;
+  return conn.turn === 'through' || conn.carried || (w.doc.node(node)?.incident.length ?? 0) === 2;
 }
 
 /** Rank of the road a junction is on, per topology build. */
