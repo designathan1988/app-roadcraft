@@ -410,6 +410,11 @@ function mergeFollows(
   claim: Claim,
 ): boolean {
   if (point.kind !== 'merge') return false;
+  // Only where one road narrows (a node of two legs: a lane drop, a taper).
+  // At a junction the two movements come from different approaches and cross
+  // on the way in - a right turn on red joining a green through - and their
+  // claims stay exclusive: nothing but the zone keeps those bodies apart.
+  if ((w.doc.node(r.conn.node)?.incident.length ?? 0) !== 2) return false;
   const holder = w.veh(claim.vehicle);
   const theirs = w.connector(claim.connector);
   if (!holder || !theirs || theirs.toLane !== r.conn.toLane) return false;
@@ -826,8 +831,9 @@ function sharedConvoyResource(w: SimWorld, resource: ResourceKey): boolean {
   const point = w.conflicts.points[id];
   const claims = w.claims.holdersAt(id);
   if (!point || claims.length === 0) return false;
-  // Holders of one merge are a queue into one lane, kept apart by following.
-  if (point.kind === 'merge') return true;
+  // Holders of one merge where a road narrows are a queue into one lane, kept
+  // apart by following (`mergeFollows`).
+  if (point.kind === 'merge' && (w.doc.node(point.node)?.incident.length ?? 0) === 2) return true;
   const placed = claims.map((claim) => ({ connector: claim.connector, state: holderState(w, claim) }));
   for (let i = 0; i < placed.length; i++) {
     for (let j = i + 1; j < placed.length; j++) {
