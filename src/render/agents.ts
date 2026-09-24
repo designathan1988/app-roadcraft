@@ -5,6 +5,7 @@ import {
   DynamicDrawUsage,
   InstancedBufferAttribute,
   InstancedMesh,
+  Matrix4,
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
@@ -31,9 +32,10 @@ import { FOOTWAY_RISE } from './roadSurfaces';
 import { WheelOdometer, blinkOn, indicatorSide, pathCurvature, steerAngle } from './vehicleSignals';
 import {
   axleStations, buildBusModel, buildTruckModel, buildTwoWheelerModel, buildVehicleModel, seatFitScale, rimGeometry, spokedRimGeometry,
-  tyreGeometry, type TwoWheelerModel, type VehicleModel,
+  merge, tyreGeometry, type TwoWheelerModel, type VehicleModel,
 } from './vehicleModels';
-import { DRIVER_WHEEL } from './riderPoses';
+import { HELMET_SEGMENTS, STEER_FULL } from './riderPoses';
+import { DOOR_SWING, createKerbFigure, kerbFigure, occupantPlays, type Play } from './occupants';
 
 /**
  * Vehicles, riders and dogs use the original instanced batches. Citizens use
@@ -362,8 +364,6 @@ function leanOf(world: SimWorld, v: SimVehicle): number {
 
 // ---------------------------------------------------------------- people in vehicles
 
-const DRIVE_PLAY = [{ key: 'carDrive', phase: 0, weight: 1 }] as const;
-const RIDE_PLAY = [{ key: 'carRide', phase: 0, weight: 1 }] as const;
 const riderPlays: { key: CitizenClipKey; phase: number; weight: number }[] = [];
 
 
@@ -372,10 +372,10 @@ const smooth01 = (x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-// ---------------------------------------------------------------- doors and seats
+/** How much a two-wheeler is under way, 0 stopped (a foot down) to 1 riding. */
+const riderMoving = (v: SimVehicle): number => smooth01((v.v / m(1) - 0.2) / 0.8);
 
-/** How far a door swings open, radians. */
-const DOOR_SWING = 1.15;
+// ---------------------------------------------------------------- doors and seats
 
 /** Open fraction of one door, 0 shut to 1 fully open, from the simulation. */
 function doorOpening(v: SimVehicle, door: number): number {
@@ -555,8 +555,13 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   const thinWheels = instanced('bicycle-wheels', thinTyreGeometry, rubber, MAX_RIDERS * 2);
   const spokes = instanced('bicycle-spokes', spokedGeometry, trim, MAX_RIDERS * 2, false);
   const lamps = instanced('vehicle-lamps', unitBox, lampMaterial, MAX_VEHICLES * 9, false);
+  // A motorcyclist's helmet: a smooth shell, glossy like paint. Its facets
+  // are fine enough that the head it is fitted to stays inside
+  // (`riderPoses.HELMET_SEGMENTS`).
+  const helmetGeometry = merge([new SphereGeometry(0.5, HELMET_SEGMENTS.width, HELMET_SEGMENTS.height)]);
+  const helmets = instanced('rider-helmets', helmetGeometry, paint, MAX_RIDERS);
 
-  const parts: readonly Part[] = [wheels, hubs, thinWheels, spokes, lamps];
+  const parts: readonly Part[] = [wheels, hubs, thinWheels, spokes, lamps, helmets];
   /**
    * One set of instanced meshes per car class, built from its own model
    * (`vehicleModels.ts`): a class is five to thirteen draws for the whole fleet
@@ -865,50 +870,56 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     // `placeKerbPerson`, not in the seat.
     const moving = vehicle.kerbStop?.phase === 'transfer' ? vehicle.kerbStop.seat : -1;
     let driverScale = 0;
-    for (let index = 0; index < model.seats.length; index++) {
+    // Only the seats the simulation can fill: `Vehicle.seats` is a 32-bit
+    // mask, and `1 << 32` is 1 again in JavaScript. A bus has more seats than
+    // that, and seats 32 onwards read the bits of seats 0 onwards - seven
+    // phantom passengers in the back of every bus, some of them twins of the
+    // people really aboard.
+    const seatCount = Math.min(model.seats.length, vehicle.archetype.seats);
+    for (let index = 0; index < seatCount; index++) {
       if ((vehicle.seats & (1 << index)) === 0 || index === moving) continue;
       const seat = model.seats[index]!;
       if (seat.row > rowsDrawn) continue;
       seatWorldInto(seat, seatPoint);
       const who = seatPerson(vehicle, index);
-      // A car-seat pose (`riderPoses.ts`), sized so the head clears the roof
-      // lining; a bus seat takes the captured upright sitting clip, each
-      // passenger at their own point in it.
-      const fit = seatFitScale(seat);
-      const plays = seat.pose === 'chair' ? chairPlay(who.seed) : seat.driver ? DRIVE_PLAY : RIDE_PLAY;
-      const drawn = pedestrians.drawClip(who, seatPoint.x, seatPoint.y, fdeck + seat.hipY, fyaw, plays, 0, fit);
+      // The seat's pose (`riderPoses.ts`) with a glance now and then
+      // (`occupants.ts`). A car seat sizes its occupant to clear the roof
+      // lining; an upright cab or bus seat, whose feet must be on the floor,
+      // draws them at the size the pose was solved at.
+      const plays = occupantPlays(seat, who.seed, frameClock, seatPlays);
+      const fixed = seat.pose === 'car' ? 0 : 1;
+      const drawn = pedestrians.drawClip(who, seatPoint.x, seatPoint.y, fdeck + seat.hipY, fyaw, plays as readonly { key: CitizenClipKey; phase: number; weight: number }[],
+        0, seatFitScale(seat), false, fixed);
       if (seat.driver) driverScale = drawn;
     }
     // The wheel where this driver's hands are: at their own size, and turned
     // with the front wheels.
     if (car.steering && model.steering) {
       const seat = model.seats[model.steering.seat]!;
+      const wheel = model.steering.wheel;
       const s = driverScale > 0 ? driverScale / m(1) : 1;
-      placeSteeringWheel(car.steering, seat.x + m(DRIVER_WHEEL.forward) * s, -seat.z, seat.hipY + m(DRIVER_WHEEL.up) * s,
-        model.steering.tilt, Math.max(-1.6, Math.min(1.6, lamp.steer * 5)));
+      placeSteeringWheel(car.steering, seat.x + m(wheel.forward) * s, -seat.z, seat.hipY + m(wheel.up) * s,
+        wheel.tilt, Math.max(-1.6, Math.min(1.6, lamp.steer * 5)), s);
     }
     const stop = vehicle.kerbStop;
     if (stop) placeKerbPerson(model, stop);
   };
 
-  const chairPlays = [{ key: 'sitIdle' as CitizenClipKey, phase: 0, weight: 1 }];
-  /** The captured sitting clip, at a phase of this person's own. */
-  const chairPlay = (seed: number): typeof chairPlays => {
-    chairPlays[0]!.phase = ((agentHash(seed) & 0xffff) / 0x10000 + frameClock * 0.05) % 1;
-    return chairPlays;
-  };
+  /** Reused by every seated person: what they play this frame. */
+  const seatPlays: Play[] = [];
   /** Seconds of simulation, for the occupants' own motion; set per vehicle. */
   let frameClock = 0;
   /** Seat rows drawn this frame (`SeatModel.row`); set per sync from the zoom. */
   let rowsDrawn = Infinity;
 
   /** A steering wheel about its column: yaw with the vehicle, tilt, then the turn. */
-  const placeSteeringWheel = (part: Part, along: number, side: number, up: number, tilt: number, turn: number): void => {
+  const placeSteeringWheel = (part: Part, along: number, side: number, up: number, tilt: number, turn: number, size = 1): void => {
     if (part.n >= part.mesh.instanceMatrix.count) return;
     object.position.set(fx + fdx * along - fdy * side, fdeck + up, -(fy + fdy * along + fdx * side));
     object.rotation.order = 'YZX';
     object.rotation.set(turn, fyaw, tilt);
-    object.scale.set(1, 1, 1);
+    // The rim at the driver's size too, so the hands on it are on it.
+    object.scale.set(size, size, size);
     object.updateMatrix();
     object.rotation.order = 'YXZ';
     part.mesh.setMatrixAt(part.n, object.matrix);
@@ -922,11 +933,23 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     out.y = fy + fdy * seat.x - fdx * seat.z;
   };
 
+  /** Somebody at the kerb this frame (`occupants.kerbFigure`), reused. */
+  const kerb = createKerbFigure();
+  /** A world point in the current vehicle's frame: X forward, Z to the right. */
+  const toVehicle = (x: number, y: number): { x: number; z: number } => {
+    const dx = x - fx;
+    const dy = y - fy;
+    return { x: dx * fdx + dy * fdy, z: dx * fdy - dy * fdx };
+  };
+
   /**
-   * Somebody getting out at the kerb, or in: up out of the seat turning to
-   * face the open door and stepping out beside the car, then across to the
-   * footway - or the same the other way round. Positions come from the body
-   * model's seat and door, the timing from the simulation (`kerbTransfer`).
+   * Somebody getting out at the kerb, or in. At a hinged door
+   * (`occupants.kerbFigure`): turned on the seat towards the open door, onto
+   * the sill with the feet on the road, up out of the car in the opening, and
+   * round the back of the open door to the footway - or all of it the other
+   * way round. At a bus's plug door, a step up through it. Positions come
+   * from the body model's seat and door, the timing from the simulation
+   * (`kerbTransfer`).
    */
   const placeKerbPerson = (model: VehicleModel, stop: KerbStop): void => {
     const progress = kerbTransfer(stop);
@@ -936,11 +959,18 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     const side = door.side;
     const along = door.hingeX - door.length / 2;
     const flank = Math.abs(door.hingeZ);
+    const seat = stop.seatStage ? model.seats[stop.seat] : undefined;
+    const identity = { seed: person.seed, gender: person.gender, ageClass: person.ageClass };
+    if (seat && door.kind === 'hinge' && !(progress.walked >= 1 && (stop.phase === 'hold' || stop.phase === 'close'))) {
+      const f = kerbFigure({ seat, door, foot: toVehicle(person.footX, person.footY) }, stop.kind, progress.seated, progress.walked, kerb);
+      seatWorldInto(f, seatPoint);
+      pedestrians.drawClip(identity, seatPoint.x, seatPoint.y, fdeck + f.y, fyaw + f.heading, f.plays,
+        0, f.seated ? seatFitScale(seat) : Infinity, f.anchor === 'pelvis' ? false : f.anchor === 'feet' ? true : 'pelvisOver');
+      return;
+    }
     // Just outside the door opening on the road, and just inside it.
     const outside = seatWorld({ x: along, z: side * (flank + m(0.45)) });
-    const seat = stop.seatStage ? model.seats[stop.seat] : undefined;
-    const inside = seat ? seatWorld(seat) : seatWorld({ x: along, z: side * (flank - m(0.4)) });
-    const identity = { seed: person.seed, gender: person.gender, ageClass: person.ageClass };
+    const inside = seatWorld({ x: along, z: side * (flank - m(0.4)) });
     const walkTo = (fromX: number, fromY: number, toX: number, toY: number, t: number, height: number): void => {
       const x = fromX + (toX - fromX) * t;
       const y = fromY + (toY - fromY) * t;
@@ -962,23 +992,10 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       else walkTo(person.footX, person.footY, outside.x, outside.y, 1 - progress.walked, fdeck);
       return;
     }
-    if (!seat) {
-      // A bus: stepping up through the door, then gone inside.
-      const t = stop.kind === 'drop' ? 1 - progress.seated : progress.seated;
-      if (stop.kind === 'pick' && t > 0.9) return;
-      walkTo(outside.x, outside.y, inside.x, inside.y, stop.kind === 'pick' ? t : 1 - t, fdeck + m(0.25) * t);
-      return;
-    }
-    // Rising from (or sinking into) the seat, sliding across the sill and
-    // down to the road (a truck's cab floor is a metre up).
-    const rise = 1 - progress.seated;
-    const slide = Math.min(1, rise * 1.4);
-    const x = inside.x + (outside.x - inside.x) * slide;
-    const y = inside.y + (outside.y - inside.y) * slide;
-    const key = stop.kind === 'drop' ? 'standUp' : 'sitDown';
-    const phase = stop.kind === 'drop' ? rise : 1 - rise;
-    pedestrians.drawClip(identity, x, y, fdeck + seat.floor * (1 - slide), fyaw - side * Math.PI / 2,
-      [{ key, phase, weight: 1 }], 0, seatFitScale(seat), true);
+    // A bus: stepping up through the door, then gone inside.
+    const t = stop.kind === 'drop' ? 1 - progress.seated : progress.seated;
+    if (stop.kind === 'pick' && t > 0.9) return;
+    walkTo(outside.x, outside.y, inside.x, inside.y, stop.kind === 'pick' ? t : 1 - t, fdeck + m(0.25) * t);
   };
 
   /**
@@ -1011,16 +1028,16 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
    * poses as the bars turn; pedalling follows the cranks exactly. The pelvis
    * is placed on the seat with the frame's lean, and the figure leans with it.
    */
-  const placeRiderFigure = (vehicle: SimVehicle, model: TwoWheelerModel, cyclist: boolean, _look: VehicleLook): void => {
+  const placeRiderFigure = (vehicle: SimVehicle, model: TwoWheelerModel, cyclist: boolean, look: VehicleLook): void => {
     if (occupantBand < 1) return;
-    const pelvisUp = model.seatY + m(0.02);
+    const pelvisUp = model.seatY;
     // The seat point rolled about the road-level forward axis (`place`).
     const sideOffset = pelvisUp * fsin;
     const x = fx + fdx * model.seatX - fdy * sideOffset;
     const y = fy + fdy * model.seatX + fdx * sideOffset;
     const height = fdeck + pelvisUp * fcos;
-    const moving = smooth01((vehicle.v / m(1) - 0.2) / 0.8);
-    const steer = Math.max(-1, Math.min(1, lamp.steer / 0.35));
+    const moving = riderMoving(vehicle);
+    const steer = Math.max(-1, Math.min(1, lamp.steer / STEER_FULL));
     const plays = riderPlays;
     plays.length = 0;
     if (cyclist) {
@@ -1035,12 +1052,23 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       if (steer < 0) plays.push({ key: 'motoRight', phase: 0, weight: moving * -steer });
       plays.push({ key: 'motoStop', phase: 0, weight: 1 - moving });
     }
-    pedestrians.drawClip(seatPerson(vehicle, 0), x, y, height, fyaw, plays, froll);
-    // No helmet sphere: it was placed at a fixed offset from the saddle, never
-    // where the posed head actually was, and showed as a ball stuck through
-    // the rider's head. A helmet has to be fitted to the posed head bone.
+    // At the size the pose was solved at: the hands are on the grips and the
+    // feet on the pegs or pedals only there.
+    const drawn = pedestrians.drawClip(seatPerson(vehicle, 0), x, y, height, fyaw, plays, froll, Infinity, false, 1,
+      cyclist ? null : helmetMatrix);
+    if (!cyclist && drawn > 0 && helmets.n < helmets.mesh.instanceMatrix.count) {
+      // A motorcyclist's helmet, fitted to this body's head
+      // (`riderPoses.helmetShape`) and put where the pose just drawn has it.
+      helmets.mesh.setMatrixAt(helmets.n, helmetMatrix);
+      colour.setHex(look.helmet);
+      helmets.mesh.setColorAt(helmets.n, colour);
+      helmets.tinted = true;
+      helmets.n++;
+    }
   };
 
+  /** The helmet of the rider just drawn (`drawClip`). */
+  const helmetMatrix = new Matrix4();
 
 
 
@@ -1074,7 +1102,11 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         // Off screen, and too far from it for its shadow to fall on it:
         // nothing of this vehicle is written this frame.
         if (options.vehicleVisible && !options.vehicleVisible(pose.p.x, pose.p.y, deck, plan.length * 0.5 + plan.height * 2)) continue;
-        frameAt(pose.p.x, pose.p.y, pose.angle, deck, twoWheeled ? leanOf(world, vehicle) : 0);
+        // A two-wheeler leans into its bend and, stopped, tilts onto the
+        // rider's foot on the road (`TwoWheelerFit.stopTilt`).
+        const fit = twoWheeled ? twoWheelerParts.get(vehicle.archetype.id)?.model.fit : undefined;
+        frameAt(pose.p.x, pose.p.y, pose.angle, deck,
+          twoWheeled ? leanOf(world, vehicle) + (fit ? fit.stopTilt * (1 - riderMoving(vehicle)) : 0) : 0);
         const paintHex = hexOf(vehicle.color);
         const look = vehicleLook(vehicle.id, plan.seats);
         occupantBand = vehicleBand;
@@ -1170,6 +1202,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         thinTyreGeometry,
         spokedGeometry,
         headGeometry,
+        helmetGeometry,
       ]) {
         geometry.dispose();
       }

@@ -10,7 +10,7 @@ import type { Ped } from '@sim/peds/state';
 import { DT } from '@sim/params';
 import { m } from '@world/units';
 import { CITIZEN_MODELS } from './citizenCatalog';
-import { RIDER_CLIPS, type RiderClip, type RiderClipKey } from './riderPoses';
+import { NO_HELMET, RIDER_CLIPS, helmetShape, type RiderClip, type RiderClipKey } from './riderPoses';
 import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
 import {
   WALK_ADVANCE, clipTransferFor, loadRocketboxLibrary, neutralWalkFor, strideShare, walkDuration, walkSource,
@@ -74,6 +74,8 @@ interface ClipFrames {
   travel?: Float32Array;
   /** Angle turned by each baked frame, radians, unsigned (turns). */
   yaw?: Float32Array;
+  /** A rider's head bone in the first frame, in the model's frame: where a helmet goes. */
+  head?: Matrix4;
 }
 interface CitizenBatch {
   meshes: InstancedMesh[]; local: Matrix4[]; clips: ClipFrames[];
@@ -82,6 +84,8 @@ interface CitizenBatch {
   texture: DataTexture; pixels: Float32Array; width: number; count: number;
   rows: number; uniform: { value: DataTexture };
   lods: BufferGeometry[][];
+  /** This body's helmet in its head bone's frame (`riderPoses.helmetShape`), or null. */
+  helmet: Matrix4 | null;
 }
 
 /**
@@ -226,8 +230,10 @@ async function bakeLibraryClip(body: BakeRig, clip: LibraryClip, amplitude?: Wal
  * clips, a few milliseconds at a time. No skeleton traversal occurs during
  * drawing.
  */
-async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promise<ClipFrames[]> {
+async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promise<{ clips: ClipFrames[]; helmet: Matrix4 | null }> {
   const body = restRig(asset);
+  // A helmet is fitted to this head, at rest, once.
+  const helmet = helmetShape(body.rig);
   const clips: ClipFrames[] = [];
   // The elder's step, and the shuffle's, cover less ground in the same time,
   // in proportion to how far the feet then reach fore and aft (`strideShare`).
@@ -236,7 +242,7 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
   clips[WALK_SHUFFLE] = await bakeLibraryClip(body, library[sex].walkSlow, SHUFFLE_AMPLITUDE);
   for (const name of LIBRARY) clips[LIBRARY_AT[name]] = await bakeLibraryClip(body, library[sex][name]);
   for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = await bakeRiderClip(body, clip);
-  return clips;
+  return { clips, helmet };
 }
 
 /**
@@ -251,7 +257,9 @@ async function bakeRiderClip(body: BakeRig, clip: RiderClip): Promise<ClipFrames
   };
   const still = clip.key !== 'bikePedal';
   const baked = await bakeFrames(body, pose, clip.duration, clip.loop, still ? 2 : FPS);
-  return { ...baked, duration: clip.duration, loop: clip.loop, stride: 1 };
+  pose(0);
+  const head = body.rig.getObjectByName('Bip01_Head')?.matrixWorld.clone();
+  return { ...baked, duration: clip.duration, loop: clip.loop, stride: 1, ...(head ? { head } : {}) };
 }
 
 /** The baked clips of one body, by the name the gait plays them by. */
@@ -272,6 +280,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   const plays: GaitPlay[] = [];
   const transform = new Object3D();
   const matrix = new Matrix4();
+  const helmetBone = new Matrix4();
   let disposed = false;
   let detail = 2;
   let lod = 0;
@@ -294,7 +303,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         }
       });
     if (disposed) { for (const resource of resources) resource.dispose(); return; }
-      const clips = await bake(asset, models[index]!.includes('female') ? 'female' : 'male', library);
+      const { clips, helmet } = await bake(asset, models[index]!.includes('female') ? 'female' : 'male', library);
       if (disposed) { for (const resource of resources) resource.dispose(); return; }
       let reference: SkinnedMesh | undefined;
       asset.scene.updateMatrixWorld(true);
@@ -309,7 +318,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       resources.add(texture);
       const uniform = { value: texture };
       const batch: CitizenBatch = { meshes: [], local: [], clips, gait: gaitClips(clips), texture, pixels, width, rows,
-        uniform, count: 0, lods: [] };
+        uniform, count: 0, lods: [], helmet };
       const parts: SkinnedMesh[] = [];
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh) parts.push(o); });
       for (const o of parts) {
@@ -383,6 +392,11 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     const child = id.includes('_child');
     pools[id.includes('female') ? 'f' : 'm'][child ? 'child' : 'adult'].push(index);
   });
+  /** Adult bodies a helmet fits on (`riderPoses.NO_HELMET`): motorcyclists are drawn from these. */
+  const helmeted = {
+    f: pools.f.adult.filter((i) => !NO_HELMET.has(models[i]!)),
+    m: pools.m.adult.filter((i) => !NO_HELMET.has(models[i]!)),
+  };
 
   /**
    * The body one pedestrian is drawn as, and at what size.
@@ -393,10 +407,12 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
    * roster is drawn on an adult one, scaled down to a child's height; an
    * older person walks on an adult body with the elder's walk.
    */
-  function bodyFor(ped: Pick<Ped, 'gender' | 'ageClass'>, hash: number): { index: number; size: number } | null {
+  function bodyFor(ped: Pick<Ped, 'gender' | 'ageClass'>, hash: number, helmet = false): { index: number; size: number } | null {
     const sex = pools[ped.gender === 'f' ? 'f' : 'm'];
     const other = pools[ped.gender === 'f' ? 'm' : 'f'];
     const pick = (pool: readonly number[]): number => pool[hash % pool.length]!;
+    const fits = helmeted[ped.gender === 'f' ? 'f' : 'm'];
+    if (helmet && ped.ageClass !== 'child' && fits.length) return { index: pick(fits), size: 1 };
     if (ped.ageClass === 'child') {
       if (sex.child.length) return { index: pick(sex.child), size: 1 };
       if (sex.adult.length) return { index: pick(sex.adult), size: CHILD_ON_ADULT };
@@ -520,16 +536,27 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
      * body and their size. `lean` tilts the whole figure about the line where
      * the vehicle meets the road, as a rider leans into a bend; the pelvis is
      * given already leaned. `maxScale` shrinks a tall person to fit a cabin.
-     * With `fromGround` the point is where the feet are, not the pelvis.
+     * With `fromGround` the point is where the feet are, not the pelvis;
+     * `'pelvisOver'` puts the feet on its height but the first frame's pelvis
+     * over it in plan, for somebody rising from a seat onto their feet.
+     *
+     * `fixedScale` (metres per metre, 0 for none) draws the body at exactly
+     * that size: somebody whose hands and feet are posed onto a machine's
+     * grips and pegs must be drawn at the size the pose was solved at, or
+     * every contact drifts with their height. `helmet`, when given, receives
+     * the matrix that puts a sphere of unit diameter round this body's head
+     * as drawn (`riderPoses.helmetShape`); the return value is then negative
+     * if the body has none, and the helmet must not be drawn.
      */
     drawClip(identity: { readonly seed: number; readonly gender: 'f' | 'm'; readonly ageClass: 'child' | 'adult' | 'elder' },
       pelvisX: number, pelvisY: number, pelvisHeight: number, heading: number,
       plays: readonly { readonly key: CitizenClipKey; readonly phase: number; readonly weight: number;
         /** For a walk: ground covered, world units; the phase then follows this body's own stride. */
         readonly distance?: number }[],
-      lean = 0, maxScale = Infinity, fromGround = false): number {
+      lean = 0, maxScale = Infinity, fromGround: boolean | 'pelvisOver' = false, fixedScale = 0,
+      helmet: Matrix4 | null = null): number {
       const hash = pedHash(identity.seed);
-      const body = bodyFor(identity, hash);
+      const body = bodyFor(identity, hash, helmet !== null);
       if (!body) return 0;
       const batch = batches.get(body.index);
       if (!batch) {
@@ -545,7 +572,9 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       let pelvisLeft = 0;
       let pelvisAhead = 0;
       let total = 0;
-      const scale = m(Math.min(maxScale, body.size * (0.92 + ((hash >>> 8) & 255) / 255 * 0.17)));
+      const scale = m(fixedScale > 0 ? fixedScale : Math.min(maxScale, body.size * (0.92 + ((hash >>> 8) & 255) / 255 * 0.17)));
+      let headWeight = 0;
+      let headClip: ClipFrames | undefined;
       for (const play of plays) {
         const at = play.key === 'walk' ? (identity.ageClass === 'elder' ? WALK_ELDER : WALK)
           : play.key in RIDER_AT ? RIDER_AT[play.key as RiderClipKey] : LIBRARY_AT[play.key as Played];
@@ -562,6 +591,10 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         pelvisLeft += clip.pelvisX * play.weight;
         pelvisAhead += clip.pelvisZ * play.weight;
         total += play.weight;
+        if (play.weight > headWeight) {
+          headWeight = play.weight;
+          headClip = clip;
+        }
       }
       if (!mixClips.length) return 0;
       pelvis /= total;
@@ -575,11 +608,18 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       const leftY = Math.cos(heading);
       const aheadX = Math.cos(heading);
       const aheadY = Math.sin(heading);
-      const shiftLeft = fromGround ? 0 : (pelvisLeft / total) * scale;
-      const shiftAhead = fromGround ? 0 : (pelvisAhead / total) * scale;
+      const shiftLeft = fromGround === true ? 0 : (pelvisLeft / total) * scale;
+      const shiftAhead = fromGround === true ? 0 : (pelvisAhead / total) * scale;
       emit(batch, mixClips, mixPhases, mixWeights,
         pelvisX - leftX * drop * Math.sin(lean) - leftX * shiftLeft - aheadX * shiftAhead, pelvisHeight - drop * Math.cos(lean),
         pelvisY - leftY * drop * Math.sin(lean) - leftY * shiftLeft - aheadY * shiftAhead, heading, scale, lean);
+      if (helmet) {
+        // This body's helmet on the head of the pose carrying the most
+        // weight, through the transform `emit` just drew the body with: at
+        // this body's size, leaned and turned with it.
+        if (!headClip?.head || !batch.helmet) return -scale;
+        helmet.multiplyMatrices(transform.matrix, helmetBone.multiplyMatrices(headClip.head, batch.helmet));
+      }
       return scale;
     },
     finish() {

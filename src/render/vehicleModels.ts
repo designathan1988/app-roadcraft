@@ -17,7 +17,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import type { Archetype, BodyStyle } from '@sim/vehicles/archetypes';
 import { m } from '@world/units';
-import { DRIVER_WHEEL } from './riderPoses';
+import { BIKE_FIT, CAB_WHEEL, DRIVER_WHEEL, MOTO_FIT, gripPoint, type TwoWheelerFit, type WheelSpec } from './riderPoses';
 
 /**
  * Vehicle bodies, built once per class from the class's own proportions.
@@ -102,26 +102,39 @@ export interface SeatModel {
   /** Row from the front, 0 for the driver's row: at a middle zoom only the front row is drawn. */
   readonly row: number;
   /**
-   * The posture the seat is made for: `car`, reclined with the legs forward
-   * (`riderPoses.ts`), or `chair`, upright with the knees bent (a bus seat,
-   * the captured sitting clip).
+   * The posture the seat is made for (`riderPoses.ts`): `car`, reclined with
+   * the legs forward; `cab`, the upright seat of a bus or truck driver, hip
+   * 0.45 m over the floor; `chair`, a bus seat, thighs level and feet down.
    */
-  readonly pose: 'car' | 'chair';
+  readonly pose: SeatPose;
+}
+
+export type SeatPose = 'car' | 'cab' | 'chair';
+
+export interface SeatedExtents {
+  readonly top: number;
+  readonly bottom: number;
+  readonly forward: number;
+  readonly back: number;
+  readonly half: number;
 }
 
 /**
  * How far a seated person reaches from their pelvis, metres at full size: the
- * worst of the adult bodies in the roster, measured on the rig
- * (`docs/audit/seated-pose-extents.json`, `scripts/measure-seated-poses.mjs`)
- * over every car-seat pose and every idle variation of it.
+ * worst of the bodies in the roster, measured on the rig over every pose of
+ * that seat and every idle variation of it. `tests/render/occupantFit.spec.ts`
+ * measures them again on every body and fails if any is larger.
  */
-export const SEATED_EXTENTS = { top: 0.94, bottom: 0.28, forward: 0.88, back: 0.33, half: 0.26 } as const;
+export const SEATED_EXTENTS: SeatedExtents = { top: 0.94, bottom: 0.28, forward: 0.88, back: 0.33, half: 0.29 };
 
-/** The same for the upright chair pose a bus passenger sits in (`sitIdle`). */
-export const CHAIR_EXTENTS = { top: 0.95, bottom: 0.55, forward: 0.62, back: 0.3, half: 0.26 } as const;
+/** The same for a bus or truck driver's upright seat. */
+export const CAB_EXTENTS: SeatedExtents = { top: 0.96, bottom: 0.46, forward: 0.72, back: 0.3, half: 0.3 };
 
-export const extentsOf = (seat: Pick<SeatModel, 'pose'>): typeof SEATED_EXTENTS | typeof CHAIR_EXTENTS =>
-  seat.pose === 'chair' ? CHAIR_EXTENTS : SEATED_EXTENTS;
+/** The same for a bus seat (`chairSit` and its variations). */
+export const CHAIR_EXTENTS: SeatedExtents = { top: 0.96, bottom: 0.55, forward: 0.66, back: 0.3, half: 0.28 };
+
+export const extentsOf = (seat: Pick<SeatModel, 'pose'>): SeatedExtents =>
+  seat.pose === 'chair' ? CHAIR_EXTENTS : seat.pose === 'cab' ? CAB_EXTENTS : SEATED_EXTENTS;
 
 /**
  * The largest size a person may be drawn at in this seat and stay entirely
@@ -144,8 +157,8 @@ export interface SteeringModel {
   readonly geometry: BufferGeometry;
   /** Seat (index into `seats`) whose occupant holds it. */
   readonly seat: number;
-  /** Tilt of the rim's plane from vertical, top towards the driver, radians. */
-  readonly tilt: number;
+  /** Where the wheel is from that seat's hip point, and its tilt and radius (`riderPoses.ts`). */
+  readonly wheel: WheelSpec;
 }
 
 export interface VehicleModel {
@@ -351,7 +364,8 @@ function extrude(points: readonly P2[], width: number, bevel: number, z = 0, cur
  * sides, the bevelled rails along the top of each, the underbody - that
  * the cabin sits in.
  */
-function hollow(g: ExtrudeGeometry, xa: number, xb: number, above: number): BufferGeometry {
+function hollow(g: ExtrudeGeometry, xa: number, xb: number, above: number,
+  arches?: { readonly until: number; readonly over: number; readonly under: number }): BufferGeometry {
   const position = g.getAttribute('position');
   const normal = g.getAttribute('normal');
   const depth = (g.parameters.options.depth ?? 1) / 2 + 1e-4;
@@ -373,6 +387,19 @@ function hollow(g: ExtrudeGeometry, xa: number, xb: number, above: number): Buff
     }
     const drop = inside && x > xa - 1e-4 && x < xb + 1e-4 && y > above;
     if (drop) continue;
+    // The wheel arches, cut from ONE outline extruded across the whole width,
+    // left a strip across the cabin at every arch: under the rear bench and
+    // across the front footwell, where the people sitting there went through
+    // it. Inside the cabin the arches are the liners' wheelhouses, one a side.
+    if (arches && inside && x > xa - 1e-4 && x < arches.until && y > arches.over && y < arches.under) {
+      // Only the arch's own faces - its ceiling faces down at the wheel, its
+      // ends fore and aft - never the bonnet or the cowl, which face up.
+      const ux = position.getX(t + 1) - position.getX(t), uy = position.getY(t + 1) - position.getY(t), uz = position.getZ(t + 1) - position.getZ(t);
+      const vx = position.getX(t + 2) - position.getX(t), vy = position.getY(t + 2) - position.getY(t), vz = position.getZ(t + 2) - position.getZ(t);
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const n = Math.hypot(nx, ny, nz) || 1;
+      if (ny / n < 0.5) continue;
+    }
     for (let k = 0; k < 3; k++) {
       keepP.push(position.getX(t + k), position.getY(t + k), position.getZ(t + k));
       keepN.push(normal.getX(t + k), normal.getY(t + k), normal.getZ(t + k));
@@ -748,9 +775,12 @@ export function buildVehicleModel(a: Archetype): VehicleModel {
   // ---- the lower body, whole and in pieces.
   const cabinRear = X(p.cabinRear);
   const cabinTop = floor + M(0.2);
-  shell.push(hollow(extrude(outline(back, front), W, bevel, 0, 8), cabinRear, doorFront, cabinTop));
-  openShell.push(extrude(outline(doorFront, front), W, bevel, 0, 8));
-  openShell.push(hollow(extrude(outline(back, doorRear), W, bevel, 0, 8), cabinRear, doorRear + 1e-3, cabinTop));
+  // The front bulkhead: the footwell runs forward to it, under the dashboard.
+  const bulkX = Math.max(doorFront, axles[0]! - M(0.1));
+  const arches = { until: bulkX, over: clear + M(0.01), under: archY + archR + M(0.02) };
+  shell.push(hollow(extrude(outline(back, front), W, bevel, 0, 8), cabinRear, doorFront, cabinTop, arches));
+  openShell.push(hollow(extrude(outline(doorFront, front), W, bevel, 0, 8), doorFront, doorFront, Infinity, arches));
+  openShell.push(hollow(extrude(outline(back, doorRear), W, bevel, 0, 8), cabinRear, doorRear + 1e-3, cabinTop, arches));
   {
     // The sill under the doors, clear of both arches.
     const xa = Math.max(doorRear, axles[1]! + archR);
@@ -926,7 +956,6 @@ export function buildVehicleModel(a: Archetype): VehicleModel {
   const seatOf = (side: DoorSide, row: number): SeatModel => seats[(side === -1 ? 0 : perSide) + row]!;
   const rearRow = perSide - 1;
   const lastSeatX = seatOf(-1, rearRow).x;
-  const bulkX = Math.max(doorFront, axles[0]! - M(0.1));
   // Carpet from the bulkhead back to behind the last seat.
   cabin.push(tint(box(bulkX - (lastSeatX - M(0.55)), M(0.03), inner, (bulkX + lastSeatX - M(0.55)) / 2, floor, 0), CARPET));
   // Dashboard: a side profile across the cabin, from under the windscreen
@@ -1005,7 +1034,7 @@ export function buildVehicleModel(a: Archetype): VehicleModel {
   // ---- steering wheel.
   const driverIndex = seats.findIndex((s) => s.driver);
   const steering: SteeringModel | null = driverIndex >= 0
-    ? { geometry: steeringWheel(M(DRIVER_WHEEL.radius)), seat: driverIndex, tilt: DRIVER_WHEEL.tilt }
+    ? { geometry: steeringWheel(M(DRIVER_WHEEL.radius)), seat: driverIndex, wheel: DRIVER_WHEEL }
     : null;
 
   // ---- trim: bumpers, grille, liners, sills, plates' recesses.
@@ -1014,9 +1043,24 @@ export function buildVehicleModel(a: Archetype): VehicleModel {
   trim.push(tint(roundedSlab(M(0.16), W - M(0.02), M(0.1), M(0.22), back + M(0.06), clear + M(0.04), 0), DARK_TRIM));
   trim.push(tint(box(M(0.04), noseY * 0.2, W * 0.42, front + M(0.001), noseY * 0.74, 0), GRILLE));
   for (const ax of axles) {
-    // Wheel-arch liners: nothing is seen through an arch but the tyre.
+    // Wheel-arch liners: nothing is seen through an arch but the tyre. One
+    // wheelhouse a side, as a car has; one box across the whole width stood
+    // up through the rear bench and the front footwell.
+    // Each is a ceiling over the tyre following the arch, and a wall inboard
+    // of it.
     const tread = W * 0.14;
-    trim.push(tint(box(archR * 1.7, archY + archR * 0.95 - clear, W - tread * 2 - M(0.04), ax, (archY + archR * 0.95 + clear) / 2, 0), LINER));
+    const inboard = halfW - tread - M(0.06);
+    const band: P2[] = [];
+    for (let i = 0; i <= 12; i++) {
+      const x = ax - archR + (2 * archR * i) / 12;
+      band.push([x, archY + Math.sqrt(Math.max(0, archR * archR - (x - ax) ** 2))]);
+    }
+    for (let i = 12; i >= 0; i--) band.push([band[i]![0], band[i]![1] + M(0.04)]);
+    for (const side of [-1, 1] as const) {
+      trim.push(tint(extrude(band, halfW - SKIN - inboard, 0, side * (halfW - SKIN + inboard) / 2, 2, 0), LINER));
+      trim.push(tint(box(archR * 2, archY + archR + M(0.04) - clear, M(0.02), ax, (archY + archR + M(0.04) + clear) / 2,
+        side * inboard), LINER));
+    }
   }
   for (const side of [-1, 1] as const) {
     // A black rocker along each sill.
@@ -1178,9 +1222,14 @@ export interface TwoWheelerModel {
   readonly cranks: BufferGeometry | null;
   readonly bracketX: number;
   readonly bracketY: number;
-  /** Where the rider's pelvis sits: along the body and height above the road. */
+  /**
+   * Where the rider's pelvis bone sits: along the body and height above the
+   * road. The saddle, the grips, the pegs and the pedals are all built from
+   * here by `fit` (`riderPoses.ts`), which is what the riding poses reach for.
+   */
   readonly seatX: number;
   readonly seatY: number;
+  readonly fit: TwoWheelerFit;
   readonly headlamp: Lamp;
   readonly taillamp: Lamp;
 }
@@ -1198,40 +1247,84 @@ function strut(x0: number, y0: number, x1: number, y1: number, z: number, wide: 
   return g;
 }
 
+/** A grip's centre in the steering frame (origin on the steering head, X forward, Z right). */
+function gripInHead(fit: TwoWheelerFit, pelvisX: number, headX: number, headY: number, side: DoorSide): Vector3 {
+  // `gripPoint` is in the rider's pelvis frame: +X to the rider's LEFT, +Z forward.
+  const g = gripPoint(fit, side === -1 ? 1 : -1);
+  return new Vector3(pelvisX + M(g[2]) - headX, M(fit.pelvisY + g[1]) - headY, -M(g[0]));
+}
+
+/** Rubber grips and a swept bar from a clamp on the steering head out to them. */
+function handlebar(fit: TwoWheelerFit, pelvisX: number, headX: number, headY: number, clampY: number, thick: number): BufferGeometry[] {
+  const out: BufferGeometry[] = [];
+  const clamp = new Vector3(-M(0.02), clampY, 0);
+  for (const side of [-1, 1] as const) {
+    const grip = gripInHead(fit, pelvisX, headX, headY, side);
+    // The bar runs from the clamp out to the grip's inner end, then along the grip.
+    const inner = grip.clone().add(new Vector3(0, 0, -side * M(0.07)));
+    const knee = new Vector3(clamp.x, clamp.y, side * M(0.1));
+    out.push(bar(clamp.clone(), knee, thick), bar(knee, inner, thick));
+    const rubber = new CylinderGeometry(thick * 0.9, thick * 0.9, M(0.13), 8).rotateX(Math.PI / 2);
+    out.push(tint(rubber.translate(grip.x, grip.y, grip.z + side * M(0.005)), 0x161618));
+  }
+  return out;
+}
+
 function motorcycleModel(a: Archetype): TwoWheelerModel {
+  const fit = MOTO_FIT;
   const L = a.length;
   const r = a.wheelRadius;
   const front = L * 0.37;
   const rear = -L * 0.37;
-  const headX = front - M(0.22);
+  // The rider's pelvis, and everything they touch from it.
+  const px = -M(0.24);
+  const py = M(fit.pelvisY);
+  const headX = px + M(fit.steerAxis);
   const headY = M(0.95);
+  const saddleTop = py - M(fit.saddleDrop);
   const body: BufferGeometry[] = [];
   const trim: BufferGeometry[] = [];
-  // Tank, sloping down to the seat.
-  body.push(extrude([[headX - M(0.05), M(0.8)], [headX - M(0.02), M(0.95)], [headX - M(0.2), M(1.0)], [headX - M(0.45), M(0.93)], [headX - M(0.55), M(0.8)]], M(0.32), M(0.06)));
-  // Tail cowl behind the seat.
-  body.push(extrude([[-M(0.2), M(0.8)], [-M(0.25), M(0.86)], [rear - M(0.02), M(0.92)], [rear + M(0.04), M(0.82)]], M(0.2), M(0.04)));
+  // Tank, from the steering head sloping down to the front of the saddle.
+  const tankRear = px + M(0.26);
+  body.push(extrude([[headX - M(0.04), M(0.82)], [headX - M(0.02), M(0.96)], [headX - M(0.16), M(1.02)],
+    [tankRear + M(0.06), saddleTop + M(0.08)], [tankRear - M(0.02), saddleTop - M(0.02)], [tankRear + M(0.06), M(0.74)]], M(0.34), M(0.07)));
+  // Side panels under the saddle, and the tail cowl behind it.
+  body.push(extrude([[tankRear, M(0.74)], [tankRear, saddleTop - M(0.04)], [px - M(0.3), saddleTop - M(0.02)], [px - M(0.24), M(0.62)]], M(0.26), M(0.03)));
+  body.push(extrude([[px - M(0.28), saddleTop - M(0.03)], [px - M(0.34), saddleTop + M(0.03)], [rear + M(0.02), saddleTop + M(0.08)],
+    [rear + M(0.08), saddleTop - M(0.03)]], M(0.2), M(0.04)));
   // Frame spine from the head to the swingarm pivot.
   body.push(strut(headX, headY - M(0.05), -M(0.15), M(0.45), 0, M(0.07), M(0.08)));
-  // Seat: a padded saddle from the tank back over the tail.
-  trim.push(tint(extrude([[headX - M(0.5), M(0.86)], [-M(0.52), M(0.9)], [-M(0.56), M(0.84)], [headX - M(0.5), M(0.8)]], M(0.26), M(0.04)), 0x1a1a1c));
-  // Engine block and cylinder, exhaust along the right side.
-  trim.push(tint(box(M(0.44), M(0.32), M(0.28), M(0.02), M(0.47), 0), 0x55595e));
-  trim.push(tint(new CylinderGeometry(M(0.045), M(0.05), L * 0.5, 8).rotateZ(Math.PI / 2 + 0.12).translate(-L * 0.14, M(0.34), M(0.17)), CHROME_TRIM));
-  // Swingarm to the rear axle, and the rear mudguard.
+  // The saddle: padded, its top where the rider's seat is.
+  trim.push(tint(extrude([[tankRear + M(0.02), saddleTop - M(0.02)], [px, saddleTop], [px - M(0.3), saddleTop + M(0.02)],
+    [px - M(0.33), saddleTop - M(0.06)], [tankRear, saddleTop - M(0.09)]], M(0.28), M(0.04), 0, 4, 2), 0x1a1a1c));
+  // Engine: crankcase, cylinder block leaning forward, and the exhaust along
+  // the right side back to a silencer.
+  trim.push(tint(extrude([[-M(0.2), M(0.3)], [M(0.2), M(0.3)], [M(0.26), M(0.46)], [M(0.1), M(0.62)], [-M(0.18), M(0.6)], [-M(0.24), M(0.44)]], M(0.26), M(0.03), 0, 2, 1), 0x4c5055));
+  trim.push(tint(box(M(0.2), M(0.22), M(0.28), 0, 0, 0).rotateZ(-0.35).translate(M(0.15), M(0.64), 0), 0x6a6f75));
+  trim.push(tint(bar(new Vector3(M(0.22), M(0.5), M(0.1)), new Vector3(-M(0.05), M(0.26), M(0.16)), M(0.05)), CHROME_TRIM));
+  trim.push(tint(new CylinderGeometry(M(0.055), M(0.06), M(0.5), 10).rotateZ(Math.PI / 2 - 0.1).translate(rear + M(0.33), M(0.34), M(0.18)), CHROME_TRIM));
+  trim.push(tint(bar(new Vector3(-M(0.05), M(0.26), M(0.16)), new Vector3(rear + M(0.58), M(0.32), M(0.18)), M(0.045)), CHROME_TRIM));
+  // Swingarm to the rear axle, the rear shock, and the rear mudguard.
   trim.push(strut(-M(0.12), M(0.42), rear, r, M(0.1), M(0.05), M(0.05)));
   trim.push(strut(-M(0.12), M(0.42), rear, r, -M(0.1), M(0.05), M(0.05)));
-  trim.push(tint(box(M(0.26), M(0.03), M(0.14), rear + M(0.05), r + M(0.34), 0), DARK_TRIM));
-  // Steering: fork legs down to the front axle, bars, headlamp nacelle,
-  // front mudguard - modelled about the steering head.
+  for (const side of [-1, 1] as const) trim.push(tint(strut(rear + M(0.3), r + M(0.06), px - M(0.2), saddleTop - M(0.08), side * M(0.1), M(0.04), M(0.04)), 0xc0392b));
+  trim.push(tint(box(M(0.26), M(0.03), M(0.16), rear + M(0.05), r + M(0.34), 0), DARK_TRIM));
+  // Footpegs, where the riding pose puts the feet, on hangers from the frame.
+  const peg = fit.peg!;
+  for (const side of [-1, 1] as const) {
+    const at = new Vector3(px + M(peg.forward), py + M(peg.up), side * M(peg.side));
+    trim.push(tint(new CylinderGeometry(M(0.018), M(0.018), M(0.11), 6).rotateX(Math.PI / 2).translate(at.x, at.y, at.z), 0x2a2c30));
+    trim.push(tint(bar(new Vector3(at.x - M(0.04), at.y + M(0.02), side * M(0.12)), new Vector3(at.x, at.y, at.z - side * M(0.04)), M(0.025)), DARK_TRIM));
+  }
+  // Steering: fork legs down to the front axle, the bars out to the grips,
+  // the headlamp nacelle and the front mudguard - about the steering head.
   const steering: BufferGeometry[] = [];
   const dx = front - headX;
   const dy = r - headY;
-  for (const side of [-1, 1] as const) steering.push(strut(0, 0, dx, dy, side * M(0.09), M(0.05), M(0.05)));
-  steering.push(box(M(0.04), M(0.04), M(0.7), -M(0.1), M(0.13), 0));
-  steering.push(tint(box(M(0.12), M(0.05), M(0.05), -M(0.1), M(0.14), M(0.33)), 0x1a1a1c));
-  steering.push(tint(box(M(0.12), M(0.05), M(0.05), -M(0.1), M(0.14), -M(0.33)), 0x1a1a1c));
-  steering.push(box(M(0.14), M(0.16), M(0.2), M(0.08), -M(0.02), 0));
+  for (const side of [-1, 1] as const) steering.push(strut(0, M(0.08), dx, dy, side * M(0.09), M(0.05), M(0.05)));
+  steering.push(tint(box(M(0.1), M(0.04), M(0.24), 0, M(0.08), 0), DARK_TRIM));
+  steering.push(...handlebar(fit, px, headX, headY, M(0.12), M(0.022)));
+  steering.push(tint(box(M(0.14), M(0.16), M(0.2), M(0.1), -M(0.02), 0), DARK_TRIM));
   steering.push(tint(box(M(0.34), M(0.03), M(0.13), dx - M(0.02), dy + r + M(0.06), 0), DARK_TRIM));
   return {
     body: merge(body),
@@ -1242,51 +1335,64 @@ function motorcycleModel(a: Archetype): TwoWheelerModel {
     cranks: null,
     bracketX: 0,
     bracketY: 0,
-    seatX: -M(0.24),
-    seatY: M(0.8),
-    headlamp: { x: headX + M(0.16), y: headY - M(0.02), z: 0, sx: M(0.04), sy: M(0.12), sz: M(0.14) },
-    taillamp: { x: rear - M(0.04), y: M(0.9), z: 0, sx: M(0.03), sy: M(0.05), sz: M(0.12) },
+    seatX: px,
+    seatY: py,
+    fit,
+    headlamp: { x: headX + M(0.18), y: headY - M(0.02), z: 0, sx: M(0.04), sy: M(0.12), sz: M(0.14) },
+    taillamp: { x: rear - M(0.02), y: saddleTop + M(0.02), z: 0, sx: M(0.03), sy: M(0.05), sz: M(0.12) },
   };
 }
 
 function bicycleModel(a: Archetype): TwoWheelerModel {
+  const fit = BIKE_FIT;
   const L = a.length;
   const r = a.wheelRadius;
   const front = L * 0.37;
   const rear = -L * 0.37;
-  const bracketX = -M(0.02);
-  const bracketY = M(0.3);
-  const seatTop = { x: -M(0.2), y: M(0.88) };
-  const headX = front - M(0.2);
+  const px = -M(0.25);
+  const py = M(fit.pelvisY);
+  const bracketX = px + M(fit.bracket!.forward);
+  const bracketY = py + M(fit.bracket!.up);
+  const saddleTop = py - M(fit.saddleDrop);
+  const headX = px + M(fit.steerAxis);
   const headY = M(0.9);
+  // The seat tube runs from the bracket up and back to under the saddle.
+  const seatTop = { x: px - M(0.02), y: saddleTop - M(0.1) };
   const tube = M(0.035);
   const body: BufferGeometry[] = [];
   // The diamond: seat tube, top tube, down tube, and the two stays each side.
   body.push(strut(bracketX, bracketY, seatTop.x, seatTop.y, 0, tube, tube));
   body.push(strut(seatTop.x, seatTop.y - M(0.04), headX, headY - M(0.04), 0, tube, tube));
   body.push(strut(bracketX, bracketY, headX, headY - M(0.12), 0, tube * 1.2, tube * 1.2));
+  // Head tube.
+  body.push(strut(headX + M(0.02), headY - M(0.16), headX, headY + M(0.02), 0, tube * 1.3, tube * 1.3));
   for (const side of [-1, 1] as const) {
     body.push(strut(bracketX, bracketY, rear, r, side * M(0.06), tube * 0.8, tube * 0.8));
     body.push(strut(seatTop.x, seatTop.y - M(0.05), rear, r, side * M(0.06), tube * 0.8, tube * 0.8));
   }
   const trim: BufferGeometry[] = [];
-  // Seat post and saddle, and a rear rack.
-  trim.push(strut(seatTop.x, seatTop.y, seatTop.x - M(0.03), M(0.97), 0, M(0.025), M(0.025)));
-  trim.push(tint(box(M(0.26), M(0.05), M(0.14), seatTop.x - M(0.02), M(0.99), 0), 0x1a1a1c));
+  // Seat post, and the saddle with its nose forward, its top where the rider's seat is.
+  trim.push(strut(seatTop.x, seatTop.y, px - M(0.03), saddleTop - M(0.04), 0, M(0.025), M(0.025)));
+  trim.push(tint(extrude([[px + M(0.16), saddleTop - M(0.01)], [px + M(0.14), saddleTop - M(0.04)], [px - M(0.1), saddleTop - M(0.05)],
+    [px - M(0.12), saddleTop - M(0.01)], [px - M(0.06), saddleTop]], M(0.15), M(0.02), 0, 2, 1), 0x1a1a1c));
+  // A rear rack, and the chainring's guard.
   trim.push(box(M(0.34), M(0.02), M(0.12), rear + M(0.05), r + M(0.34), 0));
-  // Steering: fork, stem and a flat bar with grips.
+  for (const side of [-1, 1] as const) trim.push(strut(rear + M(0.12), r + M(0.33), rear, r, side * M(0.06), M(0.015), M(0.015)));
+  // Steering: fork, stem, and the bars back to the grips.
   const steering: BufferGeometry[] = [];
   for (const side of [-1, 1] as const) {
     steering.push(strut(0, 0, front - headX, r - headY, side * M(0.05), tube * 0.8, tube * 0.8));
-    steering.push(tint(box(M(0.035), M(0.035), M(0.1), -M(0.08), M(0.15), side * M(0.26)), 0x1a1a1c));
   }
-  steering.push(strut(0, 0, -M(0.06), M(0.14), 0, tube, tube));
-  steering.push(box(M(0.025), M(0.025), M(0.56), -M(0.08), M(0.15), 0));
-  // Cranks and pedals about the bottom bracket: two arms, opposite.
+  steering.push(strut(0, 0, -M(0.02), M(0.1), 0, tube, tube));
+  steering.push(...handlebar(fit, px, headX, headY, M(0.1), M(0.014)));
+  // Cranks and pedals about the bottom bracket: two arms, opposite; the
+  // pedal on the arm pointing forward at rest is on the right (+Z).
+  const crank = M(fit.crank!);
+  const pedalSide = M(fit.pedalSide!);
   const cranks: BufferGeometry[] = [];
   for (const side of [-1, 1] as const) {
-    cranks.push(new BoxGeometry(M(0.17), M(0.025), M(0.02)).translate(side * M(0.085), 0, side * M(0.09)));
-    cranks.push(tint(box(M(0.1), M(0.02), M(0.09), side * M(0.17), 0, side * M(0.13)), 0x1a1a1c));
+    cranks.push(new BoxGeometry(crank, M(0.025), M(0.02)).translate(side * crank / 2, 0, side * M(0.09)));
+    cranks.push(tint(box(M(0.1), M(0.02), M(0.09), side * crank, 0, side * pedalSide), 0x1a1a1c));
   }
   cranks.push(new CylinderGeometry(M(0.09), M(0.09), M(0.012), 14).rotateX(Math.PI / 2).translate(0, 0, M(0.06)));
   return {
@@ -1298,8 +1404,9 @@ function bicycleModel(a: Archetype): TwoWheelerModel {
     cranks: merge(cranks),
     bracketX,
     bracketY,
-    seatX: seatTop.x - M(0.03),
-    seatY: M(0.95),
+    seatX: px,
+    seatY: py,
+    fit,
     headlamp: { x: headX + M(0.06), y: headY - M(0.08), z: 0, sx: M(0.03), sy: M(0.05), sz: M(0.06) },
     taillamp: { x: rear - M(0.02), y: r + M(0.38), z: 0, sx: M(0.02), sy: M(0.04), sz: M(0.08) },
   };
@@ -1463,16 +1570,18 @@ export function buildBusModel(a: Archetype): VehicleModel {
   const seats: SeatModel[] = [];
   const driverX = front - M(1.2);
   const driverZ = -halfW + M(0.62);
-  const driverHip = floor + M(0.5);
+  // The driver sits upright and high over the pedals (`CAB_WHEEL`), the
+  // hip 0.45 m over the floor where the `cabDrive` pose puts the feet.
+  const driverHip = floor + M(0.45);
   cabin.push(tint(extrude([[front - M(0.12), screenBase + M(0.05)], [front - M(0.12), floor], [front - M(0.5), floor], [front - M(0.55), screenBase - M(0.05)], [front - M(0.45), screenBase + M(0.12)]], W - wall * 2 - M(0.02), M(0.03), 0, 4, 2), DASH));
-  cabin.push(...seatShell(driverX, driverHip, floor, M(0.52), driverZ, 0.3, M(0.62), SEAT_FABRIC));
-  const hr = headrestAt(driverX, driverHip, 0.3);
+  cabin.push(...seatShell(driverX, driverHip, floor, M(0.52), driverZ, 0.2, M(0.62), SEAT_FABRIC));
+  const hr = headrestAt(driverX, driverHip, 0.2);
   cabin.push(...headrest(hr.x, hr.y, driverZ));
   cabin.push(tint(box(M(0.04), M(1.1), M(0.9), driverX - M(0.48), floor + M(0.55), -halfW + M(0.5)), PANEL_GREY));
-  const wheelAt = new Vector3(driverX + M(DRIVER_WHEEL.forward), driverHip + M(DRIVER_WHEEL.up), driverZ);
+  const wheelAt = new Vector3(driverX + M(CAB_WHEEL.forward), driverHip + M(CAB_WHEEL.up), driverZ);
   cabin.push(tint(bar(wheelAt, new Vector3(front - M(0.45), floor + M(0.3), driverZ), M(0.07)), DASH));
   seats.push({ x: driverX, z: driverZ, hipY: driverHip, headroom: cant - M(0.05) - driverHip, legroom: front - M(0.12) - driverX,
-    floor, sideRoom: Math.min(M(0.45), halfW - wall - Math.abs(driverZ)), driver: true, row: 0, pose: 'car' });
+    floor, sideRoom: Math.min(M(0.45), halfW - wall - Math.abs(driverZ)), driver: true, row: 0, pose: 'cab' });
 
   // Passenger seats: pairs either side of the aisle, a row of five at the back.
   const pitch = M(0.78);
@@ -1534,18 +1643,23 @@ export function buildBusModel(a: Archetype): VehicleModel {
     { x: front - M(0.14), y: cant - M(0.16), z: 0, sx: M(0.02), sy: M(0.2), sz: W - M(0.5) },
   ];
 
-  const steering: SteeringModel = { geometry: steeringWheel(M(DRIVER_WHEEL.radius) * 1.15), seat: 0, tilt: DRIVER_WHEEL.tilt };
+  const steering: SteeringModel = { geometry: steeringWheel(M(CAB_WHEEL.radius)), seat: 0, wheel: CAB_WHEEL };
   const far = merge([
     box(L - M(0.1), sillY - clear, W, 0, (sillY + clear) / 2, 0),
     tint(box(L - M(0.3), cant - sillY, W - M(0.04), 0, (cant + sillY) / 2, 0), 0x1b2328),
     extrude([[back + M(0.02), cant], [front - M(0.12), cant], [front - M(0.2), H - M(0.12)], [front - M(0.5), H], [back + M(0.35), H], [back + M(0.03), H - M(0.1)]], W, 0, 0, 2),
     ...farWheels(axles, r, halfW, W * 0.14),
   ]);
-  const shellGeo = merge(shell);
-  const glassGeo = merge(glass);
+  // With every door shut the leaves are part of the body. They were only in
+  // the separate door parts, which are drawn while a door moves: a bus with
+  // its doors shut drove about with two open holes in its kerb side.
+  const shellGeo = merge([...shell.map((g) => g.clone()), ...doors.map((d) => d.panel.clone().translate(d.hingeX, 0, d.hingeZ))]);
+  const glassGeo = merge([...glass.map((g) => g.clone()), ...doors.map((d) => d.glass.clone().translate(d.hingeX, 0, d.hingeZ))]);
+  const openShellGeo = merge(shell);
+  const openGlassGeo = merge(glass);
   const interiorGeo = merge(cabin);
   return {
-    shell: shellGeo, glass: glassGeo, openShell: shellGeo, openGlass: glassGeo,
+    shell: shellGeo, glass: glassGeo, openShell: openShellGeo, openGlass: openGlassGeo,
     trim: merge(trim), interior: interiorGeo, openInterior: interiorGeo,
     roof: null, accent: null, far, steering, doors, seats, headlamps, taillamps, indicators, plates,
   };
@@ -1675,9 +1789,9 @@ export function buildTruckModel(a: Archetype): VehicleModel {
     const h = headrestAt(seatX, hipY, 0.3);
     cabin.push(...headrest(h.x, h.y, z));
     seats.push({ x: seatX, z, hipY, headroom: cabTop - M(0.08) - hipY, legroom: cabFront - M(0.45) - seatX,
-      floor: cabFloor + M(0.02), sideRoom: Math.min(M(0.42), halfW - skin - Math.abs(z)), driver: side === -1, row: 0, pose: 'car' });
+      floor: cabFloor + M(0.02), sideRoom: Math.min(M(0.42), halfW - skin - Math.abs(z)), driver: side === -1, row: 0, pose: 'cab' });
     if (side === -1) {
-      const wheel = new Vector3(seatX + M(DRIVER_WHEEL.forward), hipY + M(DRIVER_WHEEL.up), z);
+      const wheel = new Vector3(seatX + M(CAB_WHEEL.forward), hipY + M(CAB_WHEEL.up), z);
       cabin.push(tint(bar(wheel, new Vector3(cabFront - M(0.5), belt - M(0.1), z), M(0.07)), DASH));
     }
   }
@@ -1724,7 +1838,7 @@ export function buildTruckModel(a: Archetype): VehicleModel {
     { x: cabFront + M(0.12), y: M(0.5), z: 0, sx: M(0.015), sy: M(0.12), sz: M(0.4) },
     { x: -L / 2 + M(0.03), y: M(0.5), z: 0, sx: M(0.015), sy: M(0.14), sz: M(0.4) },
   ];
-  const steering: SteeringModel = { geometry: steeringWheel(M(DRIVER_WHEEL.radius) * 1.15), seat: 0, tilt: DRIVER_WHEEL.tilt };
+  const steering: SteeringModel = { geometry: steeringWheel(M(CAB_WHEEL.radius)), seat: 0, wheel: CAB_WHEEL };
 
   const far = merge([
     box(cabLength - M(0.05), belt - cabBottom, W, cabBack + cabLength / 2, (belt + cabBottom) / 2, 0),
