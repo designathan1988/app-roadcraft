@@ -123,6 +123,8 @@ export class SimWorld {
 
   /** Topology revision the indices were last built from. */
   topologyRevision = -1;
+  /** Revision the vehicle half was last built from (`rebuildVehicleTopology`). */
+  vehicleTopologyRevision = -1;
 
   constructor(
     readonly doc: RoadDoc,
@@ -193,15 +195,40 @@ export class SimWorld {
 
   /** Rebuilds every derived index from the current network geometry. */
   rebuildTopology(): void {
+    this.rebuildVehicleTopology();
+    this.rebuildWalkTopology();
+  }
+
+  /**
+   * The first half of `rebuildTopology`: lanelets, conflict zones, claims and
+   * the signal controllers - what the vehicles run on.
+   *
+   * The two halves can run in consecutive frames while the simulation is held
+   * (`main.ts`), so an edit is never one long stall of both: measured on the
+   * player map, the conflict zones and the footway graph each cost up to about
+   * 110 ms. The world is not stepped until the second half has run.
+   */
+  rebuildVehicleTopology(): void {
     this.graph.build(this.doc, this.net);
     this.conflicts.build(this.graph);
-    this.sidewalks.build(this.doc, this.net, this.graph);
-    this.crossingSpans.build(this);
     this.claims.dropMissing(this.conflicts);
     this.syncControllers();
     for (const segment of [...this.segmentVolume.keys()]) {
       if (!this.doc.segment(segment as SegmentId)) this.segmentVolume.delete(segment);
     }
+    this.vehicleTopologyRevision = this.net.revision;
+  }
+
+  /**
+   * The second half: the footway graph and its crossings, and the controllers
+   * again, which give crossings their pedestrian phases. Completes the
+   * topology for `topologyRevision`.
+   */
+  rebuildWalkTopology(): void {
+    if (this.vehicleTopologyRevision !== this.net.revision) this.rebuildVehicleTopology();
+    this.sidewalks.build(this.doc, this.net, this.graph);
+    this.crossingSpans.build(this);
+    this.syncControllers();
     this.topologyRevision = this.net.revision;
   }
 

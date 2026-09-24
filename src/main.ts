@@ -23,7 +23,7 @@ import { createSceneRenderer, type SceneHandle } from '@render/renderer';
 import { isoZoomBounds } from '@render/isoViewport';
 
 import { SimWorld } from '@sim/world';
-import { rebindAgents, step } from '@sim/pipeline';
+import { rebindAgents, rebindPeds, rebindVehicles, step } from '@sim/pipeline';
 import { DT } from '@sim/params';
 import { summarize } from '@sim/audit';
 
@@ -1568,8 +1568,21 @@ function frame(now: number): void {
   // Moving a node is an authoring preview. Freeze simulation time until the
   // gesture finishes so agents never rebuild against every intermediate shape.
   // The frame that first draws an edit is held the same way.
-  const holdSim = moving || topologyAfterDraw;
-  if (!holdSim && sim.topologyRevision !== net.revision) rebuildSimulationTopology();
+  let holdSim = moving || topologyAfterDraw;
+  if (!holdSim && sim.topologyRevision !== net.revision) {
+    // In two frames, vehicles then footways, each drawn in between: the two
+    // together were one stall of up to 240 ms after every edit. The world is
+    // held until both are done.
+    if (sim.vehicleTopologyRevision !== net.revision) {
+      sim.rebuildVehicleTopology();
+      rebindVehicles(sim);
+      holdSim = true;
+      requestDraw();
+    } else {
+      sim.rebuildWalkTopology();
+      rebindPeds(sim);
+    }
+  }
   const alpha = holdSim
     ? 1
     : sim.clock.advance(wall, () => step(sim, { traffic, pedestrians: traffic }));

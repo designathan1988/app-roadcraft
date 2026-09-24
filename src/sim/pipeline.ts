@@ -109,6 +109,12 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
 
 /** Re-binds agents to the rebuilt topology after a live edit. */
 export function rebindAgents(w: SimWorld): void {
+  rebindVehicles(w);
+  rebindPeds(w);
+}
+
+/** The vehicle half of `rebindAgents`, after `SimWorld.rebuildVehicleTopology`. */
+export function rebindVehicles(w: SimWorld): void {
   for (const v of w.vehiclesInIdOrder()) {
     // A shadow is a projection onto a sibling lane that may have been rebuilt
     // with a different length; the lateral slide finishes without it.
@@ -141,7 +147,10 @@ export function rebindAgents(w: SimWorld): void {
     v.claims = [...w.claims.points(v.id)];
     v.firstRequestTick = null;
   }
+}
 
+/** The pedestrian half of `rebindAgents`, after `SimWorld.rebuildWalkTopology`. */
+export function rebindPeds(w: SimWorld): void {
   for (const p of w.pedsInIdOrder()) {
     const edge = w.sidewalks.edges.get(p.edge);
     if (!edge) {
