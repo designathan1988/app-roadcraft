@@ -2,7 +2,7 @@ import { MIN_RIBBON, SEAM_OVERLAP, SURFACE_END_STEP } from '@core/scalar';
 import { Ring } from '@core/ring';
 import { offsetPolyline } from '@core/offset';
 import { Polyline } from '@core/polyline';
-import type { Vec2 } from '@core/vec2';
+import { type Vec2, dot } from '@core/vec2';
 import type { RoadDoc } from './doc';
 import type { SegmentDirection } from './doc';
 import type { NodeId, SegmentId } from './ids';
@@ -16,6 +16,7 @@ import {
 } from './roadTypes';
 import { type Junction, buildJunction, surfaceMode } from './junction/build';
 import { clampSegmentTrims } from './junction/trim';
+import { TRANSITION_BEND } from './junction/transition';
 import { impossibleNodes } from './legAngles';
 import {
   CROSSWALK_CAP,
@@ -75,6 +76,11 @@ export class Network {
    */
   readonly impossible = new Map<NodeId, number>();
   readonly trims = new Map<SegmentId, SegmentTrims>();
+  /**
+   * Nodes where one road carries on at another width, built as a taper rather
+   * than as a junction (`junction/transition.ts`).
+   */
+  readonly transitions = new Set<NodeId>();
   readonly polylines = new PolylineCache();
 
   /** Matches `RoadDoc.revision` at the time of the last rebuild. */
@@ -106,6 +112,7 @@ export class Network {
     this.junctions.clear();
     this.ribbons.clear();
     this.trims.clear();
+    this.transitions.clear();
 
     const active = [...this.doc.nodes.keys()].filter(
       (id) => surfaceMode(this.doc, this.polylines, id) === 'junction',
@@ -153,6 +160,7 @@ export class Network {
     // ---- store, applying the hard clamp -----------------------------------
     for (const [node, byLevel] of solved) {
       this.junctions.set(node, byLevel);
+      if (byLevel.get(Level.Asphalt)?.transition) this.transitions.add(node);
     }
 
     // The third pass only lowers trims (`capTrims` is a `Math.min`), so the
@@ -207,6 +215,8 @@ export class Network {
     for (const [seg, ribbon] of other.ribbons) this.ribbons.set(seg, ribbon);
     this.trims.clear();
     for (const [seg, t] of other.trims) this.trims.set(seg, t);
+    this.transitions.clear();
+    for (const node of other.transitions) this.transitions.add(node);
     this.impossible.clear();
     for (const [node, gap] of other.impossible) this.impossible.set(node, gap);
     this.polylines.adopt(other.polylines);
@@ -393,6 +403,28 @@ export class Network {
     }
   }
 
+  /**
+   * Whether a node is one road carrying on rather than an intersection: two
+   * legs, and no control device the player put there.
+   *
+   * Such a node still has a junction outline whenever its two roads differ -
+   * a change of class, of lane count, of structure, or a bend - but it has no
+   * approach: no zebra, no stop line, and the lanes run to its mouth. It used
+   * to get a crossing on both legs, so a street widening into a boulevard was
+   * painted as a crossroads with two of its arms missing.
+   */
+  continues(node: NodeId): boolean {
+    const record = this.doc.node(node);
+    if (!record || record.incident.length !== 2) return false;
+    if (record.control !== 'auto' && record.control !== 'none') return false;
+    // A CORNER is still crossed on foot: the sidewalk graph routes people over
+    // both of its legs, so it keeps its zebras. Only a road running on - within
+    // `TRANSITION_BEND` of straight - has none.
+    const legs = this.junctions.get(node)?.get(Level.Asphalt)?.legs;
+    if (!legs || legs.length !== 2) return true;
+    return dot((legs[0] as { dir: Vec2 }).dir, (legs[1] as { dir: Vec2 }).dir) < -Math.cos(TRANSITION_BEND);
+  }
+
   /** Distance from a node to this segment's junction mouth, at asphalt level. */
   mouthDistance(seg: SegmentId, node: NodeId): number {
     const s = this.doc.segment(seg);
@@ -417,6 +449,9 @@ export class Network {
   stopLineDistance(seg: SegmentId, node: NodeId): number {
     const mouth = this.mouthDistance(seg, node);
     if (mouth <= 0) return 0;
+    // Nothing stops where a road merely carries on: the link runs to the mouth
+    // and the lanes continue across the node.
+    if (this.continues(node)) return mouth;
     const length = this.polylines.get(this.doc, seg).length;
     // Never let the approach zone eat the whole segment.
     const capped = Math.min(stopLine(mouth), length * STOP_LINE_CAP);
@@ -447,6 +482,7 @@ export class Network {
   crosswalkDistanceAt(seg: SegmentId, node: NodeId): number {
     const mouth = this.mouthDistance(seg, node);
     if (mouth <= 0) return 0;
+    if (this.continues(node)) return 0;
     const length = this.polylines.get(this.doc, seg).length;
     const clear = mouth + CROSSWALK_DEPTH / 2 + 1;
 

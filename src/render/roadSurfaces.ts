@@ -386,6 +386,15 @@ export function buildRoadSurfaces(
       const input = inputOf([ring.flatten().map((point) => [point.x, point.y])]);
       if (input) ribbonAsphalt.push(input);
     }
+    // ...and to the tapers where a road carries on at another width, whose lane
+    // lines and edge lines run on through them (see transitionMarkings).
+    for (const node of net.transitions) {
+      const junction = net.junctions.get(node)?.get(Level.Asphalt as SurfaceLevel);
+      const leg = junction?.legs[0];
+      if (!junction || !leg || !include(leg.seg)) continue;
+      const input = inputOf([junction.ring.flatten().map((point) => [point.x, point.y])]);
+      if (input) ribbonAsphalt.push(input);
+    }
     const quads = new Map<string, Input[]>();
     for (const [color, rings] of markingQuads(net, include, structure.id === 'ground')) {
       quads.set(color, inputsOf(rings.map((ring) => [ring])));

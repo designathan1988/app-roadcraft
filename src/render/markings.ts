@@ -10,6 +10,7 @@ import {
   type StrokeSpec,
   junctionDetail,
   segmentMarkings,
+  transitionMarkings,
 } from '@world/markings';
 
 /**
@@ -150,6 +151,11 @@ export function markingQuads(
     if (!include(ribbon.id)) continue;
     const start = net.trims.get(ribbon.id)?.a[Level.Asphalt] ?? 0;
     for (const spec of segmentMarkings(ribbon, start)) stroke(at(spec.color), spec);
+  }
+  for (const node of net.transitions) {
+    const leg = net.junctions.get(node)?.get(Level.Asphalt)?.legs[0];
+    if (!leg || !include(leg.seg)) continue;
+    for (const spec of transitionMarkings(net, node)) stroke(at(spec.color), spec);
   }
   if (includeJunctionDetails) {
     const detail = junctionDetail(net);

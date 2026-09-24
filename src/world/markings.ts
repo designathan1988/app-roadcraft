@@ -12,6 +12,9 @@ import { offsetPolyline } from '@core/offset';
 import type { Vec2 } from '@core/vec2';
 import { type Aabb, intersects } from '@core/aabb';
 import type { Junction } from '@world/junction/build';
+import type { Leg } from '@world/junction/legs';
+import { TransitionAxis, taperEase } from '@world/junction/transition';
+import type { NodeId } from '@world/ids';
 import {
   CROSSWALK_DEPTH,
   STOP_BAR_WIDTH,
@@ -292,4 +295,72 @@ export function junctionDetail(net: Network, view?: Aabb): { stops: Bar[]; zebra
   }
 
   return { stops, zebras };
+}
+
+/**
+ * The paint across a taper where one road carries on at another width.
+ *
+ * Marked the way a road designer marks a lane gain or a lane drop: the edge
+ * lines follow the kerb as it swings out or in, the lanes the two roads share
+ * keep their dividers straight through, and the line between the directions is
+ * solid - no overtaking while the road changes shape - splitting to either side
+ * of a central reservation where one begins. A lane that exists on one side
+ * only gets its divider on its own road, starting where the taper ends.
+ *
+ * It used to be bare asphalt between two zebra crossings.
+ */
+export function transitionMarkings(net: Network, node: NodeId): StrokeSpec[] {
+  const junction = net.junctions.get(node)?.get(Level.Asphalt);
+  if (!junction || !junction.transition || junction.legs.length !== 2) return [];
+  const a = junction.legs[0] as Leg;
+  const b = junction.legs[1] as Leg;
+  const ra = a.road;
+  const rb = b.road;
+  const axis = new TransitionAxis(a, junction.trims[0] as number, b, junction.trims[1] as number);
+  const mix = (p: number, q: number) => (u: number): number => p + (q - p) * taperEase(u);
+  const half = mix(ra.width / 2, rb.width / 2);
+  const out: StrokeSpec[] = [];
+  const solid = (offset: (u: number) => number, width: number, color: string): void => {
+    out.push({ points: axis.offset(offset), width, color, dash: null, dashOffset: 0 });
+  };
+
+  // Travel from `a` to `b` keeps to the right, the negative side of the axis.
+  solid((u) => -(half(u) - 0.5), 0.5, EDGE_LINE_LIGHT);
+  solid((u) => half(u) - 0.5, 0.5, EDGE_LINE_DARK);
+
+  if (a.direction !== 'both' || b.direction !== 'both') return out;
+  if (ra.markings === 'none' && rb.markings === 'none') return out;
+
+  const median = mix(ra.median / 2, rb.median / 2);
+  const lined = rb.markings === 'lanes' ? rb : ra.markings === 'lanes' ? ra : rb.markings !== 'none' ? rb : ra;
+  if (ra.median > 0 || rb.median > 0) {
+    // The two directions part to either side of the reservation's nose.
+    const colour = markingColor(rb.median > 0 ? rb : ra);
+    solid((u) => median(u), 0.7, colour);
+    solid((u) => -median(u), 0.7, colour);
+  } else {
+    // One solid line, in each road's own colour on its own half of the taper.
+    const line = axis.offset(() => 0);
+    const mid = Math.floor(line.length / 2);
+    const first = ra.markings === 'none' ? rb : ra;
+    const second = rb.markings === 'none' ? ra : rb;
+    out.push({ points: line.slice(0, mid + 1), width: 0.9, color: markingColor(first), dash: null, dashOffset: 0 });
+    out.push({ points: line.slice(mid), width: 0.9, color: markingColor(second), dash: null, dashOffset: 0 });
+  }
+
+  // The lanes both roads have run straight through.
+  const shared = Math.min(lanesPerDirection(ra), lanesPerDirection(rb));
+  const lane = mix(laneWidth(ra), laneWidth(rb));
+  for (let k = 1; k < shared; k++) {
+    for (const side of [-1, 1]) {
+      out.push({
+        points: axis.offset((u) => side * (median(u) + lane(u) * k)),
+        width: 0.7,
+        color: markingColor(lined),
+        dash: DASH,
+        dashOffset: 0,
+      });
+    }
+  }
+  return out;
 }

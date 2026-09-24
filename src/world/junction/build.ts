@@ -13,6 +13,7 @@ import {
 import { type Leg, buildLegs } from './legs';
 import { type Corner, computeCorners } from './corners';
 import { computeTrims } from './trim';
+import { isTransition, transitionRing, transitionRun } from './transition';
 import { buildJunctionRing, findSlabViolations } from './polygon';
 import { COARSE_EPS, FINE_EPS } from '@core/scalar';
 
@@ -40,6 +41,12 @@ export interface Junction {
   /** Everything this junction contributes to its level, unioned by the painter. */
   readonly rings: readonly Ring[];
   readonly usedHullFallback: boolean;
+  /**
+   * True for a node of two legs where one road carries on at another width:
+   * the outline is a taper (`transition.ts`), there is no approach zone, and
+   * the lanes run straight through.
+   */
+  readonly transition: boolean;
 }
 
 /**
@@ -155,6 +162,29 @@ export function buildJunction(
     currentLegs.forEach((leg, i) => out.set(leg.seg, values[i] as number));
     return out;
   };
+
+  // A road carrying on at another width is a taper, not a junction.
+  if (isTransition(legs)) {
+    const run = transitionRun((legs[0] as Leg).road, (legs[1] as Leg).road);
+    let trims = capTrims(legs.map(() => run), legs);
+    for (let pass = 0; pass < passes; pass++) {
+      legs = buildLegs(doc, cache, nodeId, level, { trims: bySegment(trims, legs) });
+      trims = capTrims(legs.map(() => run), legs);
+    }
+    const ring = transitionRing(legs, trims);
+    return {
+      nodeId,
+      level,
+      legs,
+      corners: computeCorners(legs, legs.map(scaleOf)),
+      trims,
+      ring,
+      tongues: [],
+      rings: [ring],
+      usedHullFallback: false,
+      transition: true,
+    };
+  }
 
   let corners = computeCorners(legs, legs.map(scaleOf));
   let trims = capTrims(computeTrims(legs, corners), legs);
@@ -278,5 +308,6 @@ export function buildJunction(
     tongues: built.tongues,
     rings: built.rings,
     usedHullFallback: built.usedHullFallback,
+    transition: false,
   };
 }
