@@ -3,6 +3,11 @@ import {
   Group,
   Frustum,
   Matrix4,
+  type Material,
+  type Mesh,
+  MeshDepthMaterial,
+  type Object3D,
+  RGBADepthPacking,
   Sphere,
   PCFShadowMap,
   Scene,
@@ -128,6 +133,39 @@ export function createSceneRenderer(
   // ambient-occlusion pass's normal pass - so the whole shadow pass, every
   // caster in the city, was drawn twice a frame for the same picture.
   renderer.shadowMap.autoUpdate = false;
+
+  // One shadow depth material per program variant. three draws every caster
+  // without a depth material of its own with ONE shared material, and plain
+  // meshes, instanced meshes and instanced meshes with per-instance colour
+  // compile to three different programs of it: interleaved in the shadow pass,
+  // three re-derived the program on nearly every draw (`getParameters`,
+  // `setProgram` - the trap AGENTS.md describes, inside three). Each variant
+  // now has its own material, so each keeps its program.
+  const depthVariants = {
+    plain: new MeshDepthMaterial({ depthPacking: RGBADepthPacking }),
+    instanced: new MeshDepthMaterial({ depthPacking: RGBADepthPacking }),
+    tinted: new MeshDepthMaterial({ depthPacking: RGBADepthPacking }),
+  };
+  const ownDepth = new Set<MeshDepthMaterial>(Object.values(depthVariants));
+  const plainOpaque = (material: Material): boolean => {
+    const m = material as Material & { alphaTest: number; alphaMap?: unknown; map?: unknown; displacementMap?: unknown };
+    // Anything three would give a depth material of its own (cut-outs,
+    // displacement, coverage) keeps three's own choice.
+    return !(m.alphaTest > 0 && (m.map || m.alphaMap)) && !m.displacementMap && !m.alphaToCoverage;
+  };
+  const assignShadowDepth = (root: Object3D): void => {
+    root.traverse((object) => {
+      const mesh = object as Mesh & { isInstancedMesh?: boolean; instanceColor?: unknown };
+      if (!mesh.isMesh || !mesh.castShadow) return;
+      const current = mesh.customDepthMaterial as MeshDepthMaterial | undefined;
+      if (current && !ownDepth.has(current)) return;
+      if (Array.isArray(mesh.material) || !plainOpaque(mesh.material)) return;
+      const wanted = !mesh.isInstancedMesh
+        ? depthVariants.plain
+        : mesh.instanceColor ? depthVariants.tinted : depthVariants.instanced;
+      if (current !== wanted) mesh.customDepthMaterial = wanted;
+    });
+  };
 
   let requested: QualityLevel | 'auto' = initialQuality;
   const governor = new QualityGovernor(requested === 'auto' ? 'high' : requested);
@@ -384,6 +422,9 @@ export function createSceneRenderer(
       environment.follow(target, halfWidth, halfHeight);
 
       renderer.shadowMap.needsUpdate = true;
+      // Cheap (a few hundred objects), and it follows meshes a rebuild or an
+      // asset load adds, and instance colours created on first use.
+      if (renderer.shadowMap.enabled) assignShadowDepth(scene);
       post.render(delta);
 
       if (delta > 0) fps = fps * 0.9 + (1 / Math.min(1, delta)) * 0.1;
