@@ -66,6 +66,9 @@ interface ClipFrames {
   stride: number;
   /** Height of the pelvis above the model origin in the first frame, metres. */
   pelvisY: number;
+  /** The pelvis's offset from the origin in plan in the first frame (model +X left, +Z forward), metres. */
+  pelvisX: number;
+  pelvisZ: number;
   loop: boolean;
   /** Ground covered by each baked frame on this body at scale 1, metres (start, stop). */
   travel?: Float32Array;
@@ -161,7 +164,7 @@ function restRig(asset: GLTF): BakeRig {
  * past the last frame reads a real pose.
  */
 async function bakeFrames(body: BakeRig, pose: (time: number) => void, duration: number,
-  loop: boolean, fps = FPS): Promise<{ data: Float32Array; frames: number; pelvisY: number }> {
+  loop: boolean, fps = FPS): Promise<{ data: Float32Array; frames: number; pelvisY: number; pelvisX: number; pelvisZ: number }> {
   const { rig, mesh } = body;
   const skeleton = mesh.skeleton;
   const frames = Math.max(1, Math.round(duration * fps));
@@ -170,15 +173,22 @@ async function bakeFrames(body: BakeRig, pose: (time: number) => void, duration:
   const pelvis = rig.getObjectByName('Bip01_Pelvis');
   const position = new Vector3();
   let pelvisY = 0;
+  let pelvisX = 0;
+  let pelvisZ = 0;
   for (let i = 0; i <= frames; i++) {
     await breathe();
     pose(loop ? (i % frames) * duration / frames : i * duration / frames);
     skeleton.update();
     data.set(skeleton.boneMatrices!, i * width);
-    if (i === 0 && pelvis) pelvisY = pelvis.getWorldPosition(position).y;
+    if (i === 0 && pelvis) {
+      pelvis.getWorldPosition(position);
+      pelvisY = position.y;
+      pelvisX = position.x;
+      pelvisZ = position.z;
+    }
   }
   data.copyWithin((frames + 1) * width, frames * width, (frames + 1) * width);
-  return { data, frames, pelvisY };
+  return { data, frames, pelvisY, pelvisX, pelvisZ };
 }
 
 /**
@@ -517,21 +527,23 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       plays: readonly { readonly key: CitizenClipKey; readonly phase: number; readonly weight: number;
         /** For a walk: ground covered, world units; the phase then follows this body's own stride. */
         readonly distance?: number }[],
-      lean = 0, maxScale = Infinity, fromGround = false) {
+      lean = 0, maxScale = Infinity, fromGround = false): number {
       const hash = pedHash(identity.seed);
       const body = bodyFor(identity, hash);
-      if (!body) return;
+      if (!body) return 0;
       const batch = batches.get(body.index);
       if (!batch) {
         if (!loading.has(body.index)) void request(body.index).catch(() => {});
-        return;
+        return 0;
       }
-      if (batch.count >= CAPACITY) return;
+      if (batch.count >= CAPACITY) return 0;
       if (batch.count >= batch.rows) grow(batch);
       mixClips.length = 0;
       mixPhases.length = 0;
       mixWeights.length = 0;
       let pelvis = 0;
+      let pelvisLeft = 0;
+      let pelvisAhead = 0;
       let total = 0;
       const scale = m(Math.min(maxScale, body.size * (0.92 + ((hash >>> 8) & 255) / 255 * 0.17)));
       for (const play of plays) {
@@ -547,19 +559,28 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         mixPhases.push(f * clip.frames);
         mixWeights.push(play.weight);
         pelvis += clip.pelvisY * play.weight;
+        pelvisLeft += clip.pelvisX * play.weight;
+        pelvisAhead += clip.pelvisZ * play.weight;
         total += play.weight;
       }
-      if (!mixClips.length) return;
+      if (!mixClips.length) return 0;
       pelvis /= total;
       // The model's origin, found back from the pelvis along the leaned up
       // axis - or, `fromGround`, the feet on the given point, as for somebody
-      // standing up out of a seat onto the road.
+      // standing up out of a seat onto the road. A captured sitting clip
+      // carries its pelvis back from the origin, onto the chair; that offset
+      // is taken out too, so the pelvis lands on the seat's hip point.
       const drop = fromGround ? 0 : pelvis * scale;
       const leftX = -Math.sin(heading);
       const leftY = Math.cos(heading);
+      const aheadX = Math.cos(heading);
+      const aheadY = Math.sin(heading);
+      const shiftLeft = fromGround ? 0 : (pelvisLeft / total) * scale;
+      const shiftAhead = fromGround ? 0 : (pelvisAhead / total) * scale;
       emit(batch, mixClips, mixPhases, mixWeights,
-        pelvisX - leftX * drop * Math.sin(lean), pelvisHeight - drop * Math.cos(lean),
-        pelvisY - leftY * drop * Math.sin(lean), heading, scale, lean);
+        pelvisX - leftX * drop * Math.sin(lean) - leftX * shiftLeft - aheadX * shiftAhead, pelvisHeight - drop * Math.cos(lean),
+        pelvisY - leftY * drop * Math.sin(lean) - leftY * shiftLeft - aheadY * shiftAhead, heading, scale, lean);
+      return scale;
     },
     finish() {
       for (const batch of batches.values()) {
