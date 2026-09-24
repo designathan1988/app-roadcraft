@@ -11,6 +11,9 @@ import { orientedPolyline } from '@world/geometry';
 import type { LaneletGraph, LaneletId } from '@world/lanelets';
 import { makeCrossingId, type CrossingId } from '../signals/plan';
 import { COARSE_EPS } from '@core/scalar';
+import { WalkableSurface } from '@world/walkable';
+import { Corridor, type CorridorFrame } from './corridor';
+import { PED_BEHAVIOUR } from './behaviour';
 
 export type SidewalkNodeId = string;
 export type SidewalkEdgeId = string;
@@ -26,12 +29,6 @@ export interface SidewalkNode {
 
 export type SidewalkEdgeKind = 'walk' | 'corner' | 'crossing';
 
-/**
- * Share of the narrower footway a corner path may use. The path runs along the
- * footway centreline with a slight outward bulge, so most of the width is
- * real footway; the rest is kept as margin from the kerb on the inside.
- */
-const CORNER_WIDTH_SHARE = 0.8;
 
 export interface SidewalkEdge {
   readonly id: SidewalkEdgeId;
@@ -55,7 +52,16 @@ export interface SidewalkEdge {
   readonly crossing?: CrossingId;
   /** Crossings only: the vehicle lanelets this edge passes over. */
   readonly lanes?: readonly LaneletId[];
+  /**
+   * The walking corridor: a continuous frame along `path` and the walls
+   * either side of it, fitted to the footway that is really drawn. Where a
+   * pedestrian may stand on this edge is exactly what it allows.
+   */
+  readonly corridor: Corridor;
 }
+
+/** An edge as it is declared, before its corridor is built. */
+type EdgeSpec = Omit<SidewalkEdge, 'corridor'>;
 
 /**
  * The pedestrian network, derived from the SAME junction geometry that trims
@@ -93,6 +99,13 @@ export class SidewalkGraph {
   /** Who is on which edge, rebuilt once a tick by the pedestrian step. */
   readonly occupancy = new PedEdgeIndex();
 
+  /** The footway as drawn, which the corridors are fitted to. Null before the first build. */
+  walkable: WalkableSurface | null = null;
+  /** Corridor stations with no footway anywhere near them, from the last build: a diagnostic. */
+  unfitted = 0;
+
+  private readonly reversedPaths = new Map<SidewalkEdgeId, Polyline>();
+
   build(doc: RoadDoc, net: Network, graph: LaneletGraph): void {
     this.nodes.clear();
     this.edges.clear();
@@ -100,6 +113,9 @@ export class SidewalkGraph {
     this.crossings.clear();
     this.goalNodes.length = 0;
     this.occupancy.reset();
+    this.reversedPaths.clear();
+    const walkable = new WalkableSurface(net);
+    this.walkable = walkable;
 
     // ---- kerb nodes, two per (junction node, leg) -------------------------
     for (const [nodeId, node] of doc.nodes) {
@@ -191,22 +207,7 @@ export class SidewalkGraph {
         const from = this.nodes.get(kerbId(nodeId, a.segId, 1));
         const to = this.nodes.get(kerbId(nodeId, b.segId, -1));
         if (!from || !to || from.id === to.id) continue;
-        // The corner follows the outside of the junction. A chord, including
-        // one bent at a single point, still cuts across the junction plate.
-        const fromAngle = Math.atan2(from.at.y - node.y, from.at.x - node.x);
-        const toAngle = Math.atan2(to.at.y - node.y, to.at.x - node.x);
-        const sweep = ((toAngle - fromAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-        const fromRadius = dist(from.at, { x: node.x, y: node.y });
-        const toRadius = dist(to.at, { x: node.x, y: node.y });
-        const count = Math.max(2, Math.ceil(sweep / (Math.PI / 12)));
-        const points: Vec2[] = [from.at];
-        for (let j = 1; j < count; j++) {
-          const t = j / count;
-          const angle = fromAngle + sweep * t;
-          const radius = fromRadius + (toRadius - fromRadius) * t + Math.sin(Math.PI * t) * m(1);
-          points.push({ x: node.x + Math.cos(angle) * radius, y: node.y + Math.sin(angle) * radius });
-        }
-        points.push(to.at);
+        const points = cornerPath(walkable, from.at, to.at, { x: node.x, y: node.y });
         const path = Polyline.fromPoints(points);
         this.addEdge({
           id: `C:${from.id}|${to.id}`,
@@ -216,10 +217,9 @@ export class SidewalkGraph {
           path,
           length: path.length,
           // A corner joins two footways of possibly different widths, so it
-          // gets the narrower of the two. It used to be capped at 25 cm half
-          // width as well — one person wide — and every pair of people meeting
-          // on a corner stood nose to nose until one of them was removed.
-          halfWidth: Math.min(a.footway, b.footway) / 2 * CORNER_WIDTH_SHARE,
+          // gets the narrower of the two. Its walls are the footway itself
+          // (`fitCorridors`), so the whole of that width is real footway.
+          halfWidth: Math.min(a.footway, b.footway) / 2,
         });
       }
     }
@@ -274,17 +274,84 @@ export class SidewalkGraph {
       }
     }
 
+    this.fitCorridors(walkable);
+
     // Destinations are drawn from this pool, so it has to be ordered by
     // something other than insertion: map order depends on which legs the
     // editor happened to build first, and a seeded run may not.
     this.goalNodes.push(...[...this.nodes.keys()].sort());
   }
 
-  private addEdge(edge: SidewalkEdge): void {
-    if (edge.length < COARSE_EPS) return;
+  private addEdge(spec: EdgeSpec): void {
+    if (spec.length < COARSE_EPS) return;
+    const edge: SidewalkEdge = { ...spec, corridor: new Corridor(spec.path) };
     this.edges.set(edge.id, edge);
     pushAdj(this.adjacency, edge.from, edge.id);
     pushAdj(this.adjacency, edge.to, edge.id);
+  }
+
+  /**
+   * Sets every corridor's walls from the footway that is drawn.
+   *
+   * At each station along a footway or corner edge the footway is measured
+   * across the path, and the walls are its edges less `lateralMargin`, never
+   * wider than the edge's own half-width. A zebra's walls are its painted
+   * width: the carriageway either side of it is not somewhere to walk.
+   *
+   * A station with no footway anywhere across it (the graph runs where the
+   * surface builder drew none, as over a viaduct join) keeps the edge's own
+   * width, and is counted in `unfitted`.
+   */
+  private fitCorridors(walkable: WalkableSurface): void {
+    this.unfitted = 0;
+    const frame: CorridorFrame = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
+    const span = { lo: 0, hi: 0 };
+    const margin = PED_BEHAVIOUR.lateralMargin;
+    for (const edge of this.edges.values()) {
+      const c = edge.corridor;
+      const usable = Math.max(0, edge.halfWidth - margin);
+      const fitted = new Uint8Array(c.stations);
+      for (let k = 0; k < c.stations; k++) {
+        c.lo[k] = -usable;
+        c.hi[k] = usable;
+        if (edge.kind === 'crossing') continue;
+        c.frame(c.stationS(k), false, frame);
+        const reach = edge.halfWidth + m(2.5);
+        let found = walkable.footwaySpan(frame.x, frame.y, frame.nx, frame.ny, reach, span);
+        let offset = 0;
+        // The path itself is off the footway: find the footway beside it.
+        for (let step = 1; !found && step * 0.25 <= reach; step++) {
+          for (const side of [1, -1]) {
+            offset = side * step * 0.25;
+            if (walkable.footwaySpan(frame.x + frame.nx * offset, frame.y + frame.ny * offset,
+              frame.nx, frame.ny, reach, span)) { found = true; break; }
+          }
+        }
+        if (!found) { this.unfitted++; continue; }
+        let lo = offset + span.lo + margin;
+        let hi = offset + span.hi - margin;
+        const cap = offset === 0 ? usable : edge.halfWidth + m(1);
+        lo = Math.max(lo, -cap);
+        hi = Math.min(hi, cap);
+        if (lo > hi) { const mid = (lo + hi) / 2; lo = mid; hi = mid; }
+        c.lo[k] = lo;
+        c.hi[k] = hi;
+        fitted[k] = 1;
+      }
+      // A station with no footway across it takes the walls of the nearest
+      // one that has: the edge's own width there could reach into the road.
+      if (edge.kind === 'crossing' || !fitted.includes(1)) continue;
+      for (let k = 0; k < c.stations; k++) {
+        if (fitted[k]) continue;
+        let near = -1;
+        for (let d = 1; near < 0 && d < c.stations; d++) {
+          if (k - d >= 0 && fitted[k - d]) near = k - d;
+          else if (k + d < c.stations && fitted[k + d]) near = k + d;
+        }
+        c.lo[k] = c.lo[near]!;
+        c.hi[k] = c.hi[near]!;
+      }
+    }
   }
 
   edgesAt(node: SidewalkNodeId): readonly SidewalkEdgeId[] {
@@ -296,9 +363,18 @@ export class SidewalkGraph {
     return edge.from === from ? edge.to : edge.from;
   }
 
-  /** Path oriented so it starts at `from`. */
+  /**
+   * Path oriented so it starts at `from`. The reversed copy is built once per
+   * edge and kept; the hot loop reads the corridor instead.
+   */
   orientedPath(edge: SidewalkEdge, from: SidewalkNodeId): Polyline {
-    return edge.from === from ? edge.path : edge.path.reversed();
+    if (edge.from === from) return edge.path;
+    let reversed = this.reversedPaths.get(edge.id);
+    if (!reversed) {
+      reversed = edge.path.reversed();
+      this.reversedPaths.set(edge.id, reversed);
+    }
+    return reversed;
   }
 
   crossingEdge(id: CrossingId): SidewalkEdge | undefined {
@@ -507,6 +583,96 @@ function clearOfJunction(
     s += 2;
   }
   return Math.min(s, cap);
+}
+
+/**
+ * The path a corner takes round a junction, from kerb `a` to kerb `b`,
+ * sweeping counter-clockwise about the junction's centre.
+ *
+ * Rays are cast from the centre at every step of the sweep, and each one
+ * finds the stretches of footway it crosses; the path takes the middle of
+ * the stretch nearest the radius it had on the ray before. So it follows the
+ * footway band round whatever shape it has — a square outer corner, a rounded
+ * kerb, the tip of a hairpin — continuously, from one kerb to the other.
+ *
+ * It used to be an arc about the centre at the kerbs' own radius, with a
+ * bulge. The kerbs stand well back from the junction, at the crossings, so
+ * that arc swung wide over the verge: 4.9 % of all pedestrian time on the
+ * saved player map was spent on the grass beside a corner.
+ */
+function cornerPath(walkable: WalkableSurface, a: Vec2, b: Vec2, centre: Vec2): Vec2[] {
+  const fromAngle = Math.atan2(a.y - centre.y, a.x - centre.x);
+  const toAngle = Math.atan2(b.y - centre.y, b.x - centre.x);
+  const sweep = ((toAngle - fromAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  const fromRadius = dist(a, centre);
+  const toRadius = dist(b, centre);
+  const reach = Math.max(fromRadius, toRadius) * 1.6 + 12;
+  const count = Math.max(2, Math.ceil(sweep * reach / 0.75));
+  const span = { lo: 0, hi: 0 };
+  const points: Vec2[] = [a];
+  let prev = fromRadius;
+  for (let j = 1; j < count; j++) {
+    const t = j / count;
+    const angle = fromAngle + sweep * t;
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    // Where this ray would be if nothing were drawn: between the kerbs' radii.
+    const guess = fromRadius + (toRadius - fromRadius) * t;
+    let best = NaN;
+    let bestCost = Infinity;
+    for (let r = 0.25; r <= reach; r += 0.5) {
+      const x = centre.x + dx * r, y = centre.y + dy * r;
+      // Measured along the ray only a few units either way: a ray running
+      // nearly parallel to a footway stays inside it for a long way, and the
+      // middle of all of that is nowhere near the corner.
+      if (!walkable.footwaySpan(x, y, dx, dy, 3, span)) continue;
+      const mid = r + (span.lo + span.hi) / 2;
+      const cost = Math.abs(mid - prev) + 0.25 * Math.abs(mid - guess);
+      if (cost < bestCost) { bestCost = cost; best = mid; }
+      r += Math.max(0, span.hi);
+    }
+    const radius = Number.isNaN(best) ? guess : best;
+    prev = radius;
+    points.push({ x: centre.x + dx * radius, y: centre.y + dy * radius });
+  }
+  points.push(b);
+  // Then across the path: each point to the middle of the footway there.
+  const laid = points.map((p, k) => {
+    if (k === 0 || k === points.length - 1) return p;
+    const before = points[Math.max(0, k - 2)]!, after = points[Math.min(points.length - 1, k + 2)]!;
+    const tx = after.x - before.x, ty = after.y - before.y;
+    const l = Math.hypot(tx, ty);
+    if (l < 1e-9) return p;
+    const nx = -ty / l, ny = tx / l;
+    for (let step = 0; step <= 10; step++) {
+      for (const side of step === 0 ? [0] : [1, -1]) {
+        const o = side * step * 0.25;
+        if (!walkable.footwaySpan(p.x + nx * o, p.y + ny * o, nx, ny, m(4), span)) continue;
+        const mid = o + (span.lo + span.hi) / 2;
+        return { x: p.x + nx * mid, y: p.y + ny * mid };
+      }
+    }
+    return p;
+  });
+  points.splice(0, points.length, ...laid);
+  // Two passes of a three-point average: the footway's own outline is a
+  // polygon, and its middle steps at every vertex of it.
+  for (let pass = 0; pass < 2; pass++) {
+    const copy = points.map((p) => ({ ...p }));
+    for (let k = 1; k < points.length - 1; k++) {
+      points[k] = {
+        x: (copy[k - 1]!.x + 2 * copy[k]!.x + copy[k + 1]!.x) / 4,
+        y: (copy[k - 1]!.y + 2 * copy[k]!.y + copy[k + 1]!.y) / 4,
+      };
+    }
+  }
+  return dedupeClose(points);
+}
+
+function dedupeClose(points: readonly Vec2[]): Vec2[] {
+  const out: Vec2[] = [];
+  for (const p of points) if (!out.length || dist(out[out.length - 1]!, p) > 0.05) out.push(p);
+  if (out.length === 1) out.push({ x: out[0]!.x + 0.1, y: out[0]!.y });
+  return out;
 }
 
 export const kerbId = (node: NodeId, segment: SegmentId, side: Side): SidewalkNodeId =>

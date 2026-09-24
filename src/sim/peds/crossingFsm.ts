@@ -162,10 +162,7 @@ export function stepPedestrians(w: SimWorld): void {
     // edge's width to the new edge is how somebody ends up off the footway
     // for a frame after a turn.
     const settled = w.sidewalks.edges.get(p.edge);
-    if (settled && settled !== edge) {
-      const usable = Math.max(0, settled.halfWidth - PED_BEHAVIOUR.lateralMargin);
-      p.lat = clamp(p.lat, -usable, usable);
-    }
+    if (settled) p.lat = wallsClamp(settled, p.entry, p.s, p.lat);
     settlePose(w, p, false, space);
     if (settled?.kind === 'walk' && !p.activity) considerActivity(w, p, settled);
     const wantsToMove = p.state !== 'WaitAtKerb' && desired > 0.05;
@@ -173,7 +170,8 @@ export function stepPedestrians(w: SimWorld): void {
     // actually got clear, about a metre of travel at walking pace.
     // Standing in the queue for one's own crossing is waiting, not being
     // stuck: counting it released queuers straight through the person ahead.
-    const queued = NEAR.blockerQueue && NEAR.blockerGap < PED.jamGap + desired * PED.headway;
+    const queued = (NEAR.blockerQueue && NEAR.blockerGap < PED.jamGap + desired * PED.headway) ||
+      atClosedKerb(w, p);
     if (p.state === 'WaitAtKerb') {
       // Accumulated in the kerb case itself, only while permitted and boxed in.
     } else if (wantsToMove && p.v < 0.05 && !queued) p.stuck += DT;
@@ -210,6 +208,17 @@ function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: P
   p.s = space.safeStep(w, p, edge, p.s + p.v * DT);
   p.v = (p.s - before) / DT;
   if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
+
+  // Held a step short of a kerb it is waiting to cross from, it is at that
+  // kerb: it waits there, and asks for the crossing like anyone standing on
+  // the kerb itself. Left walking, it could stand behind the people coming
+  // off the zebra for as long as a whole WALK without ever asking.
+  const kerbNext = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+  if (p.s < edge.length && kerbNext?.kind === 'crossing' && edge.kind !== 'crossing' &&
+    edge.length - p.s < AT_KERB && p.v < m(0.1)) {
+    p.state = 'ApproachKerb';
+    return;
+  }
 
   if (p.s < edge.length) return;
 
@@ -273,8 +282,8 @@ function transfer(w: SimWorld, p: Ped, current: SidewalkEdge, next: SidewalkEdge
   exit: string, space: PedestrianClearance): boolean {
   const before = space.point(w, current, p.entry, current.length, p.lat);
   const frame = w.sidewalks.orientedPath(next, exit).sampleAt(0);
-  const width = Math.max(0, next.halfWidth - PED_BEHAVIOUR.lateralMargin);
-  const lat = clamp((before.x - frame.p.x) * frame.n.x + (before.y - frame.p.y) * frame.n.y, -width, width);
+  const lat = wallsClamp(next, exit, 0,
+    (before.x - frame.p.x) * frame.n.x + (before.y - frame.p.y) * frame.n.y);
   if (!space.canEnter(w, p, next, exit, lat)) {
     // Hold at the end of the edge. Stepping back to the previous position
     // made a blocked walker bounce between two points every tick, which is
@@ -883,18 +892,18 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   } else if (p.stuck === 0) {
     p.dodge = 0;
   }
-  const held = clamp(p.lat, -usable, usable);
+  const held = wallsClamp(edge, p.entry, p.s, p.lat);
   // Sideways speed wanted to close the offset, then eased: a step aside
   // starts, carries and settles instead of switching on and off each tick.
   // Standing, it is a side-step, and a side-step is half the pace of one
   // taken while walking on.
   const rate = PED_BEHAVIOUR.lateralRate * lerp(SIDESTEP_STANDING, 1, clamp(p.v / SIDESTEP_WALKING, 0, 1));
-  PLAN.target = clamp(target, -usable, usable);
+  PLAN.target = wallsClamp(edge, p.entry, p.s, target);
   PLAN.rate = rate;
   const wanted = clamp((PLAN.target - held) / LATERAL_SETTLE, -rate, rate);
   const step = LATERAL_ACCEL * DT;
   p.latV = clamp(wanted, p.latV - step, p.latV + step);
-  const proposed = clamp(held + p.latV * DT, -usable, usable);
+  const proposed = wallsClamp(edge, p.entry, p.s, held + p.latV * DT);
   // Blocked sideways: hold the line. Stepping the other way instead, as this
   // used to, made a boxed-in walker zigzag on the spot every tick.
   if (space.canShift(w, p, edge, proposed)) p.lat = proposed;
@@ -1010,13 +1019,9 @@ function mustStopAtEndOf(
   if (!next || next.kind === 'crossing') return true;
   const exit = w.sidewalks.other(edge, p.entry);
   const frame = w.sidewalks.orientedPath(next, exit).sampleAt(0);
-  const width = Math.max(0, next.halfWidth - PED_BEHAVIOUR.lateralMargin);
   const here = space.point(w, edge, p.entry, edge.length, p.lat);
-  const lat = clamp(
-    (here.x - frame.p.x) * frame.n.x + (here.y - frame.p.y) * frame.n.y,
-    -width,
-    width,
-  );
+  const lat = wallsClamp(next, exit, 0,
+    (here.x - frame.p.x) * frame.n.x + (here.y - frame.p.y) * frame.n.y);
   return !space.canEnter(w, p, next, exit, lat);
 }
 /** Shortest look-ahead, so a standing walker still sees a body in front of it. */
@@ -1053,21 +1058,15 @@ const PED_COMFORT = m(1.2);
 function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianClearance): void {
   const edge = w.sidewalks.edges.get(p.edge);
   if (!edge) return;
-  const path = w.sidewalks.orientedPath(edge, p.entry);
-  const frame = path.sampleAt(p.s);
-  // The lateral offset is applied along a normal averaged over a short span.
-  // A corner is a polyline, and the per-segment normal turns through 15
-  // degrees or more at every vertex: somebody walking a metre off the line
-  // was drawn jumping sideways each time they passed one.
-  const before = path.sampleAt(Math.max(0, p.s - NORMAL_SPAN)).t;
-  const after = path.sampleAt(Math.min(path.length, p.s + NORMAL_SPAN)).t;
-  const tx = before.x + after.x;
-  const ty = before.y + after.y;
-  const tl = Math.hypot(tx, ty) || 1;
-  const nx = -ty / tl;
-  const ny = tx / tl;
-  const pathX = frame.p.x + nx * p.lat;
-  const pathY = frame.p.y + ny * p.lat;
+  // The corridor's frame is continuous: its normal is interpolated between
+  // the vertices, so an offset from the path never jumps as a vertex is
+  // passed (`corridor.ts`).
+  const rev = p.entry !== edge.from;
+  edge.corridor.place(p.s, p.lat, rev, SPOT);
+  const tx = SPOT.tx;
+  const ty = SPOT.ty;
+  const pathX = SPOT.x;
+  const pathY = SPOT.y;
   // Changing edge can move the path position sideways: somebody waiting
   // beside a zebra's mouth steps onto its centreline, a corner starts from a
   // different offset. That gap is real and has to be WALKED, so it becomes an
@@ -1108,16 +1107,42 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
     p.offX = 0;
     p.offY = 0;
   }
+  // The drawn body never leaves the footway, or the zebra while crossing:
+  // a catch-up offset that would carry it off is dropped.
+  if ((p.offX !== 0 || p.offY !== 0) && !standable(w, edge, pathX + p.offX, pathY + p.offY)) {
+    p.offX = 0;
+    p.offY = 0;
+  }
   const anchor = activityAnchor(p);
   // Off the walking line — stepping to a bench, sitting on it — the body is
   // where the activity has put it, and no path offset applies.
   if (anchor) { p.offX = 0; p.offY = 0; }
-  const x = anchor ? anchor.x : pathX + p.offX;
-  const y = anchor ? anchor.y : pathY + p.offY;
+  let x = anchor ? anchor.x : pathX + p.offX;
+  let y = anchor ? anchor.y : pathY + p.offY;
+  if (!anchor && !standable(w, edge, x, y)) {
+    // The last word, whatever put the body here: it is moved across the
+    // corridor to the nearest place that is footway, and failing that it
+    // stays where it stood last tick, which was.
+    const moved = nearestStandable(w, edge, rev, p.s, p.lat);
+    if (moved !== null) {
+      p.lat = moved;
+      p.offX = 0;
+      p.offY = 0;
+      edge.corridor.place(p.s, p.lat, rev, SPOT);
+      x = SPOT.x;
+      y = SPOT.y;
+    } else if (!first) {
+      if (p.prev.edge === p.edge) { p.s = Math.max(p.prev.s, Math.min(p.s, p.prev.s)); p.lat = p.prev.lat; }
+      p.offX = 0;
+      p.offY = 0;
+      x = p.prev.x;
+      y = p.prev.y;
+    }
+  }
   p.x = x;
   p.y = y;
   if (first) {
-    p.heading = Math.atan2(frame.t.y, frame.t.x);
+    p.heading = Math.atan2(ty, tx);
     p.turnV = 0;
     return;
   }
@@ -1211,8 +1236,62 @@ const STAND_SQUARE = 0.035;
 const STAND_TURN_MIN = 0.6;
 const STAND_SETTLED = 0.05;
 
-/** Half-length of the span a drawn lateral normal is averaged over. */
-const NORMAL_SPAN = 1.5;
+/**
+ * Standing in the last metre before a crossing that may not be entered yet:
+ * waiting for it, whoever happens to stand at the kerb itself.
+ */
+function atClosedKerb(w: SimWorld, p: Ped): boolean {
+  if (p.state !== 'Walking') return false;
+  const edge = w.sidewalks.edges.get(p.edge);
+  const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+  if (!edge || next?.kind !== 'crossing' || edge.length - p.s > KERB_QUEUE) return false;
+  return !mayEnterCrossing(w, p, next);
+}
+/** How short of the kerb a walker held up there counts as standing at it. */
+const AT_KERB = m(0.3);
+/** How near the end of a footway a walker bound for a crossing counts as at its kerb. */
+const KERB_QUEUE = m(1.5);
+
+/** Scratch frame for `settlePose`. */
+const SPOT = { x: 0, y: 0, tx: 1, ty: 0, nx: 0, ny: 1 };
+const WALLS = { lo: 0, hi: 0 };
+
+/**
+ * An offset across `edge` at arc position `s`, held between the corridor's
+ * walls: the footway as drawn, less a margin, or a zebra's painted width.
+ * Every write of `Ped.lat` goes through this, which is what makes it
+ * impossible for a pedestrian to be placed on the verge or the carriageway.
+ */
+export function wallsClamp(edge: SidewalkEdge, entry: string, s: number, lat: number): number {
+  edge.corridor.bounds(s, entry !== edge.from, WALLS);
+  return clamp(lat, WALLS.lo, WALLS.hi);
+}
+
+/**
+ * The offset across `edge` at `s`, within its walls, nearest `lat` at which
+ * the body stands on the footway; null when there is none.
+ */
+function nearestStandable(w: SimWorld, edge: SidewalkEdge, rev: boolean, s: number, lat: number): number | null {
+  edge.corridor.bounds(s, rev, WALLS);
+  const lo = WALLS.lo, hi = WALLS.hi;
+  for (let step = 1; step <= 40; step++) {
+    for (const side of [-1, 1]) {
+      const at = lat + side * step * 0.1;
+      if (at < lo - 1e-9 || at > hi + 1e-9) continue;
+      edge.corridor.place(s, at, rev, SPOT);
+      if (standable(w, edge, SPOT.x, SPOT.y)) return at;
+    }
+  }
+  return null;
+}
+
+/** Whether a drawn body centre may stand at (x, y) while on `edge`. */
+function standable(w: SimWorld, edge: SidewalkEdge, x: number, y: number): boolean {
+  const walkable = w.sidewalks.walkable;
+  if (!walkable || walkable.footway(x, y)) return true;
+  // On a zebra, the zebra's own strip is the other place to stand.
+  return edge.kind === 'crossing';
+}
 
 /** Seconds over which an edge-change offset closes, and the largest one bridged. */
 const OFFSET_SETTLE = 0.3;
