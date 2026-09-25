@@ -408,7 +408,10 @@ function mutateBuilt(fn: () => boolean): boolean {
   const before = doc.toJSON();
   if (!fn()) return false;
   history.record(RoadDoc.fromJSON(before));
-  net.rebuild();
+  // A pole or a wire moves `doc.utilityRevision`, not `doc.revision`: the
+  // network is unchanged, and rebuilding it (and, behind it, the simulation
+  // topology) cost about 330 ms per pole on a large map.
+  if (net.revision !== doc.revision) net.rebuild();
   // A road over a building demolishes it, in this same undo step.
   buildings.afterRoadEdit();
   // The simulation catches up in the frame AFTER the one that draws the edit

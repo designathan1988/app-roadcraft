@@ -212,13 +212,18 @@ describe('the document carries the network', () => {
     expect(target.poleSpans.size).toBe(doc.poleSpans.size);
   });
 
-  it('bumps the revision so the renderer rebuilds', () => {
+  it('bumps the utility revision, and not the network revision', () => {
     const doc = new RoadDoc();
+    // A pole moved `revision` and rebuilt the whole road network and the
+    // simulation topology, about 330 ms per pole on a large map (tests/bench).
     const before = doc.revision;
+    const utilities = doc.utilityRevision;
     const a = doc.addPole({ x: 0, y: 0 }).id;
     const b = doc.addPole({ x: 60, y: 0 }).id;
     doc.addPoleSpan(a, b);
-    expect(doc.revision).toBeGreaterThan(before);
+    doc.removePole(a);
+    expect(doc.utilityRevision).toBe(utilities + 4);
+    expect(doc.revision).toBe(before);
   });
 
   it('finds the nearest pole within reach, and none outside it', () => {

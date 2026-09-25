@@ -258,8 +258,30 @@ export function createSceneRenderer(
   /** The scenery the building footprints were last cut out of. */
   let excludedFor: { scenery: Scenery | null; version: number } = { scenery: null, version: -1 };
 
+  /** `doc.utilityRevision` the pole layer was last built at. */
+  let utilityRevision = -1;
+  /**
+   * The pole layer alone, on its own revision: a pole edit moves only
+   * `doc.utilityRevision` (see `RoadDoc`), so it rebuilds this and nothing else.
+   */
+  const rebuildUtilities = (net: Network): void => {
+    if (!elevation) return;
+    utilityRevision = net.doc.utilityRevision;
+    if (utilities) {
+      builtTriangles -= utilities.triangles;
+      world.remove(utilities.group);
+      utilities.dispose();
+    }
+    utilities = buildUtilities(net.doc, poleGroundAt(elevation, terrain.renderedHeightAt));
+    world.add(utilities.group);
+    builtTriangles += utilities.triangles;
+  };
+
   const rebuildWorld = (net: Network): void => {
-    if (networkRevision === net.revision && terrainRevision === net.doc.terrainRevision) return;
+    if (networkRevision === net.revision && terrainRevision === net.doc.terrainRevision) {
+      if (utilityRevision !== net.doc.utilityRevision) rebuildUtilities(net);
+      return;
+    }
     const started = performance.now();
     networkRevision = net.revision;
     terrainRevision = net.doc.terrainRevision;
@@ -315,6 +337,7 @@ export function createSceneRenderer(
     // were the one piece of street furniture reading the bare ground.
     utilities = buildUtilities(net.doc, poleGroundAt(elevation, terrain.renderedHeightAt));
     world.add(utilities.group);
+    utilityRevision = net.doc.utilityRevision;
 
     builtTriangles =
       roads.triangles + details.triangles + scenery.triangles + utilities.triangles;

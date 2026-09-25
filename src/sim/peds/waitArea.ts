@@ -62,6 +62,7 @@ const QUEUE_INSET = m(0.35);
 
 interface Areas {
   revision: number;
+  utilities: number;
   byKey: Map<string, WaitArea>;
   claims: Map<number, WaitSlot>;
 }
@@ -69,8 +70,9 @@ const AREAS = new WeakMap<SimWorld, Areas>();
 
 function areasOf(w: SimWorld): Areas {
   let areas = AREAS.get(w);
-  if (!areas || areas.revision !== w.topologyRevision) {
-    areas = { revision: w.topologyRevision, byKey: new Map(), claims: areas?.claims ?? new Map() };
+  // Poles are obstacles here too, and move their own revision, not the network's.
+  if (!areas || areas.revision !== w.topologyRevision || areas.utilities !== w.doc.utilityRevision) {
+    areas = { revision: w.topologyRevision, utilities: w.doc.utilityRevision, byKey: new Map(), claims: areas?.claims ?? new Map() };
     for (const slot of areas.claims.values()) slot.taken = 0;
     areas.claims.clear();
     AREAS.set(w, areas);

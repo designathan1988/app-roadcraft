@@ -109,6 +109,15 @@ export class RoadDoc {
   /** Bumped on every structural change; consumers use it to invalidate caches. */
   revision = 0;
   terrainRevision = 0;
+  /**
+   * Bumped by pole and wire edits, which do NOT move `revision`: a pole is
+   * not part of the road network, and moving `revision` for one rebuilt the
+   * network, the lanelets, the whole simulation topology and every road mesh
+   * - about 330 ms per pole on a 180-segment map (tests/bench) - to draw a
+   * post. The renderer's utility layer and the pedestrians' obstacles
+   * (`sim/peds/clearance.ts`, `waitArea.ts`) watch this instead.
+   */
+  utilityRevision = 0;
 
   readonly dirtyNodes = new Set<NodeId>();
   readonly dirtySegments = new Set<SegmentId>();
@@ -142,7 +151,7 @@ export class RoadDoc {
     const id = asPoleId(this.poleIds.take());
     const pole: UtilityPole = { id, x: on.x, y: on.y, lamp };
     this.poles.set(id, pole);
-    this.revision++;
+    this.utilityRevision++;
     return pole;
   }
 
@@ -158,7 +167,7 @@ export class RoadDoc {
     const id = asSpanId(this.spanIds.take());
     const span: UtilitySpan = { id, a, b };
     this.poleSpans.set(id, span);
-    this.revision++;
+    this.utilityRevision++;
     return span;
   }
 
@@ -168,7 +177,7 @@ export class RoadDoc {
     for (const [spanId, span] of [...this.poleSpans]) {
       if (span.a === id || span.b === id) this.poleSpans.delete(spanId);
     }
-    this.revision++;
+    this.utilityRevision++;
   }
 
   /** The pole nearest a point, within `radius`, or null. */
@@ -504,6 +513,7 @@ export class RoadDoc {
     copy.nextTerrainId = this.nextTerrainId;
     copy.revision = this.revision;
     copy.terrainRevision = this.terrainRevision;
+    copy.utilityRevision = this.utilityRevision;
     copy.clearDirty();
     for (const id of this.dirtyNodes) copy.dirtyNodes.add(id);
     for (const id of this.dirtySegments) copy.dirtySegments.add(id);
@@ -547,6 +557,7 @@ export class RoadDoc {
     this.poles.clear();
     this.poleSpans.clear();
     for (const [id, pole] of source.poles) this.poles.set(id, { ...pole });
+    this.utilityRevision++;
     for (const [id, span] of source.poleSpans) this.poleSpans.set(id, { ...span });
     // Moves `buildings.revision` only if the buildings differ.
     this.buildings.replaceWith(source.buildings);

@@ -112,12 +112,15 @@ export class PedestrianClearance {
   private scenery: Footprint[] = [];
   private builtRevision = -1;
   private builtDocumentRevision = -1;
+  private builtUtilityRevision = -1;
 
   begin(w: SimWorld): void {
-    if (this.builtRevision !== w.net.revision || this.builtDocumentRevision !== w.doc.revision) {
+    if (this.builtRevision !== w.net.revision || this.builtDocumentRevision !== w.doc.revision ||
+      this.builtUtilityRevision !== w.doc.utilityRevision) {
       this.buildScenery(w);
       this.builtRevision = w.net.revision;
       this.builtDocumentRevision = w.doc.revision;
+      this.builtUtilityRevision = w.doc.utilityRevision;
     }
     this.grid.clear();
     this.people.clear();
