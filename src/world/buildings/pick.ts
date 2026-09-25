@@ -1,4 +1,4 @@
-import { bayWidth, baysOn, buildingBounds, levelElevation, roofRise, volumeHeight, volumeRectLocal, worldToLocal } from './geometry';
+import { bayWidth, baysOn, buildingBounds, elementRect, levelElevation, roofRise, volumeHeight, volumeRectLocal, worldToLocal } from './geometry';
 import type { Building, BuildingId, Side } from './types';
 
 /**
@@ -25,6 +25,8 @@ export interface BuildingHit {
   readonly storey: number;
   /** Bay index along the face, for a side face. */
   readonly index: number;
+  /** The free element hit, when it was one rather than a volume. */
+  readonly element?: number;
   readonly t: number;
   readonly x: number;
   readonly y: number;
@@ -88,6 +90,26 @@ export function pickBuilding(
         x: world.x,
         y: world.y,
         z,
+      };
+    }
+    for (const el of b.elements ?? []) {
+      const [x0, y0, x1, y1] = elementRect(el);
+      const hit = slab([o.x, o.y, ray.oz], [dx, dy, ray.dz], [x0, y0, floor + el.z], [x1, y1, floor + el.z + el.h]);
+      if (!hit || (best && hit.t >= best.t)) continue;
+      const lx = o.x + dx * hit.t;
+      const ly = o.y + dy * hit.t;
+      best = {
+        building: b.id,
+        volume: b.volumes[0]?.id ?? 1,
+        face: 'top',
+        level: 0,
+        storey: 0,
+        index: 0,
+        element: el.id,
+        t: hit.t,
+        x: b.x + lx * c - ly * s,
+        y: b.y + lx * s + ly * c,
+        z: ray.oz + ray.dz * hit.t,
       };
     }
   }

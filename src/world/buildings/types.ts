@@ -1,5 +1,5 @@
 import { m } from '../units';
-import type { BuildingMaterials, VolumeMaterials } from './materials';
+import type { BuildingMaterials, MaterialSpec, VolumeMaterials } from './materials';
 
 /**
  * The modular building model. See docs/buildings.md.
@@ -129,6 +129,32 @@ export interface Volume {
   fall?: Side;
 }
 
+/** Free parts a building can be given besides its volumes. See docs/buildings.md, "Elements". */
+export const ELEMENT_KINDS = ['stair', 'ramp', 'pillar', 'canopy', 'wall', 'slab'] as const;
+export type ElementKind = (typeof ELEMENT_KINDS)[number];
+
+/**
+ * A free part of a building: a flight of stairs, a ramp, a pillar, a canopy,
+ * a free-standing wall, a slab. A box of the building's local frame - its
+ * plan centred on `(x, y)`, `w` across and `d` along the direction it faces
+ * (`facing`, a side of the local frame), from `z` above the ground floor up
+ * `h`. For a stair or a ramp `facing` is the way it goes DOWN and `h` its
+ * rise; for a canopy `facing` is the way it projects and `h` its thickness.
+ * It moves, turns and is demolished with its building.
+ */
+export interface BuildingElement {
+  id: number;
+  kind: ElementKind;
+  x: number;
+  y: number;
+  facing: Side;
+  w: number;
+  d: number;
+  z: number;
+  h: number;
+  material?: MaterialSpec;
+}
+
 /**
  * Extension point: a vertical circulation shaft, a module square whose
  * corner is at `(x, y)` in the local frame. A lift core is drawn as an
@@ -165,8 +191,11 @@ export interface Building {
   /** Building-wide materials, over the palette (see `materials.ts`). */
   materials?: BuildingMaterials;
   volumes: Volume[];
+  /** Free parts: stairs, ramps, pillars, canopies, walls, slabs. */
+  elements?: BuildingElement[];
   cores: Core[];
   nextVolumeId: number;
+  nextElementId?: number;
   name?: string;
   /** The blueprint this building was placed from, for the UI only. */
   blueprint?: string;
@@ -198,6 +227,8 @@ export const isBayComponent = (v: unknown): v is BayComponent =>
 export const isRoofKind = (v: unknown): v is RoofKind =>
   (ROOF_KINDS as readonly unknown[]).includes(v);
 export const isSide = (v: unknown): v is Side => v === 0 || v === 1 || v === 2 || v === 3;
+export const isElementKind = (v: unknown): v is ElementKind => (ELEMENT_KINDS as readonly unknown[]).includes(v);
+export const MAX_ELEMENTS = 64;
 
 export const bayKey = (side: Side, index: number): string => `${side}:${index}`;
 

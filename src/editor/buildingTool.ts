@@ -8,15 +8,18 @@ import {
   generateBlock,
 } from '@world/buildings/blueprints';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
-import { MIN_SIZE, baysOn, footprintBox, levelHeight, localDirToWorld, reliefAt } from '@world/buildings/geometry';
+import { MIN_SIZE, baysOn, footprintBox, levelHeight, localDirToWorld, reliefAt, worldToLocal } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
 import { type MaterialSpec, type MaterialTarget, applyMaterial, materialAt } from '@world/buildings/materials';
+import { elementAt, elementsAgainstBay } from '@world/buildings/elements';
 import { type BuildingProblem, validateBuilding } from '@world/buildings/validate';
 import {
   type BayComponent,
   type Building,
+  type BuildingElement,
   type BuildingId,
+  type ElementKind,
   type RoofKind,
   type Side,
   DEFAULT_MODULE,
@@ -39,8 +42,12 @@ import {
   opResize,
   opRotate,
   opSetComponent,
+  opAddElement,
+  opRemoveElement,
   opSetParameters,
   opSetRelief,
+  opUpdateElement,
+  type ElementPatch,
   opSetRoof,
   opSetRoofShape,
   type FaceRegion,
@@ -114,6 +121,8 @@ export interface BuildingSelection {
   readonly bay: BaySelection | null;
   /** With Shift, a second bay of the same face: the picked region runs from `bay` to it. */
   readonly bayEnd?: BaySelection | null;
+  /** A free element of the building, when one was clicked. */
+  readonly element?: number | null;
 }
 
 /** Parameters of the generated block (the sliders); lengths in world units. */
@@ -156,6 +165,8 @@ export class BuildingTool {
   component: BayComponent | null = null;
   scope: FacadeScope = 'bay';
   materialScope: MaterialScope = 'volume';
+  /** The kind of free element the palette has armed: the pointer places one. */
+  armed: ElementKind | null = null;
   preview: BuildingPreview | null = null;
   hover: BuildingHit | null = null;
   clipboard: BlueprintBody | null = null;
@@ -405,6 +416,101 @@ export class BuildingTool {
     });
   }
 
+  // ------------------------------------------------------------ free elements
+
+  /** Arms (or with the same kind again, disarms) a free element to place on the selected building. */
+  armElement(kind: ElementKind | null): void {
+    this.armed = this.armed === kind ? null : kind;
+    if (this.armed) {
+      this.component = null;
+      if (this.mode !== 'edit') this.setMode('edit');
+    }
+    this.setPreview(null);
+    this.host.changed();
+  }
+
+  /** The selected free element, if one is. */
+  selectedElement(): BuildingElement | null {
+    const id = this.selection?.element;
+    if (id === undefined || id === null) return null;
+    return this.selected()?.elements?.find((e) => e.id === id) ?? null;
+  }
+
+  /**
+   * The ghost of the armed element under the pointer: against the facade bay
+   * it points at (the first candidate that fits - a stair that cannot run out
+   * turns along the facade), or on the ground around the building.
+   */
+  private hoverElement(screen: Vec2, world: Vec2): void {
+    const b = this.selected();
+    const kind = this.armed;
+    if (!b || !kind) return;
+    const hit = pickBuilding([b], this.view.ray(screen), (x) => this.floorOf(x));
+    let candidates: Omit<BuildingElement, 'id'>[];
+    const v = hit && hit.face !== 'top' && hit.element === undefined ? volumeById(b, hit.volume) : undefined;
+    if (hit && v && hit.face !== 'top') {
+      candidates = elementsAgainstBay(b, v, { volume: v.id, side: hit.face, index: hit.index, storey: hit.storey }, kind);
+    } else {
+      const local = worldToLocal(b, world);
+      const f = footprintBox(b);
+      // Facing away from the building, towards the side the pointer is off.
+      const dx = local.x < f.x0 ? f.x0 - local.x : local.x > f.x1 ? local.x - f.x1 : 0;
+      const dy = local.y < f.y0 ? f.y0 - local.y : local.y > f.y1 ? local.y - f.y1 : 0;
+      const facing: Side = dx > dy ? (local.x < f.x0 ? 3 : 1) : local.y > f.y1 ? 2 : 0;
+      candidates = [elementAt(b, kind, local, facing)];
+    }
+    let first: { building: Building; problem: ReturnType<typeof validateBuilding> } | null = null;
+    for (const candidate of candidates) {
+      const draft = cloneBuilding(b);
+      opAddElement(draft, candidate);
+      // A stair or a ramp lands at a way in: the bay it serves gets a door.
+      if (v && hit && hit.face !== 'top' && (kind === 'stair' || kind === 'ramp') && hit.storey > 0) {
+        opSetComponent(draft, v.id, hit.storey, hit.face, hit.index, 'door', 'bay');
+      }
+      const problem = validateBuilding(this.host.context(), draft, draft.id);
+      if (!problem) {
+        first = { building: draft, problem: null };
+        break;
+      }
+      first ??= { building: draft, problem };
+    }
+    if (!first) return;
+    this.problem = first.problem;
+    this.setPreview({ building: first.building, valid: first.problem === null, problem: first.problem, hides: b.id, serial: 0 });
+  }
+
+  /** Stores the armed element's ghost, if it is valid. */
+  private placeElement(): void {
+    const preview = this.preview;
+    if (!preview || preview.hides === null) return;
+    if (!preview.valid) {
+      if (preview.problem) this.host.flash(`building.problem.${preview.problem}`);
+      return;
+    }
+    const draft = preview.building;
+    const added = draft.elements?.[draft.elements.length - 1];
+    const result = this.host.commit(() => replaceBuilding(this.host.context(), draft));
+    this.setPreview(null);
+    if (result.ok && added && this.selection) this.selection = { ...this.selection, bay: null, element: added.id };
+    this.report(result);
+  }
+
+  /** Resizes or turns the selected element. */
+  updateElement(patch: ElementPatch): void {
+    const id = this.selection?.element;
+    if (id === undefined || id === null) return;
+    this.onSelected((draft) => opUpdateElement(draft, id, patch));
+  }
+
+  removeElement(): void {
+    const s = this.selection;
+    const id = s?.element;
+    if (!s || id === undefined || id === null) return;
+    const result = this.onSelected((draft) => opRemoveElement(draft, id));
+    if (result.ok) this.selection = { ...s, element: null };
+    this.host.changed();
+  }
+
   /** The picked rectangle of bays and storeys of one face, or null. */
   faceRegion(): FaceRegion | null {
     const s = this.selection;
@@ -612,6 +718,9 @@ export class BuildingTool {
         this.hover = this.pick(screen);
         if (this.hover) this.setPreview(null);
         else this.hoverPlace(world);
+      } else if (this.armed && this.selected()) {
+        this.hover = null;
+        this.hoverElement(screen, world);
       } else {
         this.hover = this.pick(screen);
       }
@@ -702,6 +811,15 @@ export class BuildingTool {
 
   private click(hit: BuildingHit | null, shift = false): void {
     const s = this.selection;
+    if (this.armed && this.mode === 'edit' && s) {
+      this.placeElement();
+      return;
+    }
+    if (hit?.element !== undefined && this.mode === 'edit') {
+      this.selection = { building: hit.building, volume: hit.volume, bay: null, element: hit.element };
+      this.host.changed();
+      return;
+    }
     // Shift on another bay of the picked face: the region grows to it.
     if (hit && shift && this.mode === 'edit' && s?.bay && hit.face !== 'top' &&
       hit.building === s.building && hit.volume === s.volume && hit.face === s.bay.side) {
@@ -788,6 +906,9 @@ export class BuildingTool {
     if (key === 'Escape') {
       if (this.drag) {
         this.pointerUp(true);
+      } else if (this.armed) {
+        this.armed = null;
+        this.setPreview(null);
       } else if (this.component) {
         this.component = null;
       } else if (this.mode === 'place') {
@@ -808,7 +929,8 @@ export class BuildingTool {
       return true;
     }
     if (key === 'Delete' || key === 'Backspace') {
-      this.removeVolume();
+      if (this.selectedElement()) this.removeElement();
+      else this.removeVolume();
       return true;
     }
     return false;

@@ -115,6 +115,34 @@ A bay is only drawn where it is an **outside** wall: where another volume
 stands against it on the same level, the two share a wall and no facade is
 built there (see *Free dimensions* above).
 
+### Elements: free parts that snap
+
+`world/buildings/elements.ts`. Besides its volumes a building has free parts
+(`Building.elements`): `stair`, `ramp`, `pillar`, `canopy`, `wall`, `slab`.
+Each is a box of the building's local frame - plan centred on `(x, y)`, `w`
+across and `d` along the side it faces, from `z` above the ground floor up
+`h` - so it moves, turns and is demolished with its building, and its
+collisions are exact box tests:
+
+* it may touch a volume but never stand inside one (`elementClash`,
+  problem `overlap`);
+* whatever stands on the ground is footprint for the road and neighbour
+  tests (`groundElements`), so a stair can never be put on a footway or a
+  street; a road later drawn over one removes that element, not the building;
+* placing one (arm it in the palette, point, click) snaps to what the pointer
+  is on: a canopy over the picked bay's opening; a stair or ramp from the
+  picked storey's floor down to the ground floor's level, with the run its
+  rise needs (`runFor`: 170 mm risers, or 1:12 for a ramp), and the bay it
+  lands at gets a door - tried straight out first, then turned to run along
+  the facade either way, and the first placement that validates wins (none:
+  the ghost is red with the reason); a pillar on a bay line; a wall and a
+  slab on the grid. Pointed at the ground beside the building, it faces away
+  from it.
+
+Its width, length and height are edited in the palette (a stair's rise sets
+its run), `Turn` rotates it a quarter, `Delete` removes it, and its material
+defaults by kind (concrete; a canopy the trim; a wall the building's walls).
+
 ### Reliefs: pushing faces in and out
 
 A `Relief` is a rectangle of whole bays and storeys of one face -

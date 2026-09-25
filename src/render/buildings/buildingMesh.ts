@@ -47,7 +47,17 @@ import {
   trimMaterial,
   wallMaterial,
 } from '@world/buildings/materials';
-import { type BayComponent, type Building, type Relief, type Side, type Volume, SIDES, volumeTop } from '@world/buildings/types';
+import { elementRect, onGround, stairSteps } from '@world/buildings/elements';
+import {
+  type BayComponent,
+  type Building,
+  type BuildingElement,
+  type Relief,
+  type Side,
+  type Volume,
+  SIDES,
+  volumeTop,
+} from '@world/buildings/types';
 import { type BuildingKit, PART_KINDS, type PartKind } from './kit';
 
 /**
@@ -454,6 +464,12 @@ function emitBuilding(
     }
   }
 
+  // ---- free elements: stairs, ramps, pillars, canopies, walls, slabs
+  for (const el of b.elements ?? []) {
+    const look = el.material ? paint(el.material) : elementPaint(b, el.kind, trim);
+    emitElement(e, el, floor, f.bottom, look);
+  }
+
   // ---- cores: a lift overrun on the highest flat roof over the core
   const u = b.module;
   for (const core of b.cores) {
@@ -671,6 +687,72 @@ function emitRelief(e: Emitter, b: Building, v: Volume, r: Relief, floor: number
   e.shell.face([P(a1, z0, d), P(a1, z0, 0), P(a1, z1, 0), P(a1, z1, d)], out ? t : into, wall);
   e.shell.face([P(a0, z1, 0), P(a1, z1, 0), P(a1, z1, d), P(a0, z1, d)], [0, 0, out ? 1 : -1], trim);
   e.shell.face([P(a0, z0, 0), P(a1, z0, 0), P(a1, z0, d), P(a0, z0, d)], [0, 0, out ? -1 : 1], trim);
+}
+
+const ELEMENT_CONCRETE: Paint = paint({ finish: 'concrete', colour: 0xcfcac0 });
+
+/** What an element is made of until the player says otherwise. */
+function elementPaint(b: Building, kind: BuildingElement['kind'], trim: Paint): Paint {
+  switch (kind) {
+    case 'canopy': return trim;
+    case 'wall': return paint(paletteOf(b).wall);
+    default: return ELEMENT_CONCRETE;
+  }
+}
+
+/**
+ * One free element. A stair is a block per step, every riser the same; a
+ * ramp a slope with its cheeks; the rest are boxes. Whatever stands on the
+ * ground reaches down to the plinth's bottom, so it meets sloping land.
+ */
+function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: number, c: Paint): void {
+  const [x0, y0, x1, y1] = elementRect(el);
+  const zb = onGround(el) ? bottom : floor + el.z;
+  const z0 = floor + el.z;
+  const z1 = z0 + el.h;
+  if (el.kind === 'stair' || el.kind === 'ramp') {
+    // The run measured from the foot (the `facing` end) inwards.
+    const sub = (u0: number, u1: number): [number, number, number, number] => {
+      switch (el.facing) {
+        case 0: return [x0, y0 + u0, x1, y0 + u1];
+        case 2: return [x0, y1 - u1, x1, y1 - u0];
+        case 3: return [x0 + u0, y0, x0 + u1, y1];
+        default: return [x1 - u1, y0, x1 - u0, y1];
+      }
+    };
+    if (el.kind === 'stair') {
+      const n = stairSteps(el);
+      const tread = el.d / n;
+      for (let k = 0; k < n; k++) {
+        const [a0, b0, a1, b1] = sub(k * tread, (k + 1) * tread);
+        e.box(a0, b0, a1, b1, zb, z0 + ((k + 1) * el.h) / n, c);
+      }
+      return;
+    }
+    // A ramp: its slope, rising from the foot, over two cheeks.
+    const foot = sub(0, 0);
+    const head = sub(el.d, el.d);
+    const [fa0, fb0, fa1, fb1] = foot;
+    const [ha0, hb0, ha1, hb1] = head;
+    const nf = SIDE_NORMAL[el.facing];
+    const slope = el.h / el.d;
+    const alongX = el.facing === 1 || el.facing === 3;
+    const footPts: [V3, V3] = alongX ? [e.L(fa0, fb0, z0), e.L(fa0, fb1, z0)] : [e.L(fa0, fb0, z0), e.L(fa1, fb0, z0)];
+    const headPts: [V3, V3] = alongX ? [e.L(ha0, hb0, z1), e.L(ha0, hb1, z1)] : [e.L(ha0, hb0, z1), e.L(ha1, hb0, z1)];
+    e.shell.face([footPts[0], footPts[1], headPts[1], headPts[0]], e.N(nf.x * slope, nf.y * slope, 1), c);
+    const cheek = (i: 0 | 1, n: V3): void => {
+      const f = footPts[i];
+      const h = headPts[i];
+      e.shell.face([[f[0], f[1], zb], [h[0], h[1], zb], h, f], n, c);
+    };
+    const t = alongX ? e.N(0, 1) : e.N(1, 0);
+    cheek(0, [-t[0], -t[1], 0]);
+    cheek(1, t);
+    e.shell.face([[footPts[0][0], footPts[0][1], zb], [footPts[1][0], footPts[1][1], zb], footPts[1], footPts[0]], e.N(nf.x, nf.y), c);
+    e.shell.face([[headPts[0][0], headPts[0][1], zb], [headPts[1][0], headPts[1][1], zb], headPts[1], headPts[0]], e.N(-nf.x, -nf.y), c);
+    return;
+  }
+  e.box(x0, y0, x1, y1, zb, z1, c);
 }
 
 /** A horizontal band around a volume at height z (a storey line or a cornice). */

@@ -171,6 +171,19 @@
             <button type="button" data-building-wing="2" data-i18n="building.wing.2">Back</button>
             <button type="button" data-building-wing="3" data-i18n="building.wing.3">Left</button>
           </div>
+          <div class="building-label" data-i18n="building.elements">Elements</div>
+          <div id="buildingElements" class="building-components" role="group" data-i18n-label="building.elements" aria-label="Elements"></div>
+          <div id="buildingElementNote" class="building-note" data-i18n="building.element.hint">Pick an element, then point at a facade or the ground beside the building</div>
+          <div id="buildingElement" class="building-face">
+            <div id="buildingElementSummary" class="building-summary"></div>
+            <label class="terrain-control"><span data-i18n="building.element.w">Width</span> <input id="buildingElementW" data-element-param="w" type="range" min="0.2" max="16" value="1" step="0.05" /><output>1.00</output></label>
+            <label class="terrain-control"><span data-i18n="building.element.d">Length</span> <input id="buildingElementD" data-element-param="d" type="range" min="0.2" max="16" value="1" step="0.05" /><output>1.00</output></label>
+            <label class="terrain-control"><span data-i18n="building.element.h">Height</span> <input id="buildingElementH" data-element-param="h" type="range" min="0.2" max="16" value="1" step="0.05" /><output>1.00</output></label>
+            <div class="building-actions">
+              <button type="button" data-building-action="turnElement" data-i18n="building.element.turn">Turn</button>
+              <button type="button" class="danger" data-building-action="removeElement" data-i18n="building.element.remove">Remove</button>
+            </div>
+          </div>
           <div class="building-label" data-i18n="building.face">Face</div>
           <div id="buildingFaceNote" class="building-note" data-i18n="building.relief.pickFace">Click a facade to pick its bays (Shift+click: more)</div>
           <div id="buildingFace" class="building-face">

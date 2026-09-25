@@ -3,6 +3,7 @@ import { m } from '../units';
 import {
   type BayComponent,
   type Building,
+  type BuildingElement,
   type Relief,
   type Side,
   type Volume,
@@ -133,7 +134,15 @@ export function footprintCentre(b: Building): Vec2 {
   return localToWorld(b, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
 }
 
-/** World bounding box of a building's footprint. */
+/** An element's plan, local frame: [x0, y0, x1, y1]. `w` runs across its facing, `d` along it. */
+export function elementRect(e: BuildingElement): [number, number, number, number] {
+  const alongY = e.facing === 0 || e.facing === 2;
+  const sx = alongY ? e.w : e.d;
+  const sy = alongY ? e.d : e.w;
+  return [e.x - sx / 2, e.y - sy / 2, e.x + sx / 2, e.y + sy / 2];
+}
+
+/** World bounding box of a building: its volumes and its elements. */
 export function buildingBounds(b: Building, grow = 0): { minX: number; minY: number; maxX: number; maxY: number } {
   let minX = Infinity;
   let minY = Infinity;
@@ -141,6 +150,16 @@ export function buildingBounds(b: Building, grow = 0): { minX: number; minY: num
   let maxY = -Infinity;
   for (const v of b.volumes) {
     for (const p of volumeCorners(b, v, grow)) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+  }
+  for (const e of b.elements ?? []) {
+    const [x0, y0, x1, y1] = elementRect(e);
+    for (const [lx, ly] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] as const) {
+      const p = localToWorld(b, lx + Math.sign(lx - e.x) * grow, ly + Math.sign(ly - e.y) * grow);
       minX = Math.min(minX, p.x);
       minY = Math.min(minY, p.y);
       maxX = Math.max(maxX, p.x);

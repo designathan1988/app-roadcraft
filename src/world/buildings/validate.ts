@@ -4,6 +4,7 @@ import { MAP_HALF } from '../bounds';
 import type { RoadDoc } from '../doc';
 import type { Network } from '../network';
 import { Level, halfWidth } from '../roadTypes';
+import { MAX_ELEMENT, MIN_ELEMENT, elementClash, groundElements } from './elements';
 import { MAX_PLINTH, type GroundAt, sampleFootprint } from './foundation';
 import {
   MIN_SIZE,
@@ -18,6 +19,7 @@ import {
 import {
   type Building,
   type BuildingId,
+  MAX_ELEMENTS,
   MAX_MODULE,
   MAX_PITCH,
   MAX_PROJECTION,
@@ -80,6 +82,14 @@ export function structuralProblem(b: Building): BuildingProblem | null {
   if (clashes(b).length > 0) return 'overlap';
   if (groundVolumes(b).length === 0) return 'footprint';
   for (const v of b.volumes) if (!isSupported(b, v)) return 'support';
+  const elements = b.elements ?? [];
+  if (elements.length > MAX_ELEMENTS) return 'size';
+  for (const e of elements) {
+    if (![e.x, e.y, e.w, e.d, e.z, e.h].every(Number.isFinite) || e.z < -1e-6) return 'size';
+    if (Math.min(e.w, e.d, e.h) < MIN_ELEMENT - 1e-6 || Math.max(e.w, e.d, e.h) > MAX_ELEMENT + 1e-6) return 'size';
+    // Parts meet the volumes; they never stand inside them.
+    if (elementClash(b, e)) return 'overlap';
+  }
   return null;
 }
 
@@ -95,14 +105,14 @@ export function validateBuilding(ctx: SiteContext, b: Building, ignore?: Buildin
   const limit = MAP_HALF - BUILDING_MAP_MARGIN;
   if (box.minX < -limit || box.minY < -limit || box.maxX > limit || box.maxY > limit) return 'bounds';
 
-  const rects = [...footprintRects(b, -TOUCH), ...groundProjections(b, -TOUCH)];
+  const rects = [...footprintRects(b, -TOUCH), ...groundProjections(b, -TOUCH), ...groundElements(b, -TOUCH)];
   if (ctx.net && rects.some((rect) => touchesRoad(ctx.net as Network, rect))) return 'road';
 
   for (const other of ctx.doc.buildings.all()) {
     if (other.id === b.id || other.id === ignore) continue;
     const ob = buildingBounds(other);
     if (ob.minX > box.maxX || ob.maxX < box.minX || ob.minY > box.maxY || ob.maxY < box.minY) continue;
-    const others = [...footprintRects(other), ...groundProjections(other)];
+    const others = [...footprintRects(other), ...groundProjections(other), ...groundElements(other)];
     for (const a of rects) for (const c of others) if (convexOverlap(a, c)) return 'building';
   }
 

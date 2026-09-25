@@ -7,6 +7,7 @@ import {
   type Side,
 } from '@world/buildings/types';
 import { FINISHES, type Finish, type MaterialSpec } from '@world/buildings/materials';
+import { ELEMENT_KINDS, type ElementKind } from '@world/buildings/types';
 import { METERS_PER_UNIT } from '@world/units';
 import { plural, t } from './i18n';
 
@@ -28,7 +29,11 @@ export interface BuildingPanelActions {
   removeUserBlueprint(key: string): void;
   /** `commit` is false while a slider is being dragged, true on release. */
   setParameter(name: BuildingParam, value: number, commit: boolean): void;
-  action(name: 'storeyUp' | 'storeyDown' | 'setback' | 'removeVolume' | 'rotate' | 'duplicate' | 'colour' | 'saveBlueprint' | 'delete' | 'ridge' | 'fall'): void;
+  action(name: 'storeyUp' | 'storeyDown' | 'setback' | 'removeVolume' | 'rotate' | 'duplicate' | 'colour' | 'saveBlueprint' | 'delete' | 'ridge' | 'fall' | 'turnElement' | 'removeElement'): void;
+  /** Arms a free element (the same one again disarms it). */
+  armElement(kind: ElementKind): void;
+  /** Sets the selected element's width, length or height, world units. */
+  setElement(name: 'w' | 'd' | 'h', value: number): void;
   /** Pushes the picked face region to `depth` world units (negative: in). */
   setRelief(depth: number): void;
   /** Roof pitch, degrees; `commit` false while the slider is dragged. */
@@ -60,6 +65,9 @@ export interface BuildingPanelState {
   readonly materialScope: MaterialScope;
   /** The picked face region: its size and how far it is pushed; null when none. */
   readonly face: { readonly bays: number; readonly storeys: number; readonly depth: number } | null;
+  readonly armed: ElementKind | null;
+  /** The selected free element, if one is. */
+  readonly element: { readonly kind: ElementKind; readonly w: number; readonly d: number; readonly h: number } | null;
   /** The selected volume's roof: its pitch and which shape controls apply. */
   readonly roofShape: { readonly pitch: number; readonly pitched: boolean; readonly ridge: boolean; readonly fall: boolean } | null;
   /** What the current material target is built in; null when there is none (a face scope with no face picked). */
@@ -119,6 +127,15 @@ const SWATCHES: readonly number[] = [
   0xf2efe8, 0xe6d8bd, 0xd8c297, 0xc98f5a, 0xa4563f, 0x72412f, 0x9c6b43,
   0xbdbcb4, 0x8f9ba5, 0x55585c, 0x2f3134, 0x7d8c6a, 0x5d7a8f, 0x9fb8c4,
 ];
+
+const ICON_ELEMENT: Readonly<Record<ElementKind, string>> = {
+  stair: '<path d="M4 20h4v-4h4v-4h4V8h4"/><path d="M4 20V8"/>',
+  ramp: '<path d="M3 19h18L3 11Z"/>',
+  pillar: '<path d="M7 4h10M7 20h10M9 4v16m6-16v16"/>',
+  canopy: '<path d="M4 6v14"/><path d="M4 9h15l-2 3H4"/>',
+  wall: '<rect x="3" y="9" width="18" height="9"/><path d="M3 13.5h18M9 9v4.5m6 0V18"/>',
+  slab: '<path d="M3 12l9-4 9 4-9 4Z"/><path d="M3 12v2l9 4 9-4v-2"/>',
+};
 
 const hexOf = (colour: number): string => `#${colour.toString(16).padStart(6, '0')}`;
 
@@ -181,6 +198,27 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
   custom.onchange = () => actions.paint({ colour: parseInt(custom.value.slice(1), 16) });
   swatches.appendChild(custom);
   const materialNote = document.getElementById('buildingMaterialNote') as HTMLElement;
+  const elementButtons = document.getElementById('buildingElements') as HTMLElement;
+  for (const kind of ELEMENT_KINDS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'building-component building-element';
+    b.dataset['element'] = kind;
+    b.innerHTML = `${svg(ICON_ELEMENT[kind])}<span></span>`;
+    b.onclick = () => actions.armElement(kind);
+    elementButtons.appendChild(b);
+  }
+  const elementBox = document.getElementById('buildingElement') as HTMLElement;
+  const elementNote = document.getElementById('buildingElementNote') as HTMLElement;
+  const elementSummary = document.getElementById('buildingElementSummary') as HTMLElement;
+  const elementInputs = [...root.querySelectorAll<HTMLInputElement>('[data-element-param]')];
+  for (const input of elementInputs) {
+    const output = input.nextElementSibling as HTMLOutputElement;
+    input.oninput = () => {
+      output.textContent = Number(input.value).toFixed(2);
+    };
+    input.onchange = () => actions.setElement(input.dataset['elementParam'] as 'w' | 'd' | 'h', Number(input.value) / METERS_PER_UNIT);
+  }
   const faceBox = document.getElementById('buildingFace') as HTMLElement;
   const faceNote = document.getElementById('buildingFaceNote') as HTMLElement;
   const faceSummary = document.getElementById('buildingFaceSummary') as HTMLElement;
@@ -313,6 +351,19 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
     toggle('.building-swatch[data-colour]', 'data-colour', state.material ? String(state.material.colour) : null);
     if (state.material && document.activeElement !== custom) custom.value = hexOf(state.material.colour);
     materialNote.hidden = !(state.materialScope === 'face' && state.material === null && state.selection !== null);
+    toggle('.building-element', 'data-element', state.armed);
+    elementBox.hidden = state.element === null;
+    elementNote.hidden = state.element !== null || state.armed === null;
+    if (state.element) {
+      const el = state.element;
+      elementSummary.textContent = t(`building.element.${el.kind}`);
+      for (const input of elementInputs) {
+        if (document.activeElement === input) continue;
+        const metres = el[input.dataset['elementParam'] as 'w' | 'd' | 'h'] * METERS_PER_UNIT;
+        input.value = String(Math.round(metres * 20) / 20);
+        (input.nextElementSibling as HTMLOutputElement).textContent = metres.toFixed(2);
+      }
+    }
     faceBox.hidden = state.face === null;
     faceNote.hidden = state.face !== null;
     if (state.face) {
@@ -372,6 +423,11 @@ export function refreshBuildingPanelLabels(): void {
     const label = t(`building.roof.${b.dataset['roof']}`);
     b.title = label;
     b.setAttribute('aria-label', label);
+  });
+  document.querySelectorAll<HTMLButtonElement>('#buildingElements .building-element').forEach((b) => {
+    const label = t(`building.element.${b.dataset['element']}`);
+    (b.querySelector('span') as HTMLElement).textContent = label;
+    b.title = label;
   });
   document.querySelectorAll<HTMLButtonElement>('#buildingFinishes .building-finish').forEach((b) => {
     const label = t(`building.finish.${b.dataset['finish']}`);

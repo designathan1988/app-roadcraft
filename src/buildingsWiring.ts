@@ -145,6 +145,12 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         case 'duplicate': tool.duplicateSelected(); break;
         case 'colour': tool.cyclePalette(); break;
         case 'delete': tool.deleteSelected(); break;
+        case 'turnElement': {
+          const el = tool.selectedElement();
+          if (el) tool.updateElement({ facing: ((el.facing + 1) % 4) as Side });
+          break;
+        }
+        case 'removeElement': tool.removeElement(); break;
         case 'ridge': {
           const v = selectedVolume();
           if (v) tool.setRoofShape({ ridge: ridgeAlongX(v) ? 'y' : 'x' });
@@ -176,6 +182,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     setScope: (scope) => tool.setScope(scope),
     setMaterialScope: (scope) => tool.setMaterialScope(scope),
     setRelief: (depth) => tool.setRelief(depth),
+    armElement: (kind) => tool.armElement(kind),
+    setElement: (name, value) => tool.updateElement({ [name]: value }),
     setPitch(degrees, commit) {
       if (commit) tool.setRoofShape({ pitch: degrees });
     },
@@ -240,6 +248,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       scope: tool.scope,
       materialScope: tool.materialScope,
       face: faceState(),
+      armed: tool.armed,
+      element: (() => {
+        const el = tool.mode === 'edit' ? tool.selectedElement() : null;
+        return el ? { kind: el.kind, w: el.w, d: el.d, h: el.h } : null;
+      })(),
       roofShape: roofShapeState(),
       material: tool.mode === 'edit' ? tool.currentMaterial() : null,
     };

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { GRID, MIN_SIZE, groundProjections, reliefAt, ridgeAlongX, roofRise } from '@world/buildings/geometry';
 import { migrateBuilding } from '@world/buildings/serialize';
+import { elementsAgainstBay, groundElements, runFor } from '@world/buildings/elements';
+import type { BuildingElement } from '@world/buildings/types';
 import { structuralProblem } from '@world/buildings/validate';
 
 import { DEFAULT_MODULE } from '@world/buildings/types';
@@ -24,6 +26,9 @@ import {
   opResize,
   opSetRelief,
   opSetRoofShape,
+  opAddElement,
+  opRemoveElement,
+  opUpdateElement,
   opRotate,
   opSetComponent,
   opSetStoreys,
@@ -429,5 +434,50 @@ describe('faces and roofs', () => {
     const back = migrateBuilding(JSON.parse(JSON.stringify(b)))!.volumes[0]!;
     expect([back.pitch, back.ridge, back.fall]).toEqual([v.pitch, v.ridge, v.fall]);
     expect(back.reliefs).toEqual(v.reliefs);
+  });
+});
+
+describe('free elements', () => {
+  const block = (): Building => ({ ...generateBody('residential', bays(4), bays(3), 2), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building);
+
+  it('snaps a stair from a floor down to the ground, straight out first, then along the facade', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    const candidates = elementsAgainstBay(b, v, { volume: v.id, side: 1, index: 1, storey: 1 }, 'stair');
+    expect(candidates).toHaveLength(3);
+    const [straight, alongA, alongB] = candidates as [Omit<BuildingElement, 'id'>, Omit<BuildingElement, 'id'>, Omit<BuildingElement, 'id'>];
+    expect(straight.facing).toBe(1);
+    expect(straight.h).toBeCloseTo(levelElevation(b, 1), 9);
+    expect(straight.d).toBeCloseTo(runFor('stair', straight.h), 9);
+    expect([alongA.facing, alongB.facing].sort()).toEqual([0, 2]);
+    // None stands inside the building; each touches it.
+    for (const c of candidates) {
+      const draft = { ...b, elements: [{ ...c, id: 1 }] } as Building;
+      expect(structuralProblem(draft)).toBeNull();
+    }
+  });
+
+  it('refuses an element inside a volume, and counts a ground element as footprint', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    opAddElement(b, { kind: 'pillar', x: v.x + v.w / 2, y: v.y + v.d / 2, facing: 0, w: 1, d: 1, z: 0, h: 5 });
+    expect(structuralProblem(b)).toBe('overlap');
+    const c = block();
+    opAddElement(c, { kind: 'wall', x: 10, y: -10, facing: 0, w: 8, d: 0.6, z: 0, h: 4 });
+    expect(groundElements(c)).toHaveLength(1);
+    expect(structuralProblem(c)).toBeNull();
+  });
+
+  it('keeps a stair run matched to its rise, and survives a save', () => {
+    const b = block();
+    const id = opAddElement(b, { kind: 'stair', x: 0, y: -5, facing: 0, w: 3, d: 5, z: 0, h: 2 });
+    expect(opUpdateElement(b, id, { h: 6 })).toBe(true);
+    const e = b.elements![0]!;
+    expect(e.d).toBeCloseTo(runFor('stair', 6), 9);
+    const back = migrateBuilding(JSON.parse(JSON.stringify(b)))!;
+    expect(back.elements).toEqual(b.elements);
+    expect(back.nextElementId).toBeGreaterThan(id);
+    expect(opRemoveElement(b, id)).toBe(true);
+    expect(b.elements).toBeUndefined();
   });
 });

@@ -7,9 +7,11 @@ import {
   storeyUse,
   upperStoreyFrom,
 } from '@world/buildings/blueprints';
+import { MAX_ELEMENT, MIN_ELEMENT, elementRing, onGround, runFor, takeElementId } from '@world/buildings/elements';
 import {
   GRID,
   MIN_SIZE,
+  SIDE_NORMAL,
   baysOn,
   footprintBox,
   footprintRects,
@@ -26,6 +28,7 @@ import {
 import {
   type BayComponent,
   type Building,
+  type BuildingElement,
   type BuildingId,
   type BuildingUse,
   type Facade,
@@ -531,7 +534,17 @@ export function clearBuildingsOnRoads(ctx: BuildingContext): number {
   if (!ctx.net || ctx.doc.buildings.size === 0) return 0;
   const doomed: BuildingId[] = [];
   for (const b of ctx.doc.buildings.all()) {
-    if (footprintRects(b, -0.05).some((rect) => touchesRoad(ctx.net!, rect))) doomed.push(b.id);
+    if (footprintRects(b, -0.05).some((rect) => touchesRoad(ctx.net!, rect))) {
+      doomed.push(b.id);
+      continue;
+    }
+    // A stair or a wall the road now crosses goes; the building stays.
+    const hit = (b.elements ?? []).filter((e) => onGround(e) && touchesRoad(ctx.net!, elementRing(b, e, -0.05)));
+    if (hit.length > 0) {
+      const draft = cloneBuilding(b);
+      for (const e of hit) opRemoveElement(draft, e.id);
+      ctx.doc.buildings.put(draft);
+    }
   }
   for (const id of doomed) ctx.doc.buildings.remove(id);
   return doomed.length;
@@ -612,4 +625,52 @@ export function opSetRoofShape(b: Building, volumeId: number, shape: RoofShape):
     else v.fall = shape.fall;
   }
   return JSON.stringify([v.pitch, v.ridge, v.fall]) !== before;
+}
+
+// =============================================================== free elements
+
+/** Adds a free element (validated with the building by the caller); returns its id. */
+export function opAddElement(b: Building, element: Omit<BuildingElement, 'id'>): number {
+  const id = takeElementId(b);
+  b.elements = [...(b.elements ?? []), { ...element, id }];
+  return id;
+}
+
+export type ElementPatch = Partial<Pick<BuildingElement, 'w' | 'd' | 'h' | 'z' | 'facing' | 'material'>>;
+
+/**
+ * Changes an element's size, height or facing. A stair or a ramp keeps the
+ * run its rise needs: setting its rise sets its run.
+ */
+export function opUpdateElement(b: Building, id: number, patch: ElementPatch): boolean {
+  const e = b.elements?.find((x) => x.id === id);
+  if (!e) return false;
+  const before = JSON.stringify(e);
+  const size = (v: number): number => clamp(Math.round(v / RELIEF_STEP) * RELIEF_STEP, MIN_ELEMENT, MAX_ELEMENT);
+  if (patch.w !== undefined) e.w = size(patch.w);
+  if (patch.d !== undefined) e.d = size(patch.d);
+  if (patch.h !== undefined) {
+    e.h = size(patch.h);
+    if ((e.kind === 'stair' || e.kind === 'ramp') && patch.d === undefined) {
+      // The run grows from the top: the foot moves, the head stays at the door.
+      const run = runFor(e.kind, e.h);
+      const n = SIDE_NORMAL[e.facing];
+      e.x += (n.x * (run - e.d)) / 2;
+      e.y += (n.y * (run - e.d)) / 2;
+      e.d = run;
+    }
+  }
+  if (patch.z !== undefined) e.z = Math.max(0, patch.z);
+  if (patch.facing !== undefined) e.facing = patch.facing;
+  if (patch.material !== undefined) e.material = patch.material;
+  return JSON.stringify(e) !== before;
+}
+
+export function opRemoveElement(b: Building, id: number): boolean {
+  const list = b.elements ?? [];
+  const next = list.filter((e) => e.id !== id);
+  if (next.length === list.length) return false;
+  if (next.length > 0) b.elements = next;
+  else delete b.elements;
+  return true;
 }

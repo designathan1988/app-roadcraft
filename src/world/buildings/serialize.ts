@@ -2,6 +2,7 @@ import { clamp } from '@core/scalar';
 import {
   type BayComponent,
   type Building,
+  type BuildingElement,
   type Core,
   type Facade,
   type Relief,
@@ -27,12 +28,14 @@ import {
   asBuildingId,
   isBayComponent,
   isBuildingUse,
+  isElementKind,
   isRoofKind,
   isSide,
+  MAX_ELEMENTS,
 } from './types';
 import { DEFAULT_GROUND_HEIGHT, DEFAULT_STOREY_HEIGHT } from './blueprints';
 import { MIN_SIZE } from './geometry';
-import { migrateBuildingMaterials, migrateVolumeMaterials } from './materials';
+import { migrateBuildingMaterials, migrateMaterial, migrateVolumeMaterials } from './materials';
 
 /**
  * The stored shape of a building is the model itself, as plain JSON, with
@@ -143,6 +146,27 @@ function migrateVolume(raw: unknown, scale: Scale): Volume | null {
   return volume;
 }
 
+/** Elements came with schema 2: world units. */
+function migrateElement(raw: unknown): BuildingElement | null {
+  if (!isRecord(raw) || !finite(raw.id) || !isElementKind(raw.kind)) return null;
+  const dims = [raw.x, raw.y, raw.w, raw.d, raw.z, raw.h];
+  if (!dims.every(finite)) return null;
+  const element: BuildingElement = {
+    id: Math.max(1, Math.round(raw.id)),
+    kind: raw.kind,
+    x: raw.x as number,
+    y: raw.y as number,
+    facing: isSide(raw.facing) ? raw.facing : 0,
+    w: Math.max(0.1, raw.w as number),
+    d: Math.max(0.1, raw.d as number),
+    z: Math.max(0, raw.z as number),
+    h: Math.max(0.1, raw.h as number),
+  };
+  const material = migrateMaterial(raw.material);
+  if (material) element.material = material;
+  return element;
+}
+
 /** Reliefs came with schema 2: their depth is always in world units. */
 function migrateRelief(raw: unknown): Relief | null {
   if (!isRecord(raw) || !isSide(raw.side) || !finite(raw.depth) || raw.depth === 0) return null;
@@ -220,6 +244,21 @@ export function migrateBuilding(raw: unknown): Building | null {
     building.levels = raw.levels.slice(0, MAX_STOREYS).map((v) => (finite(v) ? height(v, v) : null));
   } else {
     delete building.levels;
+  }
+  const elements = Array.isArray(raw.elements)
+    ? raw.elements.slice(0, MAX_ELEMENTS).map(migrateElement).filter((e): e is BuildingElement => e !== null)
+    : [];
+  if (elements.length > 0) {
+    const seenIds = new Set<number>();
+    for (const e of elements) {
+      while (seenIds.has(e.id)) e.id += 1;
+      seenIds.add(e.id);
+    }
+    building.elements = elements;
+    building.nextElementId = Math.max(int(raw.nextElementId, 1), ...seenIds) + 1;
+  } else {
+    delete building.elements;
+    delete building.nextElementId;
   }
   const materials = migrateBuildingMaterials(raw.materials);
   if (materials) building.materials = materials;

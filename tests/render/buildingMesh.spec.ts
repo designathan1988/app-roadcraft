@@ -76,6 +76,12 @@ describe('building shell', () => {
         const b = { ...generateBody('residential', 30, 22.5, 3), id: asBuildingId(1), x: 0, y: 0, rotation: 0.4 } as Building;
         const v = b.volumes[0]!;
         Object.assign(v, { roof, ...turn });
+        b.elements = [
+          { id: 1, kind: 'stair', x: 40, y: 8, facing: 1, w: 3, d: 9, z: 0, h: 4 },
+          { id: 2, kind: 'ramp', x: -8, y: 8, facing: 3, w: 3, d: 12, z: 0, h: 1 },
+          { id: 3, kind: 'canopy', x: 15, y: -1.5, facing: 0, w: 6, d: 3, z: 7, h: 0.4 },
+          { id: 4, kind: 'pillar', x: 15, y: -5, facing: 0, w: 1, d: 1, z: 0, h: 7 },
+        ];
         v.reliefs = [
           { side: 0, bay0: 1, bay1: 2, storey0: 1, storey1: 2, depth: 2 },
           { side: 2, bay0: 0, bay1: 1, storey0: 0, storey1: 1, depth: -3 },
