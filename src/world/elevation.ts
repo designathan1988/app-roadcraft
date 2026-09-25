@@ -338,7 +338,10 @@ export interface RoadSample {
 }
 
 /** Units over which `RoadSample.open` fades out towards a junction plate. */
-const OPEN_FADE = 3;
+//
+// Short: the gutter ends cleanly where the plate begins. Faded over 3 units it
+// left a half-grey, half-asphalt smear before every zebra.
+const OPEN_FADE = 0.4;
 
 export const GROUND_ONLY: ReadonlySet<RoadStructure> = new Set<RoadStructure>(['ground']);
 const NO_SHAPE = { height: 0, weight: 0 } as const;

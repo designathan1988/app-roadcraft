@@ -75,12 +75,15 @@ export function createPostChain(
   if (quality.ambientOcclusion) {
     gtao = new GTAOPass(scene, camera, size.x, size.y);
     gtao.output = GTAOPass.OUTPUT.Default;
-    // Tuned for world units where a kerb is 0.2 high and a pier is 15 tall: the
-    // radius has to reach across a kerb without swallowing a whole junction.
+    // Tuned for world units where a kerb is 0.4 high and a pier is 15 tall.
+    // At a radius of 4 (1.6 m) the crease at every kerb's foot became a wide,
+    // blotchy dark halo across the asphalt - a stain along every road edge,
+    // worst where junction corners gather it. A crease is darkened over about
+    // its own height; piers and buildings still read from the tighter pass.
     gtao.updateGtaoMaterial({
-      radius: level === 'ultra' ? 6 : 4,
-      distanceExponent: 1.4,
-      thickness: 2.2,
+      radius: level === 'ultra' ? 2.2 : 1.6,
+      distanceExponent: 1.6,
+      thickness: 1.2,
       scale: 1.05,
       samples: level === 'ultra' ? 16 : 8,
       screenSpaceRadius: false,

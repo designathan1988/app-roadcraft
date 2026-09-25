@@ -70,7 +70,6 @@ export interface SceneMaterials {
  * lays what a real street has and a tiling texture cannot place:
  *  - a concrete GUTTER along each kerb, jointed every 2 m - where there was a
  *    smooth dark strip, the kerb face in shade over bare asphalt;
- *  - grime collecting in the metre beside it;
  *  - polished WHEEL TRACKS a quarter lane either side of each lane's centre;
  *  - oil staining down the middle of each lane, broken up along it.
  * `across` is linear across a straight road, so interpolating it is exact.
@@ -83,14 +82,13 @@ const ROAD_SPACE_FRAGMENT = `
   float rsEdge = vRoadEdge.x - rsA;
   float rsW = clamp(vRoadEdge.w, 0.0, 1.0) * step(0.5, vRoadEdge.x);
   float rsGutter = rsW * (1.0 - smoothstep(${GUTTER.toFixed(2)} - 0.05, ${GUTTER.toFixed(2)} + 0.05, rsEdge));
-  float rsGrime = rsW * (1.0 - smoothstep(${GUTTER.toFixed(2)}, ${GUTTER.toFixed(2)} + 1.5, rsEdge)) * (1.0 - rsGutter);
   float rsLane = (rsA - vRoadEdge.z) / max(vRoadEdge.y, 1.0);
   float rsF = fract(rsLane);
   float rsInLane = rsW * step(0.0, rsA - vRoadEdge.z) * (1.0 - rsGutter);
   float rsTrack = rsInLane * ((1.0 - smoothstep(0.03, 0.09, abs(rsF - 0.27))) + (1.0 - smoothstep(0.03, 0.09, abs(rsF - 0.73))));
   float rsOilN = 0.5 + 0.5 * sin(rsAlong * 0.23 + 2.0 * sin(rsAlong * 0.071 + rsLane * 3.1));
   float rsOil = rsInLane * (1.0 - smoothstep(0.05, 0.16, abs(rsF - 0.5))) * smoothstep(0.55, 0.95, rsOilN);
-  diffuseColor.rgb *= (1.0 - 0.16 * rsGrime) * (1.0 - 0.06 * rsTrack) * (1.0 - 0.1 * rsOil);
+  diffuseColor.rgb *= (1.0 - 0.06 * rsTrack) * (1.0 - 0.1 * rsOil);
   float rsJointD = abs(fract(rsAlong / 5.0 + 0.5) - 0.5) * 5.0;
   float rsJoint = 1.0 - smoothstep(0.025, 0.07, rsJointD);
   float rsGrain = clamp(sampledDiffuseColor.g / 0.215, 0.6, 1.4);
