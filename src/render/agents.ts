@@ -18,6 +18,7 @@ import {
 } from 'three';
 
 import { pedPose, vehiclePose } from '@sim/pose';
+import { roadFrame } from './vehicleFrame';
 import {
   ARCHETYPES,
   archetypeById,
@@ -138,6 +139,9 @@ export interface AgentMeshes {
   sync(world: SimWorld, alpha: number, detailed: boolean, zoom?: number, options?: AgentRenderOptions): void;
   dispose(): void;
 }
+
+/** Time constant of the pitch and roll ease, seconds. */
+const SUSPENSION_TAU = 0.06;
 
 type ElevationAt = (world: SimWorld, x: number, y: number, segment?: SegmentId) => number;
 
@@ -1235,39 +1239,30 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         // from the sides, height where the frame's origin sits between them.
         // Sampled on the vehicle's own road, so a deck or a bore is what it
         // rides on, never the ground under or over it.
-        const cx = pose.p.x;
-        const cy = pose.p.y;
-        const ux = Math.cos(pose.angle);
-        const uy = Math.sin(pose.angle);
         const front = plan.axleAlong[0] ?? plan.length * 0.35;
         const rear = plan.axleAlong[plan.axleAlong.length - 1] ?? -plan.length * 0.35;
         const seg = lane?.segment ?? (lane ? world.connector(lane.id)?.inSegment : undefined);
-        const hFront = elevationAt(world, cx + ux * front, cy + uy * front, seg);
-        const hRear = elevationAt(world, cx + ux * rear, cy + uy * rear, seg);
-        let wantPitch = Math.atan2(hFront - hRear, Math.max(1e-3, front - rear));
-        let wantDeck = hRear + (0 - rear) * (hFront - hRear) / Math.max(1e-3, front - rear);
-        let wantRoll = 0;
-        if (!twoWheeled && plan.axleSide > 0) {
-          const t = plan.axleSide;
-          const hLeft = elevationAt(world, cx - uy * t, cy + ux * t, seg);
-          const hRight = elevationAt(world, cx + uy * t, cy - ux * t, seg);
-          wantRoll = Math.atan2(hLeft - hRight, 2 * t);
-        }
-        // Nothing mad from a sample that fell off the road (a far end hanging
-        // over a junction on another level): keep to a gradient a road has.
-        if (!Number.isFinite(wantPitch) || Math.abs(wantPitch) > 0.35) { wantPitch = 0; wantDeck = deck; }
-        if (!Number.isFinite(wantRoll) || Math.abs(wantRoll) > 0.25) wantRoll = 0;
-        // Suspension: a critically damped ease towards the road, so a change
-        // of grade is ridden over, not jolted.
+        const onRoad = (x: number, y: number): number => elevationAt(world, x, y, seg);
+        const want = roadFrame(onRoad, pose.p.x, pose.p.y, pose.angle, front, rear,
+          twoWheeled ? 0 : plan.axleSide, deck);
+        const wantDeck = want.deck;
+        const wantPitch = want.pitch;
+        const wantRoll = want.roll;
+        // Suspension: pitch and roll ease towards the road over a few
+        // hundredths of a second, so a change of grade is ridden, not jolted.
+        // The HEIGHT follows the road exactly: eased too, it lagged the road
+        // by metres at speed and the wheels sank into a climb (the contact
+        // test, tests/render/vehicleFrame.spec.ts). Grade breaks themselves
+        // are rounded by the road's vertical curves (world/elevation.ts).
         let ride = suspension.get(vehicle.id);
-        if (!ride || Math.abs(ride.deck - wantDeck) > 2) {
+        if (!ride || Math.abs(ride.pitch - wantPitch) > 0.2) {
           ride = { deck: wantDeck, pitch: wantPitch, roll: wantRoll, seen: suspensionFrame };
           suspension.set(vehicle.id, ride);
         } else {
-          const k = 1 - Math.exp(-suspensionDt / 0.12);
-          ride.deck += (wantDeck - ride.deck) * k;
+          const k = 1 - Math.exp(-suspensionDt / SUSPENSION_TAU);
           ride.pitch += (wantPitch - ride.pitch) * k;
           ride.roll += (wantRoll - ride.roll) * k;
+          ride.deck = wantDeck;
           ride.seen = suspensionFrame;
         }
         frameAt(pose.p.x, pose.p.y, pose.angle, ride.deck,
