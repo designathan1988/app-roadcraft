@@ -120,10 +120,14 @@ overhead.
 | id | clearance above the ground it spans | deck thickness | piers | solver |
 |---|---|---|---|---|
 | `ground` | 0 | 0.55 | no | `solveGround` |
-| `elevated` | 15 | 1.6 | yes | `solveRaised` |
-| `viaduct` | 10 | 1.35 | yes | `solveRaised` |
-| `bridge` | 7.5 | 1.15 | yes | `solveRaised` |
-| `tunnel` | −17.5 | 0.6 | no | `solveSunken` |
+| `elevated` | 14 | 2.6 | yes | `solveRaised` |
+| `bridge` | 7.5 | 2.4 | yes | `solveRaised` |
+| `tunnel` | −`TUNNEL_DEPTH` | 0.6 | no | `solveSunken` |
+
+Values as in `ROAD_STRUCTURES` (`src/world/structures.ts`), which is the
+source of truth. `viaduct` was a fifth level players could not tell from
+`elevated`; it was merged, and a map saved with one loads as elevated
+(`migrateStructure`).
 
 A structure is **not** a fixed world height. `elevated` used to mean "asphalt at
 y = 18", which is only correct on flat ground: over a hill the terrain swallowed

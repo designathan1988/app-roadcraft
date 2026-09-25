@@ -15,8 +15,10 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints. No build step, no assets to download — every texture
-is generated procedurally at start-up.
+Open the URL Vite prints. No build step. Every texture is generated
+procedurally at start-up; the one downloaded asset is the citizen roster
+(80 rigged Microsoft Rocketbox bodies, about 65 MB, fetched as they first
+appear) and its motion library (about 4 MB), see [docs/pedestrians.md](docs/pedestrians.md).
 
 Requires Node 22 or newer and a browser with WebGL 2.
 
@@ -28,7 +30,7 @@ Requires Node 22 or newer and a browser with WebGL 2.
 |---|---|
 | **Draw a road** | Pick a class (`1`–`4`), then drag on the map. Roads snap to existing nodes and split any road they cross at the same level. |
 | **Sculpt the land** | `Terrain` (`t`): raise, lower, level or carve a river. The wheel sizes the brush and shift-wheel sets its strength; `1`–`4` pick the operation. Hold the button to keep working one spot. *Level* takes its target height from where the stroke starts, so a drag across a slope brings the whole swept area to that height. Roads already built conform to the new ground immediately. |
-| **Build up** | Choose *Elevated*, *Viaduct* or *Bridge* before drawing. A raised road ramps down to meet anything at grade and passes over anything it merely crosses. |
+| **Build up** | Choose *Elevated* or *Bridge* before drawing. A raised road ramps down to meet anything at grade and passes over anything it merely crosses. |
 | **Build under** | Choose *Tunnel* and drag right through a hill. The road dives, the ground closes over it, and a portal appears at each end. Draw it long enough for the ramps to reach depth — too short and you get the open cutting you actually asked for. |
 | **Control a junction** | `Control` (`c`): click a junction to cycle automatic → signal → priority → stop → give way → uncontrolled. Shift-click goes back. While the tool is up, every junction shows its current mode. |
 | **Adjust** | `Upgrade` (`u`) raises a road's class · `Move` (`m`) drags a node · `Split` (`x`) cuts a road · `Bulldoze` (`b`) removes one · `Inspect` (`i`) opens the panel. |
@@ -58,9 +60,9 @@ in [docs/performance.md](docs/performance.md).
 | | |
 |---|---|
 | **Terrain** | A procedurally-relieved heightfield, editable with four brushes, with slope- and height-blended grass, dirt and rock, and rivers that hold water at the level of the channel that carved them. |
-| **Roads** | Four classes, adjustable lane counts and direction, straight or curved alignment, five structural levels including tunnels, and a cross-section of carriageway, kerb, footway, kerbed central reservation and verge with markings, crossings and stop lines. |
+| **Roads** | Four classes, adjustable lane counts and direction, straight or curved alignment, four structural levels (at grade, elevated, bridge and tunnel; a map saved with the old *viaduct* loads as elevated), and a cross-section of carriageway, kerb, footway, kerbed central reservation and verge with markings, crossings and stop lines. |
 | **Junctions** | Corner radii, trims and mouths solved from the real leg geometry; signal heads, phases, right-of-way and gap acceptance. |
-| **Traffic** | Hatchbacks, sedans, SUVs, vans, buses, lorries, motorcycles and bicycles, each to scale and with its own driving behaviour, carrying visible drivers and passengers; pedestrians of every age, build and dress, walking with a real gait, some of them with a dog. |
+| **Traffic** | Hatchbacks, sedans, SUVs, vans, buses, lorries, motorcycles and bicycles, each to scale and with its own driving behaviour, carrying visible drivers and passengers; pedestrians of every age, build and dress, walking with a real gait. |
 | **Drivers** | Each one has their own acceleration, braking, headway and patience, drawn from a single consistent temperament, and a speed that wanders the way nobody's actually holds steady. They overtake what is slower, give way when they have to, read a late amber differently from one another, and look for another way round when they have been stuck long enough. |
 | **People** | Parties of friends who keep pace with each other, their own destinations, a place on the footway they hold and shift to pass or to avoid somebody coming the other way, a wait at the kerb, and a pace that varies within one walk as well as between two people. |
 | **Simulation** | Car-following, MOBIL lane changing, sidewalks and crossings, congestion-aware routing and a live audit. |
@@ -132,10 +134,16 @@ docs/        the documentation listed above
 ## Technology
 
 TypeScript (strict, with `noUncheckedIndexedAccess` and
-`exactOptionalPropertyTypes`), three.js for rendering, `clipper2-js` for polygon
+`exactOptionalPropertyTypes`), three.js for rendering, `polygon-clipping` for polygon
 booleans, `earcut` for triangulation, Vite for the build, Vitest for tests and
-Playwright for the browser check. No runtime framework, no asset pipeline.
+Playwright for the browser check. No runtime framework; the only asset
+pipeline is the citizen roster's (`scripts/fetch-citizens.py` and the scripts
+after it, see AGENTS.md).
 
 ## Licence
 
-Private project.
+Private project. The citizen bodies and their animations are Microsoft
+Rocketbox, MIT, Copyright (c) 2020 Microsoft
+(`public/models/citizens/LICENSE-MICROSOFT.txt`,
+`src/render/motion/LICENSE-Microsoft-Rocketbox.txt`); that notice has to ship
+with any build.

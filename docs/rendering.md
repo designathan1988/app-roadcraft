@@ -79,8 +79,9 @@ machine playable.
 
 Everything repeated is one draw call per part, whatever the count: lamp columns,
 arms and lamps; tree trunks, canopies and bushes; piers, pier caps, parapets and
-tunnel portal walls; and the twelve meshes that carry every vehicle, rider,
-pedestrian and dog in the world.
+tunnel portal walls; and the instanced meshes that carry every vehicle and
+rider in the world. Pedestrians and occupants are rigged citizens, one
+instanced batch per body model (`riggedCitizens.ts`).
 
 Static instanced meshes carry a real bounding sphere so the frustum can reject
 them. Agent meshes do not: their instances move every frame, so a sphere computed
@@ -89,17 +90,18 @@ cheaper than maintaining it.
 
 ## Agents
 
-`agents.ts` writes every vehicle, rider, pedestrian and dog from the simulation
-each frame, interpolated between the last two steps by `sim/pose.ts`.
+`agents.ts` writes every vehicle and rider, and hands every pedestrian and
+occupant to `riggedCitizens.ts`, from the simulation each frame, interpolated between the last two steps by `sim/pose.ts`.
 
 ### Grouped by geometry, not by what the part depicts
 
-Twelve instanced meshes carry the lot. A bumper, a wing mirror, a bus door and a
-bicycle fork are all boxes of trim, so they are all instances of one mesh; an
-arm, a shin and a dog's tail are all limbs; a dog's body and a passenger's chest
-are both torsos. That grouping is the performance argument: a thousand vehicles
-and a thousand pedestrians, each assembled from a dozen or more parts, still cost
-twelve draw calls, and a new detail costs instances rather than batches.
+A bumper, a wing mirror, a bus door and a bicycle fork are all boxes of trim,
+so they are all instances of one mesh. That grouping is the performance
+argument: a thousand vehicles, each assembled from a dozen or more parts, cost
+a draw call per part kind rather than per vehicle, and a new detail costs
+instances rather than batches. (Pedestrians were built the same way, from
+limb and torso boxes, before the rigged citizens replaced them; the `dog`
+trait in `agents.ts` is left from then and nothing draws it.)
 
 Per-instance colour is what makes the sharing possible, so the materials are
 left near-white and each instance carries its own paint. A material with a colour
@@ -117,7 +119,7 @@ through a cache, because the CSS parser allocates.
 |---|---|---|
 | far | body and a solid cabin — two writes | not drawn |
 | mid | the greenhouse opens: roof on glass, wheels, bumpers, lamps, riders | head, torso, hips, legs |
-| near | occupants, mirrors, plates, hubs, pillars, bus doors | hair, arms, shoes, dog |
+| near | occupants, mirrors, plates, hubs, pillars, bus doors | full-detail citizen LOD |
 
 The solid cabin at the far band is not laziness. From the mid band up the
 greenhouse has to be a roof carried on glass, because nobody can be seen sitting
@@ -128,7 +130,7 @@ band — a motorcycle with no rider is not a cheaper motorcycle, it is a wrong o
 ### Deterministic variation
 
 Whether a car carries a passenger, which of its windows are down, a pedestrian's
-age, build, skin, hair and trousers, whether they walk a dog — all of it comes
+age, build and body model — all of it comes
 from a hash of the agent's id. Nothing is stored and nothing is drawn from a
 random source, because an agent re-rolled each frame strobes and one cached in a
 map needs eviction that has to agree with despawn. A hash of the id is stable for

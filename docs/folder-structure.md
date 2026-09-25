@@ -31,7 +31,7 @@ roadcraft/
 │   │   ├── ids.ts          branded NodeId / SegmentId
 │   │   ├── units.ts        world units ↔ metres
 │   │   ├── roadTypes.ts    classes, widths, lane profiles, surface levels
-│   │   ├── structures.ts   at grade / elevated / viaduct / bridge / tunnel
+│   │   ├── structures.ts   at grade / elevated / bridge / tunnel (a saved `viaduct` loads as elevated)
 │   │   ├── terrain.ts      base relief, brush stamps, the stamp index
 │   │   ├── elevation.ts    ★ the one road height field
 │   │   ├── network.ts      ribbons, junctions, trims — the geometry solver
@@ -78,7 +78,7 @@ roadcraft/
 │   │   ├── markings.ts     painted markings as lit geometry
 │   │   ├── structures.ts   piers, pier caps, parapets, tunnel portals
 │   │   ├── scenery.ts      lamps, vegetation
-│   │   ├── agents.ts       instanced vehicles, riders, pedestrians, dogs
+│   │   ├── agents.ts       instanced vehicles and riders; the pedestrian draw calls
 │   │   ├── signals.ts      signal heads
 │   │   └── mesh/
 │   │       ├── surfaceMesh.ts   ★ polygon → triangles, crack-free

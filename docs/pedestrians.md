@@ -7,11 +7,15 @@ are recorded in `public/models/citizens/catalog.json`.
 
 The rigged character meshes and clothing come from the [Microsoft Rocketbox
 Avatar Library](https://github.com/microsoft/Microsoft-Rocketbox), licensed
-under MIT. The Rocketbox FBX rigs were retargeted to clips from the [Quaternius
-Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html),
-licensed CC0, and exported as GLB. Their license texts are included beside the
-GLB files and in the shipped JavaScript bundle's scene metadata. No asset
-server is contacted at runtime.
+under MIT. At BUILD time only, `scripts/convert-citizens.mjs` poses each
+Rocketbox rig with a clip from the [Quaternius Universal Animation
+Library](https://quaternius.com/packs/universalanimationlibrary.html) (CC0)
+before export; no Quaternius motion is shipped - the clips are stripped
+(below), which is why `public/models/citizens/LICENSE-ANIMATIONS.txt` (CC0,
+Quaternius) describes a build input, not a shipped asset. Every animation the
+game plays is a Microsoft Rocketbox capture (MIT, `src/render/motion/`).
+The MIT notice (`LICENSE-MICROSOFT.txt`) must ship with every build, commercial
+ones included. No asset server is contacted at runtime.
 
 The GLBs carry no animation clips. Pedestrians play the Rocketbox captures in
 `src/render/motion/` and people in or on vehicles the IK poses in

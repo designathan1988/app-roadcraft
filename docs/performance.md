@@ -142,8 +142,12 @@ renderer.
 
 Starts at `high`. It takes one frame-time sample per frame, discards anything
 over 400 ms (a rebuild stall is one bad frame, not a frame rate), and every 60
-samples compares the **median** against two thresholds: step down under 34 fps,
-step up over 110 fps.
+samples compares the **median** against the thresholds: it steps DOWN when the
+median frame is slower than 34 fps, and steps UP on the frame's own CPU cost -
+when frames keep up with the display and the work in them is small - never
+above the tier it started on (`QualityGovernor` in `src/render/quality.ts`).
+An older version stepped up only on a median frame under 9 ms (about 110 fps),
+which no 60 Hz display can ever measure under vsync.
 
 Hysteresis on both sides and a 2.5-second cooldown after every change, because a
 tier switch itself costs a frame — without them the monitor oscillates between
