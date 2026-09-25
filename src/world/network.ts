@@ -480,7 +480,11 @@ export class Network {
     const crossing = this.crosswalkDistanceAt(seg, node);
     const behindCrossing =
       crossing > 0 ? crossing + CROSSWALK_DEPTH / 2 + STOP_BAR_SETBACK : 0;
-    return Math.max(capped, behindCrossing);
+    // ...and never inside the junction plate. On a short leg into a wide, acute
+    // junction the fractional cap bit below the mouth itself (the fuzzer's
+    // `trimOrder`: a 184-unit leg with an 85-unit mouth stopped its lanes at
+    // 83), which ended the lanelets and started every connector ON the plate.
+    return Math.max(capped, behindCrossing, mouth);
   }
 
   /**

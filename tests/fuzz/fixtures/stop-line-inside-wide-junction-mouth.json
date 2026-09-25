@@ -1,0 +1,203 @@
+{
+ "name": "stop-line-inside-wide-junction-mouth",
+ "category": "trimOrder",
+ "detail": "stop 62.50 inside mouth 62.67",
+ "sim": null,
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    340.87,
+    -669.39
+   ],
+   "b": [
+    700,
+    -635.44
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    376.58,
+    -669.39
+   ],
+   "b": [
+    376.58,
+    -540.69
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    471.05,
+    -615.36
+   ],
+   "b": [
+    282.11,
+    -521.79
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "split",
+   "pick": 0.87,
+   "at": 0.56
+  },
+  {
+   "op": "draw",
+   "a": [
+    557.32,
+    322.65
+   ],
+   "b": [
+    700,
+    392.36
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -123.03,
+    495.94
+   ],
+   "b": [
+    -189.81,
+    298.53
+   ],
+   "type": 0,
+   "curve": {
+    "t": 0.51,
+    "h": 29.69
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    700,
+    241.33
+   ],
+   "b": [
+    581.93,
+    502.27
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "move",
+   "pick": 0.87,
+   "dx": 23.12,
+   "dy": 48.77
+  },
+  {
+   "op": "draw",
+   "a": [
+    -123.03,
+    495.94
+   ],
+   "b": [
+    132.59,
+    563.55
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    700,
+    481.12
+   ],
+   "b": [
+    456.06,
+    532.89
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "split",
+   "pick": 0.28,
+   "at": 0.52
+  },
+  {
+   "op": "draw",
+   "a": [
+    389.42,
+    -549.71
+   ],
+   "b": [
+    504.18,
+    -407
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    521.3,
+    597.61
+   ],
+   "b": [
+    486,
+    490.59
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    671.71,
+    625.42
+   ],
+   "b": [
+    700,
+    330.45
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -98.81,
+    519.18
+   ],
+   "b": [
+    94.23,
+    570.91
+   ],
+   "type": 3,
+   "curve": {
+    "t": 0.55,
+    "h": -57.78
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "lanes",
+   "pick": 0.84,
+   "lanes": 6
+  }
+ ]
+}
