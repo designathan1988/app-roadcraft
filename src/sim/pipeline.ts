@@ -22,6 +22,11 @@ import { signalStateFor } from './signals/query';
 export interface StepOptions {
   readonly traffic?: boolean;
   readonly pedestrians?: boolean;
+  /**
+   * Milliseconds spent per stage, ADDED to on every step when given
+   * (`scripts/bench-sim.mjs`). Off by default: no clock is read otherwise.
+   */
+  readonly timings?: Map<string, number>;
 }
 
 /**
@@ -50,12 +55,22 @@ export interface StepOptions {
 export function step(w: SimWorld, opts: StepOptions = {}): void {
   const traffic = opts.traffic ?? true;
   const pedestrians = opts.pedestrians ?? true;
+  const timings = opts.timings;
+  let mark = timings ? performance.now() : 0;
+  const lap = timings
+    ? (stage: string): void => {
+      const now = performance.now();
+      timings.set(stage, (timings.get(stage) ?? 0) + now - mark);
+      mark = now;
+    }
+    : (): void => {};
 
   // 0. topology: the only place derived structure may change
   if (w.topologyRevision !== w.net.revision) {
     w.rebuildTopology();
     rebindAgents(w);
   }
+  lap('0 topology');
 
   // snapshot for render interpolation
   for (const v of w.vehicles.values()) v.prev = snapshot(v);
@@ -67,44 +82,54 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
     const c = w.controllers.get(node);
     if (c) stepController(c, deps);
   }
+  lap('1 signals');
 
   // 2. routing and population
   stepDispatch(w, traffic);
   stepPedDispatch(w, pedestrians);
   ensureVehicleRoutes(w);
+  lap('2 dispatch+routes');
   // Lane choice sits between routing and constraints: it must see a settled
   // route, and integration must see its verdict. It only decides — see
   // `stepLaneChange`.
   if (traffic) stepLaneChange(w);
+  lap('2b lane change');
   // Kerb stops: choosing where, and the doors and people once stopped.
   if (traffic) stepKerbStops(w);
+  lap('2c kerb stops');
 
   // 3. Pedestrians arbitrate crossings first.  A vehicle admitted on an
   // earlier tick owns an explicit connector token and keeps them at the kerb;
   // otherwise a pedestrian stepping out now is visible to admission below.
   if (pedestrians) stepPedestrians(w);
+  lap('3 pedestrians');
 
   // 4. longitudinal constraints
   for (const v of w.vehiclesInIdOrder()) {
     v.constraints = longitudinalConstraints(w, v);
   }
+  lap('4 constraints');
 
   // 5. intersection admission: denial appends a constraint, never a command
   if (traffic) stepAdmission(w);
+  lap('5 admission');
 
   // 6. integration: the only writer of position and speed
   if (traffic) integrateAll(w);
+  lap('6 integrate');
 
   // 7. cleanup
   stepDespawn(w);
   collectGhosts(w);
   runWatchdog(w);
   updateStallCounters(w);
+  lap('7 cleanup');
 
   // 8. audit
   if (w.auditEnabled) {
     for (const i of runAudit(w, w.auditLevel)) w.report(i);
   }
+  lap('8 audit');
 }
 
 /** Re-binds agents to the rebuilt topology after a live edit. */
