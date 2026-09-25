@@ -102,15 +102,14 @@ surface.observe();
 
 // ------------------------------------------------------------------ boot
 const savedSession = persistence.loadSession();
-// An autosave that is still the previous build's untouched starter city is
-// replaced by the current starter scenario; anything the player built stays.
-const saved = savedSession?.document && !isUntouchedOldStarter(savedSession.document)
+// The game opens on an empty map. An autosave that is still an earlier build's
+// untouched starter scenario is dropped too; anything the player built stays.
+const saved = savedSession?.document && !isUntouchedStarter(savedSession.document)
   ? savedSession.document
   : null;
 if (saved) {
   restoreInto(doc, saved, net);
 } else {
-  seedStarter(doc);
   net.rebuild();
 }
 
@@ -146,55 +145,35 @@ if (savedSession && saved) {
 }
 
 /**
- * The starter scenario: few streets, chosen so that everything the traffic
- * and the people do can be watched at once.
- *
- *   - an avenue (four lanes) crossed by a two-way street at a signalised
- *     crossroads: queues at red, protected turns, zebra crossings with WALK;
- *   - a local street meeting the avenue at an uncontrolled T, where it gives
- *     way to the avenue;
- *   - links long enough for queues, overtaking, kerb stops (passengers, buses,
- *     deliveries) and people walking the footways.
- *
- * Every road end is a degree-one node, so vehicles enter at the edge, cross
- * the scenario and leave on the other side. Six roads in all.
+ * Whether an autosave is exactly one of the starter scenarios an earlier build
+ * seeded, never edited. Such a save carries nothing of the player's, so the
+ * game opens on an empty map instead.
  */
-function seedStarter(target: RoadDoc): void {
-  const west = target.addNode({ x: -560, y: 0 });
-  const centre = target.addNode({ x: 0, y: 0 });
-  const tee = target.addNode({ x: 330, y: 0 });
-  const east = target.addNode({ x: 600, y: 0 });
-  const north = target.addNode({ x: 0, y: -430 });
-  const south = target.addNode({ x: 0, y: 430 });
-  const lane = target.addNode({ x: 330, y: 360 });
-  // The avenue, east-west, in three pieces: to the crossroads, to the T, on.
-  target.addSegment(west.id, centre.id, 3);
-  target.addSegment(centre.id, tee.id, 3);
-  target.addSegment(tee.id, east.id, 3);
-  // The cross street through the signalised crossroads.
-  target.addSegment(north.id, centre.id, 2);
-  target.addSegment(centre.id, south.id, 2);
-  target.setNodeControl(centre.id, 'signal');
-  // The local street at the T, which gives way to the avenue: no signal
-  // there, so the right of way between the roads is what decides.
-  target.addSegment(tee.id, lane.id, 1);
-  target.setNodeControl(tee.id, 'none');
-}
-
-/**
- * Whether an autosave is exactly the starter city an earlier build seeded - a
- * 3x3 grid with four approach stubs - never edited. Such a save carries
- * nothing of the player's, so the current starter replaces it.
- */
-function isUntouchedOldStarter(saved: ReturnType<RoadDoc['toJSON']>): boolean {
+function isUntouchedStarter(saved: ReturnType<RoadDoc['toJSON']>): boolean {
+  // Declared here, not at module level: boot calls this before any `const`
+  // below it is initialised.
+  const OLD_STARTERS: readonly { readonly segments: number; readonly nodes: ReadonlySet<string> }[] = [
+    // A 3x3 grid with four approach stubs.
+    {
+      segments: 16,
+      nodes: new Set([
+        ...[-360, 0, 360].flatMap((x) => [-260, 0, 260].map((y) => `${x},${y}`)),
+        '0,-480', '0,480', '-580,0', '580,0',
+      ]),
+    },
+    // An avenue crossed at a signalised crossroads, with a local street at a T.
+    {
+      segments: 6,
+      nodes: new Set(['-560,0', '0,0', '330,0', '600,0', '0,-430', '0,430', '330,360']),
+    },
+  ];
   const nodes = saved.nodes ?? [];
   const segments = saved.segments ?? [];
-  if (nodes.length !== 13 || segments.length !== 16) return false;
-  const expected = new Set<string>();
-  for (const x of [-360, 0, 360]) for (const y of [-260, 0, 260]) expected.add(`${x},${y}`);
-  for (const [x, y] of [[0, -480], [0, 480], [-580, 0], [580, 0]]) expected.add(`${x},${y}`);
-  return (saved.terrain ?? []).length === 0 && (saved.poles ?? []).length === 0 &&
-    nodes.every((n) => expected.has(`${n.x},${n.y}`));
+  if ((saved.terrain ?? []).length > 0 || (saved.poles ?? []).length > 0 ||
+    (saved.buildings ?? []).length > 0) return false;
+  return OLD_STARTERS.some((starter) =>
+    nodes.length === starter.nodes.size && segments.length === starter.segments &&
+    nodes.every((n) => starter.nodes.has(`${n.x},${n.y}`)));
 }
 
 function worldBounds() {
@@ -1350,12 +1329,8 @@ initChrome(requestDraw);
   // the one that most needs to be undoable. Opening a file already records;
   // this did not, which left Ctrl+Z unable to recover a map cleared by mistake.
   history.record(doc);
-  // A new map opens on the starter scenario (`seedStarter`): a handful of
-  // streets to watch the traffic and the people on, which the player can
-  // build from or demolish.
-  const fresh = new RoadDoc();
-  seedStarter(fresh);
-  applySnapshot(fresh.toJSON());
+  // A new map is empty.
+  applySnapshot(new RoadDoc().toJSON());
   fitView();
   flashHint('hint.newMap');
 };
