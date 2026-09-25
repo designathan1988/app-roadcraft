@@ -11,7 +11,9 @@ import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
 import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
-import { type BuildingPanelState, initBuildingPanel, refreshBuildingPanelLabels } from '@ui/buildingPanel';
+import { type BuildingPanelState, initBuildingPanel, refreshBuildingPanelLabels, setPresetThumbnails } from '@ui/buildingPanel';
+import { renderBuildingThumbnails } from '@render/buildings/thumbnails';
+import { BLUEPRINTS } from '@world/buildings/blueprints';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
 import { plural, t } from '@ui/i18n';
 
@@ -278,6 +280,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   };
 
   const floorOf = tool.floorOf.bind(tool);
+  let thumbnailsDone = false;
 
   return {
     tool,
@@ -301,6 +304,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     activate() {
       panelDirty = true;
       refreshPanel();
+      if (!thumbnailsDone) {
+        thumbnailsDone = true;
+        // After this frame, so opening the palette is not held up by it.
+        requestAnimationFrame(() => setPresetThumbnails(renderBuildingThumbnails(scene.gl, BLUEPRINTS)));
+      }
     },
     deactivate() {
       tool.deactivate();

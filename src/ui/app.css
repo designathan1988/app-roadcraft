@@ -672,6 +672,7 @@ body { user-select: none; -webkit-user-select: none; }
 .building-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .building-preset { display: flex; align-items: center; gap: 6px; text-align: left; padding: 6px; }
 .building-preset svg { width: 22px; height: 22px; flex: 0 0 22px; }
+.building-preset .building-thumb { width: 40px; height: 40px; flex: 0 0 40px; object-fit: contain; margin: -4px 0; }
 .building-preset .remove { margin-left: auto; opacity: 0.6; }
 .building-params .terrain-control { grid-template-columns: 62px 1fr 34px; margin-top: 7px; }
 .building-edit { margin-top: 4px; border-top: 1px solid var(--ui-border); padding-top: 4px; }

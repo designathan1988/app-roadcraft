@@ -423,6 +423,20 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
   return { refresh };
 }
 
+/** Replaces the presets' icons with pictures of the models they place. */
+export function setPresetThumbnails(images: ReadonlyMap<string, string>): void {
+  document.querySelectorAll<HTMLButtonElement>('#buildingPresets .building-preset').forEach((b) => {
+    const url = images.get(b.dataset['preset'] ?? '');
+    const icon = b.querySelector('svg, img');
+    if (!url || !icon) return;
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    img.className = 'building-thumb';
+    icon.replaceWith(img);
+  });
+}
+
 /** Re-renders the script-built labels after a language change. */
 export function refreshBuildingPanelLabels(): void {
   const presets = document.getElementById('buildingPresets');
