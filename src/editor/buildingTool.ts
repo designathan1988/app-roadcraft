@@ -142,9 +142,12 @@ type Drag =
   | { kind: 'move'; origin: Building; start: Vec2; z: number }
   | { kind: 'rotate'; origin: Building; centre: Vec2; z: number; startAngle: number }
   | { kind: 'relief'; origin: Building; volume: number; region: FaceRegion; start: Vec2; z: number; dir: Vec2; depth: number }
-  | { kind: 'click'; hit: BuildingHit | null; start: Vec2; moved: boolean; shift: boolean };
+  | { kind: 'click'; hit: BuildingHit | null; start: Vec2; moved: boolean; shift: boolean; at: number };
 
 const PREVIEW_ID = asBuildingId(-1);
+/** A press held this long without moving counts as a long press. */
+const LONG_PRESS_MS = 450;
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 const DRAG_START_PIXELS = 4;
 const ROTATE_STEP = Math.PI / 12;
 
@@ -671,7 +674,7 @@ export class BuildingTool {
         return true;
       }
     }
-    this.drag = { kind: 'click', hit: this.pick(screen), start: screen, moved: false, shift };
+    this.drag = { kind: 'click', hit: this.pick(screen), start: screen, moved: false, shift, at: now() };
     return true;
   }
 
@@ -827,7 +830,8 @@ export class BuildingTool {
       return;
     }
     if (drag.kind === 'click') {
-      if (!drag.moved) this.click(drag.hit, drag.shift);
+      // A long press is Shift's touch equivalent: it widens a facade pick.
+      if (!drag.moved) this.click(drag.hit, drag.shift || now() - drag.at >= LONG_PRESS_MS);
       return;
     }
     const preview = this.preview;

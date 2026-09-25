@@ -365,6 +365,24 @@ callback that is `mutateBuildings`.
     (the building if it is the last one), `Ctrl+D` duplicates, `Ctrl+C` /
     `Ctrl+V` copy and paste at the pointer, `R` rotates, `Escape` deselects.
 
+### Gestures, measures and conveniences
+
+* **Alt** held frees a pull or a push from the grid (lengths to the
+  centimetre); **Shift** on a side arrow grows a wing; **Shift+click** - or a
+  **long press** (450 ms, the touch equivalent) - widens a facade pick.
+* While a side is pulled, a face pushed or storeys dragged, the overlay shows
+  the length, depth or floor count beside the handle (`BuildingTool.measure`).
+* **Mirror** flips the building left to right in place (`opMirror`); twice is
+  the original. **Repeat** copies the selected element in a row, corner to
+  corner, never into a volume (`opRepeatElement`).
+* **Styles** (`STYLES` in `materials.ts`) dress a whole building in one click -
+  brick, modern, mediterranean, industrial, timber - and lock nothing.
+* The presets in the palette are pictures of the buildings they place,
+  rendered off screen by the game's renderer from the game camera's angle
+  (`render/buildings/thumbnails.ts`).
+* The selection is a thin line at the selected volume's base and a fainter one
+  at its roof edge, never a wire box over the building.
+
 ### Snapping
 
 `src/editor/buildingSnap.ts`, in order of preference:
@@ -410,6 +428,12 @@ because the ground under the foundations may have moved.
   the scenery's instance cull (`Scenery.exclude`), so nothing grows through a
   roof - without re-solving the roads.
 
+* Seating a building: the shell's vertex colour drifts in tone over a facade
+  (a smooth world-space noise) and darkens towards the ground floor; a paved
+  apron runs round every ground volume on the land (not over paving), and a
+  path leads from an entrance to a footway up to 14 m away (`emitLot`); flat
+  roofs carry a water tank and a hatch (`emitRoofPlant`); a stair over 1.2 m
+  is built open - treads and risers on a raking waist slab, with handrails.
 * The layer keeps each building's emitted geometry (`emitChunk`), keyed by its
   record and a fingerprint of the ground around it. An edit re-emits the one
   building it touched, a terrain dab only the buildings whose ground moved;

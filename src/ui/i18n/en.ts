@@ -301,7 +301,7 @@ export const EN: Dictionary = {
   'building.face.summary': '{bays} × {floors}',
   'building.bays.one': '1 bay',
   'building.bays.other': '{count} bays',
-  'building.relief.pickFace': 'Click a facade (Shift+click for more bays), then pull the yellow arrow',
+  'building.relief.pickFace': 'Click a facade (Shift+click or long press for more bays), then pull the yellow arrow',
   'building.relief.depth': 'Depth',
   'building.relief.recess': 'Recess',
   'building.relief.project': 'Project',

@@ -288,7 +288,7 @@ export const PT_BR: Dictionary = {
   'building.face.summary': '{bays} × {floors}',
   'building.bays.one': '1 vão',
   'building.bays.other': '{count} vãos',
-  'building.relief.pickFace': 'Clique numa fachada (Shift+clique: mais vãos) e puxe a seta amarela',
+  'building.relief.pickFace': 'Clique numa fachada (Shift+clique ou toque longo: mais vãos) e puxe a seta amarela',
   'building.relief.depth': 'Profundidade',
   'building.relief.recess': 'Reentrância',
   'building.relief.project': 'Saliência',
