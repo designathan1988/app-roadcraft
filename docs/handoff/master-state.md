@@ -28,10 +28,10 @@ NÃO COBERTO section that must be empty (only real user-decision blockers).
 
 | # | Item | Why here | Status |
 |---|---|---|---|
-| P0 | Build identity: find what the user runs, consolidate master+stabilize, stamp on screen, recapture the reported defects | every check is worthless on a build nobody sees | in progress |
-| P1 | Inspection harness: dev camera, frame by id, interior mode, hi-res, fixture map, runtime census | P2–P7 are unverifiable without it | partly done on stabilize (ce5d0a7, 8b43722); census + stamp in shots todo |
+| P0 | Build identity: find what the user runs, consolidate master+stabilize, stamp on screen, recapture the reported defects | every check is worthless on a build nobody sees | done: master ff to b878673 (check green 508 pass / 7 it.fails, verify:visual green); Road/dist rebuilt and preview 5311 restarted; wt-check (5220) moved to master; stamp fixed for servers without git on PATH; recapture docs/screenshots/p0-before |
+| P1 | Inspection harness: dev camera, frame by id, interior mode, hi-res, fixture map, runtime census | P2–P7 are unverifiable without it | done 9099bac: scripts/inspect-scene.mjs sets play/ground/structures/cars/interior/bikes/people/census, stamp burnt in, city grid in tests/fixtures/inspectionMap.ts; scene().census() |
 | P2 | Occupants: typed anchors contract, real seated pose, capsule test, idle life, steering, opaque roof, whitelist, variable occupancy | complaint #1 | todo |
-| P3 | People whitelist manifest + single `pickCitizenModel` + strict dress code + census | P2/P4 draw from it | todo |
+| P3 | People whitelist manifest + single `pickCitizenModel` + strict dress code + census | P2/P4 draw from it | mostly done 9099bac: manifest (86 shipped, 56 allowed), citizenCasting.ts, arch test, partyCoherence on real manifest, census 165 figures 0 outside / 0 mixed. Left: 60 close-ups with stamp (P13), drop uniform GLBs from dist (P11) |
 | P4 | Motorbikes and riders rebuilt | | todo |
 | P5 | Cars rebuilt by loft, anchors for P2 | | todo |
 | P6 | Slopes and structures | | partly done on stabilize (e5b6e33, e0c06d6, 77ab833, cbc4279, 8b43722) — verify |
@@ -52,6 +52,8 @@ incompatible groups; zero capsule interpenetration; no loose part (ε); zero mar
 - Inherited from stabilize-state.md: PED_AGENT on footways only, FSM on crossings; party archetype derived from ages (RNG untouched); gutter = geometry from kerb polyline; cars by loft; window pane shortened from the top.
 
 ## 4. Confirmed causes
+- P0 recapture on b878673: kerb vertical face speckled; cars boxy with dark roof panel, floating mirror boxes; rear passengers' legs through front seats; driver hands off the wheel; one car with a passenger and no visible driver (interior-sedan-299); motorbike blocky, ball helmet; conifer black cones; bridge parapet white speckle; crossing lines cross lane lines; grass yellow blotches; no gutter. No hover debug ring seen.
+- The user reported more Rocketbox models exist: the library has 115 (40 adults, 4 children, 73 professions); 80 were shipped. Docs = README + Docs/all.pdf (one image sheet of all avatars).
 - P0: the user's build lacks every stabilize fix because they live only on `stabilize/core` (e6b1446, e17ae4a, 7efb403, 72f06a8 are contained by no other branch). Servers found: `vite preview` on 127.0.0.1:5311 serving `Road/dist` (built 2026-09-24 21:57 from master), and a dev server on 5220 from worktree `wt-check` at 7537d24 (2026-09-24 10:49). Ports 5199/5320/5391 belong to another project (Documents/builder).
 
 ## 5. Discarded hypotheses (with evidence) — do not repeat
@@ -62,4 +64,5 @@ incompatible groups; zero capsule interpenetration; no loose part (ε); zero mar
 - Other live Claude sessions at start: two on another project (pagebuilder); none on Roadcraft.
 
 ## 7. Next step
-P0: run `npm run check` in road-stabilize (one heavy job), then verify:visual on a free port, fast-forward master, rebuild Road/dist, start Road dev server, capture with stamp.
+P2: typed anchor contract (src/render/vehicleAnchors.ts) from the current models; fix rear-seat legroom (legs through front seats), driver hands on the wheel, missing driver; capsule interpenetration test; idle life; then P4, P5.
+Dev server: preview 'road-stabilize-dev' on 5176 (launch.json entry in Road). Harness: node scripts/inspect-scene.mjs <out> [sets].
