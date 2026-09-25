@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { MeshStandardMaterial } from 'three';
 
 import { DEFAULT_MODULE } from '@world/buildings/types';
 
@@ -152,5 +153,24 @@ describe('buildings layer', () => {
     expect(layer.covers(first.x + 1, first.y + 1)).toBe(true);
     expect(layer.covers(-900, -900)).toBe(false);
     layer.dispose();
+  });
+});
+
+describe('building materials', () => {
+  it('never draws a building part with a default or unassigned material', () => {
+    const kit = createBuildingKit();
+    const all = [...Object.entries(kit.material), ...Object.entries(kit.shell)];
+    for (const [kind, material] of all) {
+      const m = material as MeshStandardMaterial;
+      expect(m.name, kind).toMatch(/^building-/);
+      // White, untextured and without vertex or instance colours is three's
+      // default: a part that fell through to it. The awning is tinted per
+      // instance; the shell by its vertex colours.
+      const white = m.color.getHex() === 0xffffff;
+      if (white && !m.map) expect(kind === 'awning' || m.vertexColors, kind).toBe(true);
+    }
+    // Every finish the shell can be drawn in has its material.
+    for (const finish of FINISHES) expect(kit.shell[finish], finish).toBeDefined();
+    kit.dispose();
   });
 });

@@ -340,6 +340,7 @@ export const EN: Dictionary = {
   'building.finish.metal': 'Metal',
   'building.finish.glass': 'Glass',
   'building.finish.tile': 'Tiles',
+  'building.finish.roofing': 'Roofing',
   'building.colourPick': 'Colour',
   'building.facade': 'Facade components',
   'building.pickHint': 'Pick a component, then click a facade bay',

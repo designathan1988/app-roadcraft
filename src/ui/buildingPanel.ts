@@ -121,6 +121,7 @@ const ICON_FINISH: Readonly<Record<Finish, string>> = {
   metal: '<path d="M4 20V4m4 16V4m4 16V4m4 16V4m4 16V4"/><path d="M4 4h16M4 20h16"/>',
   glass: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M12 4v16M4 12h16M7 7l3-3M14 14l3-3"/>',
   tile: '<path d="M3 17c2-3 4-3 6 0 2-3 4-3 6 0 2-3 4-3 6 0M3 11c2-3 4-3 6 0 2-3 4-3 6 0 2-3 4-3 6 0"/>',
+  roofing: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9h16M4 14h16M4 19h16"/>',
 };
 
 /** Colours offered at a click; any other comes from the colour picker. */

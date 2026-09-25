@@ -32,7 +32,9 @@ export type PartKind =
   | 'railing'
   | 'roofRailing'
   | 'awning'
-  | 'column';
+  | 'column'
+  | 'glassDark'
+  | 'curtain';
 
 export const PART_KINDS: readonly PartKind[] = [
   'glass',
@@ -44,6 +46,8 @@ export const PART_KINDS: readonly PartKind[] = [
   'roofRailing',
   'awning',
   'column',
+  'glassDark',
+  'curtain',
 ];
 
 export interface BuildingKit {
@@ -110,6 +114,23 @@ function roofRailingGeometry(): BufferGeometry {
   return merged;
 }
 
+/**
+ * A door leaf in the component frame: a slab with two raised panels on each
+ * leaf half, a lock rail between them and a handle - not a brown rectangle.
+ */
+function doorGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [box(1, 1, 0.6, 0, 0, -0.2)];
+  for (const x of [-0.24, 0.24]) {
+    parts.push(box(0.36, 0.5, 0.35, x, 0.2, 0.25));
+    parts.push(box(0.36, 0.3, 0.35, x, -0.3, 0.25));
+  }
+  // The handle, at hand height, near the lock stile.
+  parts.push(box(0.1, 0.035, 1.6, 0.4, -0.04, 0.9));
+  const merged = mergeGeometries(parts) as BufferGeometry;
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
 /** A shop awning: a sloped canvas from the wall (y 0, z 0) down and out, with a valance. */
 function awningGeometry(): BufferGeometry {
   const canvas = new BoxGeometry(1, 0.04, 1.08);
@@ -129,15 +150,17 @@ export function createBuildingKit(): BuildingKit {
     glass: glassPlane,
     frame: frameGeometry(),
     concrete: unitBox,
-    door: unitBox,
+    door: doorGeometry(),
     shutter: unitBox,
     railing: railingGeometry(),
     roofRailing: roofRailingGeometry(),
     awning: awningGeometry(),
     column: new CylinderGeometry(0.5, 0.5, 1, 12),
+    glassDark: glassPlane,
+    curtain: unitBox,
   };
 
-  const concrete = new MeshStandardMaterial({ color: 0xd3cec4, roughness: 0.86, metalness: 0 });
+  const concrete = new MeshStandardMaterial({ color: 0xcfc9bd, roughness: 0.82, metalness: 0 });
   const metal = new MeshStandardMaterial({ color: 0x33373a, roughness: 0.45, metalness: 0.55 });
   const material: Record<PartKind, Material> = {
     // Both sides in the shadow pass: a pane is one-sided, and three draws a
@@ -148,14 +171,19 @@ export function createBuildingKit(): BuildingKit {
     glass: new MeshStandardMaterial({ color: 0x55707f, roughness: 0.04, metalness: 0.8, envMapIntensity: 2.1, shadowSide: DoubleSide }),
     frame: new MeshStandardMaterial({ color: 0xe8e6df, roughness: 0.55, metalness: 0.05 }),
     concrete,
-    door: new MeshStandardMaterial({ color: 0x5b3a26, roughness: 0.62, metalness: 0 }),
+    door: new MeshStandardMaterial({ color: 0x6b4a33, roughness: 0.55, metalness: 0 }),
     shutter: new MeshStandardMaterial({ color: 0x9aa1a4, roughness: 0.5, metalness: 0.45 }),
     railing: metal,
     roofRailing: metal,
     // The one batch with per-instance colours, and it alone uses this material.
     awning: new MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 }),
     column: concrete,
+    // Window variety: a pane that reflects less (a darker room behind it) and
+    // a curtain drawn behind the frame - no two rows of windows alike.
+    glassDark: new MeshStandardMaterial({ color: 0x33434c, roughness: 0.06, metalness: 0.7, envMapIntensity: 1.6, shadowSide: DoubleSide }),
+    curtain: new MeshStandardMaterial({ color: 0xe9e1d2, roughness: 0.95, metalness: 0 }),
   };
+  for (const [kind, m] of Object.entries(material)) m.name = `building-part-${kind}`;
   const shell = createFinishMaterials();
   const ghostShell = new MeshStandardMaterial({
     color: 0x65e5c3,
@@ -179,7 +207,7 @@ export function createBuildingKit(): BuildingKit {
     ghostParts,
     // Glass, doors and shutters close the openings for the sun: without them
     // the shadow of every building is a lattice of lit windows.
-    castsShadow: new Set<PartKind>(['glass', 'door', 'shutter', 'concrete', 'railing', 'awning', 'column', 'roofRailing']),
+    castsShadow: new Set<PartKind>(['glass', 'glassDark', 'door', 'shutter', 'concrete', 'railing', 'awning', 'column', 'roofRailing']),
     setGhostValid(valid) {
       for (const m of [ghostShell, ghostParts]) {
         m.color.setHex(valid ? 0x65e5c3 : 0xff6f63);

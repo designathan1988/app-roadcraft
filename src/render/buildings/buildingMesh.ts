@@ -107,7 +107,6 @@ const TERRACE: Paint = paint({ finish: 'stone', colour: 0xb0a595 });
 const ARCADE_FLOOR: Paint = paint({ finish: 'stone', colour: 0x9d968a });
 const SAW_GLASS: Paint = paint({ finish: 'glass', colour: 0x3c5360 });
 const ROOF_PLANT: Paint = paint({ finish: 'concrete', colour: 0x6c6a64 });
-const PARAPET_BACK: Paint = paint({ finish: 'concrete', colour: 0x88867f });
 
 // ------------------------------------------------------------------ dimensions
 const REVEAL = m(0.2);
@@ -260,7 +259,7 @@ class Shell {
       part.position.push(q[0], q[1], q[2]);
       part.normal.push(nx, ny, nz);
       // No two stretches of wall quite the same tone, and the base weathered.
-      let tone = 0.94 + macroNoise(x / MACRO_SCALE, y / MACRO_SCALE, z / MACRO_SCALE) * 0.12;
+      let tone = 0.97 + macroNoise(x / MACRO_SCALE, y / MACRO_SCALE, z / MACRO_SCALE) * 0.06;
       if (wall && Number.isFinite(this.ground)) {
         const t = Math.min(1, Math.max(0, (z - this.ground) / GRIME_REACH));
         tone *= 0.8 + 0.2 * t * t * (3 - 2 * t);
@@ -411,7 +410,10 @@ function emitBuilding(
   // single flat colour.
   const shade = 0.93 + (((b.id * 2654435761) >>> 0) % 1000) / 1000 * 0.12;
   const wallOf = (v: Volume, side: Side): Paint => paint(wallMaterial(b, v, side), shade);
-  const trim = paint(trimMaterial(b));
+  // Mouldings - bands, cornices, copings, reveals - are smooth: a finish with
+  // a pattern (formwork ties, courses) repeated along a moulding reads as rivets.
+  const trimSpec = trimMaterial(b);
+  const trim = paint({ finish: trimSpec.finish === 'metal' ? 'metal' : 'plaster', colour: trimSpec.colour });
   const plinth = paint(plinthMaterial(b));
   const awning = new Color().setHex(paletteOf(b).awning);
 
@@ -506,7 +508,7 @@ function emitBuilding(
 
   // ---- free elements: stairs, ramps, pillars, canopies, walls, slabs
   for (const el of b.elements ?? []) {
-    const look = el.material ? paint(el.material) : elementPaint(b, el.kind, trim);
+    const look = el.material ? paint(el.material) : elementPaint(b, el.kind);
     emitElement(e, el, floor, f.bottom, look);
   }
 
@@ -524,6 +526,19 @@ function emitBuilding(
     const z = floor + volumeHeight(b, best);
     e.box(core.x, core.y, core.x + u, core.y + u, z, z + m(3), trim, ROOF_PLANT);
   }
+}
+
+/** How much light a window reveal keeps: it sits in the wall's own shadow. */
+const REVEAL_SHADE = 0.68;
+
+const shaded = (c: Paint, k: number): Paint => ({ rgb: [c.rgb[0] * k, c.rgb[1] * k, c.rgb[2] * k], finish: c.finish });
+
+/** A stable number per bay, for choosing among window variants. */
+function bayHash(bay: FacadeBay): number {
+  let h = Math.imul(bay.volume + 1, 0x27d4eb2d) ^ Math.imul(bay.level + 7, 0x165667b1) ^ Math.imul(bay.side + 3, 0x3c6ef372) ^ Math.imul(bay.index + 11, 0x85ebca6b);
+  h ^= Math.imul(Math.round(bay.x * 7), 0x2c1b3c6d) ^ Math.imul(Math.round(bay.y * 7), 0x297a2d39);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  return (h ^ (h >>> 13)) >>> 0;
 }
 
 function emitBay(
@@ -568,21 +583,37 @@ function emitBay(
   e.rect(f, o.a1, W, 0, H, 0, out, wall);
   e.rect(f, o.a0, o.a1, 0, o.h0, 0, out, wall);
   e.rect(f, o.a0, o.a1, o.h1, H, 0, out, wall);
-  e.jamb(f, o.a0, o.h0, o.h1, 0, o.depth, along, recess > 0 ? wall : trim);
-  e.jamb(f, o.a1, o.h0, o.h1, 0, o.depth, back, recess > 0 ? wall : trim);
-  if (recess <= 0) e.strip(f, o.a0, o.a1, o.h0, 0, o.depth, [0, 0, 1], trim);
-  e.strip(f, o.a0, o.a1, o.h1, 0, o.depth, [0, 0, -1], trim);
+  // The reveals are in the wall's shadow: darkened here, so a recess reads as
+  // one even where the ambient occlusion pass is off (the lower tiers).
+  const reveal = shaded(recess > 0 ? wall : trim, REVEAL_SHADE);
+  e.jamb(f, o.a0, o.h0, o.h1, 0, o.depth, along, reveal);
+  e.jamb(f, o.a1, o.h0, o.h1, 0, o.depth, back, reveal);
+  if (recess <= 0) e.strip(f, o.a0, o.a1, o.h0, 0, o.depth, [0, 0, 1], shaded(trim, 0.92));
+  e.strip(f, o.a0, o.a1, o.h1, 0, o.depth, [0, 0, -1], shaded(reveal, 0.8));
 
   const w = o.a1 - o.a0;
   const h = o.h1 - o.h0;
   const am = (o.a0 + o.a1) / 2;
   const hm = (o.h0 + o.h1) / 2;
   switch (bay.component) {
-    case 'window':
-      e.put('glass', f, am, hm, o.depth, w, h, 1);
+    case 'window': {
+      // No two rows alike: some rooms darker, some curtained, some with the
+      // roller shutter part way down - picked from the bay, so stable.
+      const pick = bayHash(bay) % 20;
+      e.put(pick < 5 ? 'glassDark' : 'glass', f, am, hm, o.depth, w, h, 1);
+      if (pick >= 5 && pick < 9) {
+        const side = w * 0.26;
+        e.put('curtain', f, o.a0 + side / 2, hm, o.depth - m(0.015), side, h, m(0.01));
+        e.put('curtain', f, o.a1 - side / 2, hm, o.depth - m(0.015), side, h, m(0.01));
+      } else if (pick >= 9 && pick < 13) {
+        const down = h * (0.25 + (pick - 9) * 0.15);
+        e.put('shutter', f, am, o.h1 - down / 2, o.depth - m(0.05), w, down, m(0.04));
+      }
       e.put('frame', f, am, hm, o.depth - m(0.03), w, h, m(0.06));
+      // The sill: out past the wall, with a drip.
       e.put('concrete', f, am, o.h0 - m(0.03), (o.depth - m(0.07)) / 2, w + m(0.14), m(0.06), o.depth + m(0.07));
       break;
+    }
     case 'wideWindow':
       e.put('glass', f, am, hm, o.depth, w, h, 1);
       e.put('frame', f, am, hm, o.depth - m(0.03), w, h, m(0.05));
@@ -595,7 +626,13 @@ function emitBay(
       break;
     case 'door':
       e.put('door', f, am, hm, o.depth + m(0.03), w, h, m(0.06));
-      if (bay.level === 0) e.put('concrete', f, am, o.h1 + m(0.3), -m(0.45), w + m(0.7), m(0.12), m(0.9));
+      if (bay.level === 0) {
+        // A canopy over the door: a slab with a fascia at its edge (a drip),
+        // and two brackets under it into the wall.
+        e.put('concrete', f, am, o.h1 + m(0.3), -m(0.45), w + m(0.7), m(0.12), m(0.9));
+        e.put('concrete', f, am, o.h1 + m(0.26), -m(0.88), w + m(0.7), m(0.2), m(0.05));
+        for (const side of [-1, 1]) e.put('frame', f, am + side * (w / 2 + m(0.2)), o.h1 + m(0.12), -m(0.25), m(0.06), m(0.3), m(0.5));
+      }
       break;
     case 'shopfront':
       e.put('glass', f, am, hm, o.depth, w, h, 1);
@@ -735,26 +772,57 @@ function emitRelief(e: Emitter, b: Building, v: Volume, r: Relief, floor: number
  * on roofs big enough to walk on.
  */
 function emitRoofPlant(e: Emitter, b: Building, v: Volume, z: number, trim: Paint): void {
+  // Drains in two opposite corners, where the roof's fall takes the water.
+  for (const [dx, dy] of [[m(0.7), m(0.7)], [v.w - m(0.7), v.d - m(0.7)]] as const) {
+    const x = v.x + dx;
+    const y = v.y + dy;
+    e.box(x - m(0.18), y - m(0.18), x + m(0.18), y + m(0.18), z, z + 0.02, DRAIN);
+  }
   if (v.w < m(6) || v.d < m(6)) return;
   const pick = ((b.id * 2654435761 + v.id * 40503) >>> 0) % 4;
   const inset = m(1.4);
   const tank = m(2.2);
   const cx = pick % 2 === 0 ? v.x + inset + tank / 2 : v.x + v.w - inset - tank / 2;
   const cy = pick < 2 ? v.y + v.d - inset - tank / 2 : v.y + inset + tank / 2;
+  // The water tank on its plinth, with a lid proud of it and a hatch in the lid.
   e.box(cx - tank / 2 - m(0.15), cy - tank / 2 - m(0.15), cx + tank / 2 + m(0.15), cy + tank / 2 + m(0.15), z, z + m(0.3), ROOF_PLANT);
-  e.box(cx - tank / 2, cy - tank / 2, cx + tank / 2, cy + tank / 2, z + m(0.3), z + m(1.9), trim, ROOF_PLANT);
-  // The hatch, diagonally across from the tank.
+  e.box(cx - tank / 2, cy - tank / 2, cx + tank / 2, cy + tank / 2, z + m(0.3), z + m(1.8), trim);
+  e.box(cx - tank / 2 - m(0.06), cy - tank / 2 - m(0.06), cx + tank / 2 + m(0.06), cy + tank / 2 + m(0.06), z + m(1.8), z + m(1.9), ROOF_PLANT);
+  e.box(cx - m(0.3), cy - m(0.3), cx + m(0.3), cy + m(0.3), z + m(1.9), z + m(1.98), shaded(ROOF_PLANT, 0.8));
+  // The roof hatch, diagonally across from the tank.
   const hx = pick % 2 === 0 ? v.x + v.w - m(2.4) : v.x + m(1.6);
   const hy = pick < 2 ? v.y + m(1.6) : v.y + v.d - m(2.4);
   e.box(hx, hy, hx + m(0.8), hy + m(0.8), z, z + m(0.45), ROOF_PLANT);
+  // Two air-conditioning condensers on a rail, with their fan grilles, on
+  // roofs with room for them.
+  if (v.w >= m(9) && v.d >= m(7)) {
+    const ux = pick % 2 === 0 ? v.x + v.w - m(1.4) : v.x + m(1.4);
+    const uy = v.y + v.d / 2;
+    for (const k of [-1, 1]) {
+      const y = uy + k * m(0.65);
+      e.box(ux - m(0.45), y - m(0.4), ux + m(0.45), y + m(0.4), z + m(0.15), z + m(0.85), CONDENSER);
+      e.box(ux - m(0.28), y - m(0.28), ux + m(0.28), y + m(0.28), z + m(0.85), z + m(0.87), DRAIN);
+    }
+  }
+  // A lift's machine room, with its door, on a building tall enough for one.
+  if (v.storeys.length + v.base >= 4 && b.cores.length === 0) {
+    const mx = v.x + v.w / 2;
+    const my = v.y + v.d / 2;
+    e.box(mx - m(1.3), my - m(1.3), mx + m(1.3), my + m(1.3), z, z + m(2.5), trim, ROOF_PLANT);
+    e.box(mx - m(0.45), my - m(1.34), mx + m(0.45), my - m(1.3), z + m(0.05), z + m(2.1), DOOR_PAINT);
+  }
 }
+
+const DRAIN: Paint = paint({ finish: 'metal', colour: 0x2d3033 });
+const CONDENSER: Paint = paint({ finish: 'metal', colour: 0xc9ccc9 });
+const DOOR_PAINT: Paint = paint({ finish: 'metal', colour: 0x5c6468 });
 
 const ELEMENT_CONCRETE: Paint = paint({ finish: 'concrete', colour: 0xcfcac0 });
 
 /** What an element is made of until the player says otherwise. */
-function elementPaint(b: Building, kind: BuildingElement['kind'], trim: Paint): Paint {
+function elementPaint(b: Building, kind: BuildingElement['kind']): Paint {
   switch (kind) {
-    case 'canopy': return trim;
+    case 'canopy': return ELEMENT_CONCRETE;
     case 'wall': return paint(paletteOf(b).wall);
     default: return ELEMENT_CONCRETE;
   }
@@ -815,6 +883,31 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
     cheek(1, t);
     e.shell.face([[footPts[0][0], footPts[0][1], zb], [footPts[1][0], footPts[1][1], zb], footPts[1], footPts[0]], e.N(nf.x, nf.y), c);
     e.shell.face([[headPts[0][0], headPts[0][1], zb], [headPts[1][0], headPts[1][1], zb], headPts[1], headPts[0]], e.N(-nf.x, -nf.y), c);
+    return;
+  }
+  if (el.kind === 'canopy') {
+    // A cantilevered slab: a fascia down its free edge (the drip) and two
+    // steel brackets under it back to the wall.
+    e.box(x0, y0, x1, y1, z0, z1, c);
+    const n = SIDE_NORMAL[el.facing];
+    const lip = m(0.05);
+    const [lx0, ly0, lx1, ly1] = el.facing === 0 ? [x0, y0, x1, y0 + lip] : el.facing === 2 ? [x0, y1 - lip, x1, y1] : el.facing === 3 ? [x0, y0, x0 + lip, y1] : [x1 - lip, y0, x1, y1];
+    e.box(lx0 - Math.abs(n.y) * lip, ly0 - Math.abs(n.x) * lip, lx1 + Math.abs(n.y) * lip, ly1 + Math.abs(n.x) * lip, z0 - m(0.12), z1, shaded(c, 0.95));
+    const across = el.facing === 0 || el.facing === 2;
+    for (const t of [0.15, 0.85]) {
+      const bx = across ? x0 + (x1 - x0) * t : (x0 + x1) / 2;
+      const by = across ? (y0 + y1) / 2 : y0 + (y1 - y0) * t;
+      const half = el.d * 0.35;
+      e.box(
+        across ? bx - m(0.04) : bx - half,
+        across ? by - half : by - m(0.04),
+        across ? bx + m(0.04) : bx + half,
+        across ? by + half : by + m(0.04),
+        z0 - m(0.35),
+        z0,
+        RAIL,
+      );
+    }
     return;
   }
   e.box(x0, y0, x1, y1, zb, z1, c);
@@ -977,12 +1070,14 @@ function postAt(e: Emitter, P: (u: number, a: number, z: number) => V3, u: numbe
 
 /** A horizontal band around a volume at height z (a storey line or a cornice). */
 function band(e: Emitter, v: Volume, z: number, out: number, height: number, c: Paint): void {
-  const x0 = v.x - out;
-  const y0 = v.y - out;
-  const x1 = v.x + v.w + out;
-  const y1 = v.y + v.d + out;
-  e.box(x0, y0, x1, y1, z - height / 2, z + height / 2, c);
+  // A moulding is a PROFILE, not a slab: a fillet under a projecting drip,
+  // whose shadow line is what makes it read at a distance.
+  const tier = (o: number, z0: number, z1: number, paint: Paint): void =>
+    e.box(v.x - o, v.y - o, v.x + v.w + o, v.y + v.d + o, z0, z1, paint);
+  tier(out * 0.45, z - height / 2, z - height * 0.1, shaded(c, 0.94));
+  tier(out, z - height * 0.1, z + height / 2, c);
 }
+
 
 function emitRoof(
   e: Emitter,
@@ -1026,8 +1121,10 @@ function emitRoof(
           } else {
             const out = e.N(face.nx, face.ny);
             e.rect(face, 0, W, 0, PARAPET_H, 0, out, wallOf(side));
-            e.rect(face, 0, W, 0, PARAPET_H, PARAPET_T, [-out[0], -out[1], 0], PARAPET_BACK);
-            e.strip(face, 0, W, PARAPET_H, 0, PARAPET_T, up, trim);
+            e.rect(face, 0, W, 0, PARAPET_H, PARAPET_T, [-out[0], -out[1], 0], shaded(wallOf(side), 0.82));
+            // The coping: proud of both faces, so the rain drips clear of them.
+            e.strip(face, 0, W, PARAPET_H, -m(0.05), PARAPET_T + m(0.05), up, trim);
+            e.rect(face, 0, W, PARAPET_H - m(0.06), PARAPET_H, -m(0.05), out, shaded(trim, 0.9));
           }
         }
       }

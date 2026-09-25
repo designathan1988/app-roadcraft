@@ -98,6 +98,46 @@ const PRELUDE = `
 
 const SCENARIOS = [
   {
+    // The building of the visual review: a plastered block with windows, a
+    // door under a canopy and a flat roof, at the three distances - the near
+    // one with a storey about a fifth of the screen's height.
+    name: 'facade-detail',
+    cameras: [
+      { name: 'far', dx: 12, dy: 12, zoom: 2 },
+      { name: 'mid', dx: 12, dy: 12, zoom: 7 },
+      { name: 'near', dx: 8, dy: 1, zoom: 20 },
+    ],
+    run: `
+      clear(); street(); await tool();
+      const id = place('block', 0, 30);
+      if (id === null) return 'the block did not place';
+      T.addStoreys(1);
+      let b = D.buildings.get(id);
+      const v = b.volumes[0];
+      T.armElement('canopy');
+      aimAndClick(b, v.x + v.w / 2 + 0.01, v.y, 0);
+      T.armElement('canopy');
+      T.selection = null;
+      b = D.buildings.get(id);
+      window.__focus = { x: b.x, y: b.y };
+      await settle();
+      return null;
+    `,
+  },
+  {
+    // A tree and a car close up: the street's entry after a few seconds of traffic.
+    name: 'street-detail',
+    cameras: [{ name: 'near', dx: 0, dy: 0, zoom: 20 }],
+    run: `
+      clear(); street(); await tool();
+      R.setTraffic(true);
+      R.runSim(6);
+      window.__focus = { x: -118, y: 4 };
+      await settle();
+      return null;
+    `,
+  },
+  {
     name: 'showcase',
     cameras: true,
     run: `
@@ -339,13 +379,18 @@ fs.mkdirSync(SHOT_DIR, { recursive: true });
 for (const scenario of SCENARIOS) {
   const problem = await page.evaluate(`(async () => { ${PRELUDE} ${scenario.run} })()`).catch((e) => `threw: ${e.message}`);
   if (scenario.cameras) {
-    for (const cam of CAMERAS) {
+    const focus = await page.evaluate('window.__focus ?? { x: 0, y: 0 }');
+    const cameras = Array.isArray(scenario.cameras)
+      ? scenario.cameras.map((c) => ({ name: c.name, x: focus.x + c.dx, y: focus.y + c.dy, zoom: c.zoom }))
+      : CAMERAS;
+    for (const cam of cameras) {
       await page.evaluate(`(() => { const V = window.__roadcraft.scene().viewport; V.moveTo({ x: ${cam.x}, y: ${cam.y} }); V.zoomAt(innerWidth / 2, innerHeight / 2, ${cam.zoom} / V.zoom); const C = window.__roadcraft.camera; C.x = ${cam.x}; C.y = ${cam.y}; C.zoom = V.zoom; window.__roadcraft.redraw(); })()`);
       await page.waitForTimeout(900);
       const shot = path.join(SHOT_DIR, `buildings-${LABEL}-${scenario.name}-${cam.name}.jpg`);
       await page.screenshot({ path: shot, type: 'jpeg', quality: 85 });
       console.log(`shot  ${path.relative(process.cwd(), shot)}`);
     }
+    if (!problem) console.log(`ok    ${scenario.name}`);
   } else {
     const shot = path.join(SHOT_DIR, `buildings-${LABEL}-${scenario.name}.jpg`);
     await page.screenshot({ path: shot, type: 'jpeg', quality: 82 });

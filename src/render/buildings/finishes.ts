@@ -25,6 +25,8 @@ interface FinishLook {
   readonly relief: number;
   readonly metalness: number;
   readonly envMapIntensity: number;
+  /** Strength of the normal map on the material, 0..1. */
+  readonly normalScale: number;
   readonly shade: (size: number) => Shade;
 }
 
@@ -59,6 +61,30 @@ function bond(u: number, v: number, size: number, across: number, rows: number):
 }
 
 const LOOKS: Readonly<Record<Finish, FinishLook>> = {
+  roofing: {
+    size: 256,
+    worldSize: m(4),
+    relief: 1.5,
+    metalness: 0,
+    envMapIntensity: 0.4,
+    normalScale: 0.35,
+    shade: (size) => {
+      const granules = makeNoise(0x4e1f);
+      const blotch = makeNoise(0x0a77);
+      return (x, y, out) => {
+        // A membrane laid in 1 m sheets: a lapped seam every sheet, mineral
+        // granules too fine to see from above, and slow weathering.
+        const sheet = size / 4;
+        const fv = y % sheet;
+        const seam = fv < 2.2 ? 0.9 + fv * 0.05 : 1;
+        const g = granules((x / size) * 128, (y / size) * 128, 128);
+        const b = fbm(blotch, (x / size) * 3, (y / size) * 3, 3, 3);
+        grey(out, (0.86 + (g - 0.5) * 0.05 + (b - 0.5) * 0.08) * seam);
+        out.h = fv < 2.2 ? 0.8 : 0.5 + g * 0.1;
+        out.rough = 0.93;
+      };
+    },
+  },
   plaster: {
     size: 256,
     worldSize: m(4),
@@ -67,6 +93,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
     relief: 0.45,
     metalness: 0,
     envMapIntensity: 0.6,
+    normalScale: 0.2,
     shade: (size) => {
       const coarse = makeNoise(0x71a3);
       const fine = makeNoise(0x2c5d);
@@ -85,6 +112,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
     relief: 3.2,
     metalness: 0,
     envMapIntensity: 0.5,
+    normalScale: 0.55,
     shade: (size) => {
       const grain = makeNoise(0x6b11);
       return (x, y, out) => {
@@ -112,6 +140,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
     relief: 4.5,
     metalness: 0,
     envMapIntensity: 0.5,
+    normalScale: 0.5,
     shade: (size) => {
       const grain = makeNoise(0x5d07);
       const mottle = makeNoise(0x0e93);
@@ -139,6 +168,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
     relief: 1.6,
     metalness: 0,
     envMapIntensity: 0.5,
+    normalScale: 0.3,
     shade: (size) => {
       const n1 = makeNoise(0x44c1);
       const n2 = makeNoise(0x1b7e);
@@ -164,6 +194,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
     relief: 2.4,
     metalness: 0,
     envMapIntensity: 0.4,
+    normalScale: 0.45,
     shade: (size) => {
       const grain = makeNoise(0x2fa9);
       return (x, y, out) => {
@@ -194,6 +225,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
     relief: 5,
     metalness: 0.55,
     envMapIntensity: 1,
+    normalScale: 0.6,
     shade: (size) => {
       const n = makeNoise(0x6e2b);
       return (x, y, out) => {
@@ -212,6 +244,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
     relief: 2,
     metalness: 0.6,
     envMapIntensity: 1.4,
+    normalScale: 0.3,
     shade: (size) => {
       const n = makeNoise(0x39d4);
       return (x, y, out) => {
@@ -239,6 +272,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
     relief: 5.5,
     metalness: 0,
     envMapIntensity: 0.5,
+    normalScale: 0.7,
     shade: (size) => {
       const grain = makeNoise(0x0bb5);
       return (x, y, out) => {
@@ -287,6 +321,9 @@ export function createFinishMaterials(anisotropy = 8): Record<Finish, MeshStanda
       for (const map of [bake.map, bake.normalMap, bake.roughnessMap]) map.repeat.set(repeat, repeat);
       material.map = bake.map;
       material.normalMap = bake.normalMap;
+      // Relief in proportion to the real surface: at a building's scale a
+      // strong normal map turns render into popcorn and joints into trenches.
+      material.normalScale.set(look.normalScale, look.normalScale);
       material.roughnessMap = bake.roughnessMap;
     } else {
       material.roughness = 0.9;

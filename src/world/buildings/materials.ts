@@ -16,7 +16,7 @@ import type { Building, RoofKind, Side, Volume } from './types';
  * ```
  */
 
-export const FINISHES = ['plaster', 'brick', 'stone', 'concrete', 'wood', 'metal', 'glass', 'tile'] as const;
+export const FINISHES = ['plaster', 'brick', 'stone', 'concrete', 'wood', 'metal', 'glass', 'tile', 'roofing'] as const;
 export type Finish = (typeof FINISHES)[number];
 
 export interface MaterialSpec {
@@ -74,7 +74,7 @@ export const PALETTE_MATERIALS: readonly PaletteMaterials[] = [
 ];
 
 /** A flat roof's default: a smooth membrane, whatever the palette (a panel grid read as a floor). */
-export const FLAT_ROOF_MATERIAL = spec('plaster', 0x6d6b66);
+export const FLAT_ROOF_MATERIAL = spec('roofing', 0x74716a);
 export const PLINTH_MATERIAL = spec('stone', 0x7f786d);
 
 export const paletteOf = (b: Building): PaletteMaterials =>

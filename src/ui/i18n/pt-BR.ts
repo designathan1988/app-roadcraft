@@ -327,6 +327,7 @@ export const PT_BR: Dictionary = {
   'building.finish.metal': 'Metal',
   'building.finish.glass': 'Vidro',
   'building.finish.tile': 'Telha',
+  'building.finish.roofing': 'Manta',
   'building.colourPick': 'Cor',
   'building.facade': 'Componentes da fachada',
   'building.pickHint': 'Escolha um componente e clique num vão da fachada',
