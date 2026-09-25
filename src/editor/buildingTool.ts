@@ -11,6 +11,7 @@ import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundati
 import { footprintCells, levelHeight, localDirToWorld } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
+import { type MaterialSpec, type MaterialTarget, applyMaterial, materialAt } from '@world/buildings/materials';
 import { type BuildingProblem, validateBuilding } from '@world/buildings/validate';
 import {
   type BayComponent,
@@ -84,6 +85,9 @@ export interface ToolHost {
 
 export type BuildingToolMode = 'place' | 'edit';
 
+/** What a material pick paints: the whole building, the selected volume, one face of it, or its roof. */
+export type MaterialScope = 'building' | 'volume' | 'face' | 'roof';
+
 export interface BuildingPreview {
   readonly building: Building;
   readonly valid: boolean;
@@ -144,6 +148,7 @@ export class BuildingTool {
   /** The component the picker has armed: a click on a bay puts it there. */
   component: BayComponent | null = null;
   scope: FacadeScope = 'bay';
+  materialScope: MaterialScope = 'volume';
   preview: BuildingPreview | null = null;
   hover: BuildingHit | null = null;
   clipboard: BlueprintBody | null = null;
@@ -353,6 +358,44 @@ export class BuildingTool {
 
   cyclePalette(): void {
     this.onSelected((draft) => opSetParameters(draft, { palette: draft.palette + 1 }));
+  }
+
+  setMaterialScope(scope: MaterialScope): void {
+    this.materialScope = scope;
+    this.host.changed();
+  }
+
+  /** The surface a material pick paints now, or null (a face scope needs a clicked facade). */
+  materialTarget(): MaterialTarget | null {
+    const s = this.selection;
+    if (!s) return null;
+    switch (this.materialScope) {
+      case 'building': return { scope: 'building', slot: 'wall' };
+      case 'volume': return { scope: 'volume', volume: s.volume, slot: 'wall' };
+      case 'roof': return { scope: 'volume', volume: s.volume, slot: 'roof' };
+      case 'face': return s.bay ? { scope: 'side', volume: s.volume, side: s.bay.side } : null;
+    }
+  }
+
+  /** The material the current target is built in. */
+  currentMaterial(): MaterialSpec | null {
+    const b = this.selected();
+    const target = this.materialTarget();
+    return b && target ? materialAt(b, target) : null;
+  }
+
+  /** Paints the current target: a new finish keeps its colour, a new colour keeps its finish. */
+  paint(patch: Partial<MaterialSpec>): void {
+    const target = this.materialTarget();
+    if (!target) {
+      this.host.flash('building.material.pickFace');
+      return;
+    }
+    this.onSelected((draft) => {
+      const current = materialAt(draft, target);
+      if (!current) return false;
+      return applyMaterial(draft, target, { ...current, ...patch });
+    });
   }
 
   armComponent(component: BayComponent | null): void {

@@ -6,6 +6,7 @@ import {
   type RoofKind,
   type Side,
 } from '@world/buildings/types';
+import { FINISHES, type Finish, type MaterialSpec } from '@world/buildings/materials';
 import { METERS_PER_UNIT } from '@world/units';
 import { plural, t } from './i18n';
 
@@ -17,6 +18,7 @@ import { plural, t } from './i18n';
  */
 
 export type BuildingScope = 'bay' | 'storey' | 'side' | 'volume';
+export type MaterialScope = 'building' | 'volume' | 'face' | 'roof';
 export type BuildingParam = 'width' | 'depth' | 'storeys' | 'storeyHeight' | 'module';
 
 export interface BuildingPanelActions {
@@ -31,6 +33,9 @@ export interface BuildingPanelActions {
   setRoof(roof: RoofKind): void;
   armComponent(component: BayComponent | null): void;
   setScope(scope: BuildingScope): void;
+  setMaterialScope(scope: MaterialScope): void;
+  /** A new finish keeps the current colour, a new colour the current finish. */
+  paint(patch: Partial<MaterialSpec>): void;
 }
 
 export interface BuildingPanelState {
@@ -48,6 +53,9 @@ export interface BuildingPanelState {
   };
   readonly component: BayComponent | null;
   readonly scope: BuildingScope;
+  readonly materialScope: MaterialScope;
+  /** What the current material target is built in; null when there is none (a face scope with no face picked). */
+  readonly material: MaterialSpec | null;
 }
 
 export interface BuildingPanel {
@@ -87,6 +95,25 @@ const ICON_ROOF: Readonly<Record<RoofKind, string>> = {
   sawtooth: '<path d="M3 18v-7l5-4v4l5-4v4l5-4v11"/>',
 };
 
+const ICON_FINISH: Readonly<Record<Finish, string>> = {
+  plaster: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M7 9c2-1 3 1 5 0s3-1 5 0M7 14c2-1 3 1 5 0s3-1 5 0"/>',
+  brick: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9h16M4 14h16M10 4v5M15 9v5M9 14v6"/>',
+  stone: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 10h16M4 15h16M12 4v6M8 10v5M16 10v5M12 15v5"/>',
+  concrete: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M12 4v16M4 12h16"/><circle cx="8" cy="8" r=".6"/><circle cx="16" cy="16" r=".6"/>',
+  wood: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 4v16M12 4v16M16 4v16"/>',
+  metal: '<path d="M4 20V4m4 16V4m4 16V4m4 16V4m4 16V4"/><path d="M4 4h16M4 20h16"/>',
+  glass: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M12 4v16M4 12h16M7 7l3-3M14 14l3-3"/>',
+  tile: '<path d="M3 17c2-3 4-3 6 0 2-3 4-3 6 0 2-3 4-3 6 0M3 11c2-3 4-3 6 0 2-3 4-3 6 0 2-3 4-3 6 0"/>',
+};
+
+/** Colours offered at a click; any other comes from the colour picker. */
+const SWATCHES: readonly number[] = [
+  0xf2efe8, 0xe6d8bd, 0xd8c297, 0xc98f5a, 0xa4563f, 0x72412f, 0x9c6b43,
+  0xbdbcb4, 0x8f9ba5, 0x55585c, 0x2f3134, 0x7d8c6a, 0x5d7a8f, 0x9fb8c4,
+];
+
+const hexOf = (colour: number): string => `#${colour.toString(16).padStart(6, '0')}`;
+
 const svg = (body: string): string =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 
@@ -115,6 +142,37 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
     b.onclick = () => actions.addWing(Number(b.dataset['buildingWing']) as Side);
   });
   scope.onchange = () => actions.setScope(scope.value as BuildingScope);
+  root.querySelectorAll<HTMLButtonElement>('[data-material-scope]').forEach((b) => {
+    b.onclick = () => actions.setMaterialScope(b.dataset['materialScope'] as MaterialScope);
+  });
+  const finishes = document.getElementById('buildingFinishes') as HTMLElement;
+  for (const finish of FINISHES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'building-component building-finish';
+    b.dataset['finish'] = finish;
+    b.innerHTML = `${svg(ICON_FINISH[finish])}<span></span>`;
+    b.onclick = () => actions.paint({ finish });
+    finishes.appendChild(b);
+  }
+  const swatches = document.getElementById('buildingSwatches') as HTMLElement;
+  for (const colour of SWATCHES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'building-swatch';
+    b.dataset['colour'] = String(colour);
+    b.style.setProperty('--swatch', hexOf(colour));
+    b.setAttribute('aria-label', hexOf(colour));
+    b.onclick = () => actions.paint({ colour });
+    swatches.appendChild(b);
+  }
+  const custom = document.createElement('input');
+  custom.type = 'color';
+  custom.className = 'building-swatch custom';
+  // `change` only: one pick, one undo step, not one per drag of the picker.
+  custom.onchange = () => actions.paint({ colour: parseInt(custom.value.slice(1), 16) });
+  swatches.appendChild(custom);
+  const materialNote = document.getElementById('buildingMaterialNote') as HTMLElement;
 
   for (const bp of BLUEPRINTS) {
     const b = document.createElement('button');
@@ -221,6 +279,11 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
       output.textContent = IN_METRES.has(name) ? value.toFixed(1) : String(value);
     }
     if (scope.value !== state.scope) scope.value = state.scope;
+    toggle('[data-material-scope]', 'data-material-scope', state.materialScope);
+    toggle('.building-finish', 'data-finish', state.material?.finish ?? null);
+    toggle('.building-swatch[data-colour]', 'data-colour', state.material ? String(state.material.colour) : null);
+    if (state.material && document.activeElement !== custom) custom.value = hexOf(state.material.colour);
+    materialNote.hidden = !(state.materialScope === 'face' && state.material === null && state.selection !== null);
     // Each mode shows its own sections: presets to place, the selection to edit.
     // Presets stay reachable while editing, as a compact row of icons.
     root.classList.toggle('editing', state.mode === 'edit');
@@ -259,6 +322,13 @@ export function refreshBuildingPanelLabels(): void {
     b.title = label;
     b.setAttribute('aria-label', label);
   });
+  document.querySelectorAll<HTMLButtonElement>('#buildingFinishes .building-finish').forEach((b) => {
+    const label = t(`building.finish.${b.dataset['finish']}`);
+    (b.querySelector('span') as HTMLElement).textContent = label;
+    b.title = label;
+  });
+  const picker = document.querySelector<HTMLInputElement>('#buildingSwatches input');
+  if (picker) picker.title = t('building.colourPick');
   document.querySelectorAll<HTMLButtonElement>('#buildingComponents .building-component').forEach((b) => {
     const label = t(`building.component.${b.dataset['component']}`);
     (b.querySelector('span') as HTMLElement).textContent = label;

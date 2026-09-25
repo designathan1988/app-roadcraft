@@ -31,6 +31,16 @@ import {
   roofRise,
   volumeHeight,
 } from '@world/buildings/geometry';
+import {
+  type Finish,
+  type MaterialSpec,
+  FINISHES,
+  paletteOf,
+  plinthMaterial,
+  roofMaterial,
+  trimMaterial,
+  wallMaterial,
+} from '@world/buildings/materials';
 import { type BayComponent, type Building, type Side, type Volume, SIDES, baysOn, volumeTop } from '@world/buildings/types';
 import { type BuildingKit, PART_KINDS, type PartKind } from './kit';
 
@@ -62,27 +72,24 @@ interface Placement {
 
 type Rgb = readonly [number, number, number];
 
-/** Wall, trim (bands, reveals, parapet caps) and pitched-roof colour per palette. */
-const PALETTES: readonly { wall: number; trim: number; roof: number; awning: number }[] = [
-  { wall: 0xe6d8bd, trim: 0xf4eee2, roof: 0x9c4f3a, awning: 0x2f6f5e },
-  { wall: 0xa4563f, trim: 0xe0d6c6, roof: 0x4a4b50, awning: 0x8c2f2a },
-  { wall: 0xbdbcb4, trim: 0xdcdcd6, roof: 0x55585c, awning: 0x2d4f7a },
-  { wall: 0xd8c297, trim: 0xf0e6cf, roof: 0x8a5a3c, awning: 0xb5452b },
-  { wall: 0xf0efe9, trim: 0xc9ccc9, roof: 0x5b5f63, awning: 0x2f6f5e },
-  { wall: 0x72412f, trim: 0xd2c4b2, roof: 0x3d3e42, awning: 0xc4832d },
-  { wall: 0x8f9ba5, trim: 0xe0e5e8, roof: 0x4f5357, awning: 0x2d4f7a },
-  { wall: 0x939b91, trim: 0xc4c8c1, roof: 0x6f7577, awning: 0xc4a02d },
-];
-const PLINTH = 0x7f786d;
-const FLAT_ROOF = 0x76746e;
-const TERRACE = 0xb0a595;
-const ARCADE_FLOOR = 0x9d968a;
-const SAW_GLASS = 0x3c5360;
+/** A surface's colour (linear) and the finish it is drawn with. */
+interface Paint {
+  readonly rgb: Rgb;
+  readonly finish: Finish;
+}
 
 const linear = (hex: number, shade = 1): Rgb => {
   const c = new Color().setHex(hex);
   return [c.r * shade, c.g * shade, c.b * shade];
 };
+
+const paint = (m: MaterialSpec, shade = 1): Paint => ({ rgb: linear(m.colour, shade), finish: m.finish });
+
+const TERRACE: Paint = paint({ finish: 'stone', colour: 0xb0a595 });
+const ARCADE_FLOOR: Paint = paint({ finish: 'stone', colour: 0x9d968a });
+const SAW_GLASS: Paint = paint({ finish: 'glass', colour: 0x3c5360 });
+const ROOF_PLANT: Paint = paint({ finish: 'concrete', colour: 0x6c6a64 });
+const PARAPET_BACK: Paint = paint({ finish: 'concrete', colour: 0x88867f });
 
 // ------------------------------------------------------------------ dimensions
 const REVEAL = m(0.2);
@@ -154,30 +161,61 @@ function openingOf(component: BayComponent, W: number, H: number): Opening | nul
 
 // ------------------------------------------------------------------ shell builder
 
-/** Flat-shaded, vertex-coloured triangles in THREE's axes; winding fixed per face. */
-class Shell {
+/** One finish's share of a shell: flat-shaded, vertex-coloured, UV'd triangles. */
+class ShellPart {
   readonly position: number[] = [];
   readonly normal: number[] = [];
   readonly colour: number[] = [];
+  readonly uv: number[] = [];
   readonly index: number[] = [];
+}
+
+/**
+ * Triangles in THREE's axes, one buffer set per finish; winding fixed per face.
+ *
+ * UVs are in WORLD units laid on the face's own plane: along the face
+ * horizontally and up it (up the slope, on a roof), so a texture's courses of
+ * brick or rows of tiles run level on every wall and every roof. Each finish's
+ * material scales them to its tile (`kit.ts`).
+ */
+class Shell {
+  readonly parts = new Map<Finish, ShellPart>();
 
   /**
    * A planar polygon (3 or 4 world points, x/y map, z up) facing world normal
    * `n`. The winding is measured, never assumed: world y is mirrored into
    * three's z, which flips handedness (AGENTS.md trap: winding).
    */
-  face(points: readonly (readonly [number, number, number])[], n: readonly [number, number, number], c: Rgb): void {
-    const base = this.position.length / 3;
-    const three = points.map(([x, y, z]) => [x, z, -y] as const);
-    const length = Math.hypot(n[0], n[1], n[2]) || 1;
-    const nx = n[0] / length;
-    const ny = n[2] / length;
-    const nz = -n[1] / length;
-    for (const p of three) {
-      this.position.push(p[0], p[1], p[2]);
-      this.normal.push(nx, ny, nz);
-      this.colour.push(c[0], c[1], c[2]);
+  face(points: readonly (readonly [number, number, number])[], n: readonly [number, number, number], c: Paint): void {
+    let part = this.parts.get(c.finish);
+    if (!part) {
+      part = new ShellPart();
+      this.parts.set(c.finish, part);
     }
+    const base = part.position.length / 3;
+    const length = Math.hypot(n[0], n[1], n[2]) || 1;
+    const wx = n[0] / length;
+    const wy = n[1] / length;
+    const wz = n[2] / length;
+    // The face's own axes, in world: horizontal along it, and up it.
+    const flat = Math.hypot(wx, wy);
+    const tx = flat > 1e-6 ? -wy / flat : 1;
+    const ty = flat > 1e-6 ? wx / flat : 0;
+    // n x t: straight up on a wall, up the slope on a roof, +y on a flat.
+    const bx = -wz * ty;
+    const by = wz * tx;
+    const bz = wx * ty - wy * tx;
+    const three = points.map(([x, y, z]) => [x, z, -y] as const);
+    const nx = wx;
+    const ny = wz;
+    const nz = -wy;
+    points.forEach(([x, y, z], i) => {
+      const q = three[i] as readonly [number, number, number];
+      part.position.push(q[0], q[1], q[2]);
+      part.normal.push(nx, ny, nz);
+      part.colour.push(c.rgb[0], c.rgb[1], c.rgb[2]);
+      part.uv.push(x * tx + y * ty, x * bx + y * by + z * bz);
+    });
     const a = three[0] as readonly [number, number, number];
     const b = three[1] as readonly [number, number, number];
     const d = three[2] as readonly [number, number, number];
@@ -188,25 +226,17 @@ class Shell {
     const cz = ux * vy - uy * vx;
     const forward = cx * nx + cy * ny + cz * nz >= 0;
     const tri = (i: number, j: number, k: number): void => {
-      if (forward) this.index.push(base + i, base + j, base + k);
-      else this.index.push(base + i, base + k, base + j);
+      if (forward) part.index.push(base + i, base + j, base + k);
+      else part.index.push(base + i, base + k, base + j);
     };
     tri(0, 1, 2);
     if (points.length === 4) tri(0, 2, 3);
   }
 
   get triangles(): number {
-    return this.index.length / 3;
-  }
-
-  geometry(): BufferGeometry {
-    const g = new BufferGeometry();
-    g.setAttribute('position', new Float32BufferAttribute(this.position, 3));
-    g.setAttribute('normal', new Float32BufferAttribute(this.normal, 3));
-    g.setAttribute('color', new Float32BufferAttribute(this.colour, 3));
-    g.setIndex(new Uint32BufferAttribute(this.index, 1));
-    g.computeBoundingSphere();
-    return g;
+    let n = 0;
+    for (const part of this.parts.values()) n += part.index.length / 3;
+    return n;
   }
 }
 
@@ -269,13 +299,13 @@ class Emitter {
   }
 
   /** A rectangle on (or parallel to) a bay face. */
-  rect(f: BayFace, a0: number, a1: number, h0: number, h1: number, depth: number, n: V3, c: Rgb): void {
+  rect(f: BayFace, a0: number, a1: number, h0: number, h1: number, depth: number, n: V3, c: Paint): void {
     if (a1 - a0 < 1e-4 || h1 - h0 < 1e-4) return;
     this.shell.face([this.P(f, a0, h0, depth), this.P(f, a1, h0, depth), this.P(f, a1, h1, depth), this.P(f, a0, h1, depth)], n, c);
   }
 
   /** An axis-aligned box in the local plan: sides and top (the bottom is never seen). */
-  box(x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, c: Rgb, top: Rgb = c): void {
+  box(x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, c: Paint, top: Paint = c): void {
     if (z1 - z0 < 1e-4) return;
     const sh = this.shell;
     sh.face([this.L(x0, y0, z0), this.L(x1, y0, z0), this.L(x1, y0, z1), this.L(x0, y0, z1)], this.N(0, -1), c);
@@ -286,12 +316,12 @@ class Emitter {
   }
 
   /** A horizontal strip at height h, from depth d0 to d1 into the wall. */
-  strip(f: BayFace, a0: number, a1: number, h: number, d0: number, d1: number, n: V3, c: Rgb): void {
+  strip(f: BayFace, a0: number, a1: number, h: number, d0: number, d1: number, n: V3, c: Paint): void {
     this.shell.face([this.P(f, a0, h, d0), this.P(f, a1, h, d0), this.P(f, a1, h, d1), this.P(f, a0, h, d1)], n, c);
   }
 
   /** A vertical strip across the wall's thickness at `a`, from h0 to h1. */
-  jamb(f: BayFace, a: number, h0: number, h1: number, d0: number, d1: number, n: V3, c: Rgb): void {
+  jamb(f: BayFace, a: number, h0: number, h1: number, d0: number, d1: number, n: V3, c: Paint): void {
     this.shell.face([this.P(f, a, h0, d0), this.P(f, a, h0, d1), this.P(f, a, h1, d1), this.P(f, a, h1, d0)], n, c);
   }
 
@@ -323,15 +353,13 @@ function emitBuilding(
   /** The opening of an entrance, in its bay's face frame. */
   const entranceOpening = (x: Entrance): Opening =>
     openingOf(x.component, u, levelHeight(b, 0)) ?? { a0: u * 0.2, a1: u * 0.8, h0: 0, h1: levelHeight(b, 0) * 0.7, depth: REVEAL };
-  const palette = PALETTES[b.palette % PALETTES.length] ?? PALETTES[0]!;
   // A small, stable shade per building, so a street of one preset is not a
   // single flat colour.
   const shade = 0.93 + (((b.id * 2654435761) >>> 0) % 1000) / 1000 * 0.12;
-  const wall = linear(palette.wall, shade);
-  const trim = linear(palette.trim);
-  const roofColour = linear(palette.roof);
-  const plinth = linear(PLINTH);
-  const awning = new Color().setHex(palette.awning);
+  const wallOf = (v: Volume, side: Side): Paint => paint(wallMaterial(b, v, side), shade);
+  const trim = paint(trimMaterial(b));
+  const plinth = paint(plinthMaterial(b));
+  const awning = new Color().setHex(paletteOf(b).awning);
 
   // ---- plinth: from below the lowest ground up to the floor, notched where
   // a flight of steps is set into the building
@@ -360,7 +388,7 @@ function emitBuilding(
     const left = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index - 1}`);
     const right = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index + 1}`);
     const recess = bay.level === 0 ? entrances.get(entranceKey(bay.volume, bay.side, bay.index))?.recess ?? 0 : 0;
-    emitBay(e, face, bay, wall, trim, awning, left === 'pillar', right === 'pillar', recess);
+    emitBay(e, face, bay, wallOf(v, bay.side), trim, awning, left === 'pillar', right === 'pillar', recess);
   }
 
   // ---- storey bands and cornices, per volume
@@ -373,7 +401,7 @@ function emitBuilding(
   }
 
   // ---- roofs
-  for (const v of b.volumes) emitRoof(e, b, v, occ, floor, wall, trim, roofColour);
+  for (const v of b.volumes) emitRoof(e, b, v, occ, floor, (side) => wallOf(v, side), trim, paint(roofMaterial(b, v)));
 
   // ---- entrance steps: outside, down to the ground in front, or set into
   // the building where the paving leaves no room for them
@@ -416,7 +444,7 @@ function emitBuilding(
     }
     if (!best || (best.roof !== 'flat' && best.roof !== 'terrace')) continue;
     const z = floor + volumeHeight(b, best);
-    e.box(core.x * u, core.y * u, (core.x + 1) * u, (core.y + 1) * u, z, z + m(3), trim, linear(FLAT_ROOF, 0.9));
+    e.box(core.x * u, core.y * u, (core.x + 1) * u, (core.y + 1) * u, z, z + m(3), trim, ROOF_PLANT);
   }
 }
 
@@ -424,8 +452,8 @@ function emitBay(
   e: Emitter,
   f: BayFace,
   bay: FacadeBay,
-  wall: Rgb,
-  trim: Rgb,
+  wall: Paint,
+  trim: Paint,
   awning: Color,
   pillarLeft: boolean,
   pillarRight: boolean,
@@ -441,7 +469,7 @@ function emitBay(
     // An arcade: the wall steps back, a column stands on the facade line.
     e.rect(f, 0, W, 0, H, ARCADE, out, wall);
     e.strip(f, 0, W, H, 0, ARCADE, [0, 0, -1], trim);
-    e.strip(f, 0, W, 0.02, 0, ARCADE, [0, 0, 1], linear(ARCADE_FLOOR));
+    e.strip(f, 0, W, 0.02, 0, ARCADE, [0, 0, 1], ARCADE_FLOOR);
     if (!pillarLeft) e.jamb(f, 0, 0, H, 0, ARCADE, along, wall);
     if (!pillarRight) e.jamb(f, W, 0, H, 0, ARCADE, back, wall);
     const d = m(0.55);
@@ -518,7 +546,7 @@ function emitPlinth(
   u: number,
   bottom: number,
   floor: number,
-  c: Rgb,
+  c: Paint,
   notches: ReadonlyMap<Side, readonly { a0: number; a1: number; recess: number }[]>,
 ): void {
   const g = PLINTH_GROW;
@@ -571,7 +599,7 @@ function emitRecessedFlight(
   floor: number,
   bottom: number,
   riser: number,
-  c: Rgb,
+  c: Paint,
 ): void {
   const n = e.N(face.nx, face.ny);
   const start = -PLINTH_GROW;
@@ -596,7 +624,7 @@ function emitRecessedFlight(
 }
 
 /** A horizontal band around a volume at height z (a storey line or a cornice). */
-function band(e: Emitter, v: Volume, u: number, z: number, out: number, height: number, c: Rgb): void {
+function band(e: Emitter, v: Volume, u: number, z: number, out: number, height: number, c: Paint): void {
   const x0 = v.x * u - out;
   const y0 = v.y * u - out;
   const x1 = (v.x + v.w) * u + out;
@@ -610,9 +638,9 @@ function emitRoof(
   v: Volume,
   occ: ReturnType<typeof occupancy>,
   floor: number,
-  wall: Rgb,
-  trim: Rgb,
-  roofColour: Rgb,
+  wallOf: (side: Side) => Paint,
+  trim: Paint,
+  roofColour: Paint,
 ): void {
   const u = b.module;
   const top = volumeTop(v);
@@ -626,7 +654,7 @@ function emitRoof(
 
   if (v.roof === 'flat' || v.roof === 'terrace') {
     const terrace = v.roof === 'terrace';
-    sh.face([e.L(x0, y0, z), e.L(x1, y0, z), e.L(x1, y1, z), e.L(x0, y1, z)], up, linear(terrace ? TERRACE : FLAT_ROOF));
+    sh.face([e.L(x0, y0, z), e.L(x1, y0, z), e.L(x1, y1, z), e.L(x0, y1, z)], up, terrace ? TERRACE : roofColour);
     // Its top stays just under the roof: a face shared with the roof cap
     // z-fights into stripes.
     band(e, v, u, z - m(0.2), CORNICE_OUT, m(0.36), trim);
@@ -643,8 +671,8 @@ function emitRoof(
           e.put('roofRailing', face, u / 2, 0, m(0.12), u, m(1.0), 1);
         } else {
           const out = e.N(face.nx, face.ny);
-          e.rect(face, 0, u, 0, PARAPET_H, 0, out, wall);
-          e.rect(face, 0, u, 0, PARAPET_H, PARAPET_T, [-out[0], -out[1], 0], linear(FLAT_ROOF, 1.15));
+          e.rect(face, 0, u, 0, PARAPET_H, 0, out, wallOf(side));
+          e.rect(face, 0, u, 0, PARAPET_H, PARAPET_T, [-out[0], -out[1], 0], PARAPET_BACK);
           e.strip(face, 0, u, PARAPET_H, 0, PARAPET_T, up, trim);
         }
       }
@@ -685,8 +713,8 @@ function emitRoof(
       // Gable ends: wall-coloured triangles.
       const w0 = alongX ? e.N(-1, 0) : e.N(0, -1);
       const w1 = alongX ? e.N(1, 0) : e.N(0, 1);
-      sh.face([Lp(a0, c0, z), Lp(a0, c1, z), Lp(a0, cm, ridge)], w0, wall);
-      sh.face([Lp(a1, c1, z), Lp(a1, c0, z), Lp(a1, cm, ridge)], w1, wall);
+      sh.face([Lp(a0, c0, z), Lp(a0, c1, z), Lp(a0, cm, ridge)], w0, wallOf(alongX ? 3 : 0));
+      sh.face([Lp(a1, c1, z), Lp(a1, c0, z), Lp(a1, cm, ridge)], w1, wallOf(alongX ? 1 : 2));
     }
     return;
   }
@@ -696,23 +724,23 @@ function emitRoof(
     const high = z + run * SHED_PITCH;
     const o = EAVES;
     sh.face([e.L(x0 - o, y0 - o, z - o * SHED_PITCH), e.L(x1 + o, y0 - o, z - o * SHED_PITCH), e.L(x1 + o, y1 + o, high + o * SHED_PITCH), e.L(x0 - o, y1 + o, high + o * SHED_PITCH)], e.N(0, -1, 4), roofColour);
-    sh.face([e.L(x0, y0, z), e.L(x0, y1, z), e.L(x0, y1, high)], e.N(-1, 0), wall);
-    sh.face([e.L(x1, y1, z), e.L(x1, y0, z), e.L(x1, y1, high)], e.N(1, 0), wall);
-    sh.face([e.L(x1, y1, z), e.L(x0, y1, z), e.L(x0, y1, high), e.L(x1, y1, high)], e.N(0, 1), wall);
+    sh.face([e.L(x0, y0, z), e.L(x0, y1, z), e.L(x0, y1, high)], e.N(-1, 0), wallOf(3));
+    sh.face([e.L(x1, y1, z), e.L(x1, y0, z), e.L(x1, y1, high)], e.N(1, 0), wallOf(1));
+    sh.face([e.L(x1, y1, z), e.L(x0, y1, z), e.L(x0, y1, high), e.L(x1, y1, high)], e.N(0, 1), wallOf(2));
     return;
   }
 
   // Sawtooth: teeth of up to two cells, glazed on their steep face.
   const tooth = Math.min(2, v.d) * u;
   const toothRise = tooth * 0.5 * SAWTOOTH_PITCH;
-  const glass = linear(SAW_GLASS);
+  const glass = SAW_GLASS;
   for (let t0 = y0; t0 < y1 - 1e-6; t0 += tooth) {
     const t1 = Math.min(y1, t0 + tooth);
     const h = toothRise * ((t1 - t0) / tooth);
     sh.face([e.L(x0, t0, z), e.L(x1, t0, z), e.L(x1, t1, z + h), e.L(x0, t1, z + h)], e.N(0, -1, 2), roofColour);
     sh.face([e.L(x1, t1, z), e.L(x0, t1, z), e.L(x0, t1, z + h), e.L(x1, t1, z + h)], e.N(0, 1), glass);
-    sh.face([e.L(x0, t0, z), e.L(x0, t1, z), e.L(x0, t1, z + h)], e.N(-1, 0), wall);
-    sh.face([e.L(x1, t1, z), e.L(x1, t0, z), e.L(x1, t1, z + h)], e.N(1, 0), wall);
+    sh.face([e.L(x0, t0, z), e.L(x0, t1, z), e.L(x0, t1, z + h)], e.N(-1, 0), wallOf(3));
+    sh.face([e.L(x1, t1, z), e.L(x1, t0, z), e.L(x1, t1, z + h)], e.N(1, 0), wallOf(1));
   }
 }
 
@@ -731,11 +759,17 @@ export interface PartBatch {
  * (see `layer.ts`), so an edit re-emits one building and merely concatenates
  * the rest.
  */
-export interface BuildingChunk {
+export interface ShellChunk {
   readonly position: Float32Array;
   readonly normal: Float32Array;
   readonly colour: Float32Array;
+  readonly uv: Float32Array;
   readonly index: Uint32Array;
+}
+
+export interface BuildingChunk {
+  /** The shell, one fragment per finish it uses. */
+  readonly shells: Readonly<Partial<Record<Finish, ShellChunk>>>;
   readonly parts: Readonly<Record<PartKind, PartBatch>>;
 }
 
@@ -770,13 +804,18 @@ export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): B
     });
     batches[kind] = { matrices, colours, count: list.length };
   }
-  return {
-    position: new Float32Array(shell.position),
-    normal: new Float32Array(shell.normal),
-    colour: new Float32Array(shell.colour),
-    index: new Uint32Array(shell.index),
-    parts: batches,
-  };
+  const shells: Partial<Record<Finish, ShellChunk>> = {};
+  for (const [finish, part] of shell.parts) {
+    if (part.index.length === 0) continue;
+    shells[finish] = {
+      position: new Float32Array(part.position),
+      normal: new Float32Array(part.normal),
+      colour: new Float32Array(part.colour),
+      uv: new Float32Array(part.uv),
+      index: new Uint32Array(part.index),
+    };
+  }
+  return { shells, parts: batches };
 }
 
 /**
@@ -790,35 +829,43 @@ export function assembleBuildingMeshes(chunks: readonly BuildingChunk[], kit: Bu
   const meshes: (Mesh | InstancedMesh)[] = [];
   let triangles = 0;
 
-  let vertices = 0;
-  let indices = 0;
-  for (const chunk of chunks) {
-    vertices += chunk.position.length / 3;
-    indices += chunk.index.length;
-  }
-  if (indices > 0) {
+  for (const finish of FINISHES) {
+    let vertices = 0;
+    let indices = 0;
+    for (const chunk of chunks) {
+      const part = chunk.shells[finish];
+      if (!part) continue;
+      vertices += part.position.length / 3;
+      indices += part.index.length;
+    }
+    if (indices === 0) continue;
     const position = new Float32Array(vertices * 3);
     const normal = new Float32Array(vertices * 3);
     const colour = new Float32Array(vertices * 3);
+    const uv = new Float32Array(vertices * 2);
     const index = new Uint32Array(indices);
     let v = 0;
     let n = 0;
     for (const chunk of chunks) {
-      position.set(chunk.position, v * 3);
-      normal.set(chunk.normal, v * 3);
-      colour.set(chunk.colour, v * 3);
-      for (let i = 0; i < chunk.index.length; i++) index[n + i] = (chunk.index[i] as number) + v;
-      v += chunk.position.length / 3;
-      n += chunk.index.length;
+      const part = chunk.shells[finish];
+      if (!part) continue;
+      position.set(part.position, v * 3);
+      normal.set(part.normal, v * 3);
+      colour.set(part.colour, v * 3);
+      uv.set(part.uv, v * 2);
+      for (let i = 0; i < part.index.length; i++) index[n + i] = (part.index[i] as number) + v;
+      v += part.position.length / 3;
+      n += part.index.length;
     }
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(position, 3));
     g.setAttribute('normal', new Float32BufferAttribute(normal, 3));
     g.setAttribute('color', new Float32BufferAttribute(colour, 3));
+    g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
     g.setIndex(new Uint32BufferAttribute(index, 1));
     g.computeBoundingSphere();
-    const mesh = new Mesh(g, ghost ? kit.ghostShell : kit.shell);
-    mesh.name = ghost ? 'building-preview-shell' : 'building-shell';
+    const mesh = new Mesh(g, ghost ? kit.ghostShell : kit.shell[finish]);
+    mesh.name = ghost ? `building-preview-shell-${finish}` : `building-shell-${finish}`;
     mesh.castShadow = !ghost;
     mesh.receiveShadow = !ghost;
     meshes.push(mesh);

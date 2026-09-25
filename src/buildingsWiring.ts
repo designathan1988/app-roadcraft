@@ -164,6 +164,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       if (component && tool.selection?.bay) tool.applyToSelectedBay(component);
     },
     setScope: (scope) => tool.setScope(scope),
+    setMaterialScope: (scope) => tool.setMaterialScope(scope),
+    paint: (patch) => tool.paint(patch),
   });
 
   const panelState = (): BuildingPanelState => {
@@ -199,6 +201,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       selection,
       component: tool.component,
       scope: tool.scope,
+      materialScope: tool.materialScope,
+      material: tool.mode === 'edit' ? tool.currentMaterial() : null,
     };
   };
 

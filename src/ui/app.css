@@ -695,4 +695,12 @@ body { user-select: none; -webkit-user-select: none; }
 .building-palette.editing .building-preset span:not(.remove) { display: none; }
 .building-palette.editing #buildingPlace > .building-label { display: none; }
 #buildingRoofs svg { width: 22px; height: 22px; }
+.building-material-scopes button { font-size: 9.5px; padding: 6px 2px; }
+.building-finishes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 6px; }
+.building-swatches { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+.building-swatch { aspect-ratio: 1; width: 100%; height: auto; min-width: 0; padding: 0; border-radius: 6px; border: 1px solid var(--ui-border); background: var(--swatch); cursor: pointer; }
+.building-swatch.active { outline: 2px solid var(--accent, #6ee7c8); outline-offset: 1px; }
+.building-swatch.custom { background: conic-gradient(#e66, #ec6, #6c6, #6ce, #66e, #c6e, #e66); -webkit-appearance: none; appearance: none; }
+.building-swatch.custom::-webkit-color-swatch-wrapper { padding: 0; }
+.building-swatch.custom::-webkit-color-swatch { border: none; border-radius: 5px; opacity: 0; }
 #buildingRoofs button { display: grid; place-items: center; padding: 4px; }

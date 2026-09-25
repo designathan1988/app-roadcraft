@@ -1,4 +1,5 @@
 import { m } from '../units';
+import type { BuildingMaterials, VolumeMaterials } from './materials';
 
 /**
  * The modular building model. See docs/buildings.md.
@@ -91,6 +92,8 @@ export interface Volume {
   roof: RoofKind;
   /** Bottom to top: storey k occupies level `base + k`. */
   storeys: Storey[];
+  /** This volume's own walls and roof, over the building's (see `materials.ts`). */
+  materials?: VolumeMaterials;
 }
 
 /**
@@ -123,8 +126,10 @@ export interface Building {
   storeyHeight: number;
   /** Per-level height overrides, building-wide; `null`/absent = default. */
   levels?: (number | null)[];
-  /** Facade colour scheme, an index into the renderer's palette table. */
+  /** Colour scheme: the default material of every surface (`PALETTE_MATERIALS`). */
   palette: number;
+  /** Building-wide materials, over the palette (see `materials.ts`). */
+  materials?: BuildingMaterials;
   volumes: Volume[];
   cores: Core[];
   nextVolumeId: number;

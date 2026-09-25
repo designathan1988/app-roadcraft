@@ -173,6 +173,16 @@
           </div>
           <div class="building-label" data-i18n="building.roof">Roof</div>
           <div id="buildingRoofs" class="building-actions three"></div>
+          <div class="building-label" data-i18n="building.materials">Materials</div>
+          <div class="building-actions four building-material-scopes" role="group" data-i18n-label="building.material.scope" aria-label="Paint">
+            <button type="button" data-material-scope="building" data-i18n="building.material.scope.building">Building</button>
+            <button type="button" data-material-scope="volume" data-i18n="building.material.scope.volume">Volume</button>
+            <button type="button" data-material-scope="face" data-i18n="building.material.scope.face">Face</button>
+            <button type="button" data-material-scope="roof" data-i18n="building.material.scope.roof">Roof</button>
+          </div>
+          <div id="buildingFinishes" class="building-finishes" role="group" data-i18n-label="building.finish" aria-label="Finish"></div>
+          <div id="buildingSwatches" class="building-swatches" role="group" data-i18n-label="building.colourPick" aria-label="Colour"></div>
+          <div id="buildingMaterialNote" class="building-note" data-i18n="building.material.pickFace" hidden>Click a facade to paint that face</div>
           <div class="building-label" data-i18n="building.facade">Facade components</div>
           <div id="buildingComponents" class="building-components"></div>
           <div class="building-scope"><span data-i18n="building.scope">Apply to</span>

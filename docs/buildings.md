@@ -14,7 +14,8 @@ src/editor/buildings.ts  the commands: place, pull, wing, setback, facade, roof,
 src/editor/buildingSnap.ts   snapping a footprint to roads, buildings and the grid
 src/editor/buildingTool.ts   the tool's state machine (no DOM, world coordinates)
 src/editor/blueprintLibrary.ts  the player's own saved blueprints (localStorage)
-src/render/buildings/    the meshes: one merged shell, instanced components
+src/render/buildings/    the meshes: a merged shell per finish, instanced components
+src/world/buildings/materials.ts  finishes, colours and how they resolve
 src/ui/buildingPanel.ts  the palette: types, presets, parameters, component picker
 src/ui/overlay/buildingOverlay.ts  handles, outlines, the validity label
 src/buildingsWiring.ts   main.ts's building section: ToolView, ToolHost, palette, overlay
@@ -99,6 +100,27 @@ bay keys are re-indexed, so an override stays on the bay it was set on.
 A bay is only drawn where it is an **outside** wall: if the cell beyond it at
 the same level belongs to another volume, the two volumes share a wall and no
 facade is built there.
+
+### Materials
+
+`world/buildings/materials.ts`. A material is a **finish** - `plaster`,
+`brick`, `stone`, `concrete`, `wood`, `metal`, `glass`, `tile` - and a
+**colour** that tints it (`MaterialSpec`). Any surface takes any material,
+and they resolve from the most specific setting to the least:
+
+```
+wall of one side   volume.materials.sides[side] ?? volume.materials.wall ?? building.materials.wall ?? palette
+roof of a volume   volume.materials.roof ?? building.materials.roof ?? palette (tiles if pitched, a slab if flat)
+trim, plinth       building.materials.trim / .plinth ?? palette
+```
+
+`Building.palette` is only the set of defaults (`PALETTE_MATERIALS`).
+`applyMaterial` sets a target (building / volume / side, wall or roof); a
+wider scope clears the narrower overrides under it. A wing or a setback is
+built in what the volume it grows from is built in. In the palette the player
+picks what to paint - the building, the selected volume, one face (the one
+last clicked) or the roof - then a finish and a colour; a new finish keeps
+the colour and a new colour keeps the finish.
 
 ### Extension points (documented, stored, not yet simulated)
 
@@ -290,11 +312,17 @@ edit rebuilds **only** the buildings layer; a road or terrain edit rebuilds it
 because the ground under the foundations may have moved.
 
 * `kit.ts` builds every component geometry and every material **once**
-  (AGENTS.md: do not create a material inside a rebuild).
+  (AGENTS.md: do not create a material inside a rebuild). `finishes.ts` bakes
+  one texture per finish (colour, normal and roughness maps from one
+  procedural recipe, cached by key), NEUTRAL in tone so the shell's vertex
+  colour tints it; the shell's UVs are in world units on each face's own
+  plane - along it and up it, up the slope on a roof - so brick courses and
+  tile rows run level everywhere, and each material scales its maps to its
+  tile.
 * `buildingMesh.ts`:
-  * one **merged shell** for all buildings - plinth, walls, storey bands,
-    cornices, roofs, parapets, steps - with vertex colours, so the whole city's
-    massing is a single draw call;
+  * one **merged shell per finish** for all buildings - plinth, walls, storey
+    bands, cornices, roofs, parapets, steps - with vertex colours, so the
+    whole city's massing is at most eight draw calls;
   * **instanced** components: glass, frames, sills, doors, balcony slabs,
     railings, awnings, shutters, columns, roof cores - one `InstancedMesh` per
     part, shared by every building. None of these batches uses instance

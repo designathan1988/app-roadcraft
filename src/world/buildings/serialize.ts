@@ -25,6 +25,7 @@ import {
   isRoofKind,
 } from './types';
 import { DEFAULT_GROUND_HEIGHT, DEFAULT_STOREY_HEIGHT } from './blueprints';
+import { migrateBuildingMaterials, migrateVolumeMaterials } from './materials';
 
 /**
  * The stored shape of a building is the model itself, as plain JSON, with
@@ -99,7 +100,8 @@ function migrateVolume(raw: unknown): Volume | null {
   if (!isRecord(raw) || !Array.isArray(raw.storeys) || raw.storeys.length === 0) return null;
   const base = Math.max(0, int(raw.base, 0));
   const storeys = raw.storeys.slice(0, Math.max(1, MAX_STOREYS - base)).map(migrateStorey);
-  return {
+  const materials = migrateVolumeMaterials(raw.materials);
+  const volume: Volume = {
     ...raw,
     id: Math.max(1, int(raw.id, 1)),
     x: int(raw.x, 0),
@@ -110,6 +112,9 @@ function migrateVolume(raw: unknown): Volume | null {
     roof: isRoofKind(raw.roof) ? raw.roof : 'flat',
     storeys,
   };
+  if (materials) volume.materials = materials;
+  else delete volume.materials;
+  return volume;
 }
 
 function migrateCore(raw: unknown): Core | null {
@@ -172,6 +177,9 @@ export function migrateBuilding(raw: unknown): Building | null {
   } else {
     delete building.levels;
   }
+  const materials = migrateBuildingMaterials(raw.materials);
+  if (materials) building.materials = materials;
+  else delete building.materials;
   if (typeof raw.name === 'string') building.name = raw.name.slice(0, 80);
   else delete building.name;
   if (typeof raw.blueprint === 'string') building.blueprint = raw.blueprint.slice(0, 80);

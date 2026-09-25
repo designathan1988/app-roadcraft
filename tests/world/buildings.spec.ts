@@ -14,6 +14,7 @@ import {
   worldToLocal,
 } from '@world/buildings/geometry';
 import { buildingHandles } from '@world/buildings/handles';
+import { PALETTE_MATERIALS, applyMaterial, roofMaterial, wallMaterial } from '@world/buildings/materials';
 import { pickBuilding } from '@world/buildings/pick';
 import { migrateBuilding } from '@world/buildings/serialize';
 import { deriveSpaces, floorArea } from '@world/buildings/spaces';
@@ -331,5 +332,48 @@ describe('extension points', () => {
 
   it('has a footprint for every ground volume', () => {
     expect(footprintRects(building())).toHaveLength(1);
+  });
+});
+
+describe('materials', () => {
+  const brick = { finish: 'brick', colour: 0xa4563f } as const;
+  const glass = { finish: 'glass', colour: 0x9fb8c4 } as const;
+
+  it('resolves a wall from the side, the volume, the building, then the palette', () => {
+    const b = building();
+    const v = b.volumes[0]!;
+    expect(wallMaterial(b, v, 0)).toEqual(PALETTE_MATERIALS[b.palette]!.wall);
+    applyMaterial(b, { scope: 'building', slot: 'wall' }, brick);
+    expect(wallMaterial(b, v, 0)).toEqual(brick);
+    applyMaterial(b, { scope: 'side', volume: v.id, side: 1 }, glass);
+    expect(wallMaterial(b, v, 1)).toEqual(glass);
+    expect(wallMaterial(b, v, 0)).toEqual(brick);
+    // A wider scope repaints everything under it.
+    applyMaterial(b, { scope: 'building', slot: 'wall' }, { finish: 'plaster', colour: 0xffffff });
+    expect(wallMaterial(b, v, 1).finish).toBe('plaster');
+    expect(v.materials).toBeUndefined();
+  });
+
+  it('gives a flat roof a slab and a pitched one the palette tiles until told otherwise', () => {
+    const b = building();
+    const v = b.volumes[0]!;
+    v.roof = 'flat';
+    expect(roofMaterial(b, v).finish).toBe('concrete');
+    v.roof = 'gable';
+    expect(roofMaterial(b, v)).toEqual(PALETTE_MATERIALS[b.palette]!.roof);
+    expect(applyMaterial(b, { scope: 'volume', volume: v.id, slot: 'roof' }, { finish: 'metal', colour: 0x333333 })).toBe(true);
+    expect(roofMaterial(b, v).finish).toBe('metal');
+    expect(applyMaterial(b, { scope: 'volume', volume: v.id, slot: 'roof' }, { finish: 'metal', colour: 0x333333 })).toBe(false);
+  });
+
+  it('keeps valid materials through a round trip and drops broken ones', () => {
+    const b = building();
+    applyMaterial(b, { scope: 'building', slot: 'trim' }, glass);
+    applyMaterial(b, { scope: 'side', volume: b.volumes[0]!.id, side: 2 }, brick);
+    const back = migrateBuilding(JSON.parse(JSON.stringify(b)))!;
+    expect(back.materials?.trim).toEqual(glass);
+    expect(back.volumes[0]!.materials?.sides?.[2]).toEqual(brick);
+    const broken = migrateBuilding({ ...JSON.parse(JSON.stringify(b)), materials: { wall: { finish: 'cheese', colour: 1 }, roof: { finish: 'tile', colour: -5 } } })!;
+    expect(broken.materials).toBeUndefined();
   });
 });

@@ -179,6 +179,8 @@ export function opAddWing(b: Building, volumeId: number, side: Side, depth = 3, 
     roof: v.roof === 'terrace' ? 'flat' : v.roof,
     storeys: copyStoreys(v),
   };
+  // A wing is built in what its volume is built in.
+  if (v.materials) wing.materials = JSON.parse(JSON.stringify(v.materials)) as NonNullable<Volume['materials']>;
   switch (side) {
     case 0: Object.assign(wing, { x: v.x + offset, y: v.y - out, w: len, d: out }); break;
     case 2: Object.assign(wing, { x: v.x + offset, y: v.y + v.d, w: len, d: out }); break;
@@ -218,6 +220,7 @@ export function opAddSetback(b: Building, volumeId: number, inset = 1, storeys =
     roof: v.roof === 'terrace' ? 'flat' : v.roof,
     storeys: copyStoreys({ ...v, storeys: [template] }, count),
   };
+  if (v.materials) volume.materials = JSON.parse(JSON.stringify(v.materials)) as NonNullable<Volume['materials']>;
   v.roof = 'terrace';
   b.volumes.push(volume);
   return volume.id;

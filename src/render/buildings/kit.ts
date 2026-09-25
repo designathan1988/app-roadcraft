@@ -11,6 +11,9 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
+import type { Finish } from '@world/buildings/materials';
+import { createFinishMaterials } from './finishes';
+
 /**
  * Everything the buildings layer draws with, built ONCE per renderer.
  *
@@ -46,8 +49,8 @@ export const PART_KINDS: readonly PartKind[] = [
 export interface BuildingKit {
   readonly geometry: Readonly<Record<PartKind, BufferGeometry>>;
   readonly material: Readonly<Record<PartKind, Material>>;
-  /** The merged shell: walls, plinths, bands, roofs, steps - vertex coloured. */
-  readonly shell: MeshStandardMaterial;
+  /** The merged shell - walls, plinths, bands, roofs, steps - one material per finish, vertex coloured. */
+  readonly shell: Readonly<Record<Finish, MeshStandardMaterial>>;
   /** Ghost materials for the placement / drag preview, tinted by validity. */
   readonly ghostShell: MeshStandardMaterial;
   readonly ghostParts: MeshStandardMaterial;
@@ -151,9 +154,7 @@ export function createBuildingKit(): BuildingKit {
     awning: new MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, metalness: 0 }),
     column: concrete,
   };
-  // The shell is not a closed solid (openings, no underside), so it casts from
-  // both sides as well.
-  const shell = new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, shadowSide: DoubleSide });
+  const shell = createFinishMaterials();
   const ghostShell = new MeshStandardMaterial({
     color: 0x65e5c3,
     emissive: new Color(0x1d5a4a),
@@ -165,7 +166,7 @@ export function createBuildingKit(): BuildingKit {
   });
   const ghostParts = ghostShell.clone();
 
-  const unique = new Set<Material>([...Object.values(material), shell, ghostShell, ghostParts]);
+  const unique = new Set<Material>([...Object.values(material), ...Object.values(shell), ghostShell, ghostParts]);
   const geometries = new Set<BufferGeometry>(Object.values(geometry));
 
   return {

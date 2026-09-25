@@ -5,7 +5,8 @@ import { BLUEPRINTS, generateBody } from '@world/buildings/blueprints';
 import { flightRun, foundationOf } from '@world/buildings/foundation';
 import { type Building, asBuildingId } from '@world/buildings/types';
 import { type BuildingChunk, assembleBuildingMeshes, emitChunk } from '@render/buildings/buildingMesh';
-import { createBuildingKit } from '@render/buildings/kit';
+import { PART_KINDS, createBuildingKit } from '@render/buildings/kit';
+import { FINISHES } from '@world/buildings/materials';
 import { createBuildingLayer } from '@render/buildings/layer';
 
 /**
@@ -24,31 +25,42 @@ function placed(index: number, rotation: number): Building {
 
 /** Shell triangles that face away from their own normal (and would be culled). */
 function wrongWinding(chunk: BuildingChunk): number {
-  const p = chunk.position;
-  const n = chunk.normal;
   let wrong = 0;
-  for (let t = 0; t < chunk.index.length; t += 3) {
-    const a = chunk.index[t]! * 3;
-    const b = chunk.index[t + 1]! * 3;
-    const c = chunk.index[t + 2]! * 3;
-    const ux = p[b]! - p[a]!, uy = p[b + 1]! - p[a + 1]!, uz = p[b + 2]! - p[a + 2]!;
-    const vx = p[c]! - p[a]!, vy = p[c + 1]! - p[a + 1]!, vz = p[c + 2]! - p[a + 2]!;
-    const gx = uy * vz - uz * vy;
-    const gy = uz * vx - ux * vz;
-    const gz = ux * vy - uy * vx;
-    if (gx * n[a]! + gy * n[a + 1]! + gz * n[a + 2]! < 0) wrong++;
+  for (const part of Object.values(chunk.shells)) {
+    const p = part.position;
+    const n = part.normal;
+    for (let t = 0; t < part.index.length; t += 3) {
+      const a = part.index[t]! * 3;
+      const b = part.index[t + 1]! * 3;
+      const c = part.index[t + 2]! * 3;
+      const ux = p[b]! - p[a]!, uy = p[b + 1]! - p[a + 1]!, uz = p[b + 2]! - p[a + 2]!;
+      const vx = p[c]! - p[a]!, vy = p[c + 1]! - p[a + 1]!, vz = p[c + 2]! - p[a + 2]!;
+      const gx = uy * vz - uz * vy;
+      const gy = uz * vx - ux * vz;
+      const gz = ux * vy - uy * vx;
+      if (gx * n[a]! + gy * n[a + 1]! + gz * n[a + 2]! < 0) wrong++;
+    }
   }
   return wrong;
 }
+
+/** Every shell vertex position of a chunk, all finishes (three's axes). */
+const positions = (chunk: BuildingChunk): number[] => Object.values(chunk.shells).flatMap((part) => [...part.position]);
+const triangleCount = (chunk: BuildingChunk): number =>
+  Object.values(chunk.shells).reduce((n, part) => n + part.index.length / 3, 0);
 
 describe('building shell', () => {
   it('winds every triangle towards its normal, for every preset at any rotation', () => {
     for (let i = 0; i < BLUEPRINTS.length; i++) {
       for (const rotation of [0, 0.7, -2.2]) {
         const chunk = emitChunk(placed(i, rotation), slope);
-        expect(chunk.index.length).toBeGreaterThan(0);
+        expect(triangleCount(chunk)).toBeGreaterThan(0);
         expect(wrongWinding(chunk), `${BLUEPRINTS[i]!.key} at ${rotation}`).toBe(0);
-        expect([...chunk.position].every(Number.isFinite)).toBe(true);
+        expect(positions(chunk).every(Number.isFinite)).toBe(true);
+        for (const part of Object.values(chunk.shells)) {
+          expect(part.uv.length / 2).toBe(part.position.length / 3);
+          expect([...part.uv].every(Number.isFinite)).toBe(true);
+        }
       }
     }
   });
@@ -69,14 +81,14 @@ describe('building shell', () => {
     }
     // Nothing below the floor stands in front of the plinth: no step is out
     // on the footway. (Three's z is world -y, its y is height; positions are float32.)
-    const p = emitChunk(b, land, footway).position;
+    const p = positions(emitChunk(b, land, footway));
     let onFootway = 0;
     for (let i = 0; i < p.length; i += 3) {
       if (p[i + 1]! < f.floor - 1e-3 && -p[i + 2]! < 100 - 0.3 - 1e-3) onFootway++;
     }
     expect(onFootway).toBe(0);
     // Without the footway the same flight stands outside, down to the land.
-    const q = emitChunk(b, land).position;
+    const q = positions(emitChunk(b, land));
     let outside = 0;
     for (let i = 0; i < q.length; i += 3) if (q[i + 1]! < f.floor - 1e-6 && -q[i + 2]! < 99) outside++;
     expect(outside).toBeGreaterThan(0);
@@ -90,9 +102,9 @@ describe('building shell', () => {
     const meshes = assembleBuildingMeshes([a, b], kit);
     const glass = meshes.group.children.find((m) => m.name === 'building-glass') as unknown as { count: number };
     expect(glass.count).toBe(a.parts.glass.count + b.parts.glass.count);
-    // One shell and at most one batch per part: the draw calls do not grow
-    // with the number of buildings.
-    expect(meshes.group.children.length).toBeLessThanOrEqual(10);
+    // At most one shell per finish and one batch per part: the draw calls do
+    // not grow with the number of buildings.
+    expect(meshes.group.children.length).toBeLessThanOrEqual(FINISHES.length + PART_KINDS.length);
     meshes.dispose();
     kit.dispose();
   });
