@@ -226,7 +226,7 @@ lanelets and the simulation are not rebuilt for it.
 | command | what it does |
 |---|---|
 | `placeBuilding` | a blueprint at a snapped position and rotation |
-| `setStoreys` | pull a volume up or down; volumes stacked on it ride with it |
+| `setStoreys` | pull a volume up or down; volumes stacked on it ride with it. A new storey copies the top one, in the building's own style (over a ground storey, `upperStoreyFrom` turns its doors and shopfronts into windows) |
 | `resizeVolume` | move one side of a volume by whole modules |
 | `addWing` | a new volume against one side, same base and height |
 | `addSetback` | a new, inset volume on top; the one below gets a terrace roof |
@@ -244,8 +244,12 @@ point to the screen, turn a screen point into a world point on a plane at a
 given height, cast a pick ray, read the rendered ground - and a `commit`
 callback that is `mutateBuildings`.
 
-* **Place** (`H`, then pick a preset, a type, or one of *My blueprints*):
-  the ghost follows the pointer,
+* **Place** (`H`, then the neutral **Block** - shaped by the sliders - a
+  ready-made model, or one of *My blueprints*). There are no fixed categories
+  in the palette: a model is only a starting point, and every building is
+  shaped from there. `Building.use` is still stored, for the simulation to
+  read one day, but nothing in the tool sets or depends on it. The ghost
+  follows the pointer,
   snapped (below), green when valid, red with the reason when not; click to
   build. `R` turns it a quarter, `Shift+R` 15 degrees. With the pointer
   over an existing building the ghost steps aside and a click selects that
@@ -260,8 +264,7 @@ callback that is `mutateBuildings`.
   * the **ring at a corner** - drag to rotate it (15 degree steps, Shift for free);
   * click a facade bay with a component chosen in the picker to replace it
     (scope: bay, storey, side or volume);
-  * `1`-`4` choose the type (residential, commercial, industrial, mixed),
-    `PageUp`/`PageDown` or `+`/`-` storeys, `Delete` removes the volume
+  * `PageUp`/`PageDown` or `+`/`-` storeys, `Delete` removes the volume
     (the building if it is the last one), `Ctrl+D` duplicates, `Ctrl+C` /
     `Ctrl+V` copy and paste at the pointer, `R` rotates, `Escape` deselects.
 

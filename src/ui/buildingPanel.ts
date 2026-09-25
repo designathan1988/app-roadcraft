@@ -2,7 +2,6 @@ import { BLUEPRINTS, type Blueprint } from '@world/buildings/blueprints';
 import {
   BAY_COMPONENTS,
   type BayComponent,
-  type BuildingUse,
   ROOF_KINDS,
   type RoofKind,
   type Side,
@@ -22,7 +21,6 @@ export type BuildingParam = 'width' | 'depth' | 'storeys' | 'storeyHeight' | 'mo
 
 export interface BuildingPanelActions {
   setMode(mode: 'place' | 'edit'): void;
-  setUse(use: BuildingUse): void;
   chooseBlueprint(key: string): void;
   chooseUserBlueprint(key: string): void;
   removeUserBlueprint(key: string): void;
@@ -37,7 +35,6 @@ export interface BuildingPanelActions {
 
 export interface BuildingPanelState {
   readonly mode: 'place' | 'edit';
-  readonly use: BuildingUse;
   readonly blueprintKey: string | null;
   readonly userBlueprints: readonly Blueprint[];
   /** Slider values, world units for lengths, cells for counts. */
@@ -58,6 +55,7 @@ export interface BuildingPanel {
 }
 
 const ICON_PRESET: Readonly<Record<string, string>> = {
+  block: '<path d="M4 8l8-4 8 4v10l-8 4-8-4Z"/><path d="M4 8l8 4 8-4M12 12v10"/>',
   house: '<path d="M4 20V11l8-6 8 6v9Z"/><path d="M10 20v-5h4v5"/>',
   rowhouse: '<path d="M3 20V9l4-3 4 3v11M11 20V9l4-3 4 3v11"/>',
   apartments: '<path d="M5 20V5h14v15"/><path d="M8 8h2m4 0h2M8 12h2m4 0h2M8 16h2m4 0h2"/>',
@@ -109,9 +107,6 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
 
   root.querySelectorAll<HTMLButtonElement>('[data-building-mode]').forEach((b) => {
     b.onclick = () => actions.setMode(b.dataset['buildingMode'] === 'edit' ? 'edit' : 'place');
-  });
-  root.querySelectorAll<HTMLButtonElement>('[data-building-use]').forEach((b) => {
-    b.onclick = () => actions.setUse(b.dataset['buildingUse'] as BuildingUse);
   });
   root.querySelectorAll<HTMLButtonElement>('[data-building-action]').forEach((b) => {
     b.onclick = () => actions.action(b.dataset['buildingAction'] as Parameters<BuildingPanelActions['action']>[0]);
@@ -212,7 +207,6 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
       });
     };
     toggle('[data-building-mode]', 'data-building-mode', state.mode);
-    toggle('[data-building-use]', 'data-building-use', state.use);
     toggle('.building-preset[data-preset]', 'data-preset', state.mode === 'place' ? state.blueprintKey : null);
     toggle('.building-component', 'data-component', state.component);
     toggle('[data-roof]', 'data-roof', state.selection?.roof ?? null);

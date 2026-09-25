@@ -3,7 +3,7 @@ import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
 import { footprintCells, topLevel } from '@world/buildings/geometry';
-import { type BuildingUse, BUILDING_USES, volumeById } from '@world/buildings/types';
+import { volumeById } from '@world/buildings/types';
 import { METERS_PER_UNIT } from '@world/units';
 import { type EditResult, clearBuildingsOnRoads, deleteBuilding } from '@editor/buildings';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
@@ -120,7 +120,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
 
   const panel = initBuildingPanel({
     setMode: (mode) => tool.setMode(mode),
-    setUse: (use) => tool.setUse(use),
     chooseBlueprint: (key) => tool.chooseBlueprint(key),
     chooseUserBlueprint(key) {
       const bp = library.list().find((b) => b.key === key);
@@ -194,7 +193,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     }
     return {
       mode: tool.mode,
-      use: b?.use ?? body.use,
       blueprintKey: tool.blueprintKey,
       userBlueprints: library.list(),
       params,
@@ -225,10 +223,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     },
     key(e) {
       const ctrl = e.ctrlKey || e.metaKey;
-      if (!ctrl && /^[1-4]$/.test(e.key)) {
-        tool.setUse(BUILDING_USES[Number(e.key) - 1] as BuildingUse);
-        return true;
-      }
       if (ctrl && e.key.toLowerCase() === 'c' && tool.copySelected()) {
         deps.flash('building.copied');
         return true;

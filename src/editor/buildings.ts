@@ -4,8 +4,8 @@ import {
   type BlueprintBody,
   DEFAULT_PALETTE,
   defaultFacade,
-  defaultStorey,
   storeyUse,
+  upperStoreyFrom,
 } from '@world/buildings/blueprints';
 import { footprintCells, footprintRects, localDirToWorld, occupancy } from '@world/buildings/geometry';
 import {
@@ -63,12 +63,15 @@ const UNCHANGED: EditResult = { ok: false };
 
 // =============================================================== operations
 
-/** Storeys copied up when a volume is pulled taller. */
-function storeyTemplate(b: Building, v: Volume, level: number): Storey {
+/**
+ * Storeys copied up when a volume is pulled taller: the top one, in the
+ * building's own style. A ground storey's doors and shopfronts belong on the
+ * street, so above it they become the windows that go with them.
+ */
+function storeyTemplate(v: Volume): Storey {
   const top = v.storeys[v.storeys.length - 1];
-  // A ground storey is a poor template for the floors above it: its doors and
-  // shopfronts belong on the street. Use the default upper storey instead.
-  if (!top || v.base + v.storeys.length - 1 === 0) return defaultStorey(b.use, level, v.w);
+  if (!top) return { facade: { fill: 'window' } };
+  if (v.base + v.storeys.length - 1 === 0) return upperStoreyFrom(top);
   return JSON.parse(JSON.stringify(top)) as Storey;
 }
 
@@ -95,7 +98,7 @@ export function opSetStoreys(b: Building, volumeId: number, count: number): bool
   const next = clamp(Math.round(count), 1, Math.max(1, MAX_STOREYS - v.base));
   if (next === v.storeys.length) return false;
   const oldTop = volumeTop(v);
-  while (v.storeys.length < next) v.storeys.push(storeyTemplate(b, v, v.base + v.storeys.length));
+  while (v.storeys.length < next) v.storeys.push(storeyTemplate(v));
   v.storeys.length = next;
   rideWith(b, v, oldTop, volumeTop(v) - oldTop);
   return true;
@@ -203,8 +206,7 @@ export function opAddSetback(b: Building, volumeId: number, inset = 1, storeys =
   const ix = v.w - 2 * inset >= 1 ? inset : 0;
   const iy = v.d - 2 * inset >= 1 ? inset : 0;
   const base = volumeTop(v);
-  const top = v.storeys[v.storeys.length - 1] as Storey;
-  const template = base - 1 === 0 ? defaultStorey(b.use, 1, v.w - 2 * ix) : top;
+  const template = storeyTemplate(v);
   const count = clamp(Math.round(storeys), 1, Math.max(1, MAX_STOREYS - base));
   const volume: Volume = {
     id: b.nextVolumeId++,

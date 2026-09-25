@@ -651,8 +651,8 @@ body { user-select: none; -webkit-user-select: none; }
 }
 .building-palette.hidden { display: none; }
 .inspector-open .building-palette { display: none; }
-.building-modes, .building-uses { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
-.building-mode, .building-use, .building-preset, .building-actions button, .building-component {
+.building-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
+.building-mode, .building-preset, .building-actions button, .building-component {
   padding: 6px 4px;
   border-radius: 8px;
   border: 1px solid var(--ui-border);
@@ -663,7 +663,7 @@ body { user-select: none; -webkit-user-select: none; }
   cursor: pointer;
 }
 .building-mode { padding: 8px 4px; font-size: 11px; }
-.building-mode.active, .building-use.active, .building-preset.active, .building-component.active, .building-actions button.active {
+.building-mode.active, .building-preset.active, .building-component.active, .building-actions button.active {
   color: var(--accent);
   border-color: var(--accent);
   background: rgba(101, 229, 195, 0.1);

@@ -6,11 +6,13 @@ import {
   type Core,
   type Facade,
   type RoofKind,
+  type Side,
   type Storey,
   type Volume,
   BUILDING_SCHEMA,
   DEFAULT_MODULE,
   bayKey,
+  componentAt,
 } from './types';
 
 /**
@@ -119,6 +121,71 @@ export function generateBody(
   };
 }
 
+/** What an access component becomes on a storey above the street. */
+const ABOVE_STREET: Partial<Record<BayComponent, BayComponent>> = {
+  door: 'window',
+  shopfront: 'wideWindow',
+  loadingDoor: 'window',
+};
+
+/**
+ * A storey for above `source`, in the building's own style rather than a
+ * category's: the same facade, with every way in (a door, a shopfront, a
+ * loading door) turned into the window that belongs above it.
+ */
+export function upperStoreyFrom(source: Storey): Storey {
+  const lift = (c: BayComponent): BayComponent => ABOVE_STREET[c] ?? c;
+  const facade: Facade = { fill: lift(source.facade.fill) };
+  if (source.facade.sides) {
+    facade.sides = Object.fromEntries(Object.entries(source.facade.sides).map(([k, c]) => [k, lift(c)]));
+  }
+  if (source.facade.bays) {
+    // A single-bay override that now says what its side says anyway is dropped.
+    const kept = Object.entries(source.facade.bays)
+      .map(([key, c]) => [key, lift(c)] as const)
+      .filter(([key, c]) => c !== componentAt({ ...facade, bays: {} }, Number(key.split(':')[0]) as Side, 0));
+    if (kept.length > 0) facade.bays = Object.fromEntries(kept);
+  }
+  const storey: Storey = { facade };
+  if (source.use) storey.use = source.use;
+  return storey;
+}
+
+/**
+ * The neutral starting block: no category, just a mass of `w x d` cells and
+ * `storeys` storeys with windows all round, a door in the middle of the
+ * front and a flat roof. Everything else is shaped from here.
+ */
+export function generateBlock(
+  w: number,
+  d: number,
+  storeys: number,
+  options: { module?: number; groundHeight?: number; storeyHeight?: number; roof?: RoofKind; palette?: number } = {},
+): BlueprintBody {
+  const ground: Storey = { facade: { fill: 'window', bays: { [bayKey(0, Math.floor(w / 2))]: 'door' } } };
+  const volume: Volume = {
+    id: 1,
+    x: 0,
+    y: 0,
+    w,
+    d,
+    base: 0,
+    roof: options.roof ?? 'flat',
+    storeys: Array.from({ length: storeys }, (_, level) => (level === 0 ? ground : upperStoreyFrom(ground))),
+  };
+  return {
+    schema: BUILDING_SCHEMA,
+    use: 'mixed',
+    module: options.module ?? DEFAULT_MODULE,
+    groundHeight: options.groundHeight ?? DEFAULT_GROUND_HEIGHT,
+    storeyHeight: options.storeyHeight ?? DEFAULT_STOREY_HEIGHT,
+    palette: options.palette ?? 4,
+    volumes: [volume],
+    cores: [],
+    nextVolumeId: 2,
+  };
+}
+
 function withCore(body: BlueprintBody, core: Omit<Core, 'id'>): BlueprintBody {
   body.cores.push({ id: body.cores.length + 1, ...core });
   return body;
@@ -204,6 +271,7 @@ function factory(): BlueprintBody {
 
 /** The built-in presets, in palette order. Names are `building.preset.<key>`. */
 export const BLUEPRINTS: readonly Blueprint[] = [
+  { key: 'block', nameKey: 'building.preset.block', body: generateBlock(4, 3, 2) },
   { key: 'house', nameKey: 'building.preset.house', body: house() },
   { key: 'rowhouse', nameKey: 'building.preset.rowhouse', body: rowhouse() },
   { key: 'apartments', nameKey: 'building.preset.apartments', body: apartments() },

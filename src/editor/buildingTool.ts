@@ -5,7 +5,7 @@ import {
   DEFAULT_STOREY_HEIGHT,
   blueprintByKey,
   bodyOf,
-  generateBody,
+  generateBlock,
 } from '@world/buildings/blueprints';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
 import { footprintCells, levelHeight, localDirToWorld } from '@world/buildings/geometry';
@@ -16,7 +16,6 @@ import {
   type BayComponent,
   type Building,
   type BuildingId,
-  type BuildingUse,
   type RoofKind,
   type Side,
   DEFAULT_MODULE,
@@ -42,7 +41,6 @@ import {
   opSetParameters,
   opSetRoof,
   opSetStoreys,
-  opSetUse,
   removeVolume,
   replaceBuilding,
 } from './buildings';
@@ -108,9 +106,8 @@ export interface BuildingSelection {
   readonly bay: BaySelection | null;
 }
 
-/** Parameters of a generated building (the "type" buttons and sliders). */
+/** Parameters of the generated block (the sliders). */
 export interface PlaceParameters {
-  use: BuildingUse;
   width: number;
   depth: number;
   storeys: number;
@@ -135,7 +132,6 @@ export class BuildingTool {
   body: BlueprintBody;
   blueprintKey: string | null;
   params: PlaceParameters = {
-    use: 'residential',
     width: 4,
     depth: 3,
     storeys: 2,
@@ -162,7 +158,7 @@ export class BuildingTool {
 
   constructor(private readonly view: ToolView, private readonly host: ToolHost) {
     const first = BLUEPRINTS[0];
-    this.body = first ? first.body : generateBody('residential', 4, 3, 2);
+    this.body = first ? first.body : generateBlock(4, 3, 2);
     this.blueprintKey = first ? first.key : null;
   }
 
@@ -248,14 +244,11 @@ export class BuildingTool {
     this.setMode('place');
   }
 
-  /** The generator: a building of the current parameters and use. */
+  /** The generator: a neutral block of the current parameters. */
   generate(patch: Partial<PlaceParameters> = {}): void {
     Object.assign(this.params, patch);
     const p = this.params;
-    this.useBody(
-      generateBody(p.use, p.width, p.depth, p.storeys, { module: p.module, storeyHeight: p.storeyHeight }),
-      null,
-    );
+    this.useBody(generateBlock(p.width, p.depth, p.storeys, { module: p.module, storeyHeight: p.storeyHeight }), 'block');
   }
 
   /** Runs a validated command on the selected building, as one undo step. */
@@ -332,17 +325,7 @@ export class BuildingTool {
     this.onSelected((draft) => opSetRoof(draft, s.volume, roof));
   }
 
-  setUse(use: BuildingUse): void {
-    this.params.use = use;
-    if (this.mode === 'edit' && this.selection) {
-      this.onSelected((draft) => opSetUse(draft, use, true));
-      return;
-    }
-    this.generate({ use });
-  }
-
   setParameter(name: keyof PlaceParameters, value: number): void {
-    if (name === 'use') return;
     if (this.mode === 'edit' && this.selection) {
       const s = this.selection;
       switch (name) {
