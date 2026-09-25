@@ -6,7 +6,7 @@ import {
   type RoofKind,
   type Side,
 } from '@world/buildings/types';
-import { FINISHES, type Finish, type MaterialSpec } from '@world/buildings/materials';
+import { FINISHES, type Finish, type MaterialSpec, STYLES } from '@world/buildings/materials';
 import { ELEMENT_KINDS, type ElementKind } from '@world/buildings/types';
 import { METERS_PER_UNIT } from '@world/units';
 import { plural, t } from './i18n';
@@ -43,6 +43,7 @@ export interface BuildingPanelActions {
   armComponent(component: BayComponent | null): void;
   setScope(scope: BuildingScope): void;
   setMaterialScope(scope: MaterialScope): void;
+  applyStyle(key: string): void;
   /** A new finish keeps the current colour, a new colour the current finish. */
   paint(patch: Partial<MaterialSpec>): void;
 }
@@ -170,6 +171,18 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
   root.querySelectorAll<HTMLButtonElement>('[data-material-scope]').forEach((b) => {
     b.onclick = () => actions.setMaterialScope(b.dataset['materialScope'] as MaterialScope);
   });
+  const styles = document.getElementById('buildingStyles') as HTMLElement;
+  for (const style of STYLES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'building-style';
+    b.dataset['style'] = style.key;
+    // A swatch of the style's wall, trim and roof, then its name.
+    const chip = (c: number): string => `<i style="background:${hexOf(c)}"></i>`;
+    b.innerHTML = `<span class="chips">${chip(style.materials.wall.colour)}${chip(style.materials.trim.colour)}${chip(style.materials.roof.colour)}</span><span class="name"></span>`;
+    b.onclick = () => actions.applyStyle(style.key);
+    styles.appendChild(b);
+  }
   const finishes = document.getElementById('buildingFinishes') as HTMLElement;
   for (const finish of FINISHES) {
     const b = document.createElement('button');
@@ -423,6 +436,11 @@ export function refreshBuildingPanelLabels(): void {
     const label = t(`building.roof.${b.dataset['roof']}`);
     b.title = label;
     b.setAttribute('aria-label', label);
+  });
+  document.querySelectorAll<HTMLButtonElement>('#buildingStyles .building-style').forEach((b) => {
+    const label = t(`building.style.${b.dataset['style']}`);
+    (b.querySelector('.name') as HTMLElement).textContent = label;
+    b.title = label;
   });
   document.querySelectorAll<HTMLButtonElement>('#buildingElements .building-element').forEach((b) => {
     const label = t(`building.element.${b.dataset['element']}`);

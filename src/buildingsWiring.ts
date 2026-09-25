@@ -183,6 +183,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     setMaterialScope: (scope) => tool.setMaterialScope(scope),
     setRelief: (depth) => tool.setRelief(depth),
     armElement: (kind) => tool.armElement(kind),
+    applyStyle: (key) => tool.applyStyle(key),
     setElement: (name, value) => tool.updateElement({ [name]: value }),
     setPitch(degrees, commit) {
       if (commit) tool.setRoofShape({ pitch: degrees });

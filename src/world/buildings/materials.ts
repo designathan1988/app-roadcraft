@@ -212,3 +212,40 @@ export function migrateVolumeMaterials(raw: unknown): VolumeMaterials | undefine
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
+
+/**
+ * Factory styles: a coherent set of materials for a whole building, applied
+ * in one click and freely changed afterwards - a style locks nothing.
+ */
+export const STYLES: readonly { readonly key: string; readonly materials: Required<BuildingMaterials> }[] = [
+  {
+    key: 'brick',
+    materials: { wall: spec('brick', 0x9a5540), trim: spec('stone', 0xe3dccd), roof: spec('tile', 0x5a4a44), plinth: spec('stone', 0x6f6a62) },
+  },
+  {
+    key: 'modern',
+    materials: { wall: spec('plaster', 0xf1efe9), trim: spec('concrete', 0xb9bcbb), roof: spec('metal', 0x4d5256), plinth: spec('concrete', 0x8a8a84) },
+  },
+  {
+    key: 'mediterranean',
+    materials: { wall: spec('plaster', 0xe8cfa0), trim: spec('plaster', 0xf6efe2), roof: spec('tile', 0xa65a3c), plinth: spec('stone', 0x8f8069) },
+  },
+  {
+    key: 'industrial',
+    materials: { wall: spec('metal', 0x7f8a86), trim: spec('concrete', 0xc7c6be), roof: spec('metal', 0x5d6462), plinth: spec('concrete', 0x77766f) },
+  },
+  {
+    key: 'timber',
+    materials: { wall: spec('wood', 0x8a6a4a), trim: spec('plaster', 0xeee8dc), roof: spec('metal', 0x3f4447), plinth: spec('stone', 0x6d665c) },
+  },
+];
+
+/** Applies a style to a whole building (clearing per-volume and per-face overrides). */
+export function applyStyle(b: Building, key: string): boolean {
+  const style = STYLES.find((s) => s.key === key);
+  if (!style) return false;
+  const before = JSON.stringify([b.materials, b.volumes.map((v) => v.materials)]);
+  b.materials = { ...style.materials };
+  for (const v of b.volumes) delete v.materials;
+  return JSON.stringify([b.materials, b.volumes.map((v) => v.materials)]) !== before;
+}

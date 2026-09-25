@@ -11,7 +11,7 @@ import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundati
 import { MIN_SIZE, baysOn, footprintBox, levelHeight, localDirToWorld, reliefAt, worldToLocal } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
-import { type MaterialSpec, type MaterialTarget, applyMaterial, materialAt } from '@world/buildings/materials';
+import { type MaterialSpec, type MaterialTarget, applyMaterial, applyStyle, materialAt } from '@world/buildings/materials';
 import { elementAt, elementsAgainstBay } from '@world/buildings/elements';
 import { type BuildingProblem, validateBuilding } from '@world/buildings/validate';
 import {
@@ -400,6 +400,11 @@ export class BuildingTool {
     const b = this.selected();
     const target = this.materialTarget();
     return b && target ? materialAt(b, target) : null;
+  }
+
+  /** Dresses the whole selected building in a factory style. */
+  applyStyle(key: string): void {
+    this.onSelected((draft) => applyStyle(draft, key));
   }
 
   /** Paints the current target: a new finish keeps its colour, a new colour keeps its finish. */
