@@ -3,7 +3,7 @@ import { type Aabb, expand as expandBox } from '@core/aabb';
 import type { Polyline } from '@core/polyline';
 import type { NodeId, SegmentId } from './ids';
 import type { Network } from './network';
-import { FOOTWAY_RISE, Level, casingHalf } from './roadTypes';
+import { FOOTWAY_RISE, Level, casingHalf, laneWidth } from './roadTypes';
 import {
   ROAD_GROUND_CLEARANCE,
   TUNNEL_BORE,
@@ -210,6 +210,10 @@ interface Profile {
   readonly half: number;
   /** Central reservation width, zero when the class has none. */
   readonly median: number;
+  /** Half the carriageway width, kerb to kerb. */
+  readonly carriage: number;
+  /** Width of one traffic lane. */
+  readonly lane: number;
   readonly line: Polyline;
   readonly length: number;
   readonly step: number;
@@ -321,7 +325,20 @@ export interface RoadSample {
   readonly half: number;
   /** Its central reservation width. */
   readonly median: number;
+  /** Half its carriageway width, kerb to kerb. */
+  readonly carriage: number;
+  /** Width of one of its lanes. */
+  readonly lane: number;
+  /**
+   * 1 along the open road, fading to 0 across the last `OPEN_FADE` units
+   * before a junction plate: where the road-space surface detail (gutter,
+   * wheel tracks) belongs, and where it does not.
+   */
+  readonly open: number;
 }
+
+/** Units over which `RoadSample.open` fades out towards a junction plate. */
+const OPEN_FADE = 3;
 
 export const GROUND_ONLY: ReadonlySet<RoadStructure> = new Set<RoadStructure>(['ground']);
 const NO_SHAPE = { height: 0, weight: 0 } as const;
@@ -459,6 +476,8 @@ export function buildRoadElevation(
       type: segment.type,
       half,
       median: ribbon.road.median,
+      carriage: ribbon.road.width / 2,
+      lane: laneWidth(ribbon.road),
       line,
       length,
       step,
@@ -792,7 +811,7 @@ export function buildRoadElevation(
     },
     roadAt(x, y, structures) {
       const best = nearest(x, y, structures);
-      if (!best) return { along: y, across: x, type: -1, half: 0, median: 0 };
+      if (!best) return { along: y, across: x, type: -1, half: 0, median: 0, carriage: 0, lane: 1, open: 0 };
       const { s, distance } = last;
       // Signed offset, so the two halves of a carriageway do not mirror the
       // texture into a seam down the centre line.
@@ -804,6 +823,9 @@ export function buildRoadElevation(
         type: best.type,
         half: best.half,
         median: best.median,
+        carriage: best.carriage,
+        lane: best.lane,
+        open: Math.max(0, Math.min(1, (s - best.plateA) / OPEN_FADE, (best.length - best.plateB - s) / OPEN_FADE)),
       };
     },
     surfaceFrameAt(x, y, structures, pickX, pickY) {

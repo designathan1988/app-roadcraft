@@ -60,6 +60,73 @@ export interface SceneMaterials {
   dispose(): void;
 }
 
+/**
+ * THE CARRIAGEWAY IN ITS OWN FRAME.
+ *
+ * The asphalt's UVs are road-local (`across`, `along`, in macro tiles), and
+ * its mesh carries the nearest road's widths per vertex (`roadEdge`, written
+ * by `roadSurfaces.ts`: half the carriageway, one lane, half the median, and
+ * an open-road weight that is 0 on junction plates). From those the shader
+ * lays what a real street has and a tiling texture cannot place:
+ *  - a concrete GUTTER along each kerb, jointed every 2 m - where there was a
+ *    smooth dark strip, the kerb face in shade over bare asphalt;
+ *  - grime collecting in the metre beside it;
+ *  - polished WHEEL TRACKS a quarter lane either side of each lane's centre;
+ *  - oil staining down the middle of each lane, broken up along it.
+ * `across` is linear across a straight road, so interpolating it is exact.
+ */
+const GUTTER = 0.85;
+const ROAD_SPACE_FRAGMENT = `
+  float rsAcross = vMapUv.x * uRoadTile;
+  float rsAlong = vMapUv.y * uRoadTile;
+  float rsA = abs(rsAcross);
+  float rsEdge = vRoadEdge.x - rsA;
+  float rsW = clamp(vRoadEdge.w, 0.0, 1.0) * step(0.5, vRoadEdge.x);
+  float rsGutter = rsW * (1.0 - smoothstep(${GUTTER.toFixed(2)} - 0.05, ${GUTTER.toFixed(2)} + 0.05, rsEdge));
+  float rsGrime = rsW * (1.0 - smoothstep(${GUTTER.toFixed(2)}, ${GUTTER.toFixed(2)} + 1.5, rsEdge)) * (1.0 - rsGutter);
+  float rsLane = (rsA - vRoadEdge.z) / max(vRoadEdge.y, 1.0);
+  float rsF = fract(rsLane);
+  float rsInLane = rsW * step(0.0, rsA - vRoadEdge.z) * (1.0 - rsGutter);
+  float rsTrack = rsInLane * ((1.0 - smoothstep(0.03, 0.09, abs(rsF - 0.27))) + (1.0 - smoothstep(0.03, 0.09, abs(rsF - 0.73))));
+  float rsOilN = 0.5 + 0.5 * sin(rsAlong * 0.23 + 2.0 * sin(rsAlong * 0.071 + rsLane * 3.1));
+  float rsOil = rsInLane * (1.0 - smoothstep(0.05, 0.16, abs(rsF - 0.5))) * smoothstep(0.55, 0.95, rsOilN);
+  diffuseColor.rgb *= (1.0 - 0.16 * rsGrime) * (1.0 - 0.06 * rsTrack) * (1.0 - 0.1 * rsOil);
+  float rsJointD = abs(fract(rsAlong / 5.0 + 0.5) - 0.5) * 5.0;
+  float rsJoint = 1.0 - smoothstep(0.025, 0.07, rsJointD);
+  float rsGrain = clamp(sampledDiffuseColor.g / 0.215, 0.6, 1.4);
+  vec3 rsConcrete = vec3(0.50, 0.495, 0.47) * (0.72 + 0.28 * rsGrain) * (1.0 - 0.3 * rsJoint);
+  diffuseColor.rgb = mix(diffuseColor.rgb, rsConcrete, rsGutter);
+`;
+const ROAD_SPACE_ROUGHNESS = `
+  roughnessFactor = clamp(mix(roughnessFactor, 0.94, rsGutter) - 0.1 * rsTrack, 0.2, 1.0);
+`;
+
+/** Installs `ROAD_SPACE_*` on a carriageway material, after its detail layer. */
+function applyRoadSpace(material: MeshStandardMaterial, tile: number): void {
+  const detail = material.onBeforeCompile.bind(material);
+  const detailKey = material.customProgramCacheKey.bind(material);
+  const uniforms = { uRoadTile: { value: tile } };
+  material.onBeforeCompile = (shader, renderer) => {
+    detail(shader, renderer);
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+attribute vec4 roadEdge;
+varying vec4 vRoadEdge;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+vRoadEdge = roadEdge;`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec4 vRoadEdge;
+uniform float uRoadTile;`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+${ROAD_SPACE_FRAGMENT}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+${ROAD_SPACE_ROUGHNESS}`);
+  };
+  material.customProgramCacheKey = () => `${detailKey()}-road-space`;
+}
+
 const ASPHALT_TILE = 26;
 const FOOTWAY_TILE = 18;
 const KERB_TILE = 8;
@@ -136,16 +203,23 @@ function footwayBake(anisotropy: number): SurfaceBake {
   const blot = makeNoise(0x5e2d);
   const crackNoise = makeNoise(0x3c19);
   const size = 1024;
-  /** Six slab courses per tile: 18 units / 6 = 3 units = 1.2 m. */
-  const slab = size / 6;
+  /**
+   * Twelve courses per tile: 18 / 12 = 1.5 units = 0.6 m slabs. They were
+   * 1.2 m, twice a real paving slab, and read as a floor of tiles.
+   */
+  const courses = 12;
+  const slab = size / courses;
   /** Chamfer width in texels. */
-  const bevel = 5;
+  const bevel = 3.5;
   return bakeSurface(
     'footway',
     {
       size,
       worldSize: FOOTWAY_TILE,
-      relief: 4.2,
+      // Low relief: a joint is drawn by the grime settled in it, the same on
+      // both sides. At 4.2 the normal map lit one lip and shaded the other,
+      // and every joint looked like a step between slabs out of level.
+      relief: 1.4,
       shade: (x, y, out) => {
         const u = x / size;
         const v = y / size;
@@ -161,7 +235,7 @@ function footwayBake(anisotropy: number): SurfaceBake {
         const face = Math.min(1, Math.max(0, (edge - 1.2) / bevel));
         const chamfer = face * face * (3 - 2 * face);
 
-        const slabId = cellHash(col % 6, row, 0x5a1b);
+        const slabId = cellHash(col % courses, row, 0x5a1b);
         const replaced = slabId > 0.93;
         const slabTone = (slabId - 0.5) * 0.09 + (replaced ? 0.07 : 0);
 
@@ -181,7 +255,10 @@ function footwayBake(anisotropy: number): SurfaceBake {
         }
 
         // Dirt settles in the joints and down the chamfer.
-        const grime = (1 - chamfer) * 0.22;
+        const grime = (1 - chamfer) * 0.2;
+        // Wear down the middle of the pedestrian flow: slabs a little paler
+        // and smoother, across the tile's middle band.
+        const worn = Math.max(0, 1 - Math.abs(u - 0.5) * 3) * 0.035;
         const tone =
           0.7 +
           slabTone +
@@ -189,7 +266,8 @@ function footwayBake(anisotropy: number): SurfaceBake {
           (dirt - 0.5) * 0.08 -
           mark * 0.25 -
           grime -
-          crack * 0.2;
+          crack * 0.2 +
+          worn;
         // Slightly warm, the colour of a limestone aggregate.
         out.r = tone * 1.015;
         out.g = tone * 0.995;
@@ -203,13 +281,16 @@ function footwayBake(anisotropy: number): SurfaceBake {
 }
 
 /**
- * The kerb: granite, lighter and cooler than the concrete footway so the kerb
- * line reads as its own edge from the play zoom. Speckled, because that is
- * what granite looks like, and jointed about every metre along the run.
+ * The kerb: precast concrete, smooth, a shade lighter and cooler than the
+ * footway so the kerb line reads as its own edge, jointed every metre.
+ *
+ * It was speckled granite, nearly white, with a hard pale seam at every
+ * third of a tile - which from the play zoom read as a tiling seam, not a
+ * joint, and the whole kerb as a chalk line.
  */
 function kerbBake(anisotropy: number): SurfaceBake {
   const grain = makeNoise(0x4aa9);
-  const flake = makeNoise(0x9131);
+  const cloud = makeNoise(0x9131);
   const size = 256;
   const unit = size / 3;
   return bakeSurface(
@@ -217,24 +298,22 @@ function kerbBake(anisotropy: number): SurfaceBake {
     {
       size,
       worldSize: KERB_TILE,
-      relief: 2.6,
+      relief: 0.9,
       shade: (x, y, out) => {
         const u = x / size;
         const v = y / size;
-        const speck = fbm(grain, u * 72, v * 72, 72, 3);
-        const crystals = fbm(flake, u * 150, v * 150, 150, 1);
-        const dark = crystals > 0.68 ? 0.14 : 0;
-        const light = crystals < 0.24 ? 0.06 : 0;
-        // Units jointed every third of a tile across the run; soft, not a line.
+        const fine = fbm(grain, u * 60, v * 60, 60, 2);
+        const mottle = fbm(cloud, u * 6, v * 6, 6, 3);
+        // A joint between units: a soft narrow groove, darker, never paler.
         const j = Math.min(x % unit, unit - (x % unit));
-        const joint = j < 2.5 ? 1 - j / 2.5 : 0;
-        const stone = cellHash(Math.floor(x / unit), 0, 0x77aa);
-        const tone = 0.83 + (stone - 0.5) * 0.06 + (speck - 0.5) * 0.06 - dark + light - joint * 0.24;
-        out.r = tone * 0.985;
+        const joint = j < 1.6 ? 1 - j / 1.6 : 0;
+        const unitTone = cellHash(Math.floor(x / unit), 0, 0x77aa);
+        const tone = 0.6 + (unitTone - 0.5) * 0.04 + (fine - 0.5) * 0.025 + (mottle - 0.5) * 0.05 - joint * 0.14;
+        out.r = tone * 0.99;
         out.g = tone * 0.99;
-        out.b = tone * 1.0;
-        out.h = joint > 0 ? 0.4 * (1 - joint) : 0.6 + speck * 0.3 + light;
-        out.rough = 0.8 - light * 0.8;
+        out.b = tone * 0.985;
+        out.h = 0.6 + fine * 0.1 - joint * 0.3;
+        out.rough = 0.86 - fine * 0.04;
       },
     },
     anisotropy,
@@ -250,7 +329,7 @@ function vergeBake(anisotropy: number): SurfaceBake {
     {
       size,
       worldSize: VERGE_TILE,
-      relief: 1.6,
+      relief: 1.2,
       shade: (x, y, out) => {
         const u = x / size;
         const v = y / size;
@@ -263,9 +342,12 @@ function vergeBake(anisotropy: number): SurfaceBake {
         // The tone is the terrain grass's (`render/terrain.ts`), a little
         // fresher because a verge is mown. It used to be half as bright again,
         // and every road ran between two stripes of lawn-green paint.
-        out.r = 0.16 + fine * 0.05 + dry * 0.3;
-        out.g = 0.26 + fine * 0.07 + clump * 0.08 + dry * 0.2;
-        out.b = 0.09 + fine * 0.03 + dry * 0.08;
+        // Now the SAME recipe as the terrain grass, so a verge and the lawn
+        // beside it meet without a seam. Mown or not, it is one turf; a
+        // lighter, greener verge drew a hard stripe along every footway.
+        out.r = 0.13 + fine * 0.06 + dry * 0.28 + clump * 0.04;
+        out.g = 0.205 + fine * 0.08 + clump * 0.09 + dry * 0.18;
+        out.b = 0.078 + fine * 0.04 + dry * 0.08;
         out.h = fine * 0.5 + clump * 0.5;
         out.rough = 0.98;
       },
@@ -369,8 +451,10 @@ export function createMaterials(anisotropy: number): SceneMaterials {
   // The close-zoom layer. `macroBlur` is how many mip levels softer the macro
   // map is read once the detail is fully in - enough to melt the magnified
   // noise cells, not enough to lose the slab joints.
-  applyDetail(asphalt, { kind: 'asphalt', macroTile: ASPHALT_TILE, albedo: 0.9, normal: 1.1, macroBlur: 1.6 }, anisotropy);
-  applyDetail(asphaltRaised, { kind: 'asphalt', macroTile: ASPHALT_TILE, albedo: 0.9, normal: 1.1, macroBlur: 1.6 }, anisotropy);
+  applyDetail(asphalt, { kind: 'asphalt', macroTile: ASPHALT_TILE, albedo: 0.6, normal: 0.65, macroBlur: 1.6 }, anisotropy);
+  applyDetail(asphaltRaised, { kind: 'asphalt', macroTile: ASPHALT_TILE, albedo: 0.6, normal: 0.65, macroBlur: 1.6 }, anisotropy);
+  applyRoadSpace(asphalt, ASPHALT_TILE);
+  applyRoadSpace(asphaltRaised, ASPHALT_TILE);
   applyDetail(footwayMaterial, { kind: 'concrete', macroTile: FOOTWAY_TILE, albedo: 0.7, normal: 0.8, macroBlur: 0.6 }, anisotropy);
   applyDetail(kerbMaterial, { kind: 'concrete', macroTile: KERB_TILE, albedo: 0.55, normal: 0.7, macroBlur: 0.8 }, anisotropy);
   applyDetail(vergeMaterial, { kind: 'grass', macroTile: VERGE_TILE, albedo: 1, normal: 1.2, macroBlur: 2 }, anisotropy);

@@ -142,16 +142,20 @@ function bake(kind: DetailKind): { albedo: Float32Array; tint: Float32Array[]; h
     for (let i = 0; i < n; i++) {
       const x = i % SIZE;
       const y = (i / SIZE) | 0;
-      albedo[i] = 0.62 + fbm(binder, (x / SIZE) * 64, (y / SIZE) * 64, 64, 2) * 0.16;
+      albedo[i] = 0.8 + fbm(binder, (x / SIZE) * 64, (y / SIZE) * 64, 64, 2) * 0.1;
       height[i] = 0.05;
     }
     const stones = new Float32Array(n);
     const stoneTone = new Float32Array(n);
-    for (let k = 0; k < 5200; k++) {
+    // A FINE, worn surfacing course: stones mostly 2 to 8 mm, their tones
+    // close to the binder's once traffic has dulled them, pale quartz rare.
+    // The old spread (tones 0.85 to 2.15 against a binder of 0.62) read as
+    // loose gravel at close zoom.
+    for (let k = 0; k < 7800; k++) {
       const x = rng.float() * SIZE;
       const y = rng.float() * SIZE;
-      const r = 1.2 + rng.float() ** 2.2 * 5.2;
-      const tone = rng.float() < 0.08 ? 1.75 + rng.float() * 0.4 : 0.85 + rng.float() * 0.75;
+      const r = 1.0 + rng.float() ** 2.4 * 3.4;
+      const tone = rng.float() < 0.03 ? 1.3 + rng.float() * 0.15 : 0.92 + rng.float() * 0.26;
       const rx = r * (0.8 + rng.float() * 0.4);
       const ry = r * (0.7 + rng.float() * 0.3);
       const angle = rng.float() * Math.PI;
