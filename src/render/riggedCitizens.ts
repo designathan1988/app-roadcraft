@@ -12,6 +12,7 @@ import { m } from '@world/units';
 import { CITIZEN_MODELS, type DressStyle, wardrobeOf } from './citizenCatalog';
 import { NO_HELMET, RIDER_CLIPS, helmetShape, type RiderClip, type RiderClipKey } from './riderPoses';
 import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
+import { type Gradient, shearMatrix } from './groundShear';
 import {
   WALK_ADVANCE, clipTransferFor, loadRocketboxLibrary, neutralWalkFor, strideShare, walkDuration, walkSource,
   type LibraryClip, type LibraryClipName, type RocketboxLibrary, type WalkAmplitude, type WalkSex,
@@ -528,7 +529,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   /** Writes one citizen: blended bone palette plus instance transform. */
   function emit(batch: CitizenBatch, clips: readonly ClipFrames[], phases: readonly number[],
     weights: readonly number[], x: number, height: number, y: number, heading: number, scale: number,
-    lean = 0): void {
+    lean = 0, ground: Gradient | null = null): void {
     const offset = batch.count * batch.width;
     batch.pixels.fill(0, offset, offset + batch.width);
     let total = 0;
@@ -551,6 +552,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     transform.rotation.set(0, heading + Math.PI / 2, -lean, 'YXZ');
     transform.scale.set(scale, scale, scale);
     transform.updateMatrix();
+    if (ground) shearMatrix(transform.matrix, ground, x, -y);
     for (let i = 0; i < batch.meshes.length; i++) {
       matrix.multiplyMatrices(transform.matrix, batch.local[i]!);
       batch.meshes[i]!.setMatrixAt(batch.count, matrix);
@@ -594,7 +596,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
      * the ground the drawn body covers, the walk start and stop, turns stepped
      * round by the angle turned, and the stands, talk, phone and bench.
      */
-    draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number) {
+    /** `ground`: the footway's gradient under the walker, so both feet stand on it (`groundShear.ts`). */
+    draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number, ground: Gradient | null = null) {
       const hash = pedHash(ped.id);
       const body = bodyFor(ped, hash, false, ped.id, x, y, ped.party.size > 1 ? ped.party.id + 1 : 0, dressFor(ped.party));
       if (!body) return;
@@ -625,7 +628,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         mixPhases.push(play.frame);
         mixWeights.push(play.weight);
       }
-      emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale));
+      emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), 0, ground);
     },
     /**
      * Somebody in or on a vehicle, or stepping between a vehicle and the

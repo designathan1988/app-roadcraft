@@ -2362,6 +2362,23 @@ qualitySelect.onchange = () => {
     if (traffic !== enabled) trafficButton.click();
   },
   setAlignment,
+  /** Replaces the map as loading a file does: document, network and simulation topology. */
+  loadDoc: (data: ReturnType<RoadDoc['toJSON']>) => {
+    history.record(doc);
+    applySnapshot(data);
+  },
+  /**
+   * Centres the play camera on a world point, so the next frame builds what
+   * is there (the crowd and the shadow frustum follow the play view). The
+   * inspection camera then photographs that frame (`scene().inspect`).
+   */
+  lookAt: (x: number, y: number, zoom = camera.zoom) => {
+    camera.x = x;
+    camera.y = y;
+    camera.zoom = zoom;
+    syncViewFromFlatCamera();
+    requestDraw();
+  },
   /** Forces one frame. Used by the browser verification harness. */
   redraw: () => requestDraw(),
   /**

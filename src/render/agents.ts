@@ -33,6 +33,7 @@ import { DT, FLEET_CEILING, PED_CEILING } from '@sim/params';
 import { CITIZEN_MODELS, createRiggedCitizens, type CitizenClipKey } from './riggedCitizens';
 import { kerbTransfer, seatPerson, type KerbStop } from '@sim/vehicles/kerbStops';
 import { FOOTWAY_RISE } from '@world/roadTypes';
+import { groundGradient } from './groundShear';
 import { WheelOdometer, blinkOn, indicatorSide, pathCurvature, steerAngle } from './vehicleSignals';
 import {
   axleStations, buildBusModel, buildTruckModel, buildTwoWheelerModel, buildVehicleModel, seatFitScale, rimGeometry, spokedRimGeometry,
@@ -1320,7 +1321,11 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
             (edge?.kind === 'crossing' ? 0 : FOOTWAY_RISE);
           if (options.pedestrianVisible && !options.pedestrianVisible(pose.p.x, pose.p.y, deck)) continue;
           frameAt(pose.p.x, pose.p.y, pose.angle, deck);
-          pedestrians.draw(ped, pose.p.x, pose.p.y, pose.angle, deck, alpha);
+          // The rise is the same on both sides of the difference, so the
+          // gradient is the road's own under the walker.
+          const ground = groundGradient((gx, gy) => elevationAt(world, gx, gy, edge?.segment), pose.p.x, pose.p.y,
+            deck - (edge?.kind === 'crossing' ? 0 : FOOTWAY_RISE));
+          pedestrians.draw(ped, pose.p.x, pose.p.y, pose.angle, deck, alpha, ground);
           pedCount++;
         }
       }
