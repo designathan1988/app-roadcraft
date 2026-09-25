@@ -109,10 +109,14 @@ export function commitDraft(
   }
 
   doc.replaceWith(work);
-  // ADOPT, do not rebuild. `workNet` was just built from these very segments
-  // and `replaceWith` has made the two documents equal, so a rebuild here
-  // recomputes an answer already in hand — a third of the stall the user feels
-  // when drawing a road on a large map.
+  // `workNet` was last built BEFORE the draft's segments were added
+  // (`commitDraftInPlace` rebuilds after materialising the endpoints, then only
+  // adds segments). Adopting it as it stood handed back a network stamped with
+  // the new revision but without the new road - no ribbon, no trim, no
+  // junction - which only the caller's own later rebuild hid. The fuzzer's
+  // `staleNetwork` check found it on every draw. Rebuilt once here, after the
+  // draft has been accepted, and then adopted.
+  workNet.rebuild();
   net.adopt(workNet);
   return result;
 }

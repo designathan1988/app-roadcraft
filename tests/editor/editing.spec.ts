@@ -86,3 +86,19 @@ describe('terrain authoring', () => {
     expect(copy.terrainStamps.length).toBe(1);
   });
 });
+
+describe('drawing', () => {
+  it('hands back a network that already contains the road it drew', async () => {
+    // Found by the fuzzer (`staleNetwork`): commitDraft adopted a network built
+    // before the draft's segments were added, stamped with the new revision.
+    const { commitDraft } = await import('@editor/commit');
+    const doc = new RoadDoc();
+    const net = new Network(doc);
+    net.rebuild();
+    const result = commitDraft(doc, net, { kind: 'free', at: { x: -200, y: 0 } },
+      { kind: 'free', at: { x: 200, y: 0 } }, 2);
+    expect(result.committed).toBe(true);
+    expect(net.revision).toBe(doc.revision);
+    expect([...net.ribbons.keys()].sort()).toEqual([...doc.segments.keys()].sort());
+  });
+});
