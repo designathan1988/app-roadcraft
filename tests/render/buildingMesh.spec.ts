@@ -70,6 +70,23 @@ describe('building shell', () => {
     }
   });
 
+  it('winds reliefs and every roof shape towards their normals', () => {
+    for (const roof of ['gable', 'hip', 'shed', 'sawtooth'] as const) {
+      for (const turn of [{}, { ridge: 'y' as const }, { ridge: 'x' as const, pitch: 50 }, { fall: 1 as const }, { fall: 2 as const }, { fall: 3 as const }]) {
+        const b = { ...generateBody('residential', 30, 22.5, 3), id: asBuildingId(1), x: 0, y: 0, rotation: 0.4 } as Building;
+        const v = b.volumes[0]!;
+        Object.assign(v, { roof, ...turn });
+        v.reliefs = [
+          { side: 0, bay0: 1, bay1: 2, storey0: 1, storey1: 2, depth: 2 },
+          { side: 2, bay0: 0, bay1: 1, storey0: 0, storey1: 1, depth: -3 },
+        ];
+        const chunk = emitChunk(b, slope);
+        expect(wrongWinding(chunk), `${roof} ${JSON.stringify(turn)}`).toBe(0);
+        expect(positions(chunk).every(Number.isFinite)).toBe(true);
+      }
+    }
+  });
+
   it('sets a flight into the building rather than across the footway it backs onto', () => {
     // A house whose front (y = 100, facing -y) is on the back of a footway,
     // on land a little higher than the footway.

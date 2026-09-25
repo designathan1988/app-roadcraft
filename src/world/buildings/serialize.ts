@@ -4,6 +4,7 @@ import {
   type Building,
   type Core,
   type Facade,
+  type Relief,
   type Side,
   type Space,
   type Storey,
@@ -12,7 +13,11 @@ import {
   CORE_KINDS,
   DEFAULT_MODULE,
   MAX_MODULE,
+  MAX_PITCH,
+  MAX_PROJECTION,
+  MAX_RECESS,
   MAX_SIZE,
+  MIN_PITCH,
   MAX_STOREYS,
   MAX_STOREY_HEIGHT,
   MIN_MODULE,
@@ -23,6 +28,7 @@ import {
   isBayComponent,
   isBuildingUse,
   isRoofKind,
+  isSide,
 } from './types';
 import { DEFAULT_GROUND_HEIGHT, DEFAULT_STOREY_HEIGHT } from './blueprints';
 import { MIN_SIZE } from './geometry';
@@ -125,7 +131,31 @@ function migrateVolume(raw: unknown, scale: Scale): Volume | null {
   };
   if (materials) volume.materials = materials;
   else delete volume.materials;
+  const reliefs = Array.isArray(raw.reliefs) ? raw.reliefs.map(migrateRelief).filter((r): r is Relief => r !== null) : [];
+  if (reliefs.length > 0) volume.reliefs = reliefs;
+  else delete volume.reliefs;
+  if (finite(raw.pitch)) volume.pitch = clamp(raw.pitch, MIN_PITCH, MAX_PITCH);
+  else delete volume.pitch;
+  if (raw.ridge === 'x' || raw.ridge === 'y') volume.ridge = raw.ridge;
+  else delete volume.ridge;
+  if (isSide(raw.fall)) volume.fall = raw.fall;
+  else delete volume.fall;
   return volume;
+}
+
+/** Reliefs came with schema 2: their depth is always in world units. */
+function migrateRelief(raw: unknown): Relief | null {
+  if (!isRecord(raw) || !isSide(raw.side) || !finite(raw.depth) || raw.depth === 0) return null;
+  const bay0 = Math.max(0, int(raw.bay0, 0));
+  const storey0 = Math.max(0, int(raw.storey0, 0));
+  return {
+    side: raw.side,
+    bay0,
+    bay1: Math.max(bay0, int(raw.bay1, bay0)),
+    storey0,
+    storey1: Math.max(storey0, int(raw.storey1, storey0)),
+    depth: clamp(raw.depth, -MAX_RECESS, MAX_PROJECTION),
+  };
 }
 
 function migrateCore(raw: unknown, scale: Scale): Core | null {

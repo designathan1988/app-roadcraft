@@ -43,6 +43,9 @@ Building                      src/world/buildings/types.ts
  │   ├─ x, y, w, d            a rectangle of the local frame, world units, any size
  │   ├─ base                  the level this volume starts on (0 = the ground)
  │   ├─ roof                  flat | terrace | gable | hip | shed | sawtooth
+ │   ├─ pitch?, ridge?, fall?  the roof's slope (degrees) and which way it runs
+ │   ├─ reliefs?: Relief[]     regions of a face pushed in or out (see below)
+ │   ├─ materials?            its walls and roof (see Materials)
  │   └─ storeys: Storey[]     bottom to top; storey k occupies level base + k
  │       ├─ use?              overrides the building's use (mixed use)
  │       ├─ facade            { fill, sides?, bays? } - see below
@@ -111,6 +114,39 @@ bay keys are re-indexed, so an override stays on the bay it was set on.
 A bay is only drawn where it is an **outside** wall: where another volume
 stands against it on the same level, the two share a wall and no facade is
 built there (see *Free dimensions* above).
+
+### Reliefs: pushing faces in and out
+
+A `Relief` is a rectangle of whole bays and storeys of one face -
+`{ side, bay0, bay1, storey0, storey1, depth }` - moved `depth` along the
+face's outward normal: negative is a **recess** (a loggia, a porch, an inset
+panel), positive a **projection** (a bay window, a raised panel, a
+pilaster), from `-MAX_RECESS` to `MAX_PROJECTION`. It is stored in bays and
+storeys, so it follows the facade when the volume is resized.
+
+* the bays inside it are drawn on the pushed plane (`FacadeBay.push`), and
+  `emitRelief` adds its two cheeks and its head and sill (cap and soffit of
+  a projection, ceiling and floor of a recess); a projection that starts on
+  the ground stands on the plinth;
+* a projection from the first storey of a ground volume is footprint for the
+  road and neighbour tests (`groundProjections`); a recess must leave at
+  least a metre of the volume behind it;
+* `opSetRelief` cuts the new region out of any relief it overlaps
+  (`cutRelief`), so recessing one bay of a bay window keeps the rest of it;
+  depth 0 flattens the region.
+
+In the tool, clicking a facade picks a bay, **Shift+click** another bay of the
+same face widens the pick to the rectangle between them, and the **yellow
+double arrow** on the pick pushes and pulls it (continuous, snapped to
+`RELIEF_STEP`); the palette's Face section has the depth slider and one-click
+recess, projection, raised panel, inset and flush.
+
+### Roof shape
+
+`pitch` (degrees, 5-60; default by kind), `ridge` ('x' or 'y': the direction
+of a gable or hip ridge; default along the longer side) and `fall` (the side
+a shed roof falls towards; default the front). The palette shows the pitch
+slider and "turn ridge" / "turn slope" for the roofs they apply to.
 
 ### Materials
 

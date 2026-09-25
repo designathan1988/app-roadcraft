@@ -86,6 +86,23 @@ export interface Storey {
   spaces?: Space[];
 }
 
+/**
+ * A region of one face pushed in or out: whole bays `bay0..bay1` of `side`,
+ * on storeys `storey0..storey1` of the volume, moved `depth` world units
+ * along the face's outward normal - negative is a RECESS (a loggia, an inset
+ * panel, a porch), positive a PROJECTION (a bay window, a raised panel, a
+ * pilaster). Stored in bays and storeys, so it follows the facade when the
+ * volume is resized.
+ */
+export interface Relief {
+  side: Side;
+  bay0: number;
+  bay1: number;
+  storey0: number;
+  storey1: number;
+  depth: number;
+}
+
 /** A rectangular block, standing on level `base`: a rectangle of the local frame, world units. */
 export interface Volume {
   id: number;
@@ -99,6 +116,17 @@ export interface Volume {
   storeys: Storey[];
   /** This volume's own walls and roof, over the building's (see `materials.ts`). */
   materials?: VolumeMaterials;
+  /** Faces pushed in or out (see `Relief`). */
+  reliefs?: Relief[];
+  /** Roof pitch in degrees, for pitched roofs; absent = the roof kind's default. */
+  pitch?: number;
+  /**
+   * Which way a pitched roof runs. Gable and hip: the ridge along the local x
+   * axis ('x') or y ('y'); absent = along the longer side. Shed: the side it
+   * falls towards (absent = the front).
+   */
+  ridge?: 'x' | 'y';
+  fall?: Side;
 }
 
 /**
@@ -156,6 +184,11 @@ export const MAX_STOREYS = 60;
 /** Widest a volume may be on either axis, world units. */
 export const MAX_SIZE = m(160);
 export const MAX_VOLUMES = 24;
+/** Deepest a recess may go into a volume, and furthest a projection may stand out. */
+export const MAX_RECESS = m(4);
+export const MAX_PROJECTION = m(2.4);
+export const MIN_PITCH = 5;
+export const MAX_PITCH = 60;
 export const PALETTE_COUNT = 8;
 
 export const isBuildingUse = (v: unknown): v is BuildingUse =>

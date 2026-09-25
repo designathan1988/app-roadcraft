@@ -5,12 +5,25 @@ import type { RoadDoc } from '../doc';
 import type { Network } from '../network';
 import { Level, halfWidth } from '../roadTypes';
 import { MAX_PLINTH, type GroundAt, sampleFootprint } from './foundation';
-import { MIN_SIZE, buildingBounds, clashes, footprintRects, groundVolumes, isSupported } from './geometry';
+import {
+  MIN_SIZE,
+  buildingBounds,
+  clashes,
+  footprintRects,
+  groundProjections,
+  groundVolumes,
+  isSupported,
+  sideLength,
+} from './geometry';
 import {
   type Building,
   type BuildingId,
   MAX_MODULE,
+  MAX_PITCH,
+  MAX_PROJECTION,
+  MAX_RECESS,
   MAX_SIZE,
+  MIN_PITCH,
   MAX_STOREYS,
   MAX_STOREY_HEIGHT,
   MAX_VOLUMES,
@@ -56,6 +69,13 @@ export function structuralProblem(b: Building): BuildingProblem | null {
     if (v.w < MIN_SIZE - 1e-6 || v.d < MIN_SIZE - 1e-6 || v.w > MAX_SIZE + 1e-6 || v.d > MAX_SIZE + 1e-6) return 'size';
     if (!Number.isInteger(v.base) || v.base < 0) return 'size';
     if (v.storeys.length < 1 || v.base + v.storeys.length > MAX_STOREYS) return 'size';
+    if (v.pitch !== undefined && !(v.pitch >= MIN_PITCH && v.pitch <= MAX_PITCH)) return 'size';
+    for (const r of v.reliefs ?? []) {
+      if (!Number.isFinite(r.depth) || r.depth > MAX_PROJECTION + 1e-6 || r.depth < -MAX_RECESS - 1e-6) return 'size';
+      // A recess leaves at least a metre of the volume behind it.
+      const across = sideLength(v, r.side === 0 || r.side === 2 ? 1 : 0);
+      if (r.depth < 0 && -r.depth > across - MIN_SIZE / 2) return 'size';
+    }
   }
   if (clashes(b).length > 0) return 'overlap';
   if (groundVolumes(b).length === 0) return 'footprint';
@@ -75,14 +95,14 @@ export function validateBuilding(ctx: SiteContext, b: Building, ignore?: Buildin
   const limit = MAP_HALF - BUILDING_MAP_MARGIN;
   if (box.minX < -limit || box.minY < -limit || box.maxX > limit || box.maxY > limit) return 'bounds';
 
-  const rects = footprintRects(b, -TOUCH);
+  const rects = [...footprintRects(b, -TOUCH), ...groundProjections(b, -TOUCH)];
   if (ctx.net && rects.some((rect) => touchesRoad(ctx.net as Network, rect))) return 'road';
 
   for (const other of ctx.doc.buildings.all()) {
     if (other.id === b.id || other.id === ignore) continue;
     const ob = buildingBounds(other);
     if (ob.minX > box.maxX || ob.maxX < box.minX || ob.minY > box.maxY || ob.maxY < box.minY) continue;
-    const others = footprintRects(other);
+    const others = [...footprintRects(other), ...groundProjections(other)];
     for (const a of rects) for (const c of others) if (convexOverlap(a, c)) return 'building';
   }
 

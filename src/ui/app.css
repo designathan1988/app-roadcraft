@@ -695,6 +695,9 @@ body { user-select: none; -webkit-user-select: none; }
 .building-palette.editing .building-preset span:not(.remove) { display: none; }
 .building-palette.editing #buildingPlace > .building-label { display: none; }
 #buildingRoofs svg { width: 22px; height: 22px; }
+.building-face[hidden], .building-roof-shape[hidden], .building-note[hidden] { display: none; }
+.building-roof-shape .terrain-control { grid-template-columns: 62px 1fr 34px; margin-top: 7px; }
+.building-face .terrain-control { grid-template-columns: 62px 1fr 34px; margin-top: 7px; }
 .building-material-scopes button { font-size: 9.5px; padding: 6px 2px; }
 .building-finishes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 6px; }
 .building-swatches { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }

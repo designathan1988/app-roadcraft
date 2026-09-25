@@ -3,6 +3,7 @@ import { m } from '../units';
 import {
   type BayComponent,
   type Building,
+  type Relief,
   type Side,
   type Volume,
   SIDES,
@@ -263,6 +264,61 @@ export function exposedParts(spans: readonly (readonly [number, number])[], a0: 
   return out;
 }
 
+// ------------------------------------------------------------------ reliefs
+
+/** The relief a bay of a storey is in, if any (the last one listed wins). */
+export function reliefAt(v: Volume, side: Side, index: number, storey: number): Relief | null {
+  const list = v.reliefs;
+  if (!list) return null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const r = list[i] as Relief;
+    if (r.side === side && index >= r.bay0 && index <= r.bay1 && storey >= r.storey0 && storey <= r.storey1) return r;
+  }
+  return null;
+}
+
+/**
+ * The plan rectangle a relief's region occupies in front of its face, local
+ * frame, world units: [x0, y0, x1, y1]. Only a projection has one.
+ */
+export function projectionRect(b: Building, v: Volume, r: Relief): [number, number, number, number] | null {
+  if (r.depth <= 0) return null;
+  const w = bayWidth(b, v, r.side);
+  const count = baysOn(b, v, r.side);
+  const a0 = Math.max(0, r.bay0) * w;
+  const a1 = (Math.min(count - 1, r.bay1) + 1) * w;
+  switch (r.side) {
+    case 0: return [v.x + a0, v.y - r.depth, v.x + a1, v.y];
+    case 2: return [v.x + a0, v.y + v.d, v.x + a1, v.y + v.d + r.depth];
+    case 1: return [v.x + v.w, v.y + a0, v.x + v.w + r.depth, v.y + a1];
+    default: return [v.x - r.depth, v.y + a0, v.x, v.y + a1];
+  }
+}
+
+/**
+ * World rings of the projections that stand on the ground (from the first
+ * storey of a ground volume): part of the footprint for the road and
+ * neighbour tests, like the volumes themselves.
+ */
+export function groundProjections(b: Building, grow = 0): Vec2[][] {
+  const out: Vec2[][] = [];
+  for (const v of groundVolumes(b)) {
+    for (const r of v.reliefs ?? []) {
+      if (r.storey0 !== 0) continue;
+      const rect = projectionRect(b, v, r);
+      if (!rect) continue;
+      const [x0, y0, x1, y1] = rect;
+      out.push([
+        localToWorld(b, x0 - grow, y0 - grow),
+        localToWorld(b, x1 + grow, y0 - grow),
+        localToWorld(b, x1 + grow, y1 + grow),
+        localToWorld(b, x0 - grow, y1 + grow),
+      ]);
+    }
+  }
+  return out;
+}
+
 /** Local centre of bay `index` on the facade line of `side`. */
 export function bayCentreLocal(b: Building, v: Volume, side: Side, index: number): Vec2 {
   const s = sideStart(v, side);
@@ -289,6 +345,8 @@ export interface FacadeBay {
   readonly z: number;
   /** Where the piece starts along the side, local units from the side's start. */
   readonly start: number;
+  /** How far the bay's plane stands out from the side (negative: set back), by a relief. */
+  readonly push: number;
   readonly width: number;
   readonly height: number;
 }
@@ -323,9 +381,10 @@ export function facadeBays(b: Building): FacadeBay[] {
           const parts = spans.length === 0 ? [[a0, a1] as [number, number]] : exposedParts(spans, a0, a1);
           const first = parts[0];
           const whole = parts.length === 1 && first !== undefined && Math.abs(first[0] - a0) < EPS && Math.abs(first[1] - a1) < EPS;
+          const push = reliefAt(v, side, index, k)?.depth ?? 0;
           for (const [p0, p1] of parts) {
             const mid = (p0 + p1) / 2;
-            const world = localToWorld(b, s.x + s.tx * mid, s.y + s.ty * mid);
+            const world = localToWorld(b, s.x + s.tx * mid + n.x * push, s.y + s.ty * mid + n.y * push);
             out.push({
               volume: v.id,
               storey: k,
@@ -339,6 +398,7 @@ export function facadeBays(b: Building): FacadeBay[] {
               ny: normal.y,
               z,
               start: p0,
+              push,
               width: p1 - p0,
               height,
             });
@@ -352,24 +412,37 @@ export function facadeBays(b: Building): FacadeBay[] {
 
 // ------------------------------------------------------------------ roofs
 
-/** Roof pitches, as rise over run. */
-export const GABLE_PITCH = Math.tan((30 * Math.PI) / 180);
-export const SHED_PITCH = Math.tan((12 * Math.PI) / 180);
-export const SAWTOOTH_PITCH = Math.tan((35 * Math.PI) / 180);
+/** Default roof pitches, degrees. */
+export const DEFAULT_PITCH: Readonly<Record<string, number>> = { gable: 30, hip: 30, shed: 12, sawtooth: 35 };
+
+/** A volume's roof pitch as rise over run. */
+export function roofSlope(v: Volume): number {
+  const degrees = v.pitch ?? DEFAULT_PITCH[v.roof] ?? 30;
+  return Math.tan((degrees * Math.PI) / 180);
+}
+
+/** Whether a gable or hip ridge runs along the local x axis: as set, else along the longer side. */
+export const ridgeAlongX = (v: Volume): boolean => (v.ridge ? v.ridge === 'x' : v.w >= v.d);
+
+/** The side a shed roof falls towards. */
+export const shedFall = (v: Volume): Side => v.fall ?? 0;
 
 /** The run of one sawtooth: two modules, or the whole depth if less. */
 export const sawtoothRun = (b: Building, v: Volume): number => Math.min(2 * b.module, v.d);
 
 /** How far a volume's roof rises above its top floor, world units. */
 export function roofRise(b: Building, v: Volume): number {
+  const slope = roofSlope(v);
   switch (v.roof) {
     case 'gable':
     case 'hip':
-      return Math.min(v.w, v.d) * 0.5 * GABLE_PITCH;
-    case 'shed':
-      return v.d * SHED_PITCH;
+      return (ridgeAlongX(v) ? v.d : v.w) * 0.5 * slope;
+    case 'shed': {
+      const fall = shedFall(v);
+      return (fall === 0 || fall === 2 ? v.d : v.w) * slope;
+    }
     case 'sawtooth':
-      return sawtoothRun(b, v) * 0.5 * SAWTOOTH_PITCH;
+      return sawtoothRun(b, v) * 0.5 * slope;
     default:
       return 0;
   }

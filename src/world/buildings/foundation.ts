@@ -65,6 +65,8 @@ export interface Entrance {
   readonly nx: number;
   readonly ny: number;
   readonly width: number;
+  /** How far its bay stands out from (negative: is set back into) its side, by a relief. */
+  readonly push: number;
   /** Absolute height of the ground at the foot of the steps. */
   readonly ground: number;
   /** Number of steps from the ground up to the floor; 0 = level access. */
@@ -231,6 +233,7 @@ export function foundationOf(
       nx: bay.nx,
       ny: bay.ny,
       width: bay.width,
+      push: bay.push,
       ground,
       steps,
       recess,

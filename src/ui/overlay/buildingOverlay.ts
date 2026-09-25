@@ -2,6 +2,7 @@ import type { Vec2 } from '@core/vec2';
 import {
   bayCentreLocal,
   bayWidth,
+  reliefAt,
   buildingHeight,
   footprintCentre,
   levelElevation,
@@ -29,6 +30,8 @@ export interface BuildingOverlayInput {
     readonly volume: number;
     readonly floor: number;
     readonly bay: { readonly storey: number; readonly side: Side; readonly index: number } | null;
+    /** The picked region of that face (bays and storeys, inclusive); defaults to the one bay. */
+    readonly region?: { readonly side: Side; readonly bay0: number; readonly bay1: number; readonly storey0: number; readonly storey1: number } | null;
   } | null;
   readonly handles: readonly Handle[];
   readonly label: { readonly text: string; readonly valid: boolean; readonly building: Building; readonly floor: number } | null;
@@ -82,14 +85,17 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
       ctx.stroke();
       // The picked bay, as a filled quad on its facade.
       if (sel.bay) {
-        const level = v.base + sel.bay.storey;
-        const centre = bayCentreLocal(b, v, sel.bay.side, sel.bay.index);
-        const n = SIDE_NORMAL[sel.bay.side];
+        const region = sel.region ?? { side: sel.bay.side, bay0: sel.bay.index, bay1: sel.bay.index, storey0: sel.bay.storey, storey1: sel.bay.storey };
+        const first = bayCentreLocal(b, v, region.side, region.bay0);
+        const last = bayCentreLocal(b, v, region.side, region.bay1);
+        const centre = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
+        const n = SIDE_NORMAL[region.side];
         const along = { x: Math.abs(n.y), y: Math.abs(n.x) };
-        const half = bayWidth(b, v, sel.bay.side) / 2;
-        const za = sel.floor + levelElevation(b, level);
-        const zb = za + levelHeight(b, level);
-        const out = 0.15;
+        const half = ((region.bay1 - region.bay0 + 1) * bayWidth(b, v, region.side)) / 2;
+        const za = sel.floor + levelElevation(b, v.base + region.storey0);
+        const zb = sel.floor + levelElevation(b, v.base + region.storey1) + levelHeight(b, v.base + region.storey1);
+        // On the region's own plane, wherever a relief has pushed it.
+        const out = 0.15 + (reliefAt(v, region.side, region.bay0, region.storey0)?.depth ?? 0);
         const at = (a: number): Vec2 =>
           localToWorld(b, centre.x + along.x * a + n.x * out, centre.y + along.y * a + n.y * out);
         const p0 = at(-half);
@@ -132,7 +138,11 @@ const GLYPH: Readonly<Record<Handle['kind'], string>> = {
   side: '',
   move: '✥',
   rotate: '⟳',
+  relief: '',
 };
+
+/** The push-pull handle of a face region, in the second accent. */
+const RELIEF = '#ffc864';
 
 function drawHandle(ctx: CanvasRenderingContext2D, h: Handle, project: (x: number, y: number, z: number) => Vec2): void {
   const p = project(h.x, h.y, h.z);
@@ -140,9 +150,26 @@ function drawHandle(ctx: CanvasRenderingContext2D, h: Handle, project: (x: numbe
   ctx.strokeStyle = SELECTION;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, h.kind === 'side' ? 8 : 11, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, h.kind === 'side' || h.kind === 'relief' ? 8 : 11, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
+  if (h.kind === 'relief') {
+    // In and out: a double arrow along the face's normal, in the second accent.
+    const q = project(h.x + h.dx * 4, h.y + h.dy * 4, h.z);
+    const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const ux = (q.x - p.x) / len;
+    const uy = (q.y - p.y) / len;
+    ctx.fillStyle = RELIEF;
+    for (const sign of [1, -1]) {
+      ctx.beginPath();
+      ctx.moveTo(p.x + ux * 6 * sign, p.y + uy * 6 * sign);
+      ctx.lineTo(p.x + (ux * 1 - uy * 4) * sign, p.y + (uy * 1 + ux * 4) * sign);
+      ctx.lineTo(p.x + (ux * 1 + uy * 4) * sign, p.y + (uy * 1 - ux * 4) * sign);
+      ctx.closePath();
+      ctx.fill();
+    }
+    return;
+  }
   if (h.kind === 'side') {
     // An arrow along the side's outward normal, projected.
     const q = project(h.x + h.dx * 4, h.y + h.dy * 4, h.z);

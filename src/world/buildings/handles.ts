@@ -1,11 +1,14 @@
 import { m } from '../units';
 import {
   SIDE_NORMAL,
+  bayWidth,
   footprintBox,
   levelElevation,
   localDirToWorld,
   localToWorld,
+  reliefAt,
   roofRise,
+  sideStart,
   volumeHeight,
 } from './geometry';
 import { type Building, type Side, SIDES, volumeById } from './types';
@@ -16,7 +19,16 @@ import { type Building, type Side, SIDES, volumeById } from './types';
  * Pure geometry, shared by the tool (which hit-tests them) and the overlay
  * (which draws them), so the two can never disagree about where a handle is.
  */
-export type HandleKind = 'storeys' | 'side' | 'move' | 'rotate';
+export type HandleKind = 'storeys' | 'side' | 'move' | 'rotate' | 'relief';
+
+/** A rectangle of bays and storeys of one face (see `editor/buildings.ts`, `FaceRegion`). */
+export interface HandleRegion {
+  readonly side: Side;
+  readonly bay0: number;
+  readonly bay1: number;
+  readonly storey0: number;
+  readonly storey1: number;
+}
 
 export interface Handle {
   readonly kind: HandleKind;
@@ -44,6 +56,7 @@ export function buildingHandles(
   volumeId: number,
   floor: number,
   nearest: (corners: readonly { x: number; y: number }[]) => readonly number[] = () => [0, 1],
+  region: HandleRegion | null = null,
 ): Handle[] {
   const v = volumeById(b, volumeId) ?? b.volumes[0];
   if (!v) return [];
@@ -78,5 +91,19 @@ export function buildingHandles(
   const turn = corners[order[1] ?? 1] as { x: number; y: number };
   out.push({ kind: 'move', x: move.x, y: move.y, z: floor, dx: 0, dy: 0 });
   out.push({ kind: 'rotate', x: turn.x, y: turn.y, z: floor, dx: 0, dy: 0 });
+  if (region) {
+    // Push-pull: an arrow standing off the middle of the picked region, at the
+    // depth the region is pushed to now.
+    const n = SIDE_NORMAL[region.side];
+    const s = sideStart(v, region.side);
+    const a = ((region.bay0 + region.bay1 + 1) / 2) * bayWidth(b, v, region.side);
+    const depth = reliefAt(v, region.side, region.bay0, region.storey0)?.depth ?? 0;
+    const off = depth + HANDLE_OUT * 0.7;
+    const p = localToWorld(b, s.x + s.tx * a + n.x * off, s.y + s.ty * a + n.y * off);
+    const d = localDirToWorld(b, n.x, n.y);
+    const z0 = levelElevation(b, v.base + region.storey0);
+    const z1 = levelElevation(b, v.base + region.storey1 + 1);
+    out.push({ kind: 'relief', side: region.side, x: p.x, y: p.y, z: floor + (z0 + z1) / 2, dx: d.x, dy: d.y });
+  }
   return out;
 }

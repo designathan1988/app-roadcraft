@@ -8,7 +8,7 @@ import {
   generateBlock,
 } from '@world/buildings/blueprints';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
-import { MIN_SIZE, footprintBox, levelHeight, localDirToWorld } from '@world/buildings/geometry';
+import { MIN_SIZE, baysOn, footprintBox, levelHeight, localDirToWorld, reliefAt } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
 import { type MaterialSpec, type MaterialTarget, applyMaterial, materialAt } from '@world/buildings/materials';
@@ -40,7 +40,11 @@ import {
   opRotate,
   opSetComponent,
   opSetParameters,
+  opSetRelief,
   opSetRoof,
+  opSetRoofShape,
+  type FaceRegion,
+  type RoofShape,
   opSetStoreys,
   removeVolume,
   replaceBuilding,
@@ -108,6 +112,8 @@ export interface BuildingSelection {
   readonly building: BuildingId;
   readonly volume: number;
   readonly bay: BaySelection | null;
+  /** With Shift, a second bay of the same face: the picked region runs from `bay` to it. */
+  readonly bayEnd?: BaySelection | null;
 }
 
 /** Parameters of the generated block (the sliders); lengths in world units. */
@@ -124,7 +130,8 @@ type Drag =
   | { kind: 'side'; origin: Building; volume: number; side: Side; start: Vec2; z: number; dir: Vec2; wing: boolean }
   | { kind: 'move'; origin: Building; start: Vec2; z: number }
   | { kind: 'rotate'; origin: Building; centre: Vec2; z: number; startAngle: number }
-  | { kind: 'click'; hit: BuildingHit | null; start: Vec2; moved: boolean };
+  | { kind: 'relief'; origin: Building; volume: number; region: FaceRegion; start: Vec2; z: number; dir: Vec2; depth: number }
+  | { kind: 'click'; hit: BuildingHit | null; start: Vec2; moved: boolean; shift: boolean };
 
 const PREVIEW_ID = asBuildingId(-1);
 const DRAG_START_PIXELS = 4;
@@ -206,7 +213,7 @@ export class BuildingTool {
         .map((p, i) => ({ i, y: this.view.project(p.x, p.y, floor).y }))
         .sort((a, b) => b.y - a.y)
         .map((c) => c.i);
-    return buildingHandles(shown, this.selection.volume, floor, nearest);
+    return buildingHandles(shown, this.selection.volume, floor, nearest, this.faceRegion());
   }
 
   /** The tool is put away: no ghost, no gesture, no hover. The selection stays. */
@@ -398,6 +405,51 @@ export class BuildingTool {
     });
   }
 
+  /** The picked rectangle of bays and storeys of one face, or null. */
+  faceRegion(): FaceRegion | null {
+    const s = this.selection;
+    const b = this.selected();
+    const v = b && s ? volumeById(b, s.volume) : undefined;
+    if (!s?.bay || !b || !v) return null;
+    const end = s.bayEnd && s.bayEnd.side === s.bay.side ? s.bayEnd : s.bay;
+    const last = baysOn(b, v, s.bay.side) - 1;
+    const top = v.storeys.length - 1;
+    const clampTo = (x: number, hi: number): number => Math.max(0, Math.min(hi, x));
+    return {
+      side: s.bay.side,
+      bay0: clampTo(Math.min(s.bay.index, end.index), last),
+      bay1: clampTo(Math.max(s.bay.index, end.index), last),
+      storey0: clampTo(Math.min(s.bay.storey, end.storey), top),
+      storey1: clampTo(Math.max(s.bay.storey, end.storey), top),
+    };
+  }
+
+  /** How far the picked region is pushed now (0 when flush or nothing is picked). */
+  reliefDepth(): number {
+    const region = this.faceRegion();
+    const b = this.selected();
+    const v = b && this.selection ? volumeById(b, this.selection.volume) : undefined;
+    return region && v ? reliefAt(v, region.side, region.bay0, region.storey0)?.depth ?? 0 : 0;
+  }
+
+  /** Pushes the picked region out (positive) or in (negative); 0 flattens it. */
+  setRelief(depth: number): void {
+    const region = this.faceRegion();
+    const s = this.selection;
+    if (!region || !s) {
+      this.host.flash('building.relief.pickFace');
+      return;
+    }
+    this.onSelected((draft) => opSetRelief(draft, s.volume, region, depth));
+  }
+
+  /** Changes the selected volume's roof pitch, ridge or fall. */
+  setRoofShape(shape: RoofShape): void {
+    const s = this.selection;
+    if (!s) return;
+    this.onSelected((draft) => opSetRoofShape(draft, s.volume, shape));
+  }
+
   armComponent(component: BayComponent | null): void {
     this.component = component;
     if (component) this.setMode('edit');
@@ -486,7 +538,7 @@ export class BuildingTool {
         return true;
       }
     }
-    this.drag = { kind: 'click', hit: this.pick(screen), start: screen, moved: false };
+    this.drag = { kind: 'click', hit: this.pick(screen), start: screen, moved: false, shift };
     return true;
   }
 
@@ -524,6 +576,22 @@ export class BuildingTool {
       case 'move':
         this.drag = { kind: 'move', origin, start: this.view.planeAt(screen, handle.z), z: handle.z };
         break;
+      case 'relief': {
+        const region = this.faceRegion();
+        if (!region) break;
+        const current = v ? reliefAt(v, region.side, region.bay0, region.storey0)?.depth ?? 0 : 0;
+        this.drag = {
+          kind: 'relief',
+          origin,
+          volume: volumeId,
+          region,
+          start: this.view.planeAt(screen, handle.z),
+          z: handle.z,
+          dir: { x: handle.dx, y: handle.dy },
+          depth: current,
+        };
+        break;
+      }
       case 'rotate': {
         const f = footprintBox(origin);
         const c = localDirToWorld(origin, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
@@ -583,6 +651,13 @@ export class BuildingTool {
         placeAt(draft, snap.anchor, snap.rotation);
         break;
       }
+      case 'relief': {
+        // Push-pull: out along the face's normal is a projection, in a recess.
+        const p = this.view.planeAt(screen, drag.z);
+        const along = (p.x - drag.start.x) * drag.dir.x + (p.y - drag.start.y) * drag.dir.y;
+        opSetRelief(draft, drag.volume, drag.region, drag.depth + along);
+        break;
+      }
       case 'rotate': {
         const p = this.view.planeAt(screen, drag.z);
         let angle = Math.atan2(p.y - drag.centre.y, p.x - drag.centre.x) - drag.startAngle;
@@ -607,7 +682,7 @@ export class BuildingTool {
       return;
     }
     if (drag.kind === 'click') {
-      if (!drag.moved) this.click(drag.hit);
+      if (!drag.moved) this.click(drag.hit, drag.shift);
       return;
     }
     const preview = this.preview;
@@ -625,7 +700,15 @@ export class BuildingTool {
     this.report(result);
   }
 
-  private click(hit: BuildingHit | null): void {
+  private click(hit: BuildingHit | null, shift = false): void {
+    const s = this.selection;
+    // Shift on another bay of the picked face: the region grows to it.
+    if (hit && shift && this.mode === 'edit' && s?.bay && hit.face !== 'top' &&
+      hit.building === s.building && hit.volume === s.volume && hit.face === s.bay.side) {
+      this.selection = { ...s, bayEnd: { storey: hit.storey, side: hit.face, index: hit.index } };
+      this.host.changed();
+      return;
+    }
     if (hit && (this.mode === 'edit' || this.hover)) {
       const bay = hit.face === 'top' ? null : { storey: hit.storey, side: hit.face, index: hit.index };
       this.selection = { building: hit.building, volume: hit.volume, bay };

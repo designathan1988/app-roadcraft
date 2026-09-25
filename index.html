@@ -171,8 +171,28 @@
             <button type="button" data-building-wing="2" data-i18n="building.wing.2">Back</button>
             <button type="button" data-building-wing="3" data-i18n="building.wing.3">Left</button>
           </div>
+          <div class="building-label" data-i18n="building.face">Face</div>
+          <div id="buildingFaceNote" class="building-note" data-i18n="building.relief.pickFace">Click a facade to pick its bays (Shift+click: more)</div>
+          <div id="buildingFace" class="building-face">
+            <div id="buildingFaceSummary" class="building-summary"></div>
+            <label class="terrain-control"><span data-i18n="building.relief.depth">Depth</span> <input id="buildingReliefDepth" type="range" min="-4" max="2.4" value="0" step="0.05" /><output id="buildingReliefDepthValue">0.00</output></label>
+            <div class="building-actions three">
+              <button type="button" data-building-relief="-1.5" data-i18n="building.relief.recess">Recess</button>
+              <button type="button" data-building-relief="0.9" data-i18n="building.relief.project">Project</button>
+              <button type="button" data-building-relief="0.2" data-i18n="building.relief.emboss">Raise</button>
+              <button type="button" data-building-relief="-0.2" data-i18n="building.relief.inset">Inset</button>
+              <button type="button" data-building-relief="0" data-i18n="building.relief.flat">Flush</button>
+            </div>
+          </div>
           <div class="building-label" data-i18n="building.roof">Roof</div>
           <div id="buildingRoofs" class="building-actions three"></div>
+          <div id="buildingRoofShape" class="building-roof-shape">
+            <label class="terrain-control"><span data-i18n="building.pitch">Pitch</span> <input id="buildingPitch" type="range" min="5" max="60" value="30" step="1" /><output id="buildingPitchValue">30°</output></label>
+            <div class="building-actions">
+              <button type="button" data-building-action="ridge" data-i18n="building.ridge">Turn ridge</button>
+              <button type="button" data-building-action="fall" data-i18n="building.fall">Turn slope</button>
+            </div>
+          </div>
           <div class="building-label" data-i18n="building.materials">Materials</div>
           <div class="building-actions four building-material-scopes" role="group" data-i18n-label="building.material.scope" aria-label="Paint">
             <button type="button" data-material-scope="building" data-i18n="building.material.scope.building">Building</button>

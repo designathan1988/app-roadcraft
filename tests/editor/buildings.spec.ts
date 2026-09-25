@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { GRID, MIN_SIZE } from '@world/buildings/geometry';
+import { GRID, MIN_SIZE, groundProjections, reliefAt, ridgeAlongX, roofRise } from '@world/buildings/geometry';
+import { migrateBuilding } from '@world/buildings/serialize';
+import { structuralProblem } from '@world/buildings/validate';
 
 import { DEFAULT_MODULE } from '@world/buildings/types';
 
@@ -20,6 +22,8 @@ import {
   opAddWing,
   opRemoveVolume,
   opResize,
+  opSetRelief,
+  opSetRoofShape,
   opRotate,
   opSetComponent,
   opSetStoreys,
@@ -375,5 +379,55 @@ describe('free dimensions', () => {
     // A wing of any depth, snapped too.
     const wing = volumeById(b, opAddWing(b, 1, 2, 7.4)!)!;
     expect(wing.d).toBeCloseTo(6 * GRID, 9);
+  });
+});
+
+describe('faces and roofs', () => {
+  const house = (): Building => ({ ...generateBody('residential', bays(4), bays(3), 3), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building);
+  const region = { side: 0, bay0: 1, bay1: 2, storey0: 1, storey1: 2 } as const;
+
+  it('pushes a region of a face out and in, replaces what overlaps it, and flattens it again', () => {
+    const b = house();
+    const v = b.volumes[0]!;
+    expect(opSetRelief(b, 1, region, 2.2)).toBe(true);
+    expect(v.reliefs).toEqual([{ ...region, depth: 2.25 }]);
+    const pushed = facadeBays(b).filter((bay) => bay.side === 0 && bay.storey === 1);
+    expect(pushed.filter((bay) => bay.push === 2.25).map((bay) => bay.index)).toEqual([1, 2]);
+    // A recess over part of it: the rest of the projection stays.
+    expect(opSetRelief(b, 1, { ...region, bay0: 2, storey1: 1 }, -3)).toBe(true);
+    const at = (index: number, storey: number): number | undefined => reliefAt(v, 0, index, storey)?.depth;
+    expect([at(1, 1), at(2, 1), at(1, 2), at(2, 2)]).toEqual([2.25, -3, 2.25, 2.25]);
+    // Flattening the whole region clears everything in it.
+    expect(opSetRelief(b, 1, region, 0)).toBe(true);
+    expect(v.reliefs).toBeUndefined();
+  });
+
+  it('refuses a recess that would cut through the volume, and counts a ground projection as footprint', () => {
+    const b = house();
+    // A shallow volume: 4.8 m deep, and a 4 m recess leaves too little behind.
+    b.volumes[0]!.d = 12;
+    opSetRelief(b, 1, region, -10);
+    expect(structuralProblem(b)).toBe('size');
+    const c = house();
+    opSetRelief(c, 1, { ...region, storey0: 0 }, 2);
+    expect(groundProjections(c)).toHaveLength(1);
+    expect(structuralProblem(c)).toBeNull();
+  });
+
+  it('sets a roof pitch, turns a ridge and a fall, and keeps them through a save', () => {
+    const b = house();
+    const v = b.volumes[0]!;
+    v.roof = 'gable';
+    const low = roofRise(b, v);
+    expect(opSetRoofShape(b, 1, { pitch: 50 })).toBe(true);
+    expect(roofRise(b, v)).toBeGreaterThan(low);
+    expect(opSetRoofShape(b, 1, { ridge: ridgeAlongX(v) ? 'y' : 'x' })).toBe(true);
+    expect(opSetRoofShape(b, 1, { fall: 3 })).toBe(true);
+    expect(opSetRoofShape(b, 1, { pitch: 500 })).toBe(true);
+    expect(v.pitch).toBe(60);
+    opSetRelief(b, 1, region, -1.5);
+    const back = migrateBuilding(JSON.parse(JSON.stringify(b)))!.volumes[0]!;
+    expect([back.pitch, back.ridge, back.fall]).toEqual([v.pitch, v.ridge, v.fall]);
+    expect(back.reliefs).toEqual(v.reliefs);
   });
 });

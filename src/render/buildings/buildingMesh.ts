@@ -19,18 +19,20 @@ import {
 } from '@world/buildings/foundation';
 import {
   type FacadeBay,
-  SAWTOOTH_PITCH,
-  SHED_PITCH,
   SIDE_NORMAL,
-  GABLE_PITCH,
   bayWidth,
+  baysOn,
   coveredSpans,
   exposedParts,
   facadeBays,
   levelElevation,
   levelHeight,
+  projectionRect,
+  ridgeAlongX,
   roofRise,
+  roofSlope,
   sawtoothRun,
+  shedFall,
   sideLength,
   sideStart,
   volumeHeight,
@@ -45,7 +47,7 @@ import {
   trimMaterial,
   wallMaterial,
 } from '@world/buildings/materials';
-import { type BayComponent, type Building, type Side, type Volume, SIDES, volumeTop } from '@world/buildings/types';
+import { type BayComponent, type Building, type Relief, type Side, type Volume, SIDES, volumeTop } from '@world/buildings/types';
 import { type BuildingKit, PART_KINDS, type PartKind } from './kit';
 
 /**
@@ -260,11 +262,14 @@ interface BayFace {
   H: number;
 }
 
-/** The frame of a face of `side`, starting `along` units from the side's start. */
-function sideFrame(v: Volume, side: Side, along: number): Pick<BayFace, 'ax' | 'ay' | 'tx' | 'ty' | 'nx' | 'ny'> {
+/**
+ * The frame of a face of `side`, starting `along` units from the side's
+ * start, its plane `push` units out from the side (negative: set back).
+ */
+function sideFrame(v: Volume, side: Side, along: number, push = 0): Pick<BayFace, 'ax' | 'ay' | 'tx' | 'ty' | 'nx' | 'ny'> {
   const s = sideStart(v, side);
   const n = SIDE_NORMAL[side];
-  return { ax: s.x + s.tx * along, ay: s.y + s.ty * along, tx: s.tx, ty: s.ty, nx: n.x, ny: n.y };
+  return { ax: s.x + s.tx * along + n.x * push, ay: s.y + s.ty * along + n.y * push, tx: s.tx, ty: s.ty, nx: n.x, ny: n.y };
 }
 
 // ------------------------------------------------------------------ one building
@@ -378,6 +383,13 @@ function emitBuilding(
       notches.set(x.side, list);
     }
     emitPlinth(e, v, f.bottom, floor, plinth, notches);
+    // A projection standing on the ground stands on the plinth too.
+    for (const r of v.reliefs ?? []) {
+      const rect = r.storey0 === 0 ? projectionRect(b, v, r) : null;
+      if (!rect) continue;
+      const g = PLINTH_GROW;
+      e.box(rect[0] - g, rect[1] - g, rect[2] + g, rect[3] + g, f.bottom, floor, plinth);
+    }
   }
 
   // ---- facades, bay by bay: only outside walls are in `bays`
@@ -386,11 +398,16 @@ function emitBuilding(
   const volumes = new Map(b.volumes.map((v) => [v.id, v]));
   for (const bay of bays) {
     const v = volumes.get(bay.volume) as Volume;
-    const face: BayFace = { ...sideFrame(v, bay.side, bay.start), z0: floor + bay.z, W: bay.width, H: bay.height };
+    const face: BayFace = { ...sideFrame(v, bay.side, bay.start, bay.push), z0: floor + bay.z, W: bay.width, H: bay.height };
     const left = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index - 1}`);
     const right = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index + 1}`);
     const recess = bay.level === 0 ? entrances.get(entranceKey(bay.volume, bay.side, bay.index))?.recess ?? 0 : 0;
     emitBay(e, face, bay, wallOf(v, bay.side), trim, awning, left === 'pillar', right === 'pillar', recess);
+  }
+
+  // ---- reliefs: the cheeks, head and sill of every face region pushed in or out
+  for (const v of b.volumes) {
+    for (const r of v.reliefs ?? []) emitRelief(e, b, v, r, floor, wallOf(v, r.side), trim);
   }
 
   // ---- storey bands and cornices, per volume
@@ -410,7 +427,7 @@ function emitBuilding(
   for (const entrance of f.entrances) {
     if (entrance.steps <= 0) continue;
     const v = volumes.get(entrance.volume) as Volume;
-    const frame = sideFrame(v, entrance.side, entranceStart(entrance, v));
+    const frame = sideFrame(v, entrance.side, entranceStart(entrance, v), entrance.push);
     const face: BayFace = { ...frame, z0: floor, W: entrance.width, H: 1 };
     const opening = entranceOpening(entrance);
     const n = e.N(face.nx, face.ny);
@@ -627,6 +644,35 @@ function emitRecessedFlight(
   }
 }
 
+/**
+ * The frame of a relief: its two cheeks and its head and sill, between the
+ * side's plane and the region's (whose bays the facade loop already drew,
+ * pushed). A projection's head is a cap and its sill a soffit; a recess's are
+ * a ceiling and a floor.
+ */
+function emitRelief(e: Emitter, b: Building, v: Volume, r: Relief, floor: number, wall: Paint, trim: Paint): void {
+  const count = baysOn(b, v, r.side);
+  const top = v.storeys.length - 1;
+  if (r.depth === 0 || r.bay0 > count - 1 || r.storey0 > top) return;
+  const w = bayWidth(b, v, r.side);
+  const a0 = Math.max(0, r.bay0) * w;
+  const a1 = (Math.min(count - 1, r.bay1) + 1) * w;
+  const z0 = floor + levelElevation(b, v.base + Math.max(0, r.storey0));
+  const z1 = floor + levelElevation(b, v.base + Math.min(top, r.storey1) + 1);
+  const s = sideStart(v, r.side);
+  const n = SIDE_NORMAL[r.side];
+  const d = r.depth;
+  const P = (a: number, z: number, out: number): V3 => e.L(s.x + s.tx * a + n.x * out, s.y + s.ty * a + n.y * out, z);
+  const t = e.N(s.tx, s.ty);
+  const into: V3 = [-t[0], -t[1], 0];
+  const out = d > 0;
+  // Cheeks: facing away from the region on a projection, into it on a recess.
+  e.shell.face([P(a0, z0, 0), P(a0, z0, d), P(a0, z1, d), P(a0, z1, 0)], out ? into : t, wall);
+  e.shell.face([P(a1, z0, d), P(a1, z0, 0), P(a1, z1, 0), P(a1, z1, d)], out ? t : into, wall);
+  e.shell.face([P(a0, z1, 0), P(a1, z1, 0), P(a1, z1, d), P(a0, z1, d)], [0, 0, out ? 1 : -1], trim);
+  e.shell.face([P(a0, z0, 0), P(a1, z0, 0), P(a1, z0, d), P(a0, z0, d)], [0, 0, out ? -1 : 1], trim);
+}
+
 /** A horizontal band around a volume at height z (a storey line or a cornice). */
 function band(e: Emitter, v: Volume, z: number, out: number, height: number, c: Paint): void {
   const x0 = v.x - out;
@@ -687,14 +733,14 @@ function emitRoof(
   }
 
   const rise = roofRise(b, v);
-  const alongX = v.w >= v.d;
+  const slope = roofSlope(v);
   if (v.roof === 'gable' || v.roof === 'hip') {
+    const alongX = ridgeAlongX(v);
     // Work in a frame whose "long" axis runs along the ridge.
     const span = alongX ? y1 - y0 : x1 - x0;
-    const pitch = GABLE_PITCH;
-    const eave = z - EAVES * pitch;
+    const eave = z - EAVES * slope;
     const ridge = z + rise;
-    const hip = v.roof === 'hip' ? span / 2 : 0;
+    const hip = v.roof === 'hip' ? Math.min(span / 2, (alongX ? x1 - x0 : y1 - y0) / 2) : 0;
     const Lp = (along: number, across: number, height: number): V3 =>
       alongX ? e.L(along, across, height) : e.L(across, along, height);
     const a0 = alongX ? x0 : y0;
@@ -702,16 +748,16 @@ function emitRoof(
     const c0 = alongX ? y0 : x0;
     const c1 = alongX ? y1 : x1;
     const cm = (c0 + c1) / 2;
-    const nNear = alongX ? e.N(0, -1, 1) : e.N(-1, 0, 1);
-    const nFar = alongX ? e.N(0, 1, 1) : e.N(1, 0, 1);
+    const nNear = alongX ? e.N(0, -slope, 1) : e.N(-slope, 0, 1);
+    const nFar = alongX ? e.N(0, slope, 1) : e.N(slope, 0, 1);
     const o = EAVES;
     const r0 = a0 + hip;
     const r1 = a1 - hip;
     // The two long slopes.
     sh.face([Lp(a0 - o, c0 - o, eave), Lp(a1 + o, c0 - o, eave), Lp(r1, cm, ridge), Lp(r0, cm, ridge)], nNear, roofColour);
     sh.face([Lp(a1 + o, c1 + o, eave), Lp(a0 - o, c1 + o, eave), Lp(r0, cm, ridge), Lp(r1, cm, ridge)], nFar, roofColour);
-    const endLow = alongX ? e.N(-1, 0, 1) : e.N(0, -1, 1);
-    const endHigh = alongX ? e.N(1, 0, 1) : e.N(0, 1, 1);
+    const endLow = alongX ? e.N(-slope, 0, 1) : e.N(0, -slope, 1);
+    const endHigh = alongX ? e.N(slope, 0, 1) : e.N(0, slope, 1);
     if (v.roof === 'hip') {
       sh.face([Lp(a0 - o, c1 + o, eave), Lp(a0 - o, c0 - o, eave), Lp(r0, cm, ridge)], endLow, roofColour);
       sh.face([Lp(a1 + o, c0 - o, eave), Lp(a1 + o, c1 + o, eave), Lp(r1, cm, ridge)], endHigh, roofColour);
@@ -726,19 +772,46 @@ function emitRoof(
   }
 
   if (v.roof === 'shed') {
-    const run = y1 - y0;
-    const high = z + run * SHED_PITCH;
-    const o = EAVES;
-    sh.face([e.L(x0 - o, y0 - o, z - o * SHED_PITCH), e.L(x1 + o, y0 - o, z - o * SHED_PITCH), e.L(x1 + o, y1 + o, high + o * SHED_PITCH), e.L(x0 - o, y1 + o, high + o * SHED_PITCH)], e.N(0, -1, 4), roofColour);
-    sh.face([e.L(x0, y0, z), e.L(x0, y1, z), e.L(x0, y1, high)], e.N(-1, 0), wallOf(3));
-    sh.face([e.L(x1, y1, z), e.L(x1, y0, z), e.L(x1, y1, high)], e.N(1, 0), wallOf(1));
-    sh.face([e.L(x1, y1, z), e.L(x0, y1, z), e.L(x0, y1, high), e.L(x1, y1, high)], e.N(0, 1), wallOf(2));
+    // One slope, low along the side it falls towards and high along the
+    // opposite one. Q(a, t) is a point of the plan: `a` along the low eave
+    // (0..1), `t` from the low eave to the high one (0..1).
+    const fall = shedFall(v);
+    const lowAlongX = fall === 0 || fall === 2;
+    const eaveLength = lowAlongX ? x1 - x0 : y1 - y0;
+    const run = lowAlongX ? y1 - y0 : x1 - x0;
+    const Q = (a: number, t: number, height: number): V3 => {
+      switch (fall) {
+        case 0: return e.L(x0 + a * (x1 - x0), y0 + t * (y1 - y0), height);
+        case 2: return e.L(x0 + a * (x1 - x0), y1 - t * (y1 - y0), height);
+        case 3: return e.L(x0 + t * (x1 - x0), y0 + a * (y1 - y0), height);
+        default: return e.L(x1 - t * (x1 - x0), y0 + a * (y1 - y0), height);
+      }
+    };
+    const high = z + run * slope;
+    const oa = EAVES / eaveLength;
+    const ot = EAVES / run;
+    const nf = SIDE_NORMAL[fall];
+    sh.face(
+      [Q(-oa, -ot, z - EAVES * slope), Q(1 + oa, -ot, z - EAVES * slope), Q(1 + oa, 1 + ot, high + EAVES * slope), Q(-oa, 1 + ot, high + EAVES * slope)],
+      e.N(nf.x * slope, nf.y * slope, 1),
+      roofColour,
+    );
+    // The two end walls, rising with the slope, and the tall wall at the back.
+    const back = ((fall + 2) % 4) as Side;
+    const ends = SIDES.filter((x) => x !== fall && x !== back);
+    for (const end of ends) {
+      const a = (lowAlongX ? end === 3 : end === 0) ? 0 : 1;
+      const n = SIDE_NORMAL[end];
+      sh.face([Q(a, 0, z), Q(a, 1, z), Q(a, 1, high)], e.N(n.x, n.y), wallOf(end));
+    }
+    const nb = SIDE_NORMAL[back];
+    sh.face([Q(0, 1, z), Q(1, 1, z), Q(1, 1, high), Q(0, 1, high)], e.N(nb.x, nb.y), wallOf(back));
     return;
   }
 
   // Sawtooth: teeth of up to two cells, glazed on their steep face.
   const tooth = sawtoothRun(b, v);
-  const toothRise = tooth * 0.5 * SAWTOOTH_PITCH;
+  const toothRise = tooth * 0.5 * slope;
   const glass = SAW_GLASS;
   for (let t0 = y0; t0 < y1 - 1e-6; t0 += tooth) {
     const t1 = Math.min(y1, t0 + tooth);

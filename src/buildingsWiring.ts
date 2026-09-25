@@ -2,8 +2,8 @@ import type { Vec2 } from '@core/vec2';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
-import { footprintBox, topLevel } from '@world/buildings/geometry';
-import { volumeById } from '@world/buildings/types';
+import { DEFAULT_PITCH, footprintBox, ridgeAlongX, shedFall, topLevel } from '@world/buildings/geometry';
+import { type Side, type Volume, volumeById } from '@world/buildings/types';
 import { METERS_PER_UNIT } from '@world/units';
 import { type EditResult, clearBuildingsOnRoads, deleteBuilding } from '@editor/buildings';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
@@ -145,6 +145,16 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         case 'duplicate': tool.duplicateSelected(); break;
         case 'colour': tool.cyclePalette(); break;
         case 'delete': tool.deleteSelected(); break;
+        case 'ridge': {
+          const v = selectedVolume();
+          if (v) tool.setRoofShape({ ridge: ridgeAlongX(v) ? 'y' : 'x' });
+          break;
+        }
+        case 'fall': {
+          const v = selectedVolume();
+          if (v) tool.setRoofShape({ fall: ((shedFall(v) + 1) % 4) as Side });
+          break;
+        }
         case 'saveBlueprint': {
           const b = tool.selected();
           if (!b) break;
@@ -165,8 +175,35 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     },
     setScope: (scope) => tool.setScope(scope),
     setMaterialScope: (scope) => tool.setMaterialScope(scope),
+    setRelief: (depth) => tool.setRelief(depth),
+    setPitch(degrees, commit) {
+      if (commit) tool.setRoofShape({ pitch: degrees });
+    },
     paint: (patch) => tool.paint(patch),
   });
+
+  const selectedVolume = (): Volume | undefined => {
+    const b = tool.selected();
+    return b && tool.selection ? volumeById(b, tool.selection.volume) : undefined;
+  };
+
+  const faceState = (): BuildingPanelState['face'] => {
+    const region = tool.mode === 'edit' ? tool.faceRegion() : null;
+    if (!region) return null;
+    return { bays: region.bay1 - region.bay0 + 1, storeys: region.storey1 - region.storey0 + 1, depth: tool.reliefDepth() };
+  };
+
+  const roofShapeState = (): BuildingPanelState['roofShape'] => {
+    const v = tool.mode === 'edit' ? selectedVolume() : undefined;
+    if (!v) return null;
+    const pitched = v.roof !== 'flat' && v.roof !== 'terrace';
+    return {
+      pitch: v.pitch ?? DEFAULT_PITCH[v.roof] ?? 30,
+      pitched,
+      ridge: v.roof === 'gable' || v.roof === 'hip',
+      fall: v.roof === 'shed',
+    };
+  };
 
   const panelState = (): BuildingPanelState => {
     const b = tool.mode === 'edit' ? tool.selected() : null;
@@ -202,6 +239,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       component: tool.component,
       scope: tool.scope,
       materialScope: tool.materialScope,
+      face: faceState(),
+      roofShape: roofShapeState(),
       material: tool.mode === 'edit' ? tool.currentMaterial() : null,
     };
   };
@@ -265,7 +304,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         project: view.project,
         hover: hovered && tool.mode === 'edit' ? { building: hovered, floor: floorOf(hovered) } : null,
         selected: shown && tool.selection && tool.mode === 'edit'
-          ? { building: shown, volume: tool.selection.volume, floor: floorOf(shown), bay: tool.selection.bay }
+          ? { building: shown, volume: tool.selection.volume, floor: floorOf(shown), bay: tool.selection.bay, region: tool.faceRegion() }
           : null,
         handles: tool.handles(),
         label,

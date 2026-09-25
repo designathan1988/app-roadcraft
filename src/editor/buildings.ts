@@ -29,12 +29,17 @@ import {
   type BuildingId,
   type BuildingUse,
   type Facade,
+  type Relief,
   type RoofKind,
   type Side,
   type Storey,
   type Volume,
   MAX_MODULE,
+  MAX_PITCH,
+  MAX_PROJECTION,
+  MAX_RECESS,
   MAX_SIZE,
+  MIN_PITCH,
   MAX_STOREYS,
   MAX_STOREY_HEIGHT,
   MIN_MODULE,
@@ -530,4 +535,81 @@ export function clearBuildingsOnRoads(ctx: BuildingContext): number {
   }
   for (const id of doomed) ctx.doc.buildings.remove(id);
   return doomed.length;
+}
+
+// =============================================================== faces and roofs
+
+/** A rectangle of whole bays and storeys on one face of a volume, inclusive. */
+export interface FaceRegion {
+  readonly side: Side;
+  readonly bay0: number;
+  readonly bay1: number;
+  readonly storey0: number;
+  readonly storey1: number;
+}
+
+/** Depths a relief snaps to: five centimetres. */
+export const RELIEF_STEP = 0.125;
+
+/**
+ * What is left of a relief once `region` is cut out of it: up to four
+ * rectangles of bays and storeys, each keeping the relief's depth.
+ */
+function cutRelief(r: Relief, region: FaceRegion): Relief[] {
+  if (r.side !== region.side || r.bay0 > region.bay1 || region.bay0 > r.bay1 || r.storey0 > region.storey1 || region.storey0 > r.storey1) {
+    return [r];
+  }
+  const out: Relief[] = [];
+  // Below and above the region, full width; then left and right of it, beside it.
+  if (r.storey0 < region.storey0) out.push({ ...r, storey1: region.storey0 - 1 });
+  if (r.storey1 > region.storey1) out.push({ ...r, storey0: region.storey1 + 1 });
+  const storey0 = Math.max(r.storey0, region.storey0);
+  const storey1 = Math.min(r.storey1, region.storey1);
+  if (r.bay0 < region.bay0) out.push({ ...r, storey0, storey1, bay1: region.bay0 - 1 });
+  if (r.bay1 > region.bay1) out.push({ ...r, storey0, storey1, bay0: region.bay1 + 1 });
+  return out;
+}
+
+/**
+ * Pushes a region of a face out (positive `depth`) or in (negative), in world
+ * units snapped to `RELIEF_STEP`; 0 flattens it again. A relief the region
+ * overlaps keeps the part of it outside the region.
+ */
+export function opSetRelief(b: Building, volumeId: number, region: FaceRegion, depth: number): boolean {
+  const v = volumeById(b, volumeId);
+  if (!v) return false;
+  const d = clamp(Math.round(depth / RELIEF_STEP) * RELIEF_STEP, -MAX_RECESS, MAX_PROJECTION);
+  const before = JSON.stringify(v.reliefs ?? []);
+  const kept = (v.reliefs ?? []).flatMap((r) => cutRelief(r, region));
+  if (Math.abs(d) > 1e-9) kept.push({ ...region, depth: d });
+  if (kept.length > 0) v.reliefs = kept;
+  else delete v.reliefs;
+  return JSON.stringify(v.reliefs ?? []) !== before;
+}
+
+export interface RoofShape {
+  /** Degrees; null restores the roof kind's default. */
+  readonly pitch?: number | null;
+  readonly ridge?: 'x' | 'y' | null;
+  readonly fall?: Side | null;
+}
+
+/** Changes the pitch, the ridge direction or the fall of a volume's roof. */
+export function opSetRoofShape(b: Building, volumeId: number, shape: RoofShape): boolean {
+  const v = volumeById(b, volumeId);
+  if (!v) return false;
+  const before = JSON.stringify([v.pitch, v.ridge, v.fall]);
+  if (shape.pitch !== undefined) {
+    if (shape.pitch === null) delete v.pitch;
+    else v.pitch = clamp(Math.round(shape.pitch), MIN_PITCH, MAX_PITCH);
+  }
+  if (shape.ridge !== undefined) {
+    if (shape.ridge === null) delete v.ridge;
+    else v.ridge = shape.ridge;
+  }
+  if (shape.fall !== undefined) {
+    if (shape.fall === null) delete v.fall;
+    else v.fall = shape.fall;
+  }
+  return JSON.stringify([v.pitch, v.ridge, v.fall]) !== before;
 }

@@ -28,7 +28,11 @@ export interface BuildingPanelActions {
   removeUserBlueprint(key: string): void;
   /** `commit` is false while a slider is being dragged, true on release. */
   setParameter(name: BuildingParam, value: number, commit: boolean): void;
-  action(name: 'storeyUp' | 'storeyDown' | 'setback' | 'removeVolume' | 'rotate' | 'duplicate' | 'colour' | 'saveBlueprint' | 'delete'): void;
+  action(name: 'storeyUp' | 'storeyDown' | 'setback' | 'removeVolume' | 'rotate' | 'duplicate' | 'colour' | 'saveBlueprint' | 'delete' | 'ridge' | 'fall'): void;
+  /** Pushes the picked face region to `depth` world units (negative: in). */
+  setRelief(depth: number): void;
+  /** Roof pitch, degrees; `commit` false while the slider is dragged. */
+  setPitch(degrees: number, commit: boolean): void;
   addWing(side: Side): void;
   setRoof(roof: RoofKind): void;
   armComponent(component: BayComponent | null): void;
@@ -54,6 +58,10 @@ export interface BuildingPanelState {
   readonly component: BayComponent | null;
   readonly scope: BuildingScope;
   readonly materialScope: MaterialScope;
+  /** The picked face region: its size and how far it is pushed; null when none. */
+  readonly face: { readonly bays: number; readonly storeys: number; readonly depth: number } | null;
+  /** The selected volume's roof: its pitch and which shape controls apply. */
+  readonly roofShape: { readonly pitch: number; readonly pitched: boolean; readonly ridge: boolean; readonly fall: boolean } | null;
   /** What the current material target is built in; null when there is none (a face scope with no face picked). */
   readonly material: MaterialSpec | null;
 }
@@ -173,6 +181,27 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
   custom.onchange = () => actions.paint({ colour: parseInt(custom.value.slice(1), 16) });
   swatches.appendChild(custom);
   const materialNote = document.getElementById('buildingMaterialNote') as HTMLElement;
+  const faceBox = document.getElementById('buildingFace') as HTMLElement;
+  const faceNote = document.getElementById('buildingFaceNote') as HTMLElement;
+  const faceSummary = document.getElementById('buildingFaceSummary') as HTMLElement;
+  const reliefDepth = document.getElementById('buildingReliefDepth') as HTMLInputElement;
+  const reliefDepthValue = document.getElementById('buildingReliefDepthValue') as HTMLOutputElement;
+  reliefDepth.oninput = () => {
+    reliefDepthValue.textContent = Number(reliefDepth.value).toFixed(2);
+  };
+  // One release, one edit (and one undo step).
+  reliefDepth.onchange = () => actions.setRelief(Number(reliefDepth.value) / METERS_PER_UNIT);
+  root.querySelectorAll<HTMLButtonElement>('[data-building-relief]').forEach((b) => {
+    b.onclick = () => actions.setRelief(Number(b.dataset['buildingRelief']) / METERS_PER_UNIT);
+  });
+  const roofShape = document.getElementById('buildingRoofShape') as HTMLElement;
+  const pitch = document.getElementById('buildingPitch') as HTMLInputElement;
+  const pitchValue = document.getElementById('buildingPitchValue') as HTMLOutputElement;
+  pitch.oninput = () => {
+    pitchValue.textContent = `${pitch.value}°`;
+    actions.setPitch(Number(pitch.value), false);
+  };
+  pitch.onchange = () => actions.setPitch(Number(pitch.value), true);
 
   for (const bp of BLUEPRINTS) {
     const b = document.createElement('button');
@@ -284,6 +313,28 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
     toggle('.building-swatch[data-colour]', 'data-colour', state.material ? String(state.material.colour) : null);
     if (state.material && document.activeElement !== custom) custom.value = hexOf(state.material.colour);
     materialNote.hidden = !(state.materialScope === 'face' && state.material === null && state.selection !== null);
+    faceBox.hidden = state.face === null;
+    faceNote.hidden = state.face !== null;
+    if (state.face) {
+      faceSummary.textContent = t('building.face.summary', {
+        bays: plural('building.bays', state.face.bays),
+        floors: plural('building.floors', state.face.storeys),
+      });
+      if (document.activeElement !== reliefDepth) {
+        const metres = state.face.depth * METERS_PER_UNIT;
+        reliefDepth.value = String(Math.round(metres * 20) / 20);
+        reliefDepthValue.textContent = metres.toFixed(2);
+      }
+    }
+    roofShape.hidden = !state.roofShape?.pitched;
+    if (state.roofShape) {
+      if (document.activeElement !== pitch) {
+        pitch.value = String(state.roofShape.pitch);
+        pitchValue.textContent = `${state.roofShape.pitch}°`;
+      }
+      (roofShape.querySelector('[data-building-action="ridge"]') as HTMLButtonElement).hidden = !state.roofShape.ridge;
+      (roofShape.querySelector('[data-building-action="fall"]') as HTMLButtonElement).hidden = !state.roofShape.fall;
+    }
     // Each mode shows its own sections: presets to place, the selection to edit.
     // Presets stay reachable while editing, as a compact row of icons.
     root.classList.toggle('editing', state.mode === 'edit');
