@@ -604,6 +604,23 @@ export function buildRoadElevation(
       const end = profile.a === node ? wantedA.get(profile.id) : wantedB.get(profile.id);
       height = Math.max(height, end ?? height);
     }
+    // No higher than a ramp from a land end can climb within the span. Split
+    // an elevated road near its free end and the new node was held at full
+    // deck height, while the short span beyond it had to ramp down to the
+    // ground in less than a ramp's length: the ramp was cut off at the plate,
+    // a cliff of 124 % (the fuzzer's `elevationStep`). The node comes down to
+    // what the ramp reaches, and the deck on its other side eases down to it.
+    let reachable = Infinity;
+    for (const profile of incident.get(node) ?? []) {
+      if (!isRaised(profile.structure)) continue;
+      const other = profile.a === node ? profile.b : profile.a;
+      if (aloft.has(other)) continue;
+      const plateHere = profile.a === node ? profile.plateA : profile.plateB;
+      const plateThere = profile.a === node ? profile.plateB : profile.plateA;
+      const run = Math.max(0, profile.length - plateHere - plateThere);
+      reachable = Math.min(reachable, (gradeHeight.get(other) ?? 0) + rampRise(run));
+    }
+    if (reachable < height) height = Math.max(gradeHeight.get(node) ?? 0, reachable);
     nodeHeight.set(node, height);
   }
 

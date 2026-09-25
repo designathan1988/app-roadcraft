@@ -1,0 +1,27 @@
+{
+ "name": "elevated-deck-no-cliff-after-split",
+ "category": "elevationStep",
+ "detail": "seg 3 jump 0.31 at s=4.25",
+ "sim": null,
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    542.18,
+    -26.17
+   ],
+   "b": [
+    453.16,
+    160.77
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "elevated"
+  },
+  {
+   "op": "split",
+   "pick": 0.06,
+   "at": 0.64
+  }
+ ]
+}
