@@ -977,6 +977,13 @@ function endPointer(e: PointerEvent): void {
 }
 
 canvas.addEventListener('pointerup', endPointer);
+// Nothing to aim at off the map: no hover preview left behind on it.
+canvas.addEventListener('pointerleave', () => {
+  if (hoverAnchor) {
+    hoverAnchor = null;
+    requestDraw();
+  }
+});
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -1916,10 +1923,14 @@ function drawOverlayScreen(): void {
     if (node) ring({ x: node.x, y: node.y }, 12, SELECTION, 2);
   }
 
-  // Where the cursor would put a node, before anything is committed. Without
-  // it the player is aiming at nothing.
-  if (tool === 'road' && !draft && hoverAnchor) {
-    ring(hoverAnchor.at, hoverAnchor.kind === 'node' ? 9 : 5, HOVER, 2);
+  // The node a road would start from, when the cursor is snapping to one.
+  //
+  // Only then. It was drawn wherever the cursor rested - a white circle on the
+  // grass, and on a road on its centre line, where a segment anchor sits -
+  // with the Road tool up, which is the tool the game starts in. Players
+  // reported it, twice, as a debug marker left on screen.
+  if (tool === 'road' && !draft && hoverAnchor?.kind === 'node') {
+    ring(hoverAnchor.at, 9, HOVER, 2);
   }
 
   // The brush, drawn where it will land.
