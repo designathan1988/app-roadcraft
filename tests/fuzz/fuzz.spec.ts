@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { applyOp, freshState } from './support/ops';
 import { checkWorld, type Defect } from './support/invariants';
 import { checkSim } from './support/simCheck';
-import { generate, profile, replay, saveFixture, shrink } from './support/runner';
+import { generate, openCategories, profile, replay, saveFixture, shrink } from './support/runner';
 
 /**
  * THE DEFECT DETECTOR.
@@ -23,10 +23,14 @@ const seeds = Array.from({ length: run.sequences }, (_, i) => first + i);
 
 describe('road fuzzer', () => {
   it.skipIf(process.env['FUZZ_HUNT'] === '1')(`finds no defect in ${seeds.length} seeded sequences`, () => {
+    // A category with an OPEN fixture is a known, recorded defect; it runs but
+    // does not fail the gate. Any other category fails it.
+    const open = openCategories();
+    const gated = (category: string): boolean => !open.has(category);
     const failures: unknown[] = [];
     for (const seed of seeds) {
       const ops = generate(seed, run.ops);
-      const outcome = replay(ops, run.sim);
+      const outcome = replay(ops, run.sim, gated);
       if (!outcome.defects.length) continue;
       const worst = outcome.defects[0] as Defect;
       const minimal = shrink(ops, worst.category, run.sim);

@@ -4,6 +4,7 @@ import { SimWorld } from '@sim/world';
 import { step } from '@sim/pipeline';
 import { DT, WAIT_CEILING } from '@sim/params';
 import { vehiclePose } from '@sim/pose';
+import type { Vehicle } from '@sim/vehicles/state';
 import { collisions } from '../../sim/support/bodies';
 import type { Defect } from './invariants';
 
@@ -31,6 +32,24 @@ export const STALL_LIMIT = 10 * WAIT_CEILING;
  * own; `stalled` below is the measured form of the same question.
  */
 const DIAGNOSTIC = new Set(['shortLink']);
+
+/** The structural levels and road nodes a vehicle's body spans. */
+function placeOf(sim: SimWorld, v: Vehicle): { structures: Set<string>; nodes: Set<number> } {
+  const structures = new Set<string>();
+  const nodes = new Set<number>();
+  for (const id of [v.lanelet, ...v.rearPath.slice(0, 3)]) {
+    const lane = sim.lanelet(id);
+    if (!lane) continue;
+    for (const seg of lane.kind === 'link' ? [lane.segment] : [sim.connector(id)?.inSegment, sim.connector(id)?.outSegment]) {
+      const segment = seg === undefined ? undefined : sim.doc.segment(seg);
+      if (!segment) continue;
+      structures.add(segment.structure);
+      nodes.add(segment.a);
+      nodes.add(segment.b);
+    }
+  }
+  return { structures, nodes };
+}
 
 export function checkSim(doc: RoadDoc, run: SimRun): Defect[] {
   const net = new Network(doc);
@@ -90,7 +109,14 @@ export function checkSim(doc: RoadDoc, run: SimRun): Defect[] {
 
     if (tick % 6 === 0) {
       for (const hit of collisions(sim)) {
-        add('bodyOverlap', `veh ${hit.a.id}/${hit.b.id}`, `t=${(tick * DT).toFixed(1)} ${hit.category} ${hit.a.lanelet} / ${hit.b.lanelet}`);
+        const a = placeOf(sim, hit.a);
+        const b = placeOf(sim, hit.b);
+        // A deck over a road: two levels, no contact.
+        if (![...a.structures].some((s) => b.structures.has(s))) continue;
+        // Two roads that share no node, bodies touching: the roads overlap.
+        const related = [...a.nodes].some((n) => b.nodes.has(n));
+        add(related ? 'bodyOverlap' : 'unrelatedBodyOverlap', `veh ${hit.a.id}/${hit.b.id}`,
+          `t=${(tick * DT).toFixed(1)} ${hit.category} ${hit.a.lanelet} / ${hit.b.lanelet}`);
       }
     }
   });

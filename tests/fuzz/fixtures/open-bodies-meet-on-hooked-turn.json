@@ -1,0 +1,245 @@
+{
+ "name": "open-bodies-meet-on-hooked-turn",
+ "category": "bodyOverlap",
+ "detail": "veh 1/7 t=22.6 shared-path 11:11>14:1 / 8:8>11:3->11:11>14:1",
+ "sim": {
+  "seconds": 45,
+  "seed": 24301,
+  "intensity": 1.5
+ },
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    -104.34,
+    -68.31
+   ],
+   "b": [
+    64.06,
+    -368.91
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    67.94,
+    -366.7
+   ],
+   "b": [
+    207.68,
+    -353.94
+   ],
+   "type": 2,
+   "curve": {
+    "t": 0.64,
+    "h": -33.85
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "delete",
+   "pick": 0.07
+  },
+  {
+   "op": "draw",
+   "a": [
+    67.94,
+    -366.7
+   ],
+   "b": [
+    22.87,
+    -304.51
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "lanes",
+   "pick": 0.02,
+   "lanes": 4
+  },
+  {
+   "op": "lanes",
+   "pick": 0.59,
+   "lanes": 6
+  },
+  {
+   "op": "move",
+   "pick": 0.14,
+   "dx": -35.02,
+   "dy": -25.24
+  },
+  {
+   "op": "structure",
+   "pick": 0.51,
+   "structure": "ground"
+  },
+  {
+   "op": "curve",
+   "pick": 0.81,
+   "t": 0.3,
+   "h": 26.62
+  },
+  {
+   "op": "removeNode",
+   "pick": 0.06
+  },
+  {
+   "op": "draw",
+   "a": [
+    242.19,
+    -501.14
+   ],
+   "b": [
+    98.17,
+    -148.64
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "bridge"
+  },
+  {
+   "op": "draw",
+   "a": [
+    332.04,
+    -498.74
+   ],
+   "b": [
+    100.85,
+    -311.37
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "join",
+   "pick": 0.78
+  },
+  {
+   "op": "draw",
+   "a": [
+    332.04,
+    -498.74
+   ],
+   "b": [
+    234.11,
+    -700
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    332.04,
+    -498.74
+   ],
+   "b": [
+    273.5,
+    -696.96
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "delete",
+   "pick": 0.71
+  },
+  {
+   "op": "join",
+   "pick": 0.32
+  },
+  {
+   "op": "draw",
+   "a": [
+    305.85,
+    -472.55
+   ],
+   "b": [
+    182.62,
+    -595.77
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    305.85,
+    -472.55
+   ],
+   "b": [
+    151.08,
+    -640.64
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    496.58,
+    478.49
+   ],
+   "b": [
+    611.76,
+    50.8
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    352.71,
+    -505.18
+   ],
+   "b": [
+    69.82,
+    -266.29
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    232.72,
+    -465.79
+   ],
+   "b": [
+    308.13,
+    -445.58
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "delete",
+   "pick": 0.51
+  },
+  {
+   "op": "lanes",
+   "pick": 0.49,
+   "lanes": 8
+  },
+  {
+   "op": "direction",
+   "pick": 0.17,
+   "direction": "bToA"
+  }
+ ],
+ "open": "A sharp right turn between acute legs hooks back on itself (connector 8:8>11:3->11:11>14:1 turns more than 180 degrees); car following measures the leader along the arc, so bodies meet side-on across the fold. A straight nose-to-rear gap on hooked paths was tried and did not help (bodies touch side-on). Same root cause as open-bus-leaves-kerb-on-acute-turn."
+}

@@ -1,0 +1,254 @@
+{
+ "name": "open-claim-held-by-immobile-vehicle",
+ "category": "staleClaim",
+ "detail": "29 t=35.7 holder immobile",
+ "sim": {
+  "seconds": 45,
+  "seed": 24301,
+  "intensity": 1.5
+ },
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    256.5,
+    664.68
+   ],
+   "b": [
+    454.88,
+    700
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    256.5,
+    664.68
+   ],
+   "b": [
+    399.75,
+    700
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -391.66,
+    -26.32
+   ],
+   "b": [
+    -700,
+    -305.32
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "removeNode",
+   "pick": 0.09
+  },
+  {
+   "op": "draw",
+   "a": [
+    -408.58,
+    -51.19
+   ],
+   "b": [
+    -633.12,
+    -275.73
+   ],
+   "type": 3,
+   "curve": {
+    "t": 0.68,
+    "h": -105.72
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -492.54,
+    -97.24
+   ],
+   "b": [
+    -639.24,
+    -243.93
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -442.03,
+    -76.69
+   ],
+   "b": [
+    -490.02,
+    -28.7
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "type",
+   "pick": 0.21,
+   "type": 3
+  },
+  {
+   "op": "direction",
+   "pick": 0.11,
+   "direction": "both"
+  },
+  {
+   "op": "control",
+   "pick": 0.91,
+   "control": "stop"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -470.96,
+    -131.33
+   ],
+   "b": [
+    -426.9,
+    -8.28
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "move",
+   "pick": 0.49,
+   "dx": 54.34,
+   "dy": -21.72
+  },
+  {
+   "op": "lanes",
+   "pick": 0.56,
+   "lanes": 3
+  },
+  {
+   "op": "draw",
+   "a": [
+    -423.82,
+    -14.55
+   ],
+   "b": [
+    -488.15,
+    64.69
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "control",
+   "pick": 0.89,
+   "control": "yield"
+  },
+  {
+   "op": "control",
+   "pick": 0.07,
+   "control": "stop"
+  },
+  {
+   "op": "draw",
+   "a": [
+    565.88,
+    -423.47
+   ],
+   "b": [
+    537.9,
+    -545.96
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -465.65,
+    88.01
+   ],
+   "b": [
+    -413.69,
+    -202.28
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "control",
+   "pick": 0.1,
+   "control": "signal"
+  },
+  {
+   "op": "removeNode",
+   "pick": 0.62
+  },
+  {
+   "op": "draw",
+   "a": [
+    -279.02,
+    -495.9
+   ],
+   "b": [
+    -270.58,
+    -588.22
+   ],
+   "type": 3,
+   "curve": {
+    "t": 0.6,
+    "h": -30.73
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "lanes",
+   "pick": 0.93,
+   "lanes": 8
+  },
+  {
+   "op": "direction",
+   "pick": 0.35,
+   "direction": "bToA"
+  },
+  {
+   "op": "draw",
+   "a": [
+    580.14,
+    6.98
+   ],
+   "b": [
+    700,
+    210.86
+   ],
+   "type": 3,
+   "curve": {
+    "t": 0.62,
+    "h": 46.23
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "split",
+   "pick": 0.68,
+   "at": 0.5
+  }
+ ],
+ "open": "Audit staleClaim: a vehicle holding an admitted connector has not moved for STUCK_SECONDS. Found in 3 of 20 traffic runs; not investigated for lack of budget."
+}

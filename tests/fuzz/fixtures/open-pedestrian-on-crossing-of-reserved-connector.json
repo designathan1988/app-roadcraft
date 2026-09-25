@@ -1,0 +1,225 @@
+{
+ "name": "open-pedestrian-on-crossing-of-reserved-connector",
+ "category": "pedSignalContradiction",
+ "detail": "3/34 t=23.8 crossing 8:5 overlaps reserved connector 10:14>8:0->5:8>7:0",
+ "sim": {
+  "seconds": 45,
+  "seed": 24301,
+  "intensity": 1.5
+ },
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    -137.82,
+    30.24
+   ],
+   "b": [
+    -138.81,
+    327.33
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -254.79,
+    116.43
+   ],
+   "b": [
+    -20.85,
+    433.11
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "join",
+   "pick": 0.53
+  },
+  {
+   "op": "join",
+   "pick": 0.33
+  },
+  {
+   "op": "draw",
+   "a": [
+    -162.38,
+    60.49
+   ],
+   "b": [
+    -162.38,
+    242.19
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -196.63,
+    100.43
+   ],
+   "b": [
+    -79.01,
+    315.59
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "tunnel"
+  },
+  {
+   "op": "upgrade",
+   "pick": 0.25
+  },
+  {
+   "op": "control",
+   "pick": 0.12,
+   "control": "none"
+  },
+  {
+   "op": "removeNode",
+   "pick": 0.12
+  },
+  {
+   "op": "move",
+   "pick": 0.31,
+   "dx": 55.73,
+   "dy": -46.9
+  },
+  {
+   "op": "lanes",
+   "pick": 0.94,
+   "lanes": 5
+  },
+  {
+   "op": "move",
+   "pick": 0.05,
+   "dx": 26.54,
+   "dy": -18.49
+  },
+  {
+   "op": "draw",
+   "a": [
+    -178.23,
+    132.31
+   ],
+   "b": [
+    -125.4,
+    101.81
+   ],
+   "type": 2,
+   "curve": {
+    "t": 0.67,
+    "h": 7.42
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "control",
+   "pick": 0.97,
+   "control": "yield"
+  },
+  {
+   "op": "direction",
+   "pick": 0.43,
+   "direction": "aToB"
+  },
+  {
+   "op": "join",
+   "pick": 0.1
+  },
+  {
+   "op": "draw",
+   "a": [
+    -43.85,
+    -342.11
+   ],
+   "b": [
+    175.72,
+    -700
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -178.23,
+    132.31
+   ],
+   "b": [
+    -58.82,
+    2.93
+   ],
+   "type": 3,
+   "curve": {
+    "t": 0.56,
+    "h": 35.94
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "split",
+   "pick": 0.59,
+   "at": 0.39
+  },
+  {
+   "op": "draw",
+   "a": [
+    -84.21,
+    136.18
+   ],
+   "b": [
+    -30.07,
+    -61.92
+   ],
+   "type": 2,
+   "curve": {
+    "t": 0.69,
+    "h": 24.47
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "type",
+   "pick": 0.82,
+   "type": 1
+  },
+  {
+   "op": "structure",
+   "pick": 0.23,
+   "structure": "ground"
+  },
+  {
+   "op": "structure",
+   "pick": 0.3,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -139.9,
+    114.11
+   ],
+   "b": [
+    -246.2,
+    -40.7
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "structure",
+   "pick": 0.59,
+   "structure": "tunnel"
+  }
+ ],
+ "open": "Audit pedSignalContradiction (sim/invariants.ts): a pedestrian occupies a crossing that a vehicle's reserved connector drives over. Pedestrian crossing arbitration (sim/peds/crossingFsm.ts) is the next run's scope; not investigated here."
+}

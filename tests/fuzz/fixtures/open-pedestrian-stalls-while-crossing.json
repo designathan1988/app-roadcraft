@@ -1,0 +1,279 @@
+{
+ "name": "open-pedestrian-stalls-while-crossing",
+ "category": "pedInRoadStalled",
+ "detail": "6 t=44.2 no progress while crossing",
+ "sim": {
+  "seconds": 45,
+  "seed": 24301,
+  "intensity": 1.5
+ },
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    -225.74,
+    676.25
+   ],
+   "b": [
+    -388.27,
+    390.63
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -481.16,
+    504.11
+   ],
+   "b": [
+    -315.94,
+    221.65
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "direction",
+   "pick": 0.93,
+   "direction": "aToB"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -435.56,
+    436.53
+   ],
+   "b": [
+    -322.16,
+    240.12
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "removeNode",
+   "pick": 0.67
+  },
+  {
+   "op": "draw",
+   "a": [
+    -248.98,
+    505.89
+   ],
+   "b": [
+    -445.27,
+    426.13
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -225.74,
+    676.25
+   ],
+   "b": [
+    -442.85,
+    643.16
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "control",
+   "pick": 0.54,
+   "control": "yield"
+  },
+  {
+   "op": "move",
+   "pick": 0.07,
+   "dx": 39.32,
+   "dy": -2.63
+  },
+  {
+   "op": "move",
+   "pick": 0.57,
+   "dx": 53.09,
+   "dy": -57.18
+  },
+  {
+   "op": "structure",
+   "pick": 0.7,
+   "structure": "ground"
+  },
+  {
+   "op": "removeNode",
+   "pick": 0.41
+  },
+  {
+   "op": "draw",
+   "a": [
+    -379.3,
+    470.97
+   ],
+   "b": [
+    -327.94,
+    279.29
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -369.36,
+    433.87
+   ],
+   "b": [
+    -576.59,
+    378.35
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -358.72,
+    488.45
+   ],
+   "b": [
+    -382.8,
+    446.75
+   ],
+   "type": 0,
+   "curve": {
+    "t": 0.6,
+    "h": 11.53
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -449.61,
+    469.29
+   ],
+   "b": [
+    -298.6,
+    433.87
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -137.62,
+    216
+   ],
+   "b": [
+    -236.99,
+    587.95
+   ],
+   "type": 3,
+   "curve": {
+    "t": 0.51,
+    "h": 63.34
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "upgrade",
+   "pick": 0.67
+  },
+  {
+   "op": "draw",
+   "a": [
+    -352.97,
+    406.72
+   ],
+   "b": [
+    -367.4,
+    381.72
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -209.43,
+    644.51
+   ],
+   "b": [
+    -157.09,
+    603.13
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -155.07,
+    243.77
+   ],
+   "b": [
+    -5.07,
+    331.3
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "upgrade",
+   "pick": 0.14
+  },
+  {
+   "op": "draw",
+   "a": [
+    -193.51,
+    700
+   ],
+   "b": [
+    -256.44,
+    471.05
+   ],
+   "type": 0,
+   "curve": {
+    "t": 0.67,
+    "h": -30.02
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -273.71,
+    563.21
+   ],
+   "b": [
+    -200.91,
+    505.65
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "removeNode",
+   "pick": 0.7
+  }
+ ],
+ "open": "Audit pedInRoadStalled: a pedestrian makes no progress for 3 s while on a crossing. Pedestrian scope, next run; not investigated here."
+}

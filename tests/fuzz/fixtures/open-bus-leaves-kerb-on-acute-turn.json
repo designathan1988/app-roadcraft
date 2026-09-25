@@ -1,0 +1,40 @@
+{
+ "name": "open-bus-leaves-kerb-on-acute-turn",
+ "category": "turnOffSurface",
+ "detail": "2:3>2:1->1:2>1:1 left 4.72 outside at (-56.1, 206.1)",
+ "sim": null,
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    10.33,
+    345.49
+   ],
+   "b": [
+    -57.85,
+    229.35
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -57.01,
+    228.86
+   ],
+   "b": [
+    -299.74,
+    285.55
+   ],
+   "type": 2,
+   "curve": {
+    "t": 0.55,
+    "h": 64
+   },
+   "structure": "ground"
+  }
+ ],
+ "open": "turnPath (world/turnPaths.ts chooseHandle) falls back to handle 0.65 when no handle keeps the largest body on the surface; where the exit lane starts outside the cone of the movement's headings (acute legs, wide roads) every smooth path must hook, and the body swings off the kerb. Needs lane-end placement at acute junctions and heavy-vehicle off-tracking (docs/completion-audit.md block 2)."
+}

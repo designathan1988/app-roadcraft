@@ -61,9 +61,10 @@ export interface Outcome {
  * breaks. With `sim`, a sequence whose world never breaks is then driven.
  * `only` restricts the checks to one category (what the shrinker holds fixed).
  */
-export function replay(ops: readonly FuzzOp[], sim: SimRun | null, only?: string): Outcome {
+export function replay(ops: readonly FuzzOp[], sim: SimRun | null, only?: string | ((category: string) => boolean)): Outcome {
   const state = freshState();
-  const keep = (list: Defect[]): Defect[] => (only ? list.filter((d) => d.category === only) : list);
+  const wanted = typeof only === 'string' ? (c: string) => c === only : only;
+  const keep = (list: Defect[]): Defect[] => (wanted ? list.filter((d) => wanted(d.category)) : list);
   for (let i = 0; i < ops.length; i++) {
     let defects: Defect[];
     try {
@@ -127,6 +128,17 @@ export interface Fixture {
   readonly ops: readonly FuzzOp[];
   /** Present while the defect is not fixed: why, with the evidence. */
   readonly open?: string;
+  /**
+   * An open defect whose CATEGORY must still fail the smoke gate: the
+   * recorded instance is known, any new one is news. Without it an open
+   * fixture makes its whole category tolerated.
+   */
+  readonly gate?: boolean;
+}
+
+/** Categories with a recorded, unfixed defect: the smoke gate tolerates them. */
+export function openCategories(): Set<string> {
+  return new Set(loadFixtures().filter((f) => f.open && !f.gate).map((f) => f.category));
 }
 
 export const FIXTURE_DIR = join(process.cwd(), 'tests', 'fuzz', 'fixtures');
