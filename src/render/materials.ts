@@ -60,71 +60,6 @@ export interface SceneMaterials {
   dispose(): void;
 }
 
-/**
- * THE CARRIAGEWAY IN ITS OWN FRAME.
- *
- * The asphalt's UVs are road-local (`across`, `along`, in macro tiles), and
- * its mesh carries the nearest road's widths per vertex (`roadEdge`, written
- * by `roadSurfaces.ts`: half the carriageway, one lane, half the median, and
- * an open-road weight that is 0 on junction plates). From those the shader
- * lays what a real street has and a tiling texture cannot place:
- *  - a concrete GUTTER along each kerb, jointed every 2 m - where there was a
- *    smooth dark strip, the kerb face in shade over bare asphalt;
- *  - polished WHEEL TRACKS a quarter lane either side of each lane's centre;
- *  - oil staining down the middle of each lane, broken up along it.
- * `across` is linear across a straight road, so interpolating it is exact.
- */
-const GUTTER = 0.85;
-const ROAD_SPACE_FRAGMENT = `
-  float rsAcross = vMapUv.x * uRoadTile;
-  float rsAlong = vMapUv.y * uRoadTile;
-  float rsA = abs(rsAcross);
-  float rsEdge = vRoadEdge.x - rsA;
-  float rsW = clamp(vRoadEdge.w, 0.0, 1.0) * step(0.5, vRoadEdge.x);
-  float rsGutter = rsW * (1.0 - smoothstep(${GUTTER.toFixed(2)} - 0.05, ${GUTTER.toFixed(2)} + 0.05, rsEdge));
-  float rsLane = (rsA - vRoadEdge.z) / max(vRoadEdge.y, 1.0);
-  float rsF = fract(rsLane);
-  float rsInLane = rsW * step(0.0, rsA - vRoadEdge.z) * (1.0 - rsGutter);
-  float rsTrack = rsInLane * ((1.0 - smoothstep(0.03, 0.09, abs(rsF - 0.27))) + (1.0 - smoothstep(0.03, 0.09, abs(rsF - 0.73))));
-  float rsOilN = 0.5 + 0.5 * sin(rsAlong * 0.23 + 2.0 * sin(rsAlong * 0.071 + rsLane * 3.1));
-  float rsOil = rsInLane * (1.0 - smoothstep(0.05, 0.16, abs(rsF - 0.5))) * smoothstep(0.55, 0.95, rsOilN);
-  diffuseColor.rgb *= (1.0 - 0.06 * rsTrack) * (1.0 - 0.1 * rsOil);
-  float rsJointD = abs(fract(rsAlong / 5.0 + 0.5) - 0.5) * 5.0;
-  float rsJoint = 1.0 - smoothstep(0.025, 0.07, rsJointD);
-  float rsGrain = clamp(sampledDiffuseColor.g / 0.215, 0.6, 1.4);
-  vec3 rsConcrete = vec3(0.50, 0.495, 0.47) * (0.72 + 0.28 * rsGrain) * (1.0 - 0.3 * rsJoint);
-  diffuseColor.rgb = mix(diffuseColor.rgb, rsConcrete, rsGutter);
-`;
-const ROAD_SPACE_ROUGHNESS = `
-  roughnessFactor = clamp(mix(roughnessFactor, 0.94, rsGutter) - 0.1 * rsTrack, 0.2, 1.0);
-`;
-
-/** Installs `ROAD_SPACE_*` on a carriageway material, after its detail layer. */
-function applyRoadSpace(material: MeshStandardMaterial, tile: number): void {
-  const detail = material.onBeforeCompile.bind(material);
-  const detailKey = material.customProgramCacheKey.bind(material);
-  const uniforms = { uRoadTile: { value: tile } };
-  material.onBeforeCompile = (shader, renderer) => {
-    detail(shader, renderer);
-    Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>
-attribute vec4 roadEdge;
-varying vec4 vRoadEdge;`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-vRoadEdge = roadEdge;`);
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>
-varying vec4 vRoadEdge;
-uniform float uRoadTile;`)
-      .replace('#include <color_fragment>', `#include <color_fragment>
-${ROAD_SPACE_FRAGMENT}`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-${ROAD_SPACE_ROUGHNESS}`);
-  };
-  material.customProgramCacheKey = () => `${detailKey()}-road-space`;
-}
-
 const ASPHALT_TILE = 26;
 const FOOTWAY_TILE = 18;
 const KERB_TILE = 8;
@@ -451,8 +386,6 @@ export function createMaterials(anisotropy: number): SceneMaterials {
   // noise cells, not enough to lose the slab joints.
   applyDetail(asphalt, { kind: 'asphalt', macroTile: ASPHALT_TILE, albedo: 0.6, normal: 0.65, macroBlur: 1.6 }, anisotropy);
   applyDetail(asphaltRaised, { kind: 'asphalt', macroTile: ASPHALT_TILE, albedo: 0.6, normal: 0.65, macroBlur: 1.6 }, anisotropy);
-  applyRoadSpace(asphalt, ASPHALT_TILE);
-  applyRoadSpace(asphaltRaised, ASPHALT_TILE);
   applyDetail(footwayMaterial, { kind: 'concrete', macroTile: FOOTWAY_TILE, albedo: 0.7, normal: 0.8, macroBlur: 0.6 }, anisotropy);
   applyDetail(kerbMaterial, { kind: 'concrete', macroTile: KERB_TILE, albedo: 0.55, normal: 0.7, macroBlur: 0.8 }, anisotropy);
   applyDetail(vergeMaterial, { kind: 'grass', macroTile: VERGE_TILE, albedo: 1, normal: 1.2, macroBlur: 2 }, anisotropy);

@@ -81,9 +81,9 @@ export function createPostChain(
     // worst where junction corners gather it. A crease is darkened over about
     // its own height; piers and buildings still read from the tighter pass.
     gtao.updateGtaoMaterial({
-      radius: level === 'ultra' ? 2.2 : 1.6,
+      radius: level === 'ultra' ? 1.3 : 1.0,
       distanceExponent: 1.6,
-      thickness: 1.2,
+      thickness: 0.8,
       scale: 1.05,
       samples: level === 'ultra' ? 16 : 8,
       screenSpaceRadius: false,

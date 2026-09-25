@@ -26,7 +26,6 @@ import {
   type SurfaceMeshOptions,
   type Tile,
   type TileRect,
-  type ExtraFn,
   type TintFn,
   type UvFn,
   type UvFrameFn,
@@ -278,21 +277,6 @@ export function buildRoadSurfaces(
       out[2] = tint.b / TINT_REFERENCE.b;
     };
 
-    /**
-     * The nearest road's own widths at a carriageway vertex, for the asphalt
-     * shader's road-space detail (`ROAD_SPACE_GLSL` in materials.ts): half the
-     * carriageway, one lane, half the median, and 1 along the open road
-     * fading to 0 on a junction plate. The UVs already carry `across`, and it
-     * is linear across a straight road, so these interpolate exactly.
-     */
-    const roadEdge: ExtraFn = (x, y, out) => {
-      const road = elevation.roadAt(x, y, only);
-      out[0] = road.carriage;
-      out[1] = road.lane;
-      out[2] = road.median / 2;
-      out[3] = road.type < 0 ? 0 : road.open;
-    };
-
     const suffix = structure.id === 'ground' ? '' : `-${structure.id}`;
 
     // Outermost first, so a nearer band's skirt lands on the one outside it.
@@ -348,7 +332,6 @@ export function buildRoadSurfaces(
           maxEdge,
           ...uvFor(materials.scale.asphalt),
           tint: asphaltTint,
-          extra: { name: 'roadEdge', fn: roadEdge },
           castShadow: raised,
           receiveShadow: true,
           skirtUvScale: materials.scale.deck,
@@ -485,8 +468,7 @@ export function buildRoadSurfaces(
     const salt = new Digest().addText(structure.id);
     for (const spec of specs) {
       salt.addText(spec.options.name).add(spec.options.maxEdge).add(spec.options.uvWorld ?? 0)
-        .add(spec.options.skirtUvScale ?? 0).add(spec.options.bottom ? 1 : 0).add(spec.options.tint ? 1 : 0)
-        .add(spec.options.extra ? 1 : 0);
+        .add(spec.options.skirtUvScale ?? 0).add(spec.options.bottom ? 1 : 0).add(spec.options.tint ? 1 : 0);
     }
     const saltValue = salt.value();
 

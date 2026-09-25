@@ -42,8 +42,6 @@ export type UvFn = (x: number, y: number, out: [number, number]) => void;
 export type UvFrameFn = (x: number, y: number, pickX: number, pickY: number, out: [number, number]) => void;
 /** Writes a linear RGB tint for one vertex. */
 export type TintFn = (x: number, y: number, out: [number, number, number]) => void;
-/** Four numbers per vertex for a material's own use (see `SurfaceMeshOptions.extra`). */
-export type ExtraFn = (x: number, y: number, out: [number, number, number, number]) => void;
 
 export interface SurfaceMeshOptions {
   readonly name: string;
@@ -88,13 +86,6 @@ export interface SurfaceMeshOptions {
    * junction polygon belonging to two classes at once and a draw call for each.
    */
   readonly tint?: TintFn;
-  /**
-   * Four numbers per top-face vertex, written as the attribute `extra.name`
-   * (skirt vertices get zeros). The carriageway uses it for the road-space
-   * detail its shader draws - gutter, wheel tracks - which needs the road's
-   * own widths at each vertex (`roadSurfaces.ts`).
-   */
-  readonly extra?: { readonly name: string; readonly fn: ExtraFn };
   readonly castShadow?: boolean;
   readonly receiveShadow?: boolean;
   /** Extra UV scale for the skirt, so its texture is not stretched. */
@@ -347,11 +338,10 @@ interface Streams {
   readonly normals: number[];
   readonly uvs: number[];
   readonly colors: number[];
-  readonly extras: number[];
   readonly indices: number[];
 }
 
-const streams = (): Streams => ({ positions: [], normals: [], uvs: [], colors: [], extras: [], indices: [] });
+const streams = (): Streams => ({ positions: [], normals: [], uvs: [], colors: [], indices: [] });
 
 /** One build's options and the scratch its callbacks write into. */
 interface Context {
@@ -359,11 +349,10 @@ interface Context {
   readonly uv: [number, number];
   /** White until a tint writes it, so an untinted surface is written white. */
   readonly rgb: [number, number, number];
-  readonly four: [number, number, number, number];
 }
 
 export function buildSurfaceMesh(options: SurfaceMeshOptions): Mesh | null {
-  const context: Context = { options, uv: [0, 0], rgb: [1, 1, 1], four: [0, 0, 0, 0] };
+  const context: Context = { options, uv: [0, 0], rgb: [1, 1, 1] };
 
   // Compact pieces first (see `splitToSpan`), then ear clipping inside each.
   const out = streams();
@@ -372,7 +361,7 @@ export function buildSurfaceMesh(options: SurfaceMeshOptions): Mesh | null {
   for (const piece of pieces) meshPiece(piece, context, out);
   if (options.bottom) meshSkirts(context, out);
 
-  const { positions, normals, uvs, colors, extras, indices } = out;
+  const { positions, normals, uvs, colors, indices } = out;
   if (indices.length === 0) return null;
   // Only the top face was given a placeholder normal; recomputing just those
   // vertices keeps the skirt's hard edges while the surface itself is smooth.
@@ -385,7 +374,6 @@ export function buildSurfaceMesh(options: SurfaceMeshOptions): Mesh | null {
   // `vertexColors` requires the attribute, and it is cheaper to write three
   // ones than to keep two variants of every road material.
   geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
-  if (options.extra) geometry.setAttribute(options.extra.name, new Float32BufferAttribute(extras, 4));
   geometry.setIndex(indices);
   return finish(geometry, options);
 }
@@ -411,9 +399,9 @@ function finish(geometry: BufferGeometry,
  * keep the identical vertices along it.
  */
 function meshPiece(polygon: Poly, context: Context, out: Streams): void {
-  const { options, uv: scratch, rgb, four } = context;
-  const { top, maxEdge, uv, tint, extra } = options;
-  const { positions, normals, uvs, colors, extras, indices } = out;
+  const { options, uv: scratch, rgb } = context;
+  const { top, maxEdge, uv, tint } = options;
+  const { positions, normals, uvs, colors, indices } = out;
   const outer = polygon[0];
   if (!outer || outer.length < 3) return;
 
@@ -455,10 +443,6 @@ function meshPiece(polygon: Poly, context: Context, out: Streams): void {
     normals.push(0, 1, 0);
     if (tint) tint(x, y, rgb);
     colors.push(rgb[0], rgb[1], rgb[2]);
-    if (extra) {
-      extra.fn(x, y, four);
-      extras.push(four[0], four[1], four[2], four[3]);
-    }
   }
   // World Y is mirrored into three's Z. That reflection flips handedness, so
   // a ring that is counter-clockwise on the map comes out clockwise in the
@@ -480,7 +464,6 @@ function meshPiece(polygon: Poly, context: Context, out: Streams): void {
         uvs.push(scratch[0], scratch[1]);
         normals.push(0, 1, 0);
         colors.push(colors[v * 3]!, colors[v * 3 + 1]!, colors[v * 3 + 2]!);
-        if (extra) extras.push(extras[v * 4]!, extras[v * 4 + 1]!, extras[v * 4 + 2]!, extras[v * 4 + 3]!);
         fresh.push(positions.length / 3 - 1);
       }
       [a, b, c] = fresh as [number, number, number];
@@ -503,7 +486,7 @@ function meshSkirts(context: Context, out: Streams, cut?: TileRect): void {
   const { polygons, top, maxEdge, tint } = options;
   const bottom = options.bottom;
   if (!bottom) return;
-  const { positions, normals, uvs, colors, extras, indices } = out;
+  const { positions, normals, uvs, colors, indices } = out;
   const scale = options.skirtUvScale ?? 1;
   for (const polygon of polygons) {
     const outer = polygon[0];
@@ -537,7 +520,6 @@ function meshSkirts(context: Context, out: Streams, cut?: TileRect): void {
         positions.push(ax, topA, -ay, bx, topB, -by, bx, lowB, -by, ax, lowA, -ay);
         if (tint) tint((ax + bx) / 2, (ay + by) / 2, rgb);
         for (let n = 0; n < 4; n++) colors.push(rgb[0], rgb[1], rgb[2]);
-        if (options.extra) for (let n = 0; n < 4; n++) extras.push(0, 0, 0, 0);
         // Written rather than averaged, so a kerb keeps its hard edge instead
         // of smearing into the surface above it.
         for (let n = 0; n < 4; n++) normals.push(nx, 0, nz);
@@ -564,8 +546,6 @@ export interface Tile {
   readonly normals: Float32Array;
   readonly uvs: Float32Array;
   readonly colors: Float32Array;
-  /** Four per vertex when the surface asked for `extra`, else empty. */
-  readonly extras: Float32Array;
   /** Local to the tile. */
   readonly indices: Uint32Array;
 }
@@ -619,7 +599,7 @@ export function clipToRect(polygons: MultiPoly, rect: TileRect): MultiPoly {
  * edges the cut itself made, which are interior to the whole surface.
  */
 export function meshTile(options: SurfaceMeshOptions, rect: TileRect): Tile {
-  const context: Context = { options, uv: [0, 0], rgb: [1, 1, 1], four: [0, 0, 0, 0] };
+  const context: Context = { options, uv: [0, 0], rgb: [1, 1, 1] };
   const out = streams();
   const spans: Poly[] = [];
   for (const polygon of options.polygons) splitToSpan(polygon, options.maxEdge * 6, spans);
@@ -633,7 +613,6 @@ export function meshTile(options: SurfaceMeshOptions, rect: TileRect): Tile {
     normals: new Float32Array(out.normals),
     uvs: new Float32Array(out.uvs),
     colors: new Float32Array(out.colors),
-    extras: new Float32Array(out.extras),
     indices: new Uint32Array(out.indices),
   };
 }
@@ -650,7 +629,7 @@ function alongCut(rect: TileRect, ax: number, ay: number, bx: number, by: number
 
 /** One mesh of a surface from its tiles, in order. */
 export function mergeTiles(parts: readonly Tile[], options: Pick<SurfaceMeshOptions,
-  'name' | 'material' | 'castShadow' | 'receiveShadow' | 'extra'>): Mesh | null {
+  'name' | 'material' | 'castShadow' | 'receiveShadow'>): Mesh | null {
   let vertices = 0;
   let count = 0;
   for (const tile of parts) {
@@ -662,7 +641,6 @@ export function mergeTiles(parts: readonly Tile[], options: Pick<SurfaceMeshOpti
   const normals = new Float32Array(vertices * 3);
   const uvs = new Float32Array(vertices * 2);
   const colors = new Float32Array(vertices * 3);
-  const extras = options.extra ? new Float32Array(vertices * 4) : null;
   const indices = vertices > 0xffff ? new Uint32Array(count) : new Uint16Array(count);
   let v = 0;
   let k = 0;
@@ -671,7 +649,6 @@ export function mergeTiles(parts: readonly Tile[], options: Pick<SurfaceMeshOpti
     normals.set(tile.normals, v * 3);
     uvs.set(tile.uvs, v * 2);
     colors.set(tile.colors, v * 3);
-    if (extras && tile.extras.length === (tile.positions.length / 3) * 4) extras.set(tile.extras, v * 4);
     const local = tile.indices;
     for (let i = 0; i < local.length; i++) indices[k++] = (local[i] as number) + v;
     v += tile.positions.length / 3;
@@ -681,7 +658,6 @@ export function mergeTiles(parts: readonly Tile[], options: Pick<SurfaceMeshOpti
   geometry.setAttribute('normal', new BufferAttribute(normals, 3));
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
-  if (extras && options.extra) geometry.setAttribute(options.extra.name, new BufferAttribute(extras, 4));
   geometry.setIndex(new BufferAttribute(indices, 1));
   return finish(geometry, options);
 }
