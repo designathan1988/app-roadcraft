@@ -31,6 +31,7 @@ import { createEnvironment } from './environment';
 import { createMaterials, type SceneMaterials } from './materials';
 import { createIsoRig } from './isoViewport';
 import { createPostChain, type PostChain } from './postprocess';
+import { createInspector, type Inspector } from './inspector';
 import { buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
 import { PLANT_NEAR_ZOOM, buildScenery, createSceneryKit, type Scenery, type SceneryKit } from './scenery';
 import { GRASS_MIN_ZOOM } from './grass';
@@ -110,6 +111,8 @@ export interface SceneHandle {
   draw(net: Network, sim: SimWorld, alpha: number, delta: number, options?: DrawOptions): void;
   setQuality(level: QualityLevel | 'auto'): void;
   readonly quality: QualityLevel | 'auto';
+  /** The inspection camera (`inspector.ts`); null outside development builds. */
+  readonly inspect: Inspector | null;
   dispose(): void;
 }
 
@@ -399,7 +402,12 @@ export function createSceneRenderer(
   let lastWidth = 0;
   let lastHeight = 0;
 
+  // Development only: the production build replaces the flag with false and
+  // drops the inspector with it.
+  const inspect = import.meta.env.DEV ? createInspector(renderer, scene) : null;
+
   return {
+    inspect,
     backend: 'three-webgl',
     viewport: rig.viewport,
     scene,
