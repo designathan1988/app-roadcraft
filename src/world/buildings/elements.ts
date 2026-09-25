@@ -33,7 +33,7 @@ import {
 
 /** A ramp's slope: one in twelve, the usual limit for a wheelchair ramp. */
 export const RAMP_RUN_PER_RISE = 12;
-export const MIN_ELEMENT = m(0.2);
+export const MIN_ELEMENT = m(0.1);
 export const MAX_ELEMENT = m(40);
 
 /** Sizes an element starts with, world units: [w, d, h]. */
