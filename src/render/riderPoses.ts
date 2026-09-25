@@ -86,8 +86,13 @@ export interface WheelSpec {
   readonly radius: number;
 }
 
-/** A car's wheel: in front of a reclined driver, nearly upright. */
-export const DRIVER_WHEEL: WheelSpec = { forward: 0.44, up: 0.215, tilt: 0.45, radius: 0.19 };
+/**
+ * A car's wheel, per the vehicle spec (docs/vehicle-model-spec.md, section 3.2): 0.46 m
+ * ahead of the hip point and 0.36 m above it, its plane 26 degrees from
+ * vertical. It was 0.215 m above the hip, which put the rim in the driver's
+ * lap and their hands with it.
+ */
+export const DRIVER_WHEEL: WheelSpec = { forward: 0.46, up: 0.36, tilt: 0.45, radius: 0.185 };
 
 /**
  * A bus's or a truck's wheel: large, laid back towards flat, in front of a

@@ -30,10 +30,10 @@ NÃO COBERTO section that must be empty (only real user-decision blockers).
 |---|---|---|---|
 | P0 | Build identity: find what the user runs, consolidate master+stabilize, stamp on screen, recapture the reported defects | every check is worthless on a build nobody sees | done: master ff to b878673 (check green 508 pass / 7 it.fails, verify:visual green); Road/dist rebuilt and preview 5311 restarted; wt-check (5220) moved to master; stamp fixed for servers without git on PATH; recapture docs/screenshots/p0-before |
 | P1 | Inspection harness: dev camera, frame by id, interior mode, hi-res, fixture map, runtime census | P2–P7 are unverifiable without it | done 9099bac: scripts/inspect-scene.mjs sets play/ground/structures/cars/interior/bikes/people/census, stamp burnt in, city grid in tests/fixtures/inspectionMap.ts; scene().census() |
-| P2 | Occupants: typed anchors contract, real seated pose, capsule test, idle life, steering, opaque roof, whitelist, variable occupancy | complaint #1 | todo |
+| P2 | Occupants: typed anchors contract, real seated pose, capsule test, idle life, steering, opaque roof, whitelist, variable occupancy | complaint #1 | in progress: seat close-ups (harness set 'seats', inspector cut plane fixed) show driver hands off the wheel (wheel was 0.215 m over the hip; now 0.36 per docs/vehicle-model-spec.md), rear legs through front seats (one ride pose for all rows), van/truck driver legs through the floor. Left: rear-seat pose, anchors contract + test, capsule test, idle/steer/brake poses |
 | P3 | People whitelist manifest + single `pickCitizenModel` + strict dress code + census | P2/P4 draw from it | mostly done 9099bac: manifest (86 shipped, 56 allowed), citizenCasting.ts, arch test, partyCoherence on real manifest, census 165 figures 0 outside / 0 mixed. Left: 60 close-ups with stamp (P13), drop uniform GLBs from dist (P11) |
 | P4 | Motorbikes and riders rebuilt | | todo |
-| P5 | Cars rebuilt by loft, anchors for P2 | | todo |
+| P5 | Cars rebuilt by loft, anchors for P2 | | in progress (WIP commit on stabilize/core, NOT on master): src/render/carBody.ts - one lofted surface, regions for glass/roof/pillars/doors, styles hatch/sedan/wagon/suv/pickup/van, seating package. Not yet visually checked. tests/render/occupantFit.spec.ts FAILS: hatch rear seat fit 0.82 < 0.9 |
 | P6 | Slopes and structures | | partly done on stabilize (e5b6e33, e0c06d6, 77ab833, cbc4279, 8b43722) — verify |
 | P7 | Living pedestrians + PED_AGENT freeze | | todo |
 | P8 | Scene (asphalt, kerb, gutter geometry, footway, grass, zebras, ring objects, trees, lamps, debug overlay) | | todo |
@@ -64,5 +64,4 @@ incompatible groups; zero capsule interpenetration; no loose part (ε); zero mar
 - Other live Claude sessions at start: two on another project (pagebuilder); none on Roadcraft.
 
 ## 7. Next step
-P2: typed anchor contract (src/render/vehicleAnchors.ts) from the current models; fix rear-seat legroom (legs through front seats), driver hands on the wheel, missing driver; capsule interpenetration test; idle life; then P4, P5.
-Dev server: preview 'road-stabilize-dev' on 5176 (launch.json entry in Road). Harness: node scripts/inspect-scene.mjs <out> [sets].
+Stopped at the user's request after the WIP commit. To resume: fix hatch rear seat room (couple distance / roof over rear heads in STYLES.hatch), make occupantFit green, then run the harness sets cars/seats on 5176 and LOOK at every style before anything reaches master. Master is b878673 (+ nothing from P2/P5). Dev server 'road-stabilize-dev' on 5176 may still be running (preview_stop it).

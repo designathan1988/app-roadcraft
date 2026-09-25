@@ -18,6 +18,7 @@
  *                and at the tunnel mouth; a walker on the sloped footway
  *   cars         every vehicle body, four angles each
  *   interior     occupied seats, roof and near side cut away, and through the windscreen
+ *   seats        every occupied seat close up, cabin cut away
  *   bikes        motorcycles and bicycles with their riders, side and 3/4
  *   people       groups and solo walkers close up
  *   census       every figure the RENDERER drew: model, role, group (census.json)
@@ -234,7 +235,7 @@ if (want('structures')) {
   }
 }
 
-const vehicles = want('cars') || want('interior') || want('bikes') ? await locate('vehicle') : [];
+const vehicles = want('cars') || want('interior') || want('bikes') || want('seats') ? await locate('vehicle') : [];
 /** One of each archetype, the fullest, not in a junction. */
 const byArchetype = new Map();
 for (const v of vehicles) if (!v.junction && (!byArchetype.has(v.archetype) || v.seated > byArchetype.get(v.archetype).seated)) byArchetype.set(v.archetype, v);
@@ -272,6 +273,45 @@ if (want('interior')) {
       `${v.archetype} #${v.id} through the windscreen`);
     await shoot(`interior-${v.archetype}-${v.id}-above`, { ...at, azimuth: v.heading + 0.9, elevation: 0.85, distance: d * 1.6 },
       `${v.archetype} #${v.id} from the play angle (roof must be opaque)`);
+  }
+}
+
+if (want('seats')) {
+  // Every occupied seat of a few vehicles of each class, close, from inside
+  // the cut-away cabin: the person, the seat, the wheel and the pedals.
+  const picked = new Map();
+  for (const v of vehicles) {
+    if (v.junction || v.seated === 0 || v.shape === 'motorcycle' || v.shape === 'bicycle' || v.shape === 'bus') continue;
+    const list = picked.get(v.archetype) ?? [];
+    if (list.length < 2) list.push(v);
+    picked.set(v.archetype, list);
+  }
+  for (const list of picked.values()) {
+    for (const v of list) {
+      const seats = await page.evaluate(async (id) => {
+        const R = window.__roadcraft;
+        const { buildVehicleModel, buildTruckModel } = await import('/src/render/vehicleModels.ts');
+        const veh = R.sim.vehiclesInIdOrder().find((x) => x.id === id);
+        const model = veh.archetype.shape === 'truck' ? buildTruckModel(veh.archetype) : buildVehicleModel(veh.archetype);
+        const out = [];
+        model.seats.forEach((seat, i) => {
+          if (i < 32 && (veh.seats & (1 << i)) !== 0) out.push({ index: i, x: seat.x, z: seat.z, hipY: seat.hipY, driver: seat.driver, row: seat.row });
+        });
+        return out;
+      }, v.id);
+      for (const seat of seats) {
+        // Seat point in world: X forward, Z to the vehicle's right.
+        const c = Math.cos(v.heading);
+        const s2 = Math.sin(v.heading);
+        const x = v.x + c * seat.x + s2 * seat.z;
+        const y = v.y + s2 * seat.x - c * seat.z;
+        const side = seat.z < 0 ? 1 : -1; // camera on the seat's own side (left = +pi/2)
+        const interior = { heading: v.heading, roofCut: v.height * 0.62, halfWidth: v.width / 2, cx: v.x, cy: v.y };
+        await shoot(`seat-${v.archetype}-${v.id}-s${seat.index}`, { x, y, h: v.h + seat.hipY + M(0.2), azimuth: v.heading + side * Math.PI / 2 + side * 0.25,
+          elevation: 0.35, distance: M(2.4), fov: 35, width: 1400, height: 1000, interior },
+          `${v.archetype} #${v.id} seat ${seat.index}${seat.driver ? ' (driver)' : ''} row ${seat.row}`);
+      }
+    }
   }
 }
 

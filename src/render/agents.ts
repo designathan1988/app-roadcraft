@@ -30,6 +30,7 @@ import type { Vehicle as SimVehicle } from '@sim/vehicles/state';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
 import { DT, FLEET_CEILING, PED_CEILING } from '@sim/params';
+import { buildCarModel, carStyleOf, carStylesFor } from './carBody';
 import { CROWD_IDS, createRiggedCitizens, type CitizenClipKey, type ClipIdentity } from './riggedCitizens';
 import type { Company } from './citizenCasting';
 import { kerbTransfer, seatPerson, type KerbStop } from '@sim/vehicles/kerbStops';
@@ -37,7 +38,7 @@ import { FOOTWAY_RISE } from '@world/roadTypes';
 import { groundGradient } from './groundShear';
 import { WheelOdometer, blinkOn, indicatorSide, pathCurvature, steerAngle } from './vehicleSignals';
 import {
-  axleStations, buildBusModel, buildTruckModel, buildTwoWheelerModel, buildVehicleModel, seatFitScale, rimGeometry, spokedRimGeometry,
+  axleStations, buildBusModel, buildTruckModel, buildTwoWheelerModel, seatFitScale, rimGeometry, spokedRimGeometry,
   merge, tyreGeometry, type TwoWheelerModel, type VehicleModel,
 } from './vehicleModels';
 import { HELMET_SEGMENTS, STEER_FULL } from './riderPoses';
@@ -640,21 +641,32 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     readonly steering: Part | null;
   }
   const carParts = new Map<string, CarParts>();
+  /** Which body a vehicle is drawn with: its class and, for a car, the style its id picks. */
+  const bodyKey = (vehicle: SimVehicle): string => {
+    const a = vehicle.archetype;
+    if (a.shape === 'bus') return `${a.id}:bus`;
+    if (a.shape === 'truck') return `${a.id}:truck`;
+    return `${a.id}:${carStyleOf(a, agentHash(vehicle.id ^ 0x57e1))}`;
+  };
   const modelGeometries: BufferGeometry[] = [];
+  // One set per class and body style: a sedan may be drawn as an estate and
+  // an SUV as a pick-up (`carBody.carStyleOf`), the same size to the simulation.
+  const bodies: { key: string; model: VehicleModel }[] = [];
   for (const archetype of ARCHETYPES) {
-    const model = archetype.shape === 'car' ? buildVehicleModel(archetype)
-      : archetype.shape === 'bus' ? buildBusModel(archetype)
-        : archetype.shape === 'truck' ? buildTruckModel(archetype)
-          : null;
-    if (!model) continue;
-    const id = archetype.id;
+    if (archetype.shape === 'car') {
+      for (const style of carStylesFor(archetype)) bodies.push({ key: `${archetype.id}:${style}`, model: buildCarModel(archetype, style) });
+    } else if (archetype.shape === 'bus') bodies.push({ key: `${archetype.id}:bus`, model: buildBusModel(archetype) });
+    else if (archetype.shape === 'truck') bodies.push({ key: `${archetype.id}:truck`, model: buildTruckModel(archetype) });
+  }
+  for (const { key, model } of bodies) {
+    const id = key.replace(':', '-');
     const own = new Set<BufferGeometry>([model.shell, model.glass, model.interior, model.openShell, model.openGlass,
       model.openInterior, model.trim, model.far, ...model.doors.flatMap((d) => [d.panel, d.glass, ...(d.card ? [d.card] : [])])]);
     if (model.roof) own.add(model.roof);
     if (model.accent) own.add(model.accent);
     if (model.steering) own.add(model.steering.geometry);
     modelGeometries.push(...own);
-    carParts.set(id, {
+    carParts.set(key, {
       model,
       shell: instanced(`car-${id}-shell`, model.shell, paint, MAX_VEHICLES),
       glass: instanced(`car-${id}-glass`, model.glass, glassMaterial, MAX_VEHICLES, false),
@@ -883,7 +895,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
    * through, and a cabin with seats and a wheel.
    */
   const drawCar = (vehicle: SimVehicle, plan: BodyPlan, paintHex: number, look: VehicleLook, band: number): void => {
-    const car = carParts.get(vehicle.archetype.id);
+    const car = carParts.get(bodyKey(vehicle));
     if (!car) return;
     const model = car.model;
     if (band < 1) {
