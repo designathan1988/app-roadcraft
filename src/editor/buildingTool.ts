@@ -8,7 +8,7 @@ import {
   generateBlock,
 } from '@world/buildings/blueprints';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
-import { footprintCells, levelHeight, localDirToWorld } from '@world/buildings/geometry';
+import { MIN_SIZE, footprintBox, levelHeight, localDirToWorld } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
 import { type MaterialSpec, type MaterialTarget, applyMaterial, materialAt } from '@world/buildings/materials';
@@ -110,7 +110,7 @@ export interface BuildingSelection {
   readonly bay: BaySelection | null;
 }
 
-/** Parameters of the generated block (the sliders). */
+/** Parameters of the generated block (the sliders); lengths in world units. */
 export interface PlaceParameters {
   width: number;
   depth: number;
@@ -136,8 +136,8 @@ export class BuildingTool {
   body: BlueprintBody;
   blueprintKey: string | null;
   params: PlaceParameters = {
-    width: 4,
-    depth: 3,
+    width: 4 * DEFAULT_MODULE,
+    depth: 3 * DEFAULT_MODULE,
     storeys: 2,
     storeyHeight: DEFAULT_STOREY_HEIGHT,
     module: DEFAULT_MODULE,
@@ -163,7 +163,7 @@ export class BuildingTool {
 
   constructor(private readonly view: ToolView, private readonly host: ToolHost) {
     const first = BLUEPRINTS[0];
-    this.body = first ? first.body : generateBlock(4, 3, 2);
+    this.body = first ? first.body : generateBlock(4 * DEFAULT_MODULE, 3 * DEFAULT_MODULE, 2);
     this.blueprintKey = first ? first.key : null;
   }
 
@@ -342,7 +342,7 @@ export class BuildingTool {
           this.onSelected((draft) => {
             const v = volumeById(draft, s.volume);
             if (!v) return false;
-            return opResize(draft, s.volume, name === 'width' ? 1 : 2, Math.round(value) - (name === 'width' ? v.w : v.d));
+            return opResize(draft, s.volume, name === 'width' ? 1 : 2, value - (name === 'width' ? v.w : v.d));
           });
           return;
         case 'storeyHeight':
@@ -525,8 +525,8 @@ export class BuildingTool {
         this.drag = { kind: 'move', origin, start: this.view.planeAt(screen, handle.z), z: handle.z };
         break;
       case 'rotate': {
-        const f = footprintCells(origin);
-        const c = localDirToWorld(origin, ((f.x0 + f.x1) / 2) * origin.module, ((f.y0 + f.y1) / 2) * origin.module);
+        const f = footprintBox(origin);
+        const c = localDirToWorld(origin, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
         const centre = { x: origin.x + c.x, y: origin.y + c.y };
         const p = this.view.planeAt(screen, handle.z);
         this.drag = { kind: 'rotate', origin, centre, z: handle.z, startAngle: Math.atan2(p.y - centre.y, p.x - centre.x) };
@@ -565,18 +565,18 @@ export class BuildingTool {
       case 'side': {
         const p = this.view.planeAt(screen, drag.z);
         const along = (p.x - drag.start.x) * drag.dir.x + (p.y - drag.start.y) * drag.dir.y;
-        const cells = Math.round(along / draft.module);
+        // Push and pull by the grid; with Shift the pull grows a new wing instead.
         if (drag.wing || shift) {
-          if (cells >= 1) opAddWing(draft, drag.volume, drag.side, cells);
+          if (along >= MIN_SIZE) opAddWing(draft, drag.volume, drag.side, along);
         } else {
-          opResize(draft, drag.volume, drag.side, cells);
+          opResize(draft, drag.volume, drag.side, along);
         }
         break;
       }
       case 'move': {
         const p = this.view.planeAt(screen, drag.z);
-        const f = footprintCells(draft);
-        const c = localDirToWorld(draft, ((f.x0 + f.x1) / 2) * draft.module, ((f.y0 + f.y1) / 2) * draft.module);
+        const f = footprintBox(draft);
+        const c = localDirToWorld(draft, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
         const centre = { x: draft.x + c.x + p.x - drag.start.x, y: draft.y + c.y + p.y - drag.start.y };
         const ctx = this.host.context();
         const snap = snapPlacement(ctx.doc, ctx.net, footprintSize(draft), centre, draft.rotation, draft.id);
@@ -735,8 +735,8 @@ export class BuildingTool {
 /** Moves a building so its front-centre anchor is at `anchor`, at `rotation`. */
 export function placeAt(b: Building, anchor: Vec2, rotation: number): void {
   b.rotation = normaliseAngle(rotation);
-  const f = footprintCells(b);
-  const offset = localDirToWorld(b, ((f.x0 + f.x1) / 2) * b.module, f.y0 * b.module);
+  const f = footprintBox(b);
+  const offset = localDirToWorld(b, (f.x0 + f.x1) / 2, f.y0);
   b.x = anchor.x - offset.x;
   b.y = anchor.y - offset.y;
 }

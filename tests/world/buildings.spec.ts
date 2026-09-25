@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_MODULE } from '@world/buildings/types';
+
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { BLUEPRINTS, generateBody } from '@world/buildings/blueprints';
@@ -10,7 +12,7 @@ import {
   footprintRects,
   levelElevation,
   localToWorld,
-  occupancy,
+  clashes,
   worldToLocal,
 } from '@world/buildings/geometry';
 import { buildingHandles } from '@world/buildings/handles';
@@ -22,6 +24,9 @@ import { convexOverlap, structuralProblem, validateBuilding } from '@world/build
 import { type Building, asBuildingId, componentAt } from '@world/buildings/types';
 import { isSerializedDoc } from '@editor/persistence';
 
+/** `n` default modules, world units. */
+const bays = (n: number): number => n * DEFAULT_MODULE;
+
 /**
  * The modular building model (docs/buildings.md): a building is data, and
  * every question about it - what is an outside wall, where the floor is on a
@@ -32,7 +37,7 @@ const flat = (): number => 0;
 
 function building(overrides: Partial<Building> = {}): Building {
   return {
-    ...generateBody('residential', 4, 3, 3),
+    ...generateBody('residential', bays(4), bays(3), 3),
     id: asBuildingId(1),
     x: 100,
     y: 100,
@@ -71,11 +76,11 @@ describe('building geometry', () => {
 
   it('builds no facade where two volumes share a wall', () => {
     const b = building();
-    b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: 4 });
+    b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: 4 * b.module });
     const bays = facadeBays(b);
     // Two 4x3 blocks side by side: 2*(8+3) exposed bays a storey.
     expect(bays.length).toBe(22 * 3);
-    expect(occupancy(b).clashes).toHaveLength(0);
+    expect(clashes(b)).toHaveLength(0);
   });
 
   it('resolves a facade bay, then side, then fill', () => {
@@ -191,10 +196,10 @@ describe('foundations', () => {
 describe('validation', () => {
   it('rejects overlapping volumes and volumes over nothing', () => {
     const b = building();
-    b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: 2 });
+    b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: bays(2) });
     expect(structuralProblem(b)).toBe('overlap');
     const c = building();
-    c.volumes.push({ ...JSON.parse(JSON.stringify(c.volumes[0])), id: 2, x: 3, base: 3, w: 3 });
+    c.volumes.push({ ...JSON.parse(JSON.stringify(c.volumes[0])), id: 2, x: bays(3), base: 3, w: bays(3) });
     expect(structuralProblem(c)).toBe('support');
   });
 
@@ -270,7 +275,7 @@ describe('serialisation', () => {
     const back = RoadDoc.fromJSON(json);
     expect(back.toJSON().buildings).toEqual(doc.toJSON().buildings);
     // The allocator survives: a new building does not reuse an id.
-    const next = back.buildings.add({ ...generateBody('commercial', 2, 2, 1), x: 0, y: 0, rotation: 0 } as Building);
+    const next = back.buildings.add({ ...generateBody('commercial', bays(2), bays(2), 1), x: 0, y: 0, rotation: 0 } as Building);
     expect(next.id).toBe(BLUEPRINTS.length + 1);
   });
 
@@ -283,9 +288,9 @@ describe('serialisation', () => {
   });
 
   it('repairs a damaged building and drops an unreadable one, keeping the map', () => {
-    const good = { ...generateBody('residential', 3, 3, 2), id: 1, x: 0, y: 0, rotation: 0 };
+    const good = { ...generateBody('residential', bays(3), bays(3), 2), id: 1, x: 0, y: 0, rotation: 0 };
     const damaged = {
-      ...generateBody('commercial', 3, 3, 2),
+      ...generateBody('commercial', bays(3), bays(3), 2),
       id: 2, x: 50, y: 0, rotation: 0,
       module: 999, use: 'castle', palette: -4,
       future: { keep: true },
@@ -303,7 +308,7 @@ describe('serialisation', () => {
   });
 
   it('migrates a storey with unknown components to its fill', () => {
-    const raw = { ...generateBody('residential', 2, 2, 1), id: 4, x: 0, y: 0 } as Record<string, unknown>;
+    const raw = { ...generateBody('residential', bays(2), bays(2), 1), id: 4, x: 0, y: 0 } as Record<string, unknown>;
     const v = (raw.volumes as Record<string, unknown>[])[0]!;
     v.storeys = [{ facade: { fill: 'hologram', bays: { '0:0': 'door', '9:1': 'door', '0:1': 'lava' } } }];
     const b = migrateBuilding(raw)!;
@@ -312,7 +317,7 @@ describe('serialisation', () => {
 
   it('keeps the buildings revision still when a road-only replace leaves them equal', () => {
     const doc = new RoadDoc();
-    doc.buildings.add({ ...generateBody('residential', 3, 3, 2), x: 0, y: 0, rotation: 0 } as Building);
+    doc.buildings.add({ ...generateBody('residential', bays(3), bays(3), 2), x: 0, y: 0, rotation: 0 } as Building);
     const before = doc.buildings.revision;
     const clone = doc.clone();
     clone.addNode({ x: 500, y: 500 });
@@ -375,5 +380,52 @@ describe('materials', () => {
     expect(back.volumes[0]!.materials?.sides?.[2]).toEqual(brick);
     const broken = migrateBuilding({ ...JSON.parse(JSON.stringify(b)), materials: { wall: { finish: 'cheese', colour: 1 }, roof: { finish: 'tile', colour: -5 } } })!;
     expect(broken.materials).toBeUndefined();
+  });
+});
+
+describe('free dimensions', () => {
+  it('reads a schema 1 building, measured in cells, as the same building in world units', () => {
+    const module = 7.5;
+    const old = {
+      id: 3, schema: 1, x: 10, y: 20, rotation: 0, use: 'residential', module, groundHeight: 9, storeyHeight: 7.75, palette: 0,
+      volumes: [{ id: 1, x: -1, y: 0, w: 4, d: 3, base: 0, roof: 'flat', storeys: [{ facade: { fill: 'window', bays: { '0:2': 'door' } } }] }],
+      cores: [{ id: 1, x: 2, y: 1, kind: 'lift', from: 0, to: 1 }],
+      nextVolumeId: 2,
+    };
+    const b = migrateBuilding(old)!;
+    const v = b.volumes[0]!;
+    expect([v.x, v.y, v.w, v.d]).toEqual([-7.5, 0, 30, 22.5]);
+    expect(b.cores[0]).toMatchObject({ x: 15, y: 7.5 });
+    expect(b.schema).toBe(2);
+    // The same four bays across the front, the door still in the third.
+    const front = facadeBays(b).filter((bay) => bay.side === 0);
+    expect(front).toHaveLength(4);
+    expect(front[2]!.component).toBe('door');
+    // And a current building is not scaled again.
+    expect(migrateBuilding(JSON.parse(JSON.stringify(b)))!.volumes[0]!.w).toBe(30);
+  });
+
+  it('shares a side of any length into bays of about a module', () => {
+    const b = building();
+    const v = b.volumes[0]!;
+    v.w = 26.25; // 10.5 m: four bays of 2.625 m
+    const front = facadeBays(b).filter((bay) => bay.side === 0 && bay.level === 0);
+    expect(front).toHaveLength(4);
+    for (const bay of front) expect(bay.width).toBeCloseTo(26.25 / 4, 9);
+  });
+
+  it('keeps the exposed piece of a bay a neighbour only partly stands against, as wall', () => {
+    const b = building();
+    const v = b.volumes[0]!;
+    // A one-storey block against the right side, over half of its first bay.
+    b.volumes.push({ id: 2, x: v.x + v.w, y: v.y, w: bays(2), d: bays(0.5), base: 0, roof: 'flat', storeys: [{ facade: { fill: 'window' } }] });
+    const right = facadeBays(b).filter((bay) => bay.volume === v.id && bay.side === 1 && bay.level === 0);
+    const first = right.filter((bay) => bay.index === 0);
+    expect(first).toHaveLength(1);
+    expect(first[0]!.component).toBe('wall');
+    expect(first[0]!.start).toBeCloseTo(bays(0.5), 9);
+    expect(first[0]!.width).toBeCloseTo(bays(0.5), 9);
+    // Above the block the whole bay is outside again.
+    expect(facadeBays(b).filter((bay) => bay.volume === v.id && bay.side === 1 && bay.level === 1 && bay.index === 0)[0]!.width).toBeCloseTo(bays(1), 9);
   });
 });

@@ -13,8 +13,13 @@ declare const BuildingIdBrand: unique symbol;
 export type BuildingId = number & { readonly [BuildingIdBrand]: true };
 export const asBuildingId = (n: number): BuildingId => n as BuildingId;
 
-/** The schema written on every stored building. See `serialize.ts`. */
-export const BUILDING_SCHEMA = 1;
+/**
+ * The schema written on every stored building. See `serialize.ts`.
+ *
+ * 1: volumes, cores and spaces measured in whole cells of `module`.
+ * 2: measured in world units, any size (the editor snaps them to `GRID`).
+ */
+export const BUILDING_SCHEMA = 2;
 
 export const BUILDING_USES = ['residential', 'commercial', 'industrial', 'mixed'] as const;
 export type BuildingUse = (typeof BUILDING_USES)[number];
@@ -60,8 +65,8 @@ export interface Facade {
 
 /**
  * Extension point: a subdivision of a storey (a flat, a shop, a corridor).
- * Stored and round-tripped; nothing simulates it yet. Cells are in the
- * building's local grid.
+ * Stored and round-tripped; nothing simulates it yet. A rectangle of the
+ * building's local frame, world units.
  */
 export interface Space {
   id: number;
@@ -81,7 +86,7 @@ export interface Storey {
   spaces?: Space[];
 }
 
-/** A rectangular block of cells, standing on level `base`. */
+/** A rectangular block, standing on level `base`: a rectangle of the local frame, world units. */
 export interface Volume {
   id: number;
   x: number;
@@ -97,7 +102,8 @@ export interface Volume {
 }
 
 /**
- * Extension point: a vertical circulation shaft. A lift core is drawn as an
+ * Extension point: a vertical circulation shaft, a module square whose
+ * corner is at `(x, y)` in the local frame. A lift core is drawn as an
  * overrun box on a flat roof; nothing moves in it yet.
  */
 export interface Core {
@@ -118,7 +124,7 @@ export interface Building {
   /** Radians, counter-clockwise, of the local +x axis. */
   rotation: number;
   use: BuildingUse;
-  /** Width of one grid cell / facade bay, world units. */
+  /** The width a facade bay aims at, world units: each side is shared into bays of about this. */
   module: number;
   /** Height of level 0, world units. */
   groundHeight: number;
@@ -147,8 +153,8 @@ export const DEFAULT_MODULE = m(3);
 export const MIN_STOREY_HEIGHT = m(2.6);
 export const MAX_STOREY_HEIGHT = m(9);
 export const MAX_STOREYS = 60;
-/** Widest a volume may be, in cells, on either axis. */
-export const MAX_CELLS = 40;
+/** Widest a volume may be on either axis, world units. */
+export const MAX_SIZE = m(160);
 export const MAX_VOLUMES = 24;
 export const PALETTE_COUNT = 8;
 
@@ -171,9 +177,6 @@ export function componentAt(facade: Facade, side: Side, index: number): BayCompo
 export function cloneBuilding<T extends Building>(b: T): T {
   return JSON.parse(JSON.stringify(b)) as T;
 }
-
-/** The number of bays on one side of a volume. */
-export const baysOn = (v: Volume, side: Side): number => (side === 0 || side === 2 ? v.w : v.d);
 
 /** The level a volume's roof sits on (one past its top storey). */
 export const volumeTop = (v: Volume): number => v.base + v.storeys.length;

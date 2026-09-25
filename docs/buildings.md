@@ -31,16 +31,16 @@ editor, the editor nothing of three.js, and `main.ts` (through
 
 ```
 Building                      src/world/buildings/types.ts
- ├─ id, schema (=1)
+ ├─ id, schema (=2)
  ├─ x, y, rotation            placement of the local frame (world units, radians)
  ├─ use                       residential | commercial | industrial | mixed
- ├─ module                    width of one bay / grid cell, world units
+ ├─ module                    the width a facade bay aims at, world units
  ├─ groundHeight, storeyHeight  default height of level 0 and of every level above
  ├─ levels?: number[]         per-level height overrides, building-wide
  ├─ palette                   facade colour scheme index
  ├─ volumes: Volume[]         the massing
  │   ├─ id
- │   ├─ x, y, w, d            a rectangle of grid cells in the local frame
+ │   ├─ x, y, w, d            a rectangle of the local frame, world units, any size
  │   ├─ base                  the level this volume starts on (0 = the ground)
  │   ├─ roof                  flat | terrace | gable | hip | shed | sawtooth
  │   └─ storeys: Storey[]     bottom to top; storey k occupies level base + k
@@ -52,15 +52,26 @@ Building                      src/world/buildings/types.ts
  └─ name?, blueprint?
 ```
 
-### Why a grid of modules
+### Free dimensions, rhythmic facades
 
-Every horizontal dimension is an integer number of **modules** (cells of
-`module` world units). That is what makes the building *modular*: a facade is a
-row of bays exactly one module wide, a wing is a whole number of bays, a
-setback is inset by whole bays, and two volumes either share a wall exactly or
-do not touch. It also makes every structural question - does this storey hang
-over nothing, do two volumes intersect, is this bay an outside wall - an exact
-integer test on cells instead of a floating-point polygon test.
+A volume is a rectangle of **any size** in world units (schema 2; schema 1
+measured whole cells of `module`, and `migrateBuilding` multiplies them out,
+so an old map opens unchanged). The editor snaps every length it sets to
+`GRID` (half a metre) - pushing a face, growing a wing, a setback's inset, the
+width and depth sliders - so volumes still meet exactly and share walls.
+
+The facades keep their rhythm on any length: a side is shared evenly into
+`baysOn(b, v, side) = round(length / module)` bays (`bayWidth`), so a 16.5 m
+front with a 3 m module has six bays of 2.75 m. The structural questions are
+exact rectangle tests (`world/buildings/geometry.ts`):
+
+* `clashes` - two volumes overlapping in plan (touching is allowed) on a
+  shared level;
+* `isSupported` - a volume above the ground is covered by the union of the
+  volumes with a storey on the level under its base (rectangle subtraction);
+* `coveredSpans` / `exposedParts` - the stretches of a side another volume
+  stands against on a level: no facade there. A bay only partly against one
+  keeps its exposed piece, drawn as plain wall (`FacadeBay.start`/`width`).
 
 ### Levels, not per-storey heights
 
@@ -97,9 +108,9 @@ Sides are numbered in the local frame: `0` front (local -y, the street side),
 2 and along +y on sides 1 and 3. When a volume grows on its negative side the
 bay keys are re-indexed, so an override stays on the bay it was set on.
 
-A bay is only drawn where it is an **outside** wall: if the cell beyond it at
-the same level belongs to another volume, the two volumes share a wall and no
-facade is built there.
+A bay is only drawn where it is an **outside** wall: where another volume
+stands against it on the same level, the two share a wall and no facade is
+built there (see *Free dimensions* above).
 
 ### Materials
 
@@ -125,7 +136,7 @@ the colour and a new colour keeps the finish.
 ### Extension points (documented, stored, not yet simulated)
 
 * `Storey.spaces: Space[]` - units, shops, corridors: `{ id, x, y, w, d,
-  kind, use }` in cells. Empty by default; `deriveSpaces()` in
+  kind, use }` in world units. Empty by default; `deriveSpaces()` in
   `world/buildings/spaces.ts` returns the default subdivision (one unit per
   volume per storey, split along the long axis every four modules for
   residential), which is what a future occupancy model reads.
@@ -157,14 +168,14 @@ record it cannot read rather than refusing the whole map.
 
 * `localToWorld`, `worldToLocal`, `volumeCorners`, `footprintRects`
 * `levelElevation(b, L)` - height of level `L` above the building's floor
-* `occupancy(b)` - the set of `(cell, level)` pairs, for exposure and support
+* `clashes`, `isSupported`, `coveredSpans` - overlap, support and shared walls, on rectangles
 * `facadeBays(b)` - every exposed bay: volume, storey, level, side, index,
   component, world position, normal, width, height
 
 `world/buildings/foundation.ts` reads the ground:
 
-* the ground is sampled on a grid over the whole footprint (every cell corner
-  and centre) through the `groundAt` function the caller passes - the renderer
+* the ground is sampled on a grid over the whole footprint (about every half module,
+  corners included) through the `groundAt` function the caller passes - the renderer
   passes `terrain.renderedHeightAt`, **the height the triangles are drawn at**
   (AGENTS.md trap: terrain height has two meanings);
 * the ground floor sits `PLINTH_MIN` above the **highest** sample, so the land
@@ -208,8 +219,8 @@ returns `null` or the first problem:
 | problem | rule |
 |---|---|
 | `size` | every volume at least 1x1 cell, 1..`MAX_STOREYS` storeys, sane module/heights |
-| `overlap` | two volumes of one building share a cell on a level |
-| `support` | a cell of a volume above level 0 has nothing under it |
+| `overlap` | two volumes of one building overlap in plan on a shared level |
+| `support` | part of a volume above level 0 has nothing under it |
 | `footprint` | no volume stands on the ground |
 | `bounds` | a corner leaves the map (`world/bounds.ts`, with a margin) |
 | `road` | a ground footprint reaches a road's footway, or a junction's footway plate (tunnels excepted) |

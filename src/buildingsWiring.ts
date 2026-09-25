@@ -2,7 +2,7 @@ import type { Vec2 } from '@core/vec2';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
-import { footprintCells, topLevel } from '@world/buildings/geometry';
+import { footprintBox, topLevel } from '@world/buildings/geometry';
 import { volumeById } from '@world/buildings/types';
 import { METERS_PER_UNIT } from '@world/units';
 import { type EditResult, clearBuildingsOnRoads, deleteBuilding } from '@editor/buildings';
@@ -184,11 +184,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       };
     let selection: BuildingPanelState['selection'] = null;
     if (b && v) {
-      const f = footprintCells(b);
+      const f = footprintBox(b);
       selection = {
         floors: topLevel(b),
-        width: (f.x1 - f.x0) * b.module,
-        depth: (f.y1 - f.y0) * b.module,
+        width: f.x1 - f.x0,
+        depth: f.y1 - f.y0,
         volumes: b.volumes.length,
         roof: v.roof,
       };
@@ -254,8 +254,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       let label: Parameters<typeof drawBuildingOverlay>[1]['label'] = null;
       if (preview) {
         const floors = topLevel(preview.building);
-        const f = footprintCells(preview.building);
-        const size = `${((f.x1 - f.x0) * preview.building.module * METERS_PER_UNIT).toFixed(0)} × ${((f.y1 - f.y0) * preview.building.module * METERS_PER_UNIT).toFixed(0)} m`;
+        const f = footprintBox(preview.building);
+        const size = `${((f.x1 - f.x0) * METERS_PER_UNIT).toFixed(1)} × ${((f.y1 - f.y0) * METERS_PER_UNIT).toFixed(1)} m`;
         const text = preview.problem
           ? t(`building.problem.${preview.problem}`)
           : `${plural('building.floors', floors)} · ${size}`;

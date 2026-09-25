@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_MODULE } from '@world/buildings/types';
+
 import { RoadDoc } from '@world/doc';
 import { BLUEPRINTS, generateBody } from '@world/buildings/blueprints';
 import { flightRun, foundationOf } from '@world/buildings/foundation';
@@ -8,6 +10,9 @@ import { type BuildingChunk, assembleBuildingMeshes, emitChunk } from '@render/b
 import { PART_KINDS, createBuildingKit } from '@render/buildings/kit';
 import { FINISHES } from '@world/buildings/materials';
 import { createBuildingLayer } from '@render/buildings/layer';
+
+/** `n` default modules, world units. */
+const bays = (n: number): number => n * DEFAULT_MODULE;
 
 /**
  * The building meshes (docs/buildings.md section 5). Winding is measured, not
@@ -68,7 +73,7 @@ describe('building shell', () => {
   it('sets a flight into the building rather than across the footway it backs onto', () => {
     // A house whose front (y = 100, facing -y) is on the back of a footway,
     // on land a little higher than the footway.
-    const b = { ...generateBody('residential', 4, 3, 2), id: asBuildingId(1), x: 100, y: 100, rotation: 0 } as Building;
+    const b = { ...generateBody('residential', bays(4), bays(3), 2), id: asBuildingId(1), x: 100, y: 100, rotation: 0 } as Building;
     const land = (_x: number, y: number): number => (y >= 100 ? 0.8 : 0);
     const footway = (_x: number, y: number): number => (y < 99.7 ? 0 : NaN);
     const f = foundationOf(b, land, undefined, footway);

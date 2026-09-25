@@ -1,7 +1,7 @@
 import { m } from '../units';
 import {
   SIDE_NORMAL,
-  footprintCells,
+  footprintBox,
   levelElevation,
   localDirToWorld,
   localToWorld,
@@ -47,9 +47,8 @@ export function buildingHandles(
 ): Handle[] {
   const v = volumeById(b, volumeId) ?? b.volumes[0];
   if (!v) return [];
-  const u = b.module;
   const out: Handle[] = [];
-  const top = localToWorld(b, (v.x + v.w / 2) * u, (v.y + v.d / 2) * u);
+  const top = localToWorld(b, v.x + v.w / 2, v.y + v.d / 2);
   out.push({
     kind: 'storeys',
     x: top.x,
@@ -61,18 +60,18 @@ export function buildingHandles(
   const baseZ = floor + levelElevation(b, v.base) + m(0.3);
   for (const side of SIDES) {
     const n = SIDE_NORMAL[side];
-    const cx = (v.x + v.w / 2) * u + n.x * ((v.w * u) / 2 + HANDLE_OUT);
-    const cy = (v.y + v.d / 2) * u + n.y * ((v.d * u) / 2 + HANDLE_OUT);
+    const cx = v.x + v.w / 2 + n.x * (v.w / 2 + HANDLE_OUT);
+    const cy = v.y + v.d / 2 + n.y * (v.d / 2 + HANDLE_OUT);
     const p = localToWorld(b, cx, cy);
     const d = localDirToWorld(b, n.x, n.y);
     out.push({ kind: 'side', side, x: p.x, y: p.y, z: baseZ, dx: d.x, dy: d.y });
   }
-  const f = footprintCells(b);
+  const f = footprintBox(b);
   const corners = [
-    localToWorld(b, f.x0 * u - CORNER_OUT, f.y0 * u - CORNER_OUT),
-    localToWorld(b, f.x1 * u + CORNER_OUT, f.y0 * u - CORNER_OUT),
-    localToWorld(b, f.x1 * u + CORNER_OUT, f.y1 * u + CORNER_OUT),
-    localToWorld(b, f.x0 * u - CORNER_OUT, f.y1 * u + CORNER_OUT),
+    localToWorld(b, f.x0 - CORNER_OUT, f.y0 - CORNER_OUT),
+    localToWorld(b, f.x1 + CORNER_OUT, f.y0 - CORNER_OUT),
+    localToWorld(b, f.x1 + CORNER_OUT, f.y1 + CORNER_OUT),
+    localToWorld(b, f.x0 - CORNER_OUT, f.y1 + CORNER_OUT),
   ];
   const order = nearest(corners);
   const move = corners[order[0] ?? 0] as { x: number; y: number };

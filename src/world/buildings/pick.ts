@@ -1,4 +1,4 @@
-import { buildingBounds, levelElevation, roofRise, volumeHeight, volumeRectLocal, worldToLocal } from './geometry';
+import { bayWidth, baysOn, buildingBounds, levelElevation, roofRise, volumeHeight, volumeRectLocal, worldToLocal } from './geometry';
 import type { Building, BuildingId, Side } from './types';
 
 /**
@@ -73,9 +73,9 @@ export function pickBuilding(
       for (let k = 0; k < v.storeys.length; k++) {
         if (zr >= levelElevation(b, v.base + k) - 1e-6) level = v.base + k;
       }
-      const along = face === 0 || face === 2 ? lx / b.module - v.x : ly / b.module - v.y;
-      const count = face === 0 || face === 2 ? v.w : v.d;
-      const index = Math.max(0, Math.min(count - 1, Math.floor(along)));
+      const side = face === 'top' ? 0 : face;
+      const along = (face === 0 || face === 2 ? lx - v.x : ly - v.y) / bayWidth(b, v, side);
+      const index = Math.max(0, Math.min(baysOn(b, v, side) - 1, Math.floor(along)));
       const world = { x: b.x + lx * c - ly * s, y: b.y + lx * s + ly * c };
       best = {
         building: b.id,

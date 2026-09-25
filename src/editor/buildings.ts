@@ -7,7 +7,16 @@ import {
   storeyUse,
   upperStoreyFrom,
 } from '@world/buildings/blueprints';
-import { footprintCells, footprintRects, localDirToWorld, occupancy } from '@world/buildings/geometry';
+import {
+  GRID,
+  MIN_SIZE,
+  baysOn,
+  footprintBox,
+  footprintRects,
+  isSupported,
+  localDirToWorld,
+  planOverlap,
+} from '@world/buildings/geometry';
 import {
   type BuildingProblem,
   type SiteContext,
@@ -24,8 +33,8 @@ import {
   type Side,
   type Storey,
   type Volume,
-  MAX_CELLS,
   MAX_MODULE,
+  MAX_SIZE,
   MAX_STOREYS,
   MAX_STOREY_HEIGHT,
   MIN_MODULE,
@@ -75,9 +84,8 @@ function storeyTemplate(v: Volume): Storey {
   return JSON.parse(JSON.stringify(top)) as Storey;
 }
 
-/** Whether two volumes share any cell in plan. */
-const planOverlap = (a: Volume, c: Volume): boolean =>
-  a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.d && c.y < a.y + a.d;
+/** A length snapped to the editor's grid. */
+export const snapLength = (v: number): number => Math.round(v / GRID) * GRID;
 
 /** Moves every volume standing on `v`'s old roof by `delta` levels, recursively. */
 function rideWith(b: Building, v: Volume, oldTop: number, delta: number, seen = new Set<number>()): void {
@@ -124,21 +132,28 @@ function shiftBays(v: Volume, sides: readonly Side[], shift: number): void {
   }
 }
 
-/** Moves one side of a volume by `delta` whole modules (out is positive). */
+/**
+ * Moves one side of a volume by `delta` world units (out is positive),
+ * snapped to the grid. Bays re-divide the new length; a side that grew at its
+ * start keeps its single-bay overrides on the bays they were set on.
+ */
 export function opResize(b: Building, volumeId: number, side: Side, delta: number): boolean {
   const v = volumeById(b, volumeId);
   if (!v || delta === 0) return false;
   const along = side === 1 || side === 3 ? 'w' : 'd';
-  const size = clamp(v[along] + Math.round(delta), 1, MAX_CELLS);
+  const size = clamp(snapLength(v[along] + delta), MIN_SIZE, MAX_SIZE);
   const change = size - v[along];
-  if (change === 0) return false;
+  if (Math.abs(change) < 1e-9) return false;
+  // The sides that run along the one moved, whose bays recount.
+  const runs: [Side, Side] = along === 'w' ? [0, 2] : [1, 3];
+  const before = baysOn(b, v, runs[0]);
   v[along] = size;
   if (side === 3) {
     v.x -= change;
-    shiftBays(v, [0, 2], change);
+    shiftBays(v, runs, baysOn(b, v, runs[0]) - before);
   } else if (side === 0) {
     v.y -= change;
-    shiftBays(v, [1, 3], change);
+    shiftBays(v, runs, baysOn(b, v, runs[0]) - before);
   }
   return true;
 }
@@ -158,17 +173,18 @@ function copyStoreys(v: Volume, count = v.storeys.length): Storey[] {
 }
 
 /**
- * Adds a wing against `side` of a volume: same base and height, `depth` cells
- * out, `length` cells along the side (default: about half of it, centred).
- * Returns the new volume's id, or null.
+ * Adds a wing against `side` of a volume: same base and height, `depth` world
+ * units out, `length` along the side (default: about half of it, centred),
+ * both snapped to the grid. Returns the new volume's id, or null.
  */
-export function opAddWing(b: Building, volumeId: number, side: Side, depth = 3, length?: number): number | null {
+export function opAddWing(b: Building, volumeId: number, side: Side, depth?: number, length?: number): number | null {
   const v = volumeById(b, volumeId);
   if (!v) return null;
   const sideLength = side === 0 || side === 2 ? v.w : v.d;
-  const len = clamp(Math.round(length ?? Math.max(2, Math.ceil(sideLength / 2))), 1, MAX_CELLS);
-  const out = clamp(Math.round(depth), 1, MAX_CELLS);
-  const offset = Math.floor((sideLength - len) / 2);
+  const half = Math.max(2 * b.module, Math.ceil(sideLength / 2 / b.module) * b.module);
+  const len = clamp(snapLength(Math.min(sideLength, length ?? half)), MIN_SIZE, MAX_SIZE);
+  const out = clamp(snapLength(depth ?? 3 * b.module), MIN_SIZE, MAX_SIZE);
+  const offset = snapLength((sideLength - len) / 2);
   const wing: Volume = {
     id: b.nextVolumeId++,
     x: 0,
@@ -190,23 +206,23 @@ export function opAddWing(b: Building, volumeId: number, side: Side, depth = 3, 
   // A wing's ground floor gets its own way in, on its outer face.
   if (wing.base === 0 && wing.storeys[0]) {
     const facade = wing.storeys[0].facade;
-    const outer = side;
-    const count = outer === 0 || outer === 2 ? wing.w : wing.d;
-    facade.bays = { [bayKey(outer, Math.floor(count / 2))]: 'door' };
+    facade.bays = { [bayKey(side, Math.floor(baysOn(b, wing, side) / 2))]: 'door' };
   }
   b.volumes.push(wing);
   return wing.id;
 }
 
 /**
- * Stacks a setback on a volume: inset by `inset` cells where the volume is
- * wide enough, `storeys` tall. The roof it stands on becomes a terrace.
+ * Stacks a setback on a volume: inset by `inset` world units (default one
+ * module) where the volume is wide enough, `storeys` tall. The roof it stands
+ * on becomes a terrace.
  */
-export function opAddSetback(b: Building, volumeId: number, inset = 1, storeys = 2): number | null {
+export function opAddSetback(b: Building, volumeId: number, inset?: number, storeys = 2): number | null {
   const v = volumeById(b, volumeId);
   if (!v) return null;
-  const ix = v.w - 2 * inset >= 1 ? inset : 0;
-  const iy = v.d - 2 * inset >= 1 ? inset : 0;
+  const step = snapLength(inset ?? b.module);
+  const ix = v.w - 2 * step >= MIN_SIZE ? step : 0;
+  const iy = v.d - 2 * step >= MIN_SIZE ? step : 0;
   const base = volumeTop(v);
   const template = storeyTemplate(v);
   const count = clamp(Math.round(storeys), 1, Math.max(1, MAX_STOREYS - base));
@@ -240,19 +256,8 @@ export function opRemoveVolume(b: Building, volumeId: number): boolean {
   // podium goes with the podium.
   for (let changed = true; changed;) {
     changed = false;
-    const occ = occupancy(b);
     for (const v of b.volumes) {
-      if (v.base === 0) continue;
-      let supported = true;
-      for (let i = v.x; i < v.x + v.w && supported; i++) {
-        for (let j = v.y; j < v.y + v.d; j++) {
-          if (occ.at(i, j, v.base - 1) === undefined) {
-            supported = false;
-            break;
-          }
-        }
-      }
-      if (!supported) {
+      if (!isSupported(b, v)) {
         b.volumes = b.volumes.filter((u) => u.id !== v.id);
         changed = true;
         break;
@@ -384,8 +389,8 @@ export function opMove(b: Building, x: number, y: number): boolean {
 /** Turns the building by `angle` about a world pivot (default: its footprint centre). */
 export function opRotate(b: Building, angle: number, pivot?: Vec2): boolean {
   if (angle === 0) return false;
-  const f = footprintCells(b);
-  const centreLocal = { x: ((f.x0 + f.x1) / 2) * b.module, y: ((f.y0 + f.y1) / 2) * b.module };
+  const f = footprintBox(b);
+  const centreLocal = { x: (f.x0 + f.x1) / 2, y: (f.y0 + f.y1) / 2 };
   const toCentre = localDirToWorld(b, centreLocal.x, centreLocal.y);
   const p = pivot ?? { x: b.x + toCentre.x, y: b.y + toCentre.y };
   const c = Math.cos(angle);
@@ -412,8 +417,8 @@ export const normaliseAngle = (a: number): number => {
  */
 export function instantiate(body: BlueprintBody, anchor: Vec2, rotation: number, blueprint?: string): Omit<Building, 'id'> {
   const draft = { ...(JSON.parse(JSON.stringify(body)) as BlueprintBody), x: 0, y: 0, rotation } as Omit<Building, 'id'>;
-  const f = footprintCells(draft as Building);
-  const local = { x: ((f.x0 + f.x1) / 2) * draft.module, y: f.y0 * draft.module };
+  const f = footprintBox(draft as Building);
+  const local = { x: (f.x0 + f.x1) / 2, y: f.y0 };
   const offset = localDirToWorld(draft as Building, local.x, local.y);
   draft.x = anchor.x - offset.x;
   draft.y = anchor.y - offset.y;
@@ -496,9 +501,9 @@ export function removeVolume(ctx: BuildingContext, id: BuildingId, volumeId: num
 export function duplicateBuilding(ctx: BuildingContext, id: BuildingId): EditResult {
   const source = ctx.doc.buildings.get(id);
   if (!source) return FAIL_MISSING;
-  const f = footprintCells(source);
-  const width = (f.x1 - f.x0) * source.module;
-  const depth = (f.y1 - f.y0) * source.module;
+  const f = footprintBox(source);
+  const width = f.x1 - f.x0;
+  const depth = f.y1 - f.y0;
   let last: EditResult = { ok: false, problem: 'building' };
   for (const [lx, ly] of [[width, 0], [-width, 0], [0, depth], [0, -depth], [width * 2, 0], [-width * 2, 0]] as const) {
     const shift = localDirToWorld(source, lx, ly);

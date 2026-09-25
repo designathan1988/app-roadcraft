@@ -5,12 +5,12 @@ import type { RoadDoc } from '../doc';
 import type { Network } from '../network';
 import { Level, halfWidth } from '../roadTypes';
 import { MAX_PLINTH, type GroundAt, sampleFootprint } from './foundation';
-import { buildingBounds, footprintRects, groundVolumes, occupancy } from './geometry';
+import { MIN_SIZE, buildingBounds, clashes, footprintRects, groundVolumes, isSupported } from './geometry';
 import {
   type Building,
   type BuildingId,
-  MAX_CELLS,
   MAX_MODULE,
+  MAX_SIZE,
   MAX_STOREYS,
   MAX_STOREY_HEIGHT,
   MAX_VOLUMES,
@@ -52,22 +52,14 @@ export function structuralProblem(b: Building): BuildingProblem | null {
   }
   if (b.volumes.length === 0 || b.volumes.length > MAX_VOLUMES) return 'size';
   for (const v of b.volumes) {
-    if (!Number.isInteger(v.x) || !Number.isInteger(v.y) || !Number.isInteger(v.w) || !Number.isInteger(v.d)) return 'size';
-    if (v.w < 1 || v.d < 1 || v.w > MAX_CELLS || v.d > MAX_CELLS) return 'size';
+    if (![v.x, v.y, v.w, v.d].every(Number.isFinite)) return 'size';
+    if (v.w < MIN_SIZE - 1e-6 || v.d < MIN_SIZE - 1e-6 || v.w > MAX_SIZE + 1e-6 || v.d > MAX_SIZE + 1e-6) return 'size';
     if (!Number.isInteger(v.base) || v.base < 0) return 'size';
     if (v.storeys.length < 1 || v.base + v.storeys.length > MAX_STOREYS) return 'size';
   }
-  const occ = occupancy(b);
-  if (occ.clashes.length > 0) return 'overlap';
+  if (clashes(b).length > 0) return 'overlap';
   if (groundVolumes(b).length === 0) return 'footprint';
-  for (const v of b.volumes) {
-    if (v.base === 0) continue;
-    for (let i = v.x; i < v.x + v.w; i++) {
-      for (let j = v.y; j < v.y + v.d; j++) {
-        if (occ.at(i, j, v.base - 1) === undefined) return 'support';
-      }
-    }
-  }
+  for (const v of b.volumes) if (!isSupported(b, v)) return 'support';
   return null;
 }
 

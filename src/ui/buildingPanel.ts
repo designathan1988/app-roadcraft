@@ -119,7 +119,7 @@ const svg = (body: string): string =>
 
 const PARAMS: readonly BuildingParam[] = ['width', 'depth', 'storeys', 'storeyHeight', 'module'];
 /** Lengths are shown and entered in metres; the model works in world units. */
-const IN_METRES: ReadonlySet<BuildingParam> = new Set(['storeyHeight', 'module']);
+const IN_METRES: ReadonlySet<BuildingParam> = new Set(['width', 'depth', 'storeyHeight', 'module']);
 
 export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel {
   const root = document.getElementById('buildingPalette') as HTMLElement;

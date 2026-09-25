@@ -93,17 +93,17 @@ export interface Foundation {
   readonly entrances: readonly Entrance[];
 }
 
-/** Samples the ground over every ground volume, at half-cell spacing. */
+/** Samples the ground over every ground volume, at about half-module spacing. */
 export function sampleFootprint(b: Building, groundAt: GroundAt): { lowest: number; highest: number } {
   let lowest = Infinity;
   let highest = -Infinity;
   for (const v of groundVolumes(b)) {
-    const stepsX = Math.min(24, v.w * 2);
-    const stepsY = Math.min(24, v.d * 2);
+    const stepsX = Math.max(1, Math.min(24, Math.ceil(v.w / (b.module * 0.5))));
+    const stepsY = Math.max(1, Math.min(24, Math.ceil(v.d / (b.module * 0.5))));
     for (let a = 0; a <= stepsX; a++) {
       for (let c = 0; c <= stepsY; c++) {
-        const lx = (v.x + (v.w * a) / stepsX) * b.module;
-        const ly = (v.y + (v.d * c) / stepsY) * b.module;
+        const lx = v.x + (v.w * a) / stepsX;
+        const ly = v.y + (v.d * c) / stepsY;
         const p = localToWorld(b, lx, ly);
         const h = groundAt(p.x, p.y);
         if (!Number.isFinite(h)) continue;
@@ -212,7 +212,7 @@ export function foundationOf(
         threshold = fromPaving ? room : 0;
         steps = stepsFor(floor - ground);
         const v = volumes.get(bay.volume);
-        const depth = v ? (bay.side === 0 || bay.side === 2 ? v.d : v.w) * b.module : b.module;
+        const depth = v ? (bay.side === 0 || bay.side === 2 ? v.d : v.w) : b.module;
         // A volume too shallow for the whole flight takes as many treads as
         // fit, each a little steeper.
         const fit = Math.max(0, depth - RECESS_BACK);

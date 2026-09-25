@@ -1,6 +1,7 @@
 import type { Vec2 } from '@core/vec2';
 import {
   bayCentreLocal,
+  bayWidth,
   buildingHeight,
   footprintCentre,
   levelElevation,
@@ -85,7 +86,7 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
         const centre = bayCentreLocal(b, v, sel.bay.side, sel.bay.index);
         const n = SIDE_NORMAL[sel.bay.side];
         const along = { x: Math.abs(n.y), y: Math.abs(n.x) };
-        const half = b.module / 2;
+        const half = bayWidth(b, v, sel.bay.side) / 2;
         const za = sel.floor + levelElevation(b, level);
         const zb = za + levelHeight(b, level);
         const out = 0.15;

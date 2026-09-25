@@ -23,12 +23,16 @@ import {
   SHED_PITCH,
   SIDE_NORMAL,
   GABLE_PITCH,
-  cellBeyond,
+  bayWidth,
+  coveredSpans,
+  exposedParts,
   facadeBays,
   levelElevation,
   levelHeight,
-  occupancy,
   roofRise,
+  sawtoothRun,
+  sideLength,
+  sideStart,
   volumeHeight,
 } from '@world/buildings/geometry';
 import {
@@ -41,7 +45,7 @@ import {
   trimMaterial,
   wallMaterial,
 } from '@world/buildings/materials';
-import { type BayComponent, type Building, type Side, type Volume, SIDES, baysOn, volumeTop } from '@world/buildings/types';
+import { type BayComponent, type Building, type Side, type Volume, SIDES, volumeTop } from '@world/buildings/types';
 import { type BuildingKit, PART_KINDS, type PartKind } from './kit';
 
 /**
@@ -256,14 +260,11 @@ interface BayFace {
   H: number;
 }
 
-function sideFrame(b: Building, v: Volume, side: Side, index: number): Pick<BayFace, 'ax' | 'ay' | 'tx' | 'ty' | 'nx' | 'ny'> {
-  const u = b.module;
-  switch (side) {
-    case 0: return { ax: (v.x + index) * u, ay: v.y * u, tx: 1, ty: 0, nx: 0, ny: -1 };
-    case 2: return { ax: (v.x + index) * u, ay: (v.y + v.d) * u, tx: 1, ty: 0, nx: 0, ny: 1 };
-    case 1: return { ax: (v.x + v.w) * u, ay: (v.y + index) * u, tx: 0, ty: 1, nx: 1, ny: 0 };
-    default: return { ax: v.x * u, ay: (v.y + index) * u, tx: 0, ty: 1, nx: -1, ny: 0 };
-  }
+/** The frame of a face of `side`, starting `along` units from the side's start. */
+function sideFrame(v: Volume, side: Side, along: number): Pick<BayFace, 'ax' | 'ay' | 'tx' | 'ty' | 'nx' | 'ny'> {
+  const s = sideStart(v, side);
+  const n = SIDE_NORMAL[side];
+  return { ax: s.x + s.tx * along, ay: s.y + s.ty * along, tx: s.tx, ty: s.ty, nx: n.x, ny: n.y };
 }
 
 // ------------------------------------------------------------------ one building
@@ -343,16 +344,17 @@ function emitBuilding(
   pavedAt?: PavedAt,
 ): void {
   const e = new Emitter(b, shell, parts);
-  const u = b.module;
-  const occ = occupancy(b);
-  const bays = facadeBays(b, occ);
+  const bays = facadeBays(b);
   const f: Foundation = foundationOf(b, groundAt, bays, pavedAt);
   const floor = f.floor;
   const entranceKey = (volume: number, side: Side, index: number): string => `${volume}:${side}:${index}`;
   const entrances = new Map<string, Entrance>(f.entrances.map((x) => [entranceKey(x.volume, x.side, x.index), x]));
   /** The opening of an entrance, in its bay's face frame. */
   const entranceOpening = (x: Entrance): Opening =>
-    openingOf(x.component, u, levelHeight(b, 0)) ?? { a0: u * 0.2, a1: u * 0.8, h0: 0, h1: levelHeight(b, 0) * 0.7, depth: REVEAL };
+    openingOf(x.component, x.width, levelHeight(b, 0)) ??
+    { a0: x.width * 0.2, a1: x.width * 0.8, h0: 0, h1: levelHeight(b, 0) * 0.7, depth: REVEAL };
+  /** Where an entrance's bay starts along its side. */
+  const entranceStart = (x: Entrance, v: Volume): number => x.index * bayWidth(b, v, x.side);
   // A small, stable shade per building, so a street of one preset is not a
   // single flat colour.
   const shade = 0.93 + (((b.id * 2654435761) >>> 0) % 1000) / 1000 * 0.12;
@@ -369,13 +371,13 @@ function emitBuilding(
     for (const x of f.entrances) {
       if (x.volume !== v.id || x.recess <= 0) continue;
       const o = entranceOpening(x);
-      const frame = sideFrame(b, v, x.side, x.index);
+      const frame = sideFrame(v, x.side, entranceStart(x, v));
       const start = x.side === 0 || x.side === 2 ? frame.ax : frame.ay;
       const list = notches.get(x.side) ?? [];
       list.push({ a0: start + o.a0, a1: start + o.a1, recess: x.recess });
       notches.set(x.side, list);
     }
-    emitPlinth(e, v, u, f.bottom, floor, plinth, notches);
+    emitPlinth(e, v, f.bottom, floor, plinth, notches);
   }
 
   // ---- facades, bay by bay: only outside walls are in `bays`
@@ -384,7 +386,7 @@ function emitBuilding(
   const volumes = new Map(b.volumes.map((v) => [v.id, v]));
   for (const bay of bays) {
     const v = volumes.get(bay.volume) as Volume;
-    const face: BayFace = { ...sideFrame(b, v, bay.side, bay.index), z0: floor + bay.z, W: bay.width, H: bay.height };
+    const face: BayFace = { ...sideFrame(v, bay.side, bay.start), z0: floor + bay.z, W: bay.width, H: bay.height };
     const left = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index - 1}`);
     const right = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index + 1}`);
     const recess = bay.level === 0 ? entrances.get(entranceKey(bay.volume, bay.side, bay.index))?.recess ?? 0 : 0;
@@ -396,20 +398,20 @@ function emitBuilding(
     for (let k = 1; k < v.storeys.length; k++) {
       const level = v.base + k;
       if (level === 0) continue;
-      band(e, v, u, floor + levelElevation(b, level), BAND_OUT, BAND_H, trim);
+      band(e, v, floor + levelElevation(b, level), BAND_OUT, BAND_H, trim);
     }
   }
 
   // ---- roofs
-  for (const v of b.volumes) emitRoof(e, b, v, occ, floor, (side) => wallOf(v, side), trim, paint(roofMaterial(b, v)));
+  for (const v of b.volumes) emitRoof(e, b, v, floor, (side) => wallOf(v, side), trim, paint(roofMaterial(b, v)));
 
   // ---- entrance steps: outside, down to the ground in front, or set into
   // the building where the paving leaves no room for them
   for (const entrance of f.entrances) {
     if (entrance.steps <= 0) continue;
     const v = volumes.get(entrance.volume) as Volume;
-    const frame = sideFrame(b, v, entrance.side, entrance.index);
-    const face: BayFace = { ...frame, z0: floor, W: u, H: 1 };
+    const frame = sideFrame(v, entrance.side, entranceStart(entrance, v));
+    const face: BayFace = { ...frame, z0: floor, W: entrance.width, H: 1 };
     const opening = entranceOpening(entrance);
     const n = e.N(face.nx, face.ny);
     const bottom = Math.min(entrance.ground, floor) - m(0.4);
@@ -424,8 +426,8 @@ function emitBuilding(
       const top = floor - j * riser;
       const d0 = -(j === 0 ? 0 : STEP_RUN * (j + 1));
       const d1 = -STEP_RUN * (j + 2);
-      const a0 = u / 2 - halfW;
-      const a1 = u / 2 + halfW;
+      const a0 = entrance.width / 2 - halfW;
+      const a1 = entrance.width / 2 + halfW;
       // Front, top and the two cheeks of this step's block.
       e.rect(face, a0, a1, bottom - floor, top - floor, d1, n, plinth);
       shell.face([e.P(face, a0, top - floor, d0), e.P(face, a1, top - floor, d0), e.P(face, a1, top - floor, d1), e.P(face, a0, top - floor, d1)], [0, 0, 1], plinth);
@@ -436,15 +438,18 @@ function emitBuilding(
   }
 
   // ---- cores: a lift overrun on the highest flat roof over the core
+  const u = b.module;
   for (const core of b.cores) {
     let best: Volume | null = null;
+    const cx = core.x + u / 2;
+    const cy = core.y + u / 2;
     for (const v of b.volumes) {
-      if (core.x < v.x || core.x >= v.x + v.w || core.y < v.y || core.y >= v.y + v.d) continue;
+      if (cx < v.x || cx >= v.x + v.w || cy < v.y || cy >= v.y + v.d) continue;
       if (!best || volumeTop(v) > volumeTop(best)) best = v;
     }
     if (!best || (best.roof !== 'flat' && best.roof !== 'terrace')) continue;
     const z = floor + volumeHeight(b, best);
-    e.box(core.x * u, core.y * u, (core.x + 1) * u, (core.y + 1) * u, z, z + m(3), trim, ROOF_PLANT);
+    e.box(core.x, core.y, core.x + u, core.y + u, z, z + m(3), trim, ROOF_PLANT);
   }
 }
 
@@ -543,17 +548,16 @@ function emitBay(
 function emitPlinth(
   e: Emitter,
   v: Volume,
-  u: number,
   bottom: number,
   floor: number,
   c: Paint,
   notches: ReadonlyMap<Side, readonly { a0: number; a1: number; recess: number }[]>,
 ): void {
   const g = PLINTH_GROW;
-  const x0 = v.x * u - g;
-  const y0 = v.y * u - g;
-  const x1 = (v.x + v.w) * u + g;
-  const y1 = (v.y + v.d) * u + g;
+  const x0 = v.x - g;
+  const y0 = v.y - g;
+  const x1 = v.x + v.w + g;
+  const y1 = v.y + v.d + g;
   for (const side of SIDES) {
     // The side as a line in the plan: where it runs along its axis and where it stands across it.
     const alongX = side === 0 || side === 2;
@@ -624,11 +628,11 @@ function emitRecessedFlight(
 }
 
 /** A horizontal band around a volume at height z (a storey line or a cornice). */
-function band(e: Emitter, v: Volume, u: number, z: number, out: number, height: number, c: Paint): void {
-  const x0 = v.x * u - out;
-  const y0 = v.y * u - out;
-  const x1 = (v.x + v.w) * u + out;
-  const y1 = (v.y + v.d) * u + out;
+function band(e: Emitter, v: Volume, z: number, out: number, height: number, c: Paint): void {
+  const x0 = v.x - out;
+  const y0 = v.y - out;
+  const x1 = v.x + v.w + out;
+  const y1 = v.y + v.d + out;
   e.box(x0, y0, x1, y1, z - height / 2, z + height / 2, c);
 }
 
@@ -636,19 +640,17 @@ function emitRoof(
   e: Emitter,
   b: Building,
   v: Volume,
-  occ: ReturnType<typeof occupancy>,
   floor: number,
   wallOf: (side: Side) => Paint,
   trim: Paint,
   roofColour: Paint,
 ): void {
-  const u = b.module;
   const top = volumeTop(v);
   const z = floor + volumeHeight(b, v);
-  const x0 = v.x * u;
-  const y0 = v.y * u;
-  const x1 = (v.x + v.w) * u;
-  const y1 = (v.y + v.d) * u;
+  const x0 = v.x;
+  const y0 = v.y;
+  const x1 = v.x + v.w;
+  const y1 = v.y + v.d;
   const sh = e.shell;
   const up: V3 = [0, 0, 1];
 
@@ -657,23 +659,27 @@ function emitRoof(
     sh.face([e.L(x0, y0, z), e.L(x1, y0, z), e.L(x1, y1, z), e.L(x0, y1, z)], up, terrace ? TERRACE : roofColour);
     // Its top stays just under the roof: a face shared with the roof cap
     // z-fights into stripes.
-    band(e, v, u, z - m(0.2), CORNICE_OUT, m(0.36), trim);
+    band(e, v, z - m(0.2), CORNICE_OUT, m(0.36), trim);
     // An edge bay gets a parapet (or a railing, on a terrace) only where the
     // roof really ends: not against a neighbour of the same or greater height.
     for (const side of SIDES) {
-      const count = baysOn(v, side);
-      for (let index = 0; index < count; index++) {
-        const [ci, cj] = cellBeyond(v, side, index);
-        if (occ.at(ci, cj, top - 1) !== undefined || occ.at(ci, cj, top) !== undefined) continue;
-        const frame = sideFrame(b, v, side, index);
-        const face: BayFace = { ...frame, z0: z, W: u, H: PARAPET_H };
-        if (terrace) {
-          e.put('roofRailing', face, u / 2, 0, m(0.12), u, m(1.0), 1);
-        } else {
-          const out = e.N(face.nx, face.ny);
-          e.rect(face, 0, u, 0, PARAPET_H, 0, out, wallOf(side));
-          e.rect(face, 0, u, 0, PARAPET_H, PARAPET_T, [-out[0], -out[1], 0], PARAPET_BACK);
-          e.strip(face, 0, u, PARAPET_H, 0, PARAPET_T, up, trim);
+      // Only where the roof really ends: not against a neighbour as tall or taller.
+      const spans = [...coveredSpans(b, v, side, top - 1), ...coveredSpans(b, v, side, top)].sort((p, q) => p[0] - q[0]);
+      const step = bayWidth(b, v, side);
+      for (const [p0, p1] of exposedParts(spans, 0, sideLength(v, side))) {
+        // In bay-sized pieces, so a railing keeps its baluster spacing.
+        const pieces = Math.max(1, Math.round((p1 - p0) / step));
+        const W = (p1 - p0) / pieces;
+        for (let k = 0; k < pieces; k++) {
+          const face: BayFace = { ...sideFrame(v, side, p0 + k * W), z0: z, W, H: PARAPET_H };
+          if (terrace) {
+            e.put('roofRailing', face, W / 2, 0, m(0.12), W, m(1.0), 1);
+          } else {
+            const out = e.N(face.nx, face.ny);
+            e.rect(face, 0, W, 0, PARAPET_H, 0, out, wallOf(side));
+            e.rect(face, 0, W, 0, PARAPET_H, PARAPET_T, [-out[0], -out[1], 0], PARAPET_BACK);
+            e.strip(face, 0, W, PARAPET_H, 0, PARAPET_T, up, trim);
+          }
         }
       }
     }
@@ -731,7 +737,7 @@ function emitRoof(
   }
 
   // Sawtooth: teeth of up to two cells, glazed on their steep face.
-  const tooth = Math.min(2, v.d) * u;
+  const tooth = sawtoothRun(b, v);
   const toothRise = tooth * 0.5 * SAWTOOTH_PITCH;
   const glass = SAW_GLASS;
   for (let t0 = y0; t0 < y1 - 1e-6; t0 += tooth) {
