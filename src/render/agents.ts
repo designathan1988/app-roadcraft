@@ -7,6 +7,7 @@ import {
   InstancedMesh,
   Matrix4,
   MeshBasicMaterial,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   Object3D,
   SphereGeometry,
@@ -316,6 +317,8 @@ export interface VehicleLook {
    * side glass; on these the driver and passengers read from above.
    */
   readonly glassRoof: boolean;
+  /** A contrasting black roof panel. */
+  readonly blackRoof: boolean;
 }
 
 /** Everything about how one vehicle's occupants and windows look, from its id. */
@@ -332,7 +335,10 @@ export function vehicleLook(id: number, seats: number): VehicleLook {
     passengerShirt: from(SHIRT_COLOURS, g, 12),
     helmet: from(HELMET_COLOURS, g, 18),
     accent: pick(g, 24, 3) === 0 ? BOX_BODY : from(SHIRT_COLOURS, g, 26),
-    glassRoof: pick(g, 28, 5) < 2,
+    // Always a solid roof: a glass one showed the whole cabin from above, and
+    // read as a car with its roof missing. One in five is black.
+    glassRoof: false,
+    blackRoof: pick(g, 28, 5) === 0,
   };
 }
 
@@ -500,12 +506,17 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   // instance colour: one body geometry carries its black-outs, seams, seats
   // and carpet in one draw. Every geometry drawn with them is built by
   // `vehicleModels.merge`, which gives each a colour.
-  const paint = new MeshStandardMaterial({ roughness: 0.32, metalness: 0.16, envMapIntensity: 1.1, vertexColors: true });
+  // Automotive paint: a base coat under a glossy clear coat, reflecting the
+  // sky's environment map. The plain standard material read as matt plastic.
+  const paint = new MeshPhysicalMaterial({
+    roughness: 0.38, metalness: 0.28, clearcoat: 1, clearcoatRoughness: 0.07,
+    envMapIntensity: 1.35, vertexColors: true,
+  });
   const trim = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.35, vertexColors: true });
   const glassMaterial = new MeshStandardMaterial({
-    color: 0x3d5561,
-    roughness: 0.06,
-    metalness: 0.05,
+    color: 0x1a2328,
+    roughness: 0.04,
+    metalness: 0.1,
     transparent: true,
     // Clear enough to see who is driving.
     //
@@ -520,8 +531,13 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     // they were still only a hint of a face at close zoom. Glass here carries
     // more transmission than reflection, as tinted car glass seen from above
     // on an overcast-bright day does.
-    opacity: 0.3,
-    envMapIntensity: 0.9,
+    //
+    // And then the cabin read as a glass box from the play zoom: seats,
+    // dashboard and carpet through every pane, the car no longer a car. Real
+    // automotive glass from above is dark and mirrors the sky; the people
+    // inside show only close up. Dark and reflective it is.
+    opacity: 0.74,
+    envMapIntensity: 1.7,
     // Panes are single sheets seen from both sides: the windscreen from above,
     // a door's window from inside when it swings open.
     side: DoubleSide,
@@ -829,7 +845,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     }
     if (car.roof && car.roofGlass) {
       if (look.glassRoof) place(car.roofGlass, 0, 0, 0, 1, 1, 1, -1);
-      else place(car.roof, 0, 0, 0, 1, 1, 1, paintHex);
+      else place(car.roof, 0, 0, 0, 1, 1, 1, look.blackRoof ? 0x15171a : paintHex);
     }
     if (car.accent) place(car.accent, 0, 0, 0, 1, 1, 1, look.accent);
     placeWheels(plan, band);

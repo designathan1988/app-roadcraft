@@ -669,7 +669,9 @@ export function buildVehicleModel(a: Archetype): VehicleModel {
   const clear = Y(p.clearance);
   const archR = r + M(0.06);
   const archY = r * 0.98;
-  const bevel = M(0.05);
+  // Rounded shoulders on every edge of the lower body. At 5 cm the body was
+  // a box with its corners broken; a car's panels roll over into each other.
+  const bevel = M(0.1);
 
   const edges = p.doorEdges.map(X);
   const doorFront = edges[0]!;
@@ -753,7 +755,8 @@ export function buildVehicleModel(a: Archetype): VehicleModel {
   const glassBase = halfW - M(0.045);
   const lean = tumble / Math.max(1e-6, roofMid - beltLow);
   const zSide = (y: number): number => glassBase - Math.max(0, y - beltLow) * lean;
-  const crown = M(0.035);
+  // The roof's camber across: at 3.5 cm it read flat from above.
+  const crown = M(0.06);
   const sideTo3 = (side: DoorSide) => ([x, y]: P2): Vector3 => new Vector3(x, y, side * zSide(y));
   const sideOut = (side: DoorSide): Vector3 => new Vector3(0, lean, side).normalize();
   /** The side plane between the waist and the top line, from xa to xb (xa < xb). */
