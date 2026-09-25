@@ -1,0 +1,44 @@
+{
+ "name": "mouth-wedge-after-slab-bump",
+ "category": "surfaceGap",
+ "detail": "s=194.6/250.1 across=-1 at (-675.8, 490.6)",
+ "sim": null,
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    -593.2,
+    667.6
+   ],
+   "b": [
+    -654.94,
+    437.22
+   ],
+   "type": 3,
+   "curve": {
+    "t": 0.41,
+    "h": -60.9
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "direction",
+   "pick": 0.06,
+   "direction": "bToA"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -586.65,
+    665.85
+   ],
+   "b": [
+    -612.29,
+    570.15
+   ],
+   "type": 0,
+   "curve": null,
+   "structure": "ground"
+  }
+ ]
+}

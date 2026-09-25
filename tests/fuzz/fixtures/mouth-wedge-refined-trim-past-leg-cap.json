@@ -1,0 +1,42 @@
+{
+ "name": "mouth-wedge-refined-trim-past-leg-cap",
+ "category": "surfaceGap",
+ "detail": "s=54.5/96.7 across=-1 at (504.0, 111.2)",
+ "sim": null,
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    455.77,
+    123.5
+   ],
+   "b": [
+    652.54,
+    237.1
+   ],
+   "type": 3,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    479.25,
+    54.3
+   ],
+   "b": [
+    441.78,
+    131.33
+   ],
+   "type": 2,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "curve",
+   "pick": 0.66,
+   "t": 0.66,
+   "h": -56.88
+  }
+ ]
+}

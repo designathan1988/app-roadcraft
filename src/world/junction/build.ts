@@ -23,6 +23,9 @@ export type SurfaceMode = 'none' | 'junction';
 /** Two legs of the same class meeting at less than this angle need no junction. */
 const CHAIN_BEND_COS = Math.cos((5 * Math.PI) / 180);
 
+/** A mouth moved further than this after its leg was framed is framed again, world units. */
+const REFRAME_EPS = 1e-3;
+
 /** Runaway guard for the slab-separation loop, as a multiple of the widest leg. */
 const SLAB_BUMP_CAP = 40;
 
@@ -186,6 +189,8 @@ export function buildJunction(
     };
   }
 
+  /** The trims the current legs were framed at, by segment. */
+  let framedBy: Map<SegmentId, number> | null = null;
   let corners = computeCorners(legs, legs.map(scaleOf));
   let trims = capTrims(computeTrims(legs, corners), legs);
 
@@ -193,7 +198,8 @@ export function buildJunction(
   // distance, not at the node. Re-frame the legs with the trims just found and
   // solve again. Converges in two passes for a quadratic.
   for (let pass = 0; pass < passes; pass++) {
-    legs = buildLegs(doc, cache, nodeId, level, { trims: bySegment(trims, legs) });
+    framedBy = bySegment(trims, legs);
+    legs = buildLegs(doc, cache, nodeId, level, { trims: framedBy });
     // Re-derived from the NEW leg order rather than reused from the old one.
     corners = computeCorners(legs, legs.map(scaleOf));
     trims = capTrims(computeTrims(legs, corners), legs);
@@ -295,6 +301,18 @@ export function buildJunction(
   // (`RoadDoc.moveNode`) and loading (`Network.impossible`, surfaced in the
   // status bar and the inspector). No new hairpin can be made; an old one is
   // named and offered a repair.
+
+  // A bump moved a mouth after the legs were framed for it. On a curved leg
+  // the mouth was then cut square to the tangent at the OLD distance - a wedge
+  // of bare ground between the plate and the ribbon, up to 19 degrees out on a
+  // curved bridge (the fuzzer's `surfaceGap`). Re-frame the legs at the trims
+  // actually used; they re-sort by angle, so the trims travel by segment.
+  if (legs.some((leg, i) => !(Math.abs((trims[i] as number) - (framedBy?.get(leg.seg) ?? NaN)) <= REFRAME_EPS))) {
+    const bySeg = bySegment(trims, legs);
+    legs = buildLegs(doc, cache, nodeId, level, { trims: bySeg });
+    corners = computeCorners(legs, legs.map(scaleOf));
+    trims = legs.map((leg) => bySeg.get(leg.seg) as number);
+  }
 
   const built = buildJunctionRing(legs, corners, trims);
 

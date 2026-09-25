@@ -94,8 +94,16 @@ export function buildLegs(
 
     // Initial guess: the leg's own half-width. Two refinement passes converge
     // for a single quadratic, which is all a segment can carry.
-    const guess = opts.trims?.get(segId) ?? hw;
-    const clamped = Math.max(0, Math.min(guess, pl.length * LEG_TRIM_CAP));
+    //
+    // `LEG_TRIM_CAP` bounds the GUESS only. A refined trim is framed where it
+    // really is: the solver can settle past the cap on a short leg into a wide
+    // junction, and framing it at the cap instead cut the mouth perpendicular
+    // to the tangent 20 units short of the real mouth - on a curved leg, a
+    // wedge of bare ground between the plate and the ribbon (the fuzzer's
+    // `surfaceGap`).
+    const refined = opts.trims?.get(segId);
+    const guess = refined ?? hw;
+    const clamped = Math.max(0, Math.min(guess, pl.length * (refined === undefined ? LEG_TRIM_CAP : 1)));
     const f = frameFromNode(pl, startsHere, clamped);
 
     return {
