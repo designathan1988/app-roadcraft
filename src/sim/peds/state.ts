@@ -96,8 +96,8 @@ export interface PedActivity {
  * and children, a couple, friends of an age, colleagues, elderly friends -
  * never a child, a teenager and a pensioner thrown together at random.
  */
-export type PartyArchetype = 'solo' | 'family' | 'couple' | 'friends' | 'colleagues' | 'elders';
-export const PARTY_ARCHETYPES: readonly PartyArchetype[] = ['solo', 'family', 'couple', 'friends', 'colleagues', 'elders'];
+export type PartyArchetype = 'solo' | 'family' | 'couple' | 'friends' | 'colleagues' | 'elders' | 'tourists';
+export const PARTY_ARCHETYPES: readonly PartyArchetype[] = ['solo', 'family', 'couple', 'friends', 'colleagues', 'elders', 'tourists'];
 
 export interface PedParty {
   /** The pacer's id, and the seed every member's destination is drawn from. */

@@ -444,6 +444,23 @@
       ]
     },
     {
+      "id": "female_06",
+      "source": "Female_Adult_06",
+      "category": "Adults",
+      "bytes": 721452,
+      "sha256": "12368198cf617041f09e38d48a10bb0a2d135e92a0b9307d171b72d6ed56a665",
+      "verticesBefore": 20976,
+      "vertices": 4372,
+      "primitivesBefore": 8,
+      "primitives": 3,
+      "clips": [],
+      "lodTriangles": [
+        6992,
+        2261,
+        550
+      ]
+    },
+    {
       "id": "female_07",
       "source": "Female_Adult_07",
       "category": "Adults",
@@ -492,6 +509,23 @@
         9032,
         2520,
         710
+      ]
+    },
+    {
+      "id": "female_10",
+      "source": "Female_Adult_10",
+      "category": "Adults",
+      "bytes": 605004,
+      "sha256": "92745ba7a076366c6f7d9dcd8d5af7cbf87a0483276a9c9ab84c582881b4bfe2",
+      "verticesBefore": 19380,
+      "vertices": 4227,
+      "primitivesBefore": 8,
+      "primitives": 3,
+      "clips": [],
+      "lodTriangles": [
+        6460,
+        1895,
+        736
       ]
     },
     {
@@ -560,6 +594,23 @@
         8724,
         2511,
         795
+      ]
+    },
+    {
+      "id": "female_15",
+      "source": "Female_Adult_15",
+      "category": "Adults",
+      "bytes": 1114352,
+      "sha256": "63e204ff061d5a358c7339f6349e736dd00a593330c3e1a4c596fa6010003028",
+      "verticesBefore": 29496,
+      "vertices": 6535,
+      "primitivesBefore": 25,
+      "primitives": 3,
+      "clips": [],
+      "lodTriangles": [
+        9832,
+        2792,
+        758
       ]
     },
     {
@@ -886,6 +937,23 @@
       ]
     },
     {
+      "id": "male_15",
+      "source": "Male_Adult_15",
+      "category": "Adults",
+      "bytes": 630752,
+      "sha256": "39bbc58dcb28f311570a7a84c65248845aa95a655c7f74582bf1e00eeb057ed6",
+      "verticesBefore": 21876,
+      "vertices": 4517,
+      "primitivesBefore": 4,
+      "primitives": 2,
+      "clips": [],
+      "lodTriangles": [
+        7292,
+        2123,
+        572
+      ]
+    },
+    {
       "id": "male_16",
       "source": "Male_Adult_16",
       "category": "Adults",
@@ -937,6 +1005,23 @@
       ]
     },
     {
+      "id": "male_19",
+      "source": "Male_Adult_19",
+      "category": "Adults",
+      "bytes": 643992,
+      "sha256": "cce64012d7f75fa4cca36ec9d4067d505d240faaeff192bd3d0df79e2ae02652",
+      "verticesBefore": 20196,
+      "vertices": 4303,
+      "primitivesBefore": 10,
+      "primitives": 3,
+      "clips": [],
+      "lodTriangles": [
+        6732,
+        1966,
+        528
+      ]
+    },
+    {
       "id": "male_20",
       "source": "Male_Adult_20",
       "category": "Adults",
@@ -951,6 +1036,23 @@
         7120,
         1901,
         448
+      ]
+    },
+    {
+      "id": "male_21",
+      "source": "Male_Adult_21",
+      "category": "Adults",
+      "bytes": 666928,
+      "sha256": "5ed8e499260f50bcc378f93998fd5319f152b4abd7abff3e9f36a54a3167cd38",
+      "verticesBefore": 20046,
+      "vertices": 4337,
+      "primitivesBefore": 4,
+      "primitives": 3,
+      "clips": [],
+      "lodTriangles": [
+        6682,
+        2008,
+        604
       ]
     },
     {

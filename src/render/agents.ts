@@ -30,7 +30,8 @@ import type { Vehicle as SimVehicle } from '@sim/vehicles/state';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
 import { DT, FLEET_CEILING, PED_CEILING } from '@sim/params';
-import { CITIZEN_MODELS, createRiggedCitizens, type CitizenClipKey } from './riggedCitizens';
+import { CROWD_IDS, createRiggedCitizens, type CitizenClipKey, type ClipIdentity } from './riggedCitizens';
+import type { Company } from './citizenCasting';
 import { kerbTransfer, seatPerson, type KerbStop } from '@sim/vehicles/kerbStops';
 import { FOOTWAY_RISE } from '@world/roadTypes';
 import { groundGradient } from './groundShear';
@@ -138,6 +139,8 @@ export interface AgentMeshes {
    *   richest look rather than a silently stripped one.
    */
   sync(world: SimWorld, alpha: number, detailed: boolean, zoom?: number, options?: AgentRenderOptions): void;
+  /** Every figure drawn last frame and the body it was cast as (`citizenCasting.ts`). */
+  census(): ReturnType<ReturnType<typeof createRiggedCitizens>['census']>;
   dispose(): void;
 }
 
@@ -704,7 +707,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   // The whole roster of eighty: a crowd drawn from four test bodies, left in
   // while the walk was being worked on, read as one family cloned down the
   // street.
-  const pedestrians = createRiggedCitizens(CITIZEN_MODELS, onAssetsReady);
+  const pedestrians = createRiggedCitizens(CROWD_IDS, onAssetsReady);
   const meshes = [...allParts.map((part) => part.mesh), pedestrians.group];
 
   const object = new Object3D();
@@ -956,10 +959,20 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     placeCarOccupants(vehicle, car);
   };
 
-  /** A seated person's identity, reused: seat, sex, age and the vehicle they are in. */
-  const OCCUPANT: { seed: number; gender: 'f' | 'm'; ageClass: 'child' | 'adult' | 'elder'; company: number;
-    style: 'casual' | 'business' } =
-    { seed: 0, gender: 'f', ageClass: 'adult', company: 0, style: 'casual' };
+  /** The company a vehicle's people are cast in (`citizenCasting.codesFor`). */
+  const vehicleCompany = (vehicle: SimVehicle): Company =>
+    vehicle.archetype.shape === 'bus' ? 'bus' : vehicle.archetype.shape === 'truck' ? 'truck'
+      : vehicle.archetype.shape === 'motorcycle' || vehicle.archetype.shape === 'bicycle' ? 'rider' : 'car';
+  /** Whether anybody aboard is a child: a car with a child in it is never on a work trip. */
+  const carriesChild = (vehicle: SimVehicle): boolean => {
+    const seats = Math.min(32, vehicle.archetype.seats);
+    for (let i = 0; i < seats; i++) if ((vehicle.seats & (1 << i)) !== 0 && seatPerson(vehicle, i).ageClass === 'child') return true;
+    return false;
+  };
+  /** Who sits in (or steps out of) a seat: the seat's person, cast with the vehicle's company. */
+  const seatIdentity = (vehicle: SimVehicle, person: { seed: number; gender: 'f' | 'm'; ageClass: 'child' | 'adult' | 'elder' },
+    hasChild: boolean): ClipIdentity => ({ seed: person.seed, gender: person.gender, ageClass: person.ageClass,
+    company: vehicleCompany(vehicle), companyId: vehicle.id, hasChild });
 
   /** The whole person in a seat: its world point, written without allocating. */
   const seatPoint: { x: number; y: number; h?: number } = { x: 0, y: 0, h: 0 };
@@ -983,20 +996,13 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     // phantom passengers in the back of every bus, some of them twins of the
     // people really aboard.
     const seatCount = Math.min(model.seats.length, vehicle.archetype.seats);
+    const hasChild = carriesChild(vehicle);
     for (let index = 0; index < seatCount; index++) {
       if ((vehicle.seats & (1 << index)) === 0 || index === moving) continue;
       const seat = model.seats[index]!;
       if (seat.row > rowsDrawn) continue;
       seatWorldInto(seat, seatPoint, seat.hipY);
-      const person = seatPerson(vehicle, index);
-      // With whom they ride, so nobody in one vehicle wears the same body.
-      const who = OCCUPANT;
-      OCCUPANT.seed = person.seed;
-      OCCUPANT.gender = person.gender;
-      OCCUPANT.ageClass = person.ageClass;
-      OCCUPANT.company = -(vehicle.id + 1);
-      // Everyone in one car dressed alike: a car in five on a work trip.
-      OCCUPANT.style = agentHash(vehicle.id ^ 0x0ff1ce) % 5 === 0 ? 'business' : 'casual';
+      const who = seatIdentity(vehicle, seatPerson(vehicle, index), hasChild);
       // The seat's pose (`riderPoses.ts`) with a glance now and then
       // (`occupants.ts`). A car seat sizes its occupant to clear the roof
       // lining; an upright cab or bus seat, whose feet must be on the floor,
@@ -1017,7 +1023,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         wheel.tilt, Math.max(-1.6, Math.min(1.6, lamp.steer * 5)), s);
     }
     const stop = vehicle.kerbStop;
-    if (stop) placeKerbPerson(model, stop);
+    if (stop) placeKerbPerson(vehicle, model, stop);
   };
 
   /** Reused by every seated person: what they play this frame. */
@@ -1075,7 +1081,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
    * from the body model's seat and door, the timing from the simulation
    * (`kerbTransfer`).
    */
-  const placeKerbPerson = (model: VehicleModel, stop: KerbStop): void => {
+  const placeKerbPerson = (vehicle: SimVehicle, model: VehicleModel, stop: KerbStop): void => {
     const progress = kerbTransfer(stop);
     const person = stop.person;
     const door = model.doors.find((d) => d.index === stop.door);
@@ -1084,7 +1090,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     const along = door.hingeX - door.length / 2;
     const flank = Math.abs(door.hingeZ);
     const seat = stop.seatStage ? model.seats[stop.seat] : undefined;
-    const identity = { seed: person.seed, gender: person.gender, ageClass: person.ageClass };
+    const identity = seatIdentity(vehicle, person, carriesChild(vehicle));
     if (seat && door.kind === 'hinge' && !(progress.walked >= 1 && (stop.phase === 'hold' || stop.phase === 'close'))) {
       const f = kerbFigure({ seat, door, foot: toVehicle(person.footX, person.footY) }, stop.kind, progress.seated, progress.walked, kerb);
       seatWorldInto(f, seatPoint, f.y);
@@ -1178,7 +1184,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     }
     // At the size the pose was solved at: the hands are on the grips and the
     // feet on the pegs or pedals only there.
-    const drawn = pedestrians.drawClip(seatPerson(vehicle, 0), x, y, height, fyaw, plays, froll, Infinity, false, 1,
+    const drawn = pedestrians.drawClip(seatIdentity(vehicle, seatPerson(vehicle, 0), false), x, y, height, fyaw, plays, froll, Infinity, false, 1,
       cyclist ? null : helmetMatrix);
     if (!cyclist && drawn > 0 && helmets.n < helmets.mesh.instanceMatrix.count) {
       // A motorcyclist's helmet, fitted to this body's head
@@ -1202,6 +1208,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
 
   return {
     meshes,
+    census: () => pedestrians.census(),
     sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY, options = {}) {
       const now = typeof performance !== 'undefined' ? performance.now() : suspensionClock + 16;
       suspensionDt = Math.min(0.1, Math.max(0, (now - suspensionClock) / 1000));

@@ -375,6 +375,8 @@ export const NO_HELMET: ReadonlySet<string> = new Set([
   'female_01', 'female_02', 'female_04', 'female_07', 'female_09', 'female_11', 'female_12', 'female_17',
   'female_party_02', 'medical_female_01', 'medical_female_03', 'medical_male_04', 'pilot_male_03',
   'police_male_01', 'security_female_01', 'sports_male_03',
+  // Long hair a helmet would sit on, not round.
+  'female_15',
 ]);
 
 /** The largest a helmet may be across any axis, metres. */

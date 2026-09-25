@@ -113,6 +113,8 @@ export interface SceneHandle {
   readonly quality: QualityLevel | 'auto';
   /** The inspection camera (`inspector.ts`); null outside development builds. */
   readonly inspect: Inspector | null;
+  /** Every figure drawn last frame and the body it was cast as: the runtime census. */
+  census(): ReturnType<AgentMeshes['census']>;
   dispose(): void;
 }
 
@@ -408,6 +410,7 @@ export function createSceneRenderer(
 
   return {
     inspect,
+    census: () => agents.census(),
     backend: 'three-webgl',
     viewport: rig.viewport,
     scene,
