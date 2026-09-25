@@ -6,6 +6,7 @@ import { type WaitSlot, claimSlot, heldSlot, releaseSlot, waitArea } from './wai
 import { m } from '@world/units';
 import type { SimWorld } from '../world';
 import type { Ped } from './state';
+import type { Vehicle } from '../vehicles/state';
 import type { SidewalkEdge, SidewalkEdgeId, SidewalkNode } from './sidewalk';
 import {
   PED_BEHAVIOUR,
@@ -52,6 +53,7 @@ const SPACES = new WeakMap<SimWorld, PedestrianClearance>();
 export function stepPedestrians(w: SimWorld): void {
   const peds = w.pedsInIdOrder();
   w.sidewalks.occupancy.rebuild(w.sidewalks, peds);
+  indexReservations(w);
   let space = SPACES.get(w);
   if (!space) { space = new PedestrianClearance(); SPACES.set(w, space); }
   space.begin(w);
@@ -657,14 +659,43 @@ export function mayEnterCrossing(w: SimWorld, p: Ped, crossing: SidewalkEdge): b
 /** Margin past the span a vehicle's rear must reach before it stops counting. */
 const CLEAR_PAST = 6;
 
-function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): boolean {
+/**
+ * Every vehicle holding or clearing a connector, filed under each
+ * `node:segment` that connector touches. Built once per pedestrian stage
+ * (`indexReservations`): vehicles do not move while pedestrians step, and the
+ * check used to walk the whole fleet - allocating a set per vehicle - for
+ * every pedestrian asking to cross, about 0.76 ms of a 6.9 ms tick with 450
+ * vehicles (tests/bench). Only the vehicles filed under the crossing asked
+ * about are examined now, by exactly the same rules.
+ */
+const RESERVATIONS = new WeakMap<SimWorld, Map<string, { v: Vehicle; connector: string }[]>>();
+
+function indexReservations(w: SimWorld): void {
+  const index = RESERVATIONS.get(w) ?? new Map<string, { v: Vehicle; connector: string }[]>();
+  index.clear();
+  RESERVATIONS.set(w, index);
   for (const v of w.vehicles.values()) {
     const lane = w.lanelet(v.lanelet);
     const connectorIds = new Set(v.clearingConnectors.map((token) => token.connector));
     if (v.admittedConnector) connectorIds.add(v.admittedConnector);
     if (lane?.kind === 'connector') connectorIds.add(lane.id);
-
     for (const connectorId of connectorIds) {
+      const connector = w.connector(connectorId);
+      if (!connector) continue;
+      for (const segment of new Set([connector.inSegment, connector.outSegment])) {
+        const key = `${connector.node}:${segment}`;
+        const list = index.get(key);
+        if (list) list.push({ v, connector: connectorId });
+        else index.set(key, [{ v, connector: connectorId }]);
+      }
+    }
+  }
+}
+
+function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): boolean {
+  for (const { v, connector: connectorId } of RESERVATIONS.get(w)?.get(`${node}:${segment}`) ?? []) {
+    const lane = w.lanelet(v.lanelet);
+    {
       const connector = w.connector(connectorId);
       if (!connector || connector.node !== node) continue;
       if (connector.inSegment !== segment && connector.outSegment !== segment) continue;
