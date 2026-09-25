@@ -62,17 +62,19 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
   plaster: {
     size: 256,
     worldSize: m(4),
-    relief: 1.4,
+    // A smooth render, not a stucco: close up, a heavy grain read as rough
+    // cast. The tone moves slowly; the relief is barely there.
+    relief: 0.45,
     metalness: 0,
     envMapIntensity: 0.6,
     shade: (size) => {
       const coarse = makeNoise(0x71a3);
       const fine = makeNoise(0x2c5d);
       return (x, y, out) => {
-        const n = fbm(coarse, (x / size) * 12, (y / size) * 12, 12, 4);
+        const n = fbm(coarse, (x / size) * 6, (y / size) * 6, 6, 4);
         const f = fine((x / size) * 96, (y / size) * 96, 96);
-        grey(out, 0.9 + (n - 0.5) * 0.09 + (f - 0.5) * 0.035);
-        out.h = f * 0.7 + n * 0.3;
+        grey(out, 0.91 + (n - 0.5) * 0.06 + (f - 0.5) * 0.012);
+        out.h = f * 0.3 + n * 0.7;
         out.rough = 0.93;
       };
     },
