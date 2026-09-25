@@ -306,6 +306,8 @@ export interface VehicleLook {
   readonly occupants: number;
   /** Bit 0 is the offside window, bit 1 the kerbside one. Set means down. */
   readonly windowsDown: number;
+  /** How far a lowered window is down: 0.45 part-way, 1 fully into the door. */
+  readonly windowDrop: number;
   readonly driverSkin: number;
   readonly driverShirt: number;
   readonly passengerSkin: number;
@@ -323,6 +325,24 @@ export interface VehicleLook {
   readonly blackRoof: boolean;
 }
 
+/**
+ * How a door's window is drawn with a share `drop` of it lowered (0 shut, 1
+ * fully down): the pane shortened from the top about its own bottom edge,
+ * as the part still showing above the door; fully down it is inside the
+ * door and not drawn at all. Sliding the pane down instead pushed its top
+ * edge into the cabin (it leans inboard with the body) or, along its lean,
+ * its bottom edge out through the door skin. `up` and `sy` are the vertical
+ * offset and scale to place it with, in the door's own frame.
+ */
+export function windowPane(door: { glass: BufferGeometry }, drop: number): { visible: boolean; up: number; sy: number } {
+  if (drop >= 0.98) return { visible: false, up: 0, sy: 0 };
+  if (drop <= 0) return { visible: true, up: 0, sy: 1 };
+  if (!door.glass.boundingBox) door.glass.computeBoundingBox();
+  const bottom = door.glass.boundingBox?.min.y ?? 0;
+  const sy = 1 - drop;
+  return { visible: true, up: bottom * (1 - sy), sy };
+}
+
 /** Everything about how one vehicle's occupants and windows look, from its id. */
 export function vehicleLook(id: number, seats: number): VehicleLook {
   const h = agentHash(id ^ 0x2545f491);
@@ -330,7 +350,9 @@ export function vehicleLook(id: number, seats: number): VehicleLook {
   const room = Math.max(1, Math.floor(seats));
   return {
     occupants: 1 + pick(h, 6, room),
-    windowsDown: pick(h, 2, 4),
+    // Most cars closed; three in ten with a window or both front ones down.
+    windowsDown: pick(h, 2, 10) < 7 ? 0 : pick(h, 2, 10) - 6,
+    windowDrop: pick(g, 9, 2) === 0 ? 0.45 : 1,
     driverSkin: from(SKIN_TONES, h, 14),
     driverShirt: from(SHIRT_COLOURS, h, 20),
     passengerSkin: from(SKIN_TONES, g, 6),
@@ -863,9 +885,22 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       return;
     }
     const doorsMoving = vehicle.doors.length > 0;
-    if (!doorsMoving) {
+    if (!doorsMoving && look.windowsDown === 0) {
       place(car.shell, 0, 0, 0, 1, 1, 1, paintHex);
       place(car.glass, 0, 0, 0, 1, 1, 1, -1);
+    } else if (!doorsMoving) {
+      // A window down: the fixed glazing, then each door's window, lowered
+      // into its door - behind the painted skin and the door card, so it is
+      // never seen outside the door, and the person beside it shows through
+      // the opening. `windowsDown` was worked out for every car and never
+      // read: every window was always shut.
+      place(car.shell, 0, 0, 0, 1, 1, 1, paintHex);
+      place(car.openGlass, 0, 0, 0, 1, 1, 1, -1);
+      model.doors.forEach((door, i) => {
+        const down = (look.windowsDown & (door.side === -1 ? 1 : 2)) !== 0 && door.kind === 'hinge';
+        const pane = windowPane(door, down ? look.windowDrop : 0);
+        if (pane.visible) place(car.doorGlass[i]!, door.hingeX, -door.hingeZ, pane.up, 1, pane.sy, 1, -1);
+      });
     } else {
       place(car.openShell, 0, 0, 0, 1, 1, 1, paintHex);
       place(car.openGlass, 0, 0, 0, 1, 1, 1, -1);

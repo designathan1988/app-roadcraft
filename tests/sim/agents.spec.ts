@@ -295,9 +295,12 @@ describe('vehicleLook', () => {
       if (down === 0) allUp++;
       if (down === 3) bothDown++;
     }
-    expect(anyDown).toBeGreaterThan(200);
-    expect(allUp).toBeGreaterThan(100);
-    expect(bothDown).toBeGreaterThan(100);
+    // Most cars shut (about seven in ten), some with one window down, a few
+    // with both.
+    expect(anyDown).toBeGreaterThan(160);
+    expect(anyDown).toBeLessThan(320);
+    expect(allUp).toBeGreaterThan(480);
+    expect(bothDown).toBeGreaterThan(40);
   });
 
   it('fills a bus with several passengers and a car with one or two', () => {
