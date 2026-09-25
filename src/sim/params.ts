@@ -197,6 +197,8 @@ export const PED_CEILING = 1500;
  * whether it was showing four roads or four hundred.
  */
 export const NARROW_SCREEN_SHARE = 0.5;
+/** Viewport width, CSS pixels, under which a screen counts as narrow. */
+export const NARROW_SCREEN_WIDTH = 800;
 
 /** A claim holder immobile for this long is reported (diagnostic only). */
 export const STUCK_SECONDS = 10;

@@ -1,5 +1,5 @@
 import { clamp } from '@core/scalar';
-import { DT, NARROW_SCREEN_SHARE, PED, PED_CEILING, PED_DENSITY } from '../params';
+import { DT, PED, PED_CEILING, PED_DENSITY } from '../params';
 import type { SimWorld } from '../world';
 import { PED_BEHAVIOUR, preferredLateral } from './behaviour';
 import type { SidewalkEdge } from './sidewalk';
@@ -25,8 +25,7 @@ export function pedTarget(w: SimWorld): number {
   // Same defect as the fleet, same shape of fix: the length term decides, and
   // the ceiling is a runaway guard set far above it rather than the number that
   // actually binds.
-  const narrow = typeof window !== 'undefined' && window.innerWidth < 800;
-  const ceiling = narrow ? Math.floor(PED_CEILING * NARROW_SCREEN_SHARE) : PED_CEILING;
+  const ceiling = Math.floor(PED_CEILING * w.populationShare);
   return Math.min(
     ceiling,
     Math.floor(total * PED_DENSITY * w.pedestrianIntensity * w.demandMultiplier),

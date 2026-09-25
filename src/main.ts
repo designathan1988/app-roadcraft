@@ -24,7 +24,7 @@ import { isoZoomBounds } from '@render/isoViewport';
 
 import { SimWorld } from '@sim/world';
 import { rebindAgents, rebindPeds, rebindVehicles, step } from '@sim/pipeline';
-import { DT } from '@sim/params';
+import { DT, NARROW_SCREEN_SHARE, NARROW_SCREEN_WIDTH } from '@sim/params';
 import { summarize } from '@sim/audit';
 
 import { type Anchor, findAnchor, snapEndpoint, type SnapResult } from '@editor/snap';
@@ -118,6 +118,11 @@ const sim = new SimWorld(doc, net, 0x2024);
 sim.rebuildTopology();
 sim.auditEnabled = true;
 sim.auditLevel = 'cheap';
+/** The simulation never reads the screen; the screen's size is handed to it. */
+function syncPopulationShare(): void {
+  sim.populationShare = window.innerWidth < NARROW_SCREEN_WIDTH ? NARROW_SCREEN_SHARE : 1;
+}
+syncPopulationShare();
 
 /**
  * The zoom range the renderer we are about to boot can actually represent.
@@ -347,7 +352,7 @@ overlayCanvas.style.cssText =
 canvas.parentElement?.appendChild(overlayCanvas);
 overlayCtx = overlayCanvas.getContext('2d');
 
-window.addEventListener('resize', () => scene.resize(), { passive: true });
+window.addEventListener('resize', () => { scene.resize(); syncPopulationShare(); }, { passive: true });
 canvas.dataset['render'] = 'webgl';
 
 // Modular buildings (docs/buildings.md): the tool, its palette, its overlay

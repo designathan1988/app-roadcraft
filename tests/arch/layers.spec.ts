@@ -79,3 +79,16 @@ describe('one writer per number', () => {
     expect(declarations).toEqual(['world/roadTypes.ts']);
   });
 });
+
+describe('the simulation is headless', () => {
+  it('never reads window or document in world or sim', () => {
+    // The spawners read `window.innerWidth`, so one seed grew a different city
+    // on a phone and `sim` depended on the DOM. The screen share is injected
+    // by main.ts as `SimWorld.populationShare` now.
+    const offenders = tsFilesUnder(SRC)
+      .filter((file) => /[/\\](world|sim)[/\\]/.test(file))
+      .filter((file) => /\b(window|document)\s*\./.test(code(readFileSync(file, 'utf8'))))
+      .map((file) => relative(SRC, file).split(sep).join('/'));
+    expect(offenders).toEqual([]);
+  });
+});

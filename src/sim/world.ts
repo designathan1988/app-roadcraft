@@ -121,6 +121,13 @@ export class SimWorld {
   pedestrianIntensity = 1;
   /** Shared demand multiplier for the current simulation period. */
   demandMultiplier = 1;
+  /**
+   * Share of the population ceilings this device carries (1, or
+   * `NARROW_SCREEN_SHARE` on a narrow screen). SET BY THE COMPOSITION ROOT:
+   * the spawners used to read `window.innerWidth` themselves, which put the
+   * DOM inside `sim` and made the same seed grow a different city on a phone.
+   */
+  populationShare = 1;
 
   auditEnabled = false;
   auditLevel: 'cheap' | 'full' = 'cheap';

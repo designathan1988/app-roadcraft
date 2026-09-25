@@ -3,7 +3,6 @@ import {
   DRIVER_NOISE,
   FLEET_CEILING,
   JAM_GAP,
-  NARROW_SCREEN_SHARE,
   TRAFFIC_DENSITY,
 } from '../params';
 import type { SimWorld } from '../world';
@@ -34,8 +33,7 @@ const ADMIT_PER_TICK = 4;
 export function trafficTarget(w: SimWorld): number {
   let total = 0;
   for (const ribbon of w.net.ribbons.values()) total += ribbon.full.length;
-  const narrow = typeof window !== 'undefined' && window.innerWidth < 800;
-  const ceiling = narrow ? Math.floor(FLEET_CEILING * NARROW_SCREEN_SHARE) : FLEET_CEILING;
+  const ceiling = Math.floor(FLEET_CEILING * w.populationShare);
   return Math.min(
     ceiling,
     Math.floor(total * TRAFFIC_DENSITY * w.trafficIntensity * w.demandMultiplier),
