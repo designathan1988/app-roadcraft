@@ -142,7 +142,13 @@ export function checkWorld(doc: RoadDoc, net: Network): Defect[] {
     const hw = halfWidth(ribbon.road, Level.Asphalt) * 0.8;
     const step = 1.5;
     let first: string | null = null;
-    for (let s = 0.5; s < line.length - 0.5 && !first; s += step) {
+    // The ribbon's own span, plus a band reaching 1.5 units into each junction
+    // plate across its mouth - where a seam would open. Deeper inside a plate
+    // the kerb legitimately curves in (the outer corner of a bend).
+    const trims = net.trims.get(id);
+    const from = Math.max(0.5, (trims?.a[Level.Asphalt] ?? 0) - 1.5);
+    const to = line.length - Math.max(0.5, (trims?.b[Level.Asphalt] ?? 0) - 1.5);
+    for (let s = from; s < to && !first; s += step) {
       const f = line.sampleAt(s);
       for (const across of [-1, 0, 1]) {
         const p = { x: f.p.x + f.n.x * hw * across, y: f.p.y + f.n.y * hw * across };
