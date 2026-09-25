@@ -46,6 +46,18 @@ function gridDoc(n = 9, spacing = 150): RoadDoc {
       if (j + 1 < n) doc.addSegment(ids[i]![j]!, ids[i]![j + 1]!, avenue(i));
     }
   }
+  // Stubs out of every border node: the map edge, where traffic arrives.
+  for (let k = 0; k < n; k++) {
+    const stub = (node: NodeId, dx: number, dy: number, type: number): void => {
+      const at = doc.requireNode(node);
+      doc.addSegment(node, doc.addNode({ x: at.x + dx, y: at.y + dy }).id, type);
+    };
+    const t = k % 3 === 0 ? 3 : 1;
+    stub(ids[0]![k]!, -spacing, 0, t);
+    stub(ids[n - 1]![k]!, spacing, 0, t);
+    stub(ids[k]![0]!, 0, -spacing, t);
+    stub(ids[k]![n - 1]!, 0, spacing, t);
+  }
   return doc;
 }
 

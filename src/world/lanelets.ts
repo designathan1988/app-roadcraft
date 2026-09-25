@@ -556,8 +556,8 @@ function carriedPair(doc: RoadDoc, nodeId: NodeId): readonly SegmentId[] | null 
  * so this looks ahead before deciding.
  *
  * The two therefore DISAGREE on a curved leg, and that is correct. They were
- * previously both spelled  — one local, one an unused export
- * in  — which made the disagreement look like a bug and
+ * once both spelled with the same function name - one local here, one an
+ * unused export elsewhere - which made the disagreement look like a bug and
  * invited someone to "fix" it by unifying them.
  */
 function smoothedDirectionFromNode(pl: Polyline): Vec2 {

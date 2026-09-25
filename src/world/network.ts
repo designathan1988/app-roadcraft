@@ -172,7 +172,7 @@ export class Network {
     // node where `trims` said 20.25 while the junction had settled at 15.91,
     // which is 4.3 units of bare terrain between the mouth and the ribbon —
     // defect 1.5 arriving through the solver instead of through a second
-    // formula. `tests/world/trim-equality.spec.ts` sweeps for it.
+    // formula. The road fuzzer (`tests/fuzz`, category `trimOrder`) sweeps for it.
     this.adoptSolvedTrims(solved);
 
     this.buildRibbons();

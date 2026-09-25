@@ -72,8 +72,9 @@ export interface RoadSegment {
 /**
  * The authoring document: what the user drew, before any derived geometry.
  *
- * Mutations are applied here and mark entities dirty; `GeometryCache.commit()`
- * then rebuilds only what changed. Nothing in this file knows about lanes,
+ * Mutations are applied here, mark entities dirty and move a revision;
+ * `Network.rebuild()` then rebuilds everything derived (the dirty sets are a
+ * hook for an incremental rebuild that does not exist yet - see `markNode`). Nothing in this file knows about lanes,
  * vehicles or rendering.
  */
 export class RoadDoc {

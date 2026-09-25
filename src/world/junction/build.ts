@@ -205,8 +205,8 @@ export function buildJunction(
     trims = capTrims(computeTrims(legs, corners), legs);
   }
 
-  // NOT DONE HERE. Three attempts, each measured — see VIS-5 and the
-  // failed-attempts list in .codex/state.json.
+  // NOT DONE HERE. Three attempts, each measured (the record they were kept
+  // in is not in this repository; the two that matter are summarised here).
   //
   // The staircase in a junction kerb is the gap between what one corner's arc
   // demands and where its leg is actually cut, which is the maximum over BOTH
@@ -275,8 +275,8 @@ export function buildJunction(
   // Left undone deliberately; the rule that matters now runs upstream instead.
   //
   // The goal was: a node below `MIN_LEG_ANGLE` should not paint a long finger
-  // of kerb and footway across open grass. `scripts/probe-tongues.mjs` puts a
-  // 7-degree hairpin's tongue at 246 units, 16.6 times the road's half-width,
+  // of kerb and footway across open grass. A measurement script (since
+  // removed) put a 7-degree hairpin's tongue at 246 units, 16.6 times the road's half-width,
   // against 2.0 for a healthy cross or T.
   //
   //   1. Capping the TRIMS at three half-widths. The hull-fallback rate over

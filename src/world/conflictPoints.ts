@@ -19,7 +19,7 @@ export type ConflictKind = 'cross' | 'merge' | 'swept';
  *
  * World knows nothing about the fleet, so the classes are envelopes in metres
  * and the simulation maps each archetype to the smallest one containing it
- * (`bodyClassOf`); `tests/sim/conflictZones.spec.ts` checks every archetype
+ * (`bodyClassOf`); `tests/world/conflictZones.spec.ts` checks every archetype
  * fits. Three classes are enough to separate what matters: two cars in a pair
  * of turn lanes do not touch, two buses in the same pair do.
  */

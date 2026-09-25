@@ -5,7 +5,7 @@ import { m } from '@world/units';
 export const CORRIDOR_STEP = 1;
 /**
  * How far a corridor reaches past each end of its path. A walker is handed
- * from one corridor to the next where the two overlap (`locomotion.ts`), so
+ * from one corridor to the next where the two overlap (`transfer` in `crossingFsm.ts`), so
  * this overlap is what lets a hand-off happen with the body exactly where it
  * is — no clamp, no catch-up offset, nothing drawn off the path.
  */

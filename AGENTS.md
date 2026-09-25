@@ -90,6 +90,8 @@ that `world` and `sim` never call `Math.random` (invariant 5, which
 | the vehicle fleet — classes, sizes, driving behaviour, spawn shares | `src/sim/vehicles/archetypes.ts` | [docs/architecture.md](docs/architecture.md) |
 | traffic signal heads and their lamps | `src/render/signals.ts` | [docs/rendering.md](docs/rendering.md) |
 | editing tools, the terrain brush, the control tool, the overlay | `src/main.ts` | [docs/architecture.md](docs/architecture.md) |
+| the road/traffic defect detector, its fixtures | `tests/fuzz/` | [docs/fuzzing.md](docs/fuzzing.md) |
+| road-space asphalt detail: gutter, wheel tracks | `src/render/materials.ts` (`ROAD_SPACE_FRAGMENT`) | `src/render/roadSurfaces.ts` (`roadEdge`) |
 | quality tiers, the automatic downgrade | `src/render/quality.ts` | [docs/performance.md](docs/performance.md) |
 | car-following, lane changes, spawning | `src/sim/vehicles/` | [docs/architecture.md](docs/architecture.md) |
 | how one driver differs from another | `src/sim/vehicles/driver.ts` | [docs/architecture.md](docs/architecture.md) |
@@ -229,7 +231,16 @@ npm run check            # lint + typecheck + tests with coverage + build
 npm run verify:visual    # boots the real app in a browser and measures the scene
 npm run verify           # both of the above
 npm run screens          # verify:visual, and write docs/screenshots/*.jpg
+node scripts/bench-sim.mjs out.json          # headless ms/tick per stage and ms/edit (docs/performance.md)
+node scripts/capture-scene.mjs <dir> [url]   # scene photos: fixed cameras, close-ups, pan/zoom frames, draw cost
 ```
+
+**The defect detector** is `tests/fuzz/` (docs/fuzzing.md). Its smoke profile
+runs in `npm run check`; before touching `world/` or `sim/`, run a hunt
+(`FUZZ_HUNT=1 FUZZ_SEEDS=80 FUZZ_OPS=40 npx vitest run tests/fuzz/fuzz.spec.ts
+--testTimeout=0`) and compare the tally before and after your change. A defect
+you fix gets a shrunk fixture in `tests/fuzz/fixtures/`; one you cannot fix
+gets a fixture with `open` saying why.
 
 `npm run check` must be green before anything is considered done. It is fast
 (seconds). `npm run verify:visual` is the one that catches what unit tests
@@ -247,7 +258,64 @@ dev servers and browsers as soon as a check is done.
 
 ---
 
-## 8. Traps that have already caught someone
+## 8. Working here
+
+* **A worktree of your own, always.** Several agents work in this repository
+  at once. `git worktree add -b <branch> ../<name> master`, work and commit
+  there, and never edit, stage or commit someone else's uncommitted changes in
+  the shared checkout. Do not delete branches or worktrees you did not create.
+* **One heavy job on the machine at a time** (a full suite, a build, a browser
+  harness, a benchmark), and tell the other sessions before you start one.
+  Prefer the targeted spec files while working.
+* **One writer per field.** Every piece of state has exactly one module that
+  writes it (the list for the simulation is in `sim/pipeline.ts`: topology in
+  stage 0, signals in 1, routes and population in 2, pedestrians in 3,
+  constraints 4-5, position and speed only in `integrate` at 6). A number
+  used in two places is declared once (the footway height is
+  `world/roadTypes.ts` `FOOTWAY_RISE`, and `tests/arch` checks it). If you
+  need to write something from a second place, you need a new field.
+
+## 9. Couplings that break far from where you edit
+
+1. **One trim per segment end** feeds the junction mouth, the zebra, the stop
+   line, the lanelet end, the elevation plate, the footway kerb nodes and the
+   markings. Changing a constant in `world/approach.ts` moves all of them.
+   `Network.stopLineDistance` never returns less than the mouth.
+2. **`HEADING_CHORD`** is shared by `sim/pose.ts`, `world/conflictPoints.ts`
+   and `world/turnPaths.ts`: change the three together or none;
+   `tests/sim/collisions.spec.ts` is the guard.
+3. **Seat and door numbering**: `sim/vehicles/kerbStops.ts` counts seats with
+   `archetype.doorsPerSide`, `render/vehicleModels.ts` with its door edges.
+   They agree by construction only; a new body style must keep both.
+4. **Population ceilings**: `FLEET_CEILING` and `PED_CEILING` (`sim/params.ts`)
+   also size the renderer's instance buffers (`render/agents.ts`).
+5. **Revisions**: `doc.revision` (roads) gates `Network`, the lanelets, the
+   simulation topology, the road meshes and the minimap; `terrainRevision`
+   the terrain and the roads on it; `buildings.revision` the buildings;
+   `utilityRevision` the poles, wires and the pedestrians' obstacles. An edit
+   that moves the wrong one either rebuilds everything or nothing.
+6. **`commitDraft` adopts its work network**, rebuilt after the draft's
+   segments are added; adopting it before that hands back a stale network
+   stamped current.
+7. **`RoadSample`** (`elevation.roadAt`) feeds the road UV frame and the
+   asphalt's `roadEdge` attribute; the asphalt shader (`materials.ts`,
+   `ROAD_SPACE_FRAGMENT`) assumes `uv.x * ASPHALT_TILE` is `across`.
+8. **Street furniture** (`world/streetFurniture.ts`) is both what the renderer
+   draws and what pedestrians walk round (`sim/peds/clearance.ts`).
+9. **Junction legs are framed at the trim they are cut at** (`junction/legs.ts`,
+   `build.ts`): a trim changed after framing (the slab bump) must re-frame.
+10. **Signal stages come from the conflict matrix** (`signals/plan.ts` over
+    `conflictPoints.ts`): a new conflict rule changes the phasing.
+11. **Shadow bias is in world units over the fitted depth range**
+    (`render/environment.ts` `fitDepth`); change the range and the bias follows.
+12. **`SUN_AZIMUTH` against the camera's azimuth** decides whether shadows are
+    visible at all (section 10).
+13. **The pedestrians' crossing-reservation index** (`crossingFsm.ts`) is built
+    at the start of `stepPedestrians` and valid only inside it.
+14. **`clock.tick` does not advance under test** (section 10): a cache keyed on
+    it is stale in every spec.
+
+## 10. Traps that have already caught someone
 
 * **Winding.** World `y` is mirrored into three's `z`. That reflection flips
   handedness. `surfaceMesh.ts` measures the ring's signed area instead of

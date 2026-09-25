@@ -39,11 +39,11 @@ import { HELMET_SEGMENTS, STEER_FULL } from './riderPoses';
 import { DOOR_SWING, createKerbFigure, kerbFigure, occupantPlays, type Play } from './occupants';
 
 /**
- * Vehicles, riders and dogs use the original instanced batches. Citizens use
+ * Vehicles and riders use the original instanced batches. Citizens use
  * rigged Rocketbox meshes with baked animation palettes in separate batches.
  *
  * At the far band only vehicles are drawn. The middle band includes citizens;
- * the near band adds dogs. Citizen stride follows distance travelled rather
+ * the near band adds the finest detail. Citizen stride follows distance travelled rather
  * than a shared clock, so each gait has its own phase.
  *
  * Buffers are allocated once. Only their written prefixes are uploaded, and
@@ -56,7 +56,7 @@ import { DOOR_SWING, createKerbFigure, kerbFigure, occupantPlays, type Play } fr
  */
 const MAX_VEHICLES = FLEET_CEILING;
 const MAX_PEDS = PED_CEILING;
-/** Dogs are flavour, not a second crowd. A hundred bounds the extra work. */
+/** Two-wheeler riders' own batches (frames, wheels, helmets). */
 const MAX_RIDERS = 400;
 
 /**

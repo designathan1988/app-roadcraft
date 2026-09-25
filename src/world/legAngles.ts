@@ -17,7 +17,7 @@ import { PolylineCache } from './geometry';
  * Below this angle `acuteSetback` — the distance at which two carriageways stop
  * overlapping — grows without bound, the trim goes from about 30 units to about
  * 185, and `legTongue` paints a finger of kerb and footway that long across
- * open grass with no asphalt beside it. Measured by `scripts/probe-tongues.mjs`:
+ * open grass with no asphalt beside it. Measured by a probe script since removed:
  * a 7-degree hairpin gives trims of 246 and a tongue 16.6 times the road's
  * half-width, against 2.0 for a healthy cross or T.
  */
