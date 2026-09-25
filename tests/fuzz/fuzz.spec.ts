@@ -62,7 +62,7 @@ describe('road fuzzer', () => {
       const seen = new Set<string>();
       let broken = false;
       for (let i = 0; i < ops.length; i++) {
-        let defects: Defect[] = [];
+        let defects: Defect[];
         try {
           if (!applyOp(state, ops[i]!)) continue;
           defects = [...state.notes.splice(0), ...checkWorld(state.doc, state.net)];

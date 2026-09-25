@@ -144,7 +144,7 @@ export function openCategories(): Set<string> {
 export const FIXTURE_DIR = join(process.cwd(), 'tests', 'fuzz', 'fixtures');
 
 export function loadFixtures(): Fixture[] {
-  let names: string[] = [];
+  let names: string[];
   try { names = readdirSync(FIXTURE_DIR).filter((n) => n.endsWith('.json')).sort(); } catch { return []; }
   return names.map((n) => JSON.parse(readFileSync(join(FIXTURE_DIR, n), 'utf8')) as Fixture);
 }
