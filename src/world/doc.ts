@@ -1,5 +1,5 @@
 import type { Vec2 } from '@core/vec2';
-import type { CurveShape } from '@core/bezier';
+import { type CurveShape, fitShapeToRadius } from '@core/bezier';
 import {
   type NodeId,
   type PoleId,
@@ -18,8 +18,17 @@ import { impossibleAmong, worsensAnyNode } from './legAngles';
 import { type RoadStructure, migrateStructure } from './structures';
 import { MAX_TERRAIN_STAMPS, type TerrainStamp } from './terrain';
 import { clampToMap } from './bounds';
+import { casingHalf, roadProfile } from './roadTypes';
 import { BuildingStore } from './buildings/store';
 import type { SerializedBuilding } from './buildings/serialize';
+
+/** `shape` flattened until no band of a road of this profile folds over (see `RoadDoc.fitCurve`). */
+export function fitRoadCurve(
+  a: Vec2, b: Vec2, shape: CurveShape | null, type: number,
+  lanes: number | null = null, direction: SegmentDirection = 'both',
+): CurveShape | null {
+  return fitShapeToRadius(a, b, shape, casingHalf(roadProfile(type, lanes, direction)));
+}
 
 /** Legal driving directions, relative to the stored `a -> b` orientation. */
 export type SegmentDirection = 'both' | 'aToB' | 'bToA';
@@ -242,6 +251,7 @@ export class RoadDoc {
     this.segments.set(id, s);
     this.requireNode(a).incident.push(id);
     this.requireNode(b).incident.push(id);
+    this.fitCurve(s);
     this.markSegment(id);
     return s;
   }
@@ -352,13 +362,42 @@ export class RoadDoc {
       this.markNode(id);
       return false;
     }
+    for (const segId of n.incident) {
+      const seg = this.segments.get(segId);
+      if (seg) this.fitCurve(seg);
+    }
     return true;
+  }
+
+  /**
+   * A curve is never tighter than its road is wide.
+   *
+   * Every band of a road is an offset of its centreline, and an offset larger
+   * than the radius folds back on itself: the inner kerb crosses over, the
+   * junction mouth tears open (`open-mouth-seam-after-move`: an elevated
+   * spur dragged to a 16.8-unit bend on a 30-unit-wide casing), and an inner
+   * lane that should start past the mouth starts behind it
+   * (`open-lane-end-inside-mouth-after-joint-scaling`). So whatever sets a
+   * curve, moves an end or widens a road, the bulge is flattened until the
+   * tightest bend clears the outermost band.
+   */
+  private fitCurve(s: RoadSegment): void {
+    if (!s.curve) return;
+    const a = this.nodes.get(s.a);
+    const b = this.nodes.get(s.b);
+    if (!a || !b) return;
+    const fitted = fitRoadCurve(a, b, s.curve, s.type, s.lanes, s.direction);
+    if (fitted !== s.curve) {
+      s.curve = fitted;
+      this.markSegment(s.id);
+    }
   }
 
   setSegmentType(id: SegmentId, type: number): void {
     const s = this.segments.get(id);
     if (!s || s.type === type) return;
     s.type = type;
+    this.fitCurve(s);
     this.markSegment(id);
   }
 
@@ -366,6 +405,7 @@ export class RoadDoc {
     const s = this.segments.get(id);
     if (!s) return;
     s.curve = curve;
+    this.fitCurve(s);
     this.markSegment(id);
   }
 
@@ -374,6 +414,7 @@ export class RoadDoc {
     if (!s || s.direction === direction) return;
     s.direction = direction;
     s.lanes = normaliseLaneCount(s.lanes, direction);
+    this.fitCurve(s);
     this.markSegment(id);
   }
 
@@ -382,6 +423,7 @@ export class RoadDoc {
     const next = normaliseLaneCount(lanes, s?.direction ?? 'both');
     if (!s || s.lanes === next) return;
     s.lanes = next;
+    this.fitCurve(s);
     this.markSegment(id);
   }
 

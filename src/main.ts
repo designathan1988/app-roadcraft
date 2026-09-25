@@ -1,7 +1,7 @@
 import { type Vec2, dist } from '@core/vec2';
 import { COARSE_EPS, clamp } from '@core/scalar';
 import { flattenSegment, shapeFromControl, type CurveShape } from '@core/bezier';
-import { RoadDoc, type JunctionControl } from '@world/doc';
+import { RoadDoc, fitRoadCurve, type JunctionControl } from '@world/doc';
 import { Network } from '@world/network';
 import { ROAD_TYPES, roadType } from '@world/roadTypes';
 import type { RoadStructure } from '@world/structures';
@@ -2088,7 +2088,8 @@ function curveFromGesture(value: RoadDraft): CurveShape | null {
   side = clamp(side, -chord * 0.52, chord * 0.52);
   if (Math.abs(side) < camera.px(6)) return null;
   const control = { x: mid.x + nx * side * 1.36, y: mid.y + ny * side * 1.36 };
-  return shapeFromControl(a, b, control);
+  // The preview shows the curve the road will actually get.
+  return fitRoadCurve(a, b, shapeFromControl(a, b, control), roadTypeIndex);
 }
 
 function showInspector(): void {

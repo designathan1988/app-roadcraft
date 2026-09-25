@@ -100,3 +100,46 @@ export function splitQuad(
   const mid = { x: ac.x + (cb.x - ac.x) * t, y: ac.y + (cb.y - ac.y) * t };
   return { left: [a, ac, mid], right: [mid, cb, b] };
 }
+
+/**
+ * Tightest radius of curvature of a quadratic, closed form.
+ *
+ * With P = c - a and Q = b - c, B'(t) = 2((1-t)P + tQ) and B'' = 2(Q - P),
+ * so B' x B'' = 4 P x Q is constant and the radius |B'|^3 / |B' x B''| is
+ * smallest where |B'| is: at the foot of the perpendicular from the origin
+ * to the segment P..Q, clamped to [0, 1].
+ */
+export function quadMinRadius(a: Vec2, c: Vec2, b: Vec2): number {
+  const px = c.x - a.x;
+  const py = c.y - a.y;
+  const qx = b.x - c.x;
+  const qy = b.y - c.y;
+  const cross = Math.abs(px * qy - py * qx);
+  if (cross < EPS) return Infinity;
+  const dx = px - qx;
+  const dy = py - qy;
+  const dd = dx * dx + dy * dy;
+  const t = dd < EPS ? 0 : clamp((px * dx + py * dy) / dd, 0, 1);
+  const speed = 2 * Math.hypot((1 - t) * px + t * qx, (1 - t) * py + t * qy);
+  return (speed * speed * speed) / (4 * cross);
+}
+
+/**
+ * The same curve, flattened just enough that it is nowhere tighter than
+ * `minRadius`; `null` when only a straight line fits. Reducing |h| only ever
+ * widens a quadratic's tightest bend, so a bisection on it is exact.
+ */
+export function fitShapeToRadius(a: Vec2, b: Vec2, shape: CurveShape | null, minRadius: number): CurveShape | null {
+  if (!shape || Math.abs(shape.h) < EPS) return shape;
+  const radius = (h: number): number => quadMinRadius(a, controlPoint(a, b, { t: shape.t, h }), b);
+  if (radius(shape.h) >= minRadius) return shape;
+  let lo = 0;
+  let hi = Math.abs(shape.h);
+  const sign = Math.sign(shape.h);
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (radius(sign * mid) >= minRadius) lo = mid;
+    else hi = mid;
+  }
+  return lo < 0.01 ? null : { t: shape.t, h: sign * lo };
+}

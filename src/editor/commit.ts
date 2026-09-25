@@ -8,7 +8,7 @@ import {
 import { segSeg } from '@core/intersect';
 import { Polyline } from '@core/polyline';
 import { type Vec2, dist } from '@core/vec2';
-import type { RoadDoc } from '@world/doc';
+import { type RoadDoc, fitRoadCurve } from '@world/doc';
 import { Network } from '@world/network';
 import type { NodeId, SegmentId } from '@world/ids';
 import { MIN_LINK_LENGTH } from '@world/approach';
@@ -81,10 +81,14 @@ export function commitDraft(
     return { committed: false, reason: 'degenerate' };
   }
 
+  // Flattened as a whole BEFORE it is cut at crossings, so the pieces stay
+  // one smooth curve instead of each being fitted on its own.
+  const shape = fitRoadCurve(start.at, end.at, curve, type);
+
   const work = doc.clone();
   const workNet = new Network(work);
   workNet.rebuild();
-  const result = commitDraftInPlace(work, workNet, start, end, type, curve, structure);
+  const result = commitDraftInPlace(work, workNet, start, end, type, shape, structure);
   if (!result.committed) return result;
 
   // The RESULT is checked, not the drag. A drag that is itself well clear of
