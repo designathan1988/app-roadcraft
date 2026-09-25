@@ -1,3 +1,4 @@
+/* global window, performance, requestAnimationFrame */
 /**
  * Photographs the scene for a visual before/after: fixed cameras, three
  * close-ups, a slow pan and zoom, and the frame rate with full traffic.
