@@ -162,7 +162,13 @@ function crown(
   for (const blob of blobs) spread = Math.max(spread, Math.hypot(blob.x - centre.x, blob.z - centre.z) + blob.r);
 
   return blobs.map((blob, index) => {
-    const g = new IcosahedronGeometry(blob.r, detail);
+    // One subdivision finer than the level asked for: at 80 faces a blob
+    // read as a cut gem - the "icosphere" crowns.
+    const g = new IcosahedronGeometry(blob.r, detail + 1);
+    // Each cluster its own shade and warmth, so a crown is many masses of
+    // leaves catching the light differently, not one plastic ball.
+    const clusterTone = 0.86 + faceNoise(new Vector3(blob.x, blob.y, blob.z), seed + index) * 0.26;
+    const clusterWarm = (faceNoise(new Vector3(blob.z, blob.x, blob.y), seed * 3 + index) - 0.5) * 0.12;
     const position = g.getAttribute('position');
     const normal = g.getAttribute('normal');
     const p = new Vector3();
@@ -183,18 +189,18 @@ function crown(
       own.normalize();
       normal.setXYZ(i, own.x, own.y, own.z);
     }
-    return part(g, (q, _n, face) => {
+    return part(g, (q) => {
       const height = (q.y - minY) / Math.max(1e-6, maxY - minY);
       const depth = Math.hypot(q.x - centre.x, q.z - centre.z) / Math.max(1e-6, spread);
       // Baked occlusion: dark low and deep inside the crown.
       const ao = 0.5 + 0.35 * height + 0.25 * Math.min(1, depth * 1.3);
-      // Tone and palette are chosen per FACE, so a crown is speckled leaf by
-      // leaf; the occlusion stays per vertex, so the mass is still smooth.
-      // Only a little: the leaf clumps are drawn by `foliageShading.ts`, and a
-      // strong per-face tone is exactly what made a crown look cut from glass.
-      const tone = 0.95 + faceNoise(face, seed) * 0.08 + wobble(q.x * 9, q.y * 9, q.z * 9, seed) * 0.05;
-      const base = palette(faceNoise(face, seed + 7), height);
-      return [base[0] * ao * tone, base[1] * ao * tone, base[2] * ao * tone];
+      // Tone and palette per VERTEX, from a smooth noise, never per face.
+      // Picking the palette per face made one triangle in five the deep
+      // leaf colour at random: the dark triangles scattered over every crown.
+      const smooth = 0.5 + 0.5 * wobble(q.x * 7, q.y * 7, q.z * 7, seed + 7);
+      const tone = clusterTone * (0.96 + wobble(q.x * 13, q.y * 13, q.z * 13, seed) * 0.05);
+      const base = palette(smooth, height);
+      return [base[0] * ao * tone * (1 + clusterWarm), base[1] * ao * tone, base[2] * ao * tone * (1 - clusterWarm)];
     });
   });
 }
@@ -208,7 +214,7 @@ function trunk(
   rng: Rng,
 ): BufferGeometry[] {
   const parts = [
-    part(new CylinderGeometry(topRadius, baseRadius, top, 7, 1, true), (p) => {
+    part(new CylinderGeometry(topRadius * 0.8, baseRadius * 1.12, top, 10, 3, true), (p) => {
       const t = p.y / top;
       const s = 0.62 + t * 0.38;
       return [bark[0] * s, bark[1] * s, bark[2] * s];
@@ -232,7 +238,7 @@ function trunk(
     );
     const e = new Euler().setFromQuaternion(q);
     parts.push(
-      part(new CylinderGeometry(topRadius * 0.45, topRadius * 0.8, length, 5, 1, true), bark, {
+      part(new CylinderGeometry(topRadius * 0.32, topRadius * 0.75, length, 6, 1, true), bark, {
         at: [dx, from + dy, dz],
         rotate: [e.x, e.y, e.z],
       }),
@@ -275,25 +281,28 @@ export function treeGeometry(species: TreeSpecies, detail: Detail = 1): BufferGe
   const limbs = (count: number): number => (detail === 1 ? count : 0);
   switch (species) {
     case 'broadleaf': {
-      const blobs = scatterBlobs(rng, 7, 0, 0.68, 0.17, 0.2, 0.13, 0.21);
-      blobs.push({ x: 0.02, y: 0.86, z: -0.03, r: 0.15 });
+      // Many smaller clusters over a wider spread: a ragged, broken outline
+      // instead of two balls, gaps where the limbs show.
+      const blobs = scatterBlobs(rng, 12, 0, 0.68, 0.22, 0.24, 0.085, 0.16);
+      blobs.push({ x: 0.02, y: 0.88, z: -0.03, r: 0.12 }, { x: -0.1, y: 0.8, z: 0.08, r: 0.1 });
       const green = (f: number, h: number): Rgb => (f < 0.18 ? LEAF_DEEP : h > 0.75 && f > 0.7 ? LEAF_YOUNG : LEAF);
-      return merge([...trunk(0.56, 0.03, 0.018, BARK, limbs(3), rng), ...crown(blobs, new Vector3(0, 0.68, 0), green, 1.3, 0.22, detail)]);
+      return merge([...trunk(0.58, 0.032, 0.016, BARK, limbs(6), rng), ...crown(blobs, new Vector3(0, 0.68, 0), green, 1.3, 0.26, detail)]);
     }
     case 'broadleafTall': {
       // A narrower, taller crown on a longer clear stem: a street plane tree.
       const blobs: Blob[] = [];
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < 11; i++) {
         const a = rng.float() * Math.PI * 2;
+        const out = 0.06 + rng.float() * 0.07;
         blobs.push({
-          x: Math.cos(a) * 0.09,
-          y: 0.52 + i * 0.065 + rng.float() * 0.03,
-          z: Math.sin(a) * 0.09,
-          r: 0.12 + rng.float() * 0.05 - i * 0.006,
+          x: Math.cos(a) * out,
+          y: 0.5 + i * 0.042 + rng.float() * 0.03,
+          z: Math.sin(a) * out,
+          r: 0.095 + rng.float() * 0.045 - i * 0.004,
         });
       }
       const green = (f: number, h: number): Rgb => (f < 0.22 ? LEAF_DEEP : h > 0.7 && f > 0.75 ? LEAF_YOUNG : LEAF);
-      return merge([...trunk(0.6, 0.024, 0.014, BARK_PALE, limbs(2), rng), ...crown(blobs, new Vector3(0, 0.72, 0), green, 4.2, 0.22, detail)]);
+      return merge([...trunk(0.62, 0.026, 0.012, BARK_PALE, limbs(5), rng), ...crown(blobs, new Vector3(0, 0.72, 0), green, 4.2, 0.26, detail)]);
     }
     case 'conifer': {
       const parts = trunk(0.28, 0.022, 0.012, BARK, 0, rng);
@@ -301,7 +310,7 @@ export function treeGeometry(species: TreeSpecies, detail: Detail = 1): BufferGe
         const y0 = 0.16 + i * 0.16;
         const height = 0.3 - i * 0.02;
         const radius = 0.21 * (1 - i * 0.17);
-        const cone = new ConeGeometry(radius, height, detail === 1 ? 9 : 6, detail === 1 ? 2 : 1, true);
+        const cone = new ConeGeometry(radius, height, detail === 1 ? 16 : 9, detail === 1 ? 3 : 1, true);
         const position = cone.getAttribute('position');
         for (let v = 0; v < position.count; v++) {
           const x = position.getX(v);
@@ -312,10 +321,11 @@ export function treeGeometry(species: TreeSpecies, detail: Detail = 1): BufferGe
         }
         cone.computeVertexNormals();
         parts.push(
-          part(cone, (q, n, face) => {
+          part(cone, (q, n) => {
             const t = (q.y - y0) / height + 0.5;
             const ao = 0.55 + 0.45 * Math.max(0, Math.min(1, t)) * (0.7 + 0.3 * n.y);
-            const tone = 0.85 + faceNoise(face, i) * 0.3;
+            // Per vertex and smooth: a per-face tone speckled the tiers dark.
+            const tone = 0.88 + (0.5 + 0.5 * wobble(q.x * 11, q.y * 11, q.z * 11, i)) * 0.22;
             return [NEEDLE[0] * ao * tone, NEEDLE[1] * ao * tone, NEEDLE[2] * ao * tone];
           }, { at: [0, y0 + height / 2, 0] }),
         );
@@ -328,9 +338,9 @@ export function treeGeometry(species: TreeSpecies, detail: Detail = 1): BufferGe
       // dry season is all flower and hardly any leaf.
       const bloom = species === 'ipeYellow' ? rgb(0xf0c52c) : rgb(0xde6fa8);
       const bloomDeep = species === 'ipeYellow' ? rgb(0xc99a1a) : rgb(0xb24c86);
-      const blobs = scatterBlobs(rng, 8, 0, 0.74, 0.24, 0.1, 0.1, 0.16);
+      const blobs = scatterBlobs(rng, 12, 0, 0.74, 0.28, 0.12, 0.075, 0.14);
       const palette = (f: number, h: number): Rgb => (f < 0.14 ? LEAF_DEEP : h < 0.35 && f < 0.4 ? bloomDeep : bloom);
-      return merge([...trunk(0.62, 0.026, 0.016, BARK, limbs(4), rng), ...crown(blobs, new Vector3(0, 0.74, 0), palette, 8.1, 0.28, detail)]);
+      return merge([...trunk(0.64, 0.028, 0.014, BARK, limbs(6), rng), ...crown(blobs, new Vector3(0, 0.74, 0), palette, 8.1, 0.3, detail)]);
     }
   }
 }

@@ -121,7 +121,10 @@ export function buildGrass(
       Math.abs(terrainAt(cx, cy + 4) - terrainAt(cx, cy - 4));
     if (slope > 6) return false;
 
-    const count = 16 + Math.floor(rng.float() * 26);
+    // Dense enough to read as a patch of long grass. At 16 to 42 blades over
+    // a clump several metres wide they were scattered dark specks - dirt on
+    // the screen, not grass.
+    const count = 44 + Math.floor(rng.float() * 50);
     // Each clump has its own colour: lush, pale, or gone to seed.
     const dry = rng.float();
     const clumpHue = dry > 0.8 ? new Color(1.25, 1.12, 0.72) : new Color(0.92 + dry * 0.12, 1, 0.9 + dry * 0.1);
@@ -138,7 +141,7 @@ export function buildGrass(
       }
       if (wetAt(x, y)) continue;
       const z = terrainAt(x, y) - 0.05;
-      const shade = 0.85 + rng.float() * 0.3;
+      const shade = 0.95 + rng.float() * 0.22;
       const tuft: Tuft = {
         x,
         y,

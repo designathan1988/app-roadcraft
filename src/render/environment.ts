@@ -164,7 +164,8 @@ export function createEnvironment(
   probeScene.add(probe);
   const envTarget = pmrem.fromScene(probeScene, 0, 0.1, 100);
   scene.environment = envTarget.texture;
-  scene.environmentIntensity = 0.45;
+  // Enough for paint, glass and wet or polished surfaces to show the sky.
+  scene.environmentIntensity = 0.6;
   probe.geometry.dispose();
   (probe.material as ShaderMaterial).dispose();
   pmrem.dispose();
@@ -174,7 +175,9 @@ export function createEnvironment(
   scene.fog = new Fog(horizon.clone().lerp(zenith, 0.18).getHex(), 2_600, 8_200);
   scene.background = null;
 
-  const hemisphere = new HemisphereLight(0xbfd8f2, 0x55613f, 0.34);
+  // A near-neutral sky fill: the saturated blue it was tinted every shadow
+  // blue at close zoom (a parapet's shadow on a roof read as blue paint).
+  const hemisphere = new HemisphereLight(0xd3dde6, 0x5c6346, 0.32);
   hemisphere.name = 'sky-fill';
   scene.add(hemisphere);
 
