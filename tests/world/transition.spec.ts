@@ -83,12 +83,13 @@ describe('a road carrying on at another width', () => {
     }
   });
 
-  it('paints its edge lines, centre line and shared lanes straight through', () => {
+  it('paints its centre line and shared lanes straight through', () => {
     const { net, node } = join(2, 3);
     const strokes = transitionMarkings(net, node);
-    // Two edge lines, two lines parting round the reservation, and the one
-    // lane divider per direction the avenue and the boulevard share.
-    expect(strokes.length).toBe(6);
+    // Two lines parting round the reservation, and the one lane divider per
+    // direction the avenue and the boulevard share. (No painted edge lines:
+    // the asphalt's concrete gutter marks the edge.)
+    expect(strokes.length).toBe(4);
     for (const stroke of strokes) expect(stroke.points.length).toBeGreaterThan(8);
   });
 

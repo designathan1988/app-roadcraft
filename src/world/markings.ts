@@ -1,6 +1,4 @@
 import {
-  EDGE_LINE_DARK,
-  EDGE_LINE_LIGHT,
   LANE_LINE,
   Level,
   type RoadType,
@@ -54,21 +52,11 @@ export function segmentMarkings(ribbon: SegmentRibbon, startS: number): StrokeSp
   const out: StrokeSpec[] = [];
   const phase = -((ribbon.dashOrigin + startS) % DASH_PERIOD);
 
-  // Edge lines, just inside the kerb on each side.
-  out.push({
-    points: offsetPolyline(pts, -(rt.width / 2 - 0.5)),
-    width: 0.5,
-    color: EDGE_LINE_LIGHT,
-    dash: null,
-    dashOffset: 0,
-  });
-  out.push({
-    points: offsetPolyline(pts, rt.width / 2 - 0.5),
-    width: 0.5,
-    color: EDGE_LINE_DARK,
-    dash: null,
-    dashOffset: 0,
-  });
+  // No painted edge lines. Two flat 0.5-unit strips ran just inside the
+  // kerbs - one near-black, one grey - and read as a smooth untextured band
+  // between the asphalt and the kerb, covering the gutter. The carriageway's
+  // edge is the concrete gutter now, drawn by the asphalt itself
+  // (`ROAD_SPACE_FRAGMENT` in render/materials.ts).
 
   if (ribbon.direction === 'both' && rt.markings === 'center') {
     out.push({
@@ -319,15 +307,13 @@ export function transitionMarkings(net: Network, node: NodeId): StrokeSpec[] {
   const rb = b.road;
   const axis = new TransitionAxis(a, junction.trims[0] as number, b, junction.trims[1] as number);
   const mix = (p: number, q: number) => (u: number): number => p + (q - p) * taperEase(u);
-  const half = mix(ra.width / 2, rb.width / 2);
   const out: StrokeSpec[] = [];
   const solid = (offset: (u: number) => number, width: number, color: string): void => {
     out.push({ points: axis.offset(offset), width, color, dash: null, dashOffset: 0 });
   };
 
   // Travel from `a` to `b` keeps to the right, the negative side of the axis.
-  solid((u) => -(half(u) - 0.5), 0.5, EDGE_LINE_LIGHT);
-  solid((u) => half(u) - 0.5, 0.5, EDGE_LINE_DARK);
+  // (No edge lines: the gutter marks the edge, see `segmentMarkings`.)
 
   if (a.direction !== 'both' || b.direction !== 'both') return out;
   if (ra.markings === 'none' && rb.markings === 'none') return out;

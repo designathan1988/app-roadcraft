@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { RoadDoc, type SegmentDirection } from '@world/doc';
 import { Network } from '@world/network';
 import { segmentMarkings } from '@world/markings';
-import { EDGE_LINE_DARK, EDGE_LINE_LIGHT, LANE_LINE, roadType } from '@world/roadTypes';
+import { LANE_LINE, roadType } from '@world/roadTypes';
 
 /**
  * YELLOW MEANS ONCOMING TRAFFIC.
@@ -22,7 +22,7 @@ function paint(type: number, direction: SegmentDirection) {
   const net = new Network(doc);
   net.rebuild();
   const ribbon = net.ribbons.get(segment.id)!;
-  return segmentMarkings(ribbon, 0).filter((s) => s.color !== EDGE_LINE_LIGHT && s.color !== EDGE_LINE_DARK);
+  return segmentMarkings(ribbon, 0);
 }
 
 describe('lane lines', () => {

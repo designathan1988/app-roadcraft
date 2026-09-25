@@ -91,15 +91,6 @@ export const markingColor = (rt: RoadType): string => rt.line;
  */
 export const LANE_LINE = '#eee8d7';
 
-/**
- * Edge lines.
- *
- * Two of them, because an edge line has to read against the asphalt on one
- * side and the kerb on the other; drawing one colour left it invisible against
- * whichever it happened to match.
- */
-export const EDGE_LINE_LIGHT = '#8f9490';
-export const EDGE_LINE_DARK = '#2b2f30';
 
 /** Extra half-width of the kerb band beyond the asphalt edge. */
 const CURB_BAND = 0.9;
