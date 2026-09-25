@@ -38,7 +38,12 @@ import {
  * Much higher and the scene flattens; much lower and shadows stretch until the
  * map is more shadow than ground.
  */
-const SUN_ELEVATION = (38 * Math.PI) / 180;
+//
+// It was 38 degrees: a shadow 1.28 times as long as what cast it, so a thin
+// lamp column or a small figure seen from above threw a long dark shape that
+// read as a shadow with nothing casting it. At 47 it is 0.93 times as long,
+// and still falls clear of its caster onto the ground.
+const SUN_ELEVATION = (47 * Math.PI) / 180;
 /**
  * Sun bearing — and the one number that decides whether shadows are VISIBLE.
  *
@@ -55,6 +60,11 @@ const SUN_ELEVATION = (38 * Math.PI) / 180;
  */
 const SUN_AZIMUTH = (14 * Math.PI) / 180;
 const SUN_DISTANCE = 1_600;
+/**
+ * Depth offset of the shadow test, WORLD units (4 cm): enough to keep a lit
+ * surface out of its own shadow, far too little to part a shadow from its caster.
+ */
+const SHADOW_BIAS_WORLD = 0.1;
 /**
  * Smallest half-width of the shadow frustum, world units (5 m). Follows the
  * closest zoom (`MIN_HALF_HEIGHT` in isoViewport.ts), so a person seen close up
@@ -187,10 +197,21 @@ export function createEnvironment(
   // grass detached from the piers holding it up and read as a separate,
   // broken smear. A pier 1.8 units across cast a shadow offset by a third of
   // its own width.
-  sun.shadow.bias = -0.0005;
+  //
+  // And `bias` is in NORMALISED depth, so what it means in the world is the
+  // bias times the shadow camera's depth range. It was -0.0005 over a fixed
+  // range of 20 to 3840 units: 1.9 units (0.76 m) of offset along the light,
+  // which slid every shadow off its caster - a car's shadow drawn apart from
+  // the car, a pole's apart from the pole. The range now follows the frustum
+  // (`fitDepth`) and the bias is stated in world units, `SHADOW_BIAS_WORLD`.
   sun.shadow.normalBias = 0.05;
-  sun.shadow.camera.near = 20;
-  sun.shadow.camera.far = SUN_DISTANCE * 2.4;
+  const fitDepth = (halfSpan: number): void => {
+    const reach = halfSpan * 1.6 + 240;
+    sun.shadow.camera.near = Math.max(1, SUN_DISTANCE - reach);
+    sun.shadow.camera.far = SUN_DISTANCE + reach;
+    sun.shadow.bias = -SHADOW_BIAS_WORLD / (sun.shadow.camera.far - sun.shadow.camera.near);
+  };
+  fitDepth(SHADOW_SPAN_MIN);
   scene.add(sun, sun.target);
 
   let span = -1;
@@ -219,6 +240,7 @@ export function createEnvironment(
         sun.shadow.camera.right = span;
         sun.shadow.camera.top = span;
         sun.shadow.camera.bottom = -span;
+        fitDepth(span);
         sun.shadow.camera.updateProjectionMatrix();
       }
       // Snap the frustum to whole shadow texels in light space. Following the

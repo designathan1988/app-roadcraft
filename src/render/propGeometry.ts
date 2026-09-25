@@ -8,6 +8,7 @@ import {
   Float32BufferAttribute,
   IcosahedronGeometry,
   Matrix4,
+  PlaneGeometry,
   Quaternion,
   Vector3,
 } from 'three';
@@ -437,8 +438,13 @@ export function wildflowerGeometry(): BufferGeometry {
 /** A residential lighting column is 8 to 10 m with a 1.5 to 2.5 m outreach. */
 export const LAMP_HEIGHT = m(9);
 export const LAMP_OUTREACH = m(2.1);
-const LAMP_METAL = rgb(0x39413f);
-const LAMP_PLINTH = rgb(0x2b312f);
+/**
+ * Galvanised grey, not near-black. Seen from above a column is a thin line,
+ * and a dark one on dark asphalt was invisible: all a player saw of a street
+ * light was its shadow.
+ */
+const LAMP_METAL = rgb(0x8a918e);
+const LAMP_PLINTH = rgb(0x5d6461);
 
 /**
  * A lighting column, root at the origin, arm reaching along local +X.
@@ -458,22 +464,31 @@ export function lampGeometry(): BufferGeometry {
       at: [LAMP_OUTREACH / 2, armY + Math.sin(rise) * (LAMP_OUTREACH / 2), 0],
       rotate: [0, 0, rise],
     }),
-    // The luminaire housing: a flat, slightly tapered shell.
-    part(new BoxGeometry(m(0.72), m(0.13), m(0.34)), rgb(0x4a5250), {
+    // The luminaire housing: a flat, slightly tapered shell, pale enough to
+    // read from above, where it is the whole of the lamp the player sees.
+    part(new BoxGeometry(m(0.78), m(0.14), m(0.38)), rgb(0xa9b0ad), {
       at: [LAMP_OUTREACH, armY + Math.sin(rise) * LAMP_OUTREACH - m(0.02), 0],
       rotate: [0, 0, rise * 0.4],
     }),
   ]);
 }
 
-/** The lamp's lens, in the lamp's own frame, for the unlit glow material. */
+/**
+ * The lamp's lens, in the lamp's own frame, for the unlit glow material.
+ *
+ * ONE downward-facing face, under the housing. It was a box: its sides and
+ * the glow round it showed from above as bright white discs over the
+ * carriageway - on the yellow centre line, where the arms reach - and read as
+ * an editor marker left on screen. A lens only shines down.
+ */
 export function lampLensGeometry(): BufferGeometry {
   const armY = LAMP_HEIGHT - m(0.12);
   const rise = 0.1;
   return merge([
-    part(new BoxGeometry(m(0.54), m(0.02), m(0.26)), [1, 1, 1], {
-      at: [LAMP_OUTREACH, armY + Math.sin(rise) * LAMP_OUTREACH - m(0.095), 0],
-      rotate: [0, 0, rise * 0.4],
+    part(new PlaneGeometry(m(0.56), m(0.28)), [1, 1, 1], {
+      at: [LAMP_OUTREACH, armY + Math.sin(rise) * LAMP_OUTREACH - m(0.092), 0],
+      // Face down (-Y), with the housing's slight tilt.
+      rotate: [Math.PI / 2, 0, rise * 0.4],
     }),
   ]);
 }

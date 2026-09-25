@@ -8,7 +8,6 @@ import {
   LineSegments,
   LineBasicMaterial,
   Material,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
 } from 'three';
@@ -234,8 +233,14 @@ export function buildUtilities(
     roughness: 0.9,
     metalness: 0,
   });
-  const glow = new MeshBasicMaterial({ color: 0xffeec0, toneMapped: false });
-  const wireMaterial = new LineBasicMaterial({ color: 0x1b1d1f });
+  // The luminaire as seen from above: its housing. The head used to be a box
+  // in the unlit glow, which from the isometric camera was a bright white
+  // mark hanging over the carriageway, read as a stray editor marker.
+  const housing = new MeshStandardMaterial({ color: 0xa9b0ad, roughness: 0.5, metalness: 0.3 });
+  // A wire is thinner than a pixel at any play zoom. Drawn solid near-black
+  // it broke up into a dotted trace across the footway under it, which read
+  // as a debug path left on screen; a faint line reads as a wire.
+  const wireMaterial = new LineBasicMaterial({ color: 0x3a3f42, transparent: true, opacity: 0.55, depthWrite: false });
 
   const mastGeometry = new CylinderGeometry(
     POLE_TOP_RADIUS,
@@ -249,7 +254,7 @@ export function buildUtilities(
     instanced('utility-poles', mastGeometry, timber, masts),
     instanced('utility-arms', boxGeometry, timber, arms),
     instanced('utility-lamp-arms', boxGeometry, metal, lampArms),
-    instanced('utility-lamp-heads', boxGeometry, glow, lampHeads),
+    instanced('utility-lamp-heads', boxGeometry, housing, lampHeads),
   ].filter((mesh): mesh is InstancedMesh => mesh !== null);
 
   let triangles = 0;
@@ -281,7 +286,7 @@ export function buildUtilities(
       boxGeometry.dispose();
       metal.dispose();
       timber.dispose();
-      glow.dispose();
+      housing.dispose();
       wireMaterial.dispose();
       group.clear();
     },
