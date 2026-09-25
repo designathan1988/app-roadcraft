@@ -162,9 +162,10 @@ function crown(
   for (const blob of blobs) spread = Math.max(spread, Math.hypot(blob.x - centre.x, blob.z - centre.z) + blob.r);
 
   return blobs.map((blob, index) => {
-    // One subdivision finer than the level asked for: at 80 faces a blob
-    // read as a cut gem - the "icosphere" crowns.
-    const g = new IcosahedronGeometry(blob.r, detail + 1);
+    // The facets were never the subdivision: they were a palette picked per
+    // face (below). Smooth per-vertex colour makes 80 faces a soft mass, and
+    // keeps a crown inside the thousand-tree budget (propGeometry.spec.ts).
+    const g = new IcosahedronGeometry(blob.r, detail);
     // Each cluster its own shade and warmth, so a crown is many masses of
     // leaves catching the light differently, not one plastic ball.
     const clusterTone = 0.86 + faceNoise(new Vector3(blob.x, blob.y, blob.z), seed + index) * 0.26;
@@ -283,20 +284,20 @@ export function treeGeometry(species: TreeSpecies, detail: Detail = 1): BufferGe
     case 'broadleaf': {
       // Many smaller clusters over a wider spread: a ragged, broken outline
       // instead of two balls, gaps where the limbs show.
-      const blobs = scatterBlobs(rng, 12, 0, 0.68, 0.22, 0.24, 0.085, 0.16);
-      blobs.push({ x: 0.02, y: 0.88, z: -0.03, r: 0.12 }, { x: -0.1, y: 0.8, z: 0.08, r: 0.1 });
+      const blobs = scatterBlobs(rng, 8, 0, 0.68, 0.21, 0.23, 0.1, 0.17);
+      blobs.push({ x: 0.02, y: 0.87, z: -0.03, r: 0.13 });
       const green = (f: number, h: number): Rgb => (f < 0.18 ? LEAF_DEEP : h > 0.75 && f > 0.7 ? LEAF_YOUNG : LEAF);
       return merge([...trunk(0.58, 0.032, 0.016, BARK, limbs(6), rng), ...crown(blobs, new Vector3(0, 0.68, 0), green, 1.3, 0.26, detail)]);
     }
     case 'broadleafTall': {
       // A narrower, taller crown on a longer clear stem: a street plane tree.
       const blobs: Blob[] = [];
-      for (let i = 0; i < 11; i++) {
+      for (let i = 0; i < 9; i++) {
         const a = rng.float() * Math.PI * 2;
         const out = 0.06 + rng.float() * 0.07;
         blobs.push({
           x: Math.cos(a) * out,
-          y: 0.5 + i * 0.042 + rng.float() * 0.03,
+          y: 0.5 + i * 0.05 + rng.float() * 0.03,
           z: Math.sin(a) * out,
           r: 0.095 + rng.float() * 0.045 - i * 0.004,
         });
@@ -338,7 +339,7 @@ export function treeGeometry(species: TreeSpecies, detail: Detail = 1): BufferGe
       // dry season is all flower and hardly any leaf.
       const bloom = species === 'ipeYellow' ? rgb(0xf0c52c) : rgb(0xde6fa8);
       const bloomDeep = species === 'ipeYellow' ? rgb(0xc99a1a) : rgb(0xb24c86);
-      const blobs = scatterBlobs(rng, 12, 0, 0.74, 0.28, 0.12, 0.075, 0.14);
+      const blobs = scatterBlobs(rng, 9, 0, 0.74, 0.27, 0.12, 0.085, 0.15);
       const palette = (f: number, h: number): Rgb => (f < 0.14 ? LEAF_DEEP : h < 0.35 && f < 0.4 ? bloomDeep : bloom);
       return merge([...trunk(0.64, 0.028, 0.014, BARK, limbs(6), rng), ...crown(blobs, new Vector3(0, 0.74, 0), palette, 8.1, 0.3, detail)]);
     }

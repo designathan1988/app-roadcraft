@@ -257,17 +257,22 @@ describe('vehicleLook', () => {
     }
   });
 
-  it('gives a share of the fleet a glass roof, so the people inside read from above', () => {
+  it('gives every car a solid roof, one in five of them black', () => {
+    // Glass roofs showed the whole cabin from the isometric camera and read
+    // as a car with no roof; the people inside show through the dark side
+    // glass close up instead.
     let glass = 0;
+    let black = 0;
     let passengers = 0;
     for (let id = 0; id < 1000; id++) {
       const look = vehicleLook(id, 5);
       if (look.glassRoof) glass++;
+      if (look.blackRoof) black++;
       if (look.occupants > 1) passengers++;
     }
-    // About two in five; never none and never all.
-    expect(glass).toBeGreaterThan(300);
-    expect(glass).toBeLessThan(500);
+    expect(glass).toBe(0);
+    expect(black).toBeGreaterThan(120);
+    expect(black).toBeLessThan(280);
     // Most cars carry somebody beside the driver.
     expect(passengers).toBeGreaterThan(500);
   });
