@@ -61,6 +61,20 @@ export class Surface {
     });
   }
 
+  /** Distance from a point to the nearest edge of any polygon (inside or out). */
+  edgeDistance(p: Vec2): number {
+    let best = Infinity;
+    for (const poly of this.polys) {
+      if (p.x < poly.minX - best || p.x > poly.maxX + best || p.y < poly.minY - best || p.y > poly.maxY + best) continue;
+      for (const ring of [poly.outer, ...poly.holes]) {
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          best = Math.min(best, segmentDistance(p, ring[j] as Vec2, ring[i] as Vec2));
+        }
+      }
+    }
+    return best;
+  }
+
   contains(p: Vec2): boolean {
     for (const poly of this.polys) {
       if (p.x < poly.minX || p.x > poly.maxX || p.y < poly.minY || p.y > poly.maxY) continue;
@@ -70,6 +84,14 @@ export class Surface {
     }
     return false;
   }
+}
+
+function segmentDistance(p: Vec2, a: Vec2, b: Vec2): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
 function inside(p: Vec2, ring: readonly Vec2[]): boolean {
@@ -206,8 +228,11 @@ export function checkWorld(doc: RoadDoc, net: Network): Defect[] {
     const crossing = graph.lanelets.get(connector.lanelet);
     const outbound = graph.lanelets.get(connector.toLane);
     if (!inbound || !crossing || !outbound) continue;
-    const off = firstOffSurface(inbound, crossing, outbound, largest.length, largest.width, asphalt, kerb);
-    if (off) out.push(defect('turnOffSurface', connector.id, `${connector.turn} at (${off.x.toFixed(1)}, ${off.y.toFixed(1)})`));
+    const off = worstOffSurface(inbound, crossing, outbound, largest.length, largest.width, asphalt, kerb);
+    if (off && off.by > TURN_TOLERANCE) {
+      out.push(defect('turnOffSurface', connector.id,
+        `${connector.turn} ${off.by.toFixed(2)} outside at (${off.p.x.toFixed(1)}, ${off.p.y.toFixed(1)})`));
+    }
   }
 
   // ---- the footway graph holds together at every junction -----------------
@@ -222,30 +247,45 @@ export function checkWorld(doc: RoadDoc, net: Network): Defect[] {
   return out;
 }
 
-function firstOffSurface(
+/**
+ * How far a body corner may leave the kerb's outer edge, in world units. A
+ * corner a few centimetres over the kerb line is paint, not a crash.
+ */
+export const TURN_TOLERANCE = Number(process.env['FUZZ_TURN_TOLERANCE'] ?? 0.25);
+
+/** The body corner furthest outside asphalt and kerb over one movement, if any. */
+function worstOffSurface(
   inbound: Lanelet, crossing: Lanelet, outbound: Lanelet, length: number, width: number,
   asphalt: Surface, kerb: Surface,
-): Vec2 | null {
+): { p: Vec2; by: number } | null {
+  let worst: { p: Vec2; by: number } | null = null;
   const samples = Math.max(16, Math.ceil((crossing.length + length) / 1.5));
   for (let i = 0; i <= samples; i++) {
     const front = ((crossing.length + length) * i) / samples;
     const centre = front - length / 2;
-    const frame = centre < 0
-      ? inbound.centre.sampleAt(Math.max(0, inbound.length + centre))
-      : centre <= crossing.length
+    // Only where the whole body is on these three lanes: behind a short
+    // inbound lane it is on some upstream lane this check knows nothing of,
+    // and clamping it to the lane's start would hang it off the road.
+    if (front - length < -inbound.length || front > crossing.length + outbound.length) continue;
+    // A connector where a road simply runs on has no length, and no tangent.
+    const frame = centre < 0 || (crossing.length < 1e-3 && centre === 0)
+      ? inbound.centre.sampleAt(inbound.length + centre)
+      : centre <= crossing.length && crossing.length >= 1e-3
         ? crossing.centre.sampleAt(centre)
-        : outbound.centre.sampleAt(Math.min(outbound.length, centre - crossing.length));
+        : outbound.centre.sampleAt(centre - crossing.length);
     for (const along of [-0.5, 0, 0.5]) {
       for (const across of [-0.5, 0.5]) {
         const p = {
           x: frame.p.x + frame.t.x * along * length - frame.t.y * across * width,
           y: frame.p.y + frame.t.y * along * length + frame.t.x * across * width,
         };
-        if (!asphalt.contains(p) && !kerb.contains(p)) return p;
+        if (asphalt.contains(p) || kerb.contains(p)) continue;
+        const by = kerb.edgeDistance(p);
+        if (!worst || by > worst.by) worst = { p, by };
       }
     }
   }
-  return null;
+  return worst;
 }
 
 /** Null when every kerb node of the junction reaches every other by corners and zebras. */
