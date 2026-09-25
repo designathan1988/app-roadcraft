@@ -150,12 +150,22 @@ const LIFT_OFF = 7;
 const RAMP_GRADE = 0.16;
 /**
  * Length of the vertical curve at the foot of a ramp, where the grade builds up
- * from level, in world units (about 5 m). The crest at the top is rounded over
- * about the same length by `RAMP_CREST`. Short, so the ramp reads as a ramp.
+ * from level, in world units (8 m). The crest at the top is rounded by
+ * `RAMP_CREST`.
+ *
+ * It was 12 units (5 m): the full 16 % arrived within one car length - a kink
+ * rather than a curve, 0.11 of grade change inside 3 m on the inspection map.
+ * Both curves are as long as the player's rule "the whole climb in at most
+ * 100 units" leaves room for: 0.09 at the crest, 0.06 at the sag.
  */
-const RAMP_CURVE = 12;
-/** Softness of the crest where a ramp meets its deck: a curve of about `RAMP_CURVE`. */
-const RAMP_CREST = (RAMP_CURVE * RAMP_GRADE) / 2;
+const RAMP_CURVE = 20;
+/**
+ * Reach of the vertical curves rounded into a road wherever its grade changes
+ * (see `roundGradeBreaks`), in world units (5 m each side).
+ */
+const VERTICAL_CURVE_REACH = 12;
+/** Softness of the crest where a ramp meets its deck: a curve 16 units long. */
+const RAMP_CREST = 8 * RAMP_GRADE;
 /** Steepest gradient with which a deck is carried up to a higher deck it meets in the air. */
 const DECK_TIE = 0.05;
 /**
@@ -977,6 +987,39 @@ function solveGround(profile: Profile, nodeHeight: Map<NodeId, number>): void {
     slopeLimit(h, step, GROUND_GRADE);
   }
   pinPlates(profile, hA, hB);
+  roundGradeBreaks(profile, 'both');
+}
+
+/**
+ * Vertical curves wherever a road's grade changes.
+ *
+ * The slope limiter and the grade envelopes leave a CORNER where they take
+ * hold - level, then 12 %, from one station to the next - and a car on it
+ * pitched from one to the other between its axles. A moving average turns each
+ * corner into a parabola as long as its window, which is exactly a vertical
+ * curve, and cannot steepen anything (a mean of gradients is no steeper than
+ * the steepest). The window narrows to nothing at each plate edge, so the
+ * plate and its leg still meet at the same height (invariant 3).
+ *
+ * `raise` keeps only what the rounding lifts: a deck must not sink towards
+ * what it clears, so its sags are rounded and its crests left to `smoothMin`.
+ */
+function roundGradeBreaks(profile: Profile, mode: 'both' | 'raise'): void {
+  const { h, step, length } = profile;
+  const radius = Math.max(1, Math.round(VERTICAL_CURVE_REACH / Math.max(1e-3, step)));
+  const source = h.slice();
+  const last = source.length - 1;
+  const edgeA = profile.plateA / step;
+  const edgeB = (length - profile.plateB) / step;
+  for (let i = 0; i <= last; i++) {
+    if (i <= edgeA || i >= edgeB) continue;
+    const r = Math.min(radius, Math.floor(i - edgeA), Math.floor(edgeB - i));
+    if (r < 1) continue;
+    let sum = 0;
+    for (let k = -r; k <= r; k++) sum += source[i + k] as number;
+    const mean = sum / (r * 2 + 1);
+    h[i] = mode === 'raise' ? Math.max(source[i] as number, mean) : mean;
+  }
 }
 
 /**
@@ -1070,6 +1113,7 @@ function solveRaised(
     h[i] = Math.max(h[i] as number, floor);
   }
   gradeEnvelope(h, step, RAMP_GRADE);
+  roundGradeBreaks(profile, 'raise');
   flattenPlates(profile, hA, hB);
 }
 
