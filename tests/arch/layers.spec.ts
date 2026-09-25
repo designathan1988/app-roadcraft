@@ -92,3 +92,13 @@ describe('the simulation is headless', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('nothing simulated that cannot be drawn', () => {
+  it('sizes the agent buffers from the simulation ceilings', () => {
+    // The sim allowed 3000 vehicles and 1500 people against buffers of 1200
+    // and 1000: the rest existed, took road space and held claims, unseen.
+    const agents = code(readFileSync(join(SRC, 'render', 'agents.ts'), 'utf8'));
+    expect(agents).toMatch(/const MAX_VEHICLES = FLEET_CEILING;/);
+    expect(agents).toMatch(/const MAX_PEDS = PED_CEILING;/);
+  });
+});

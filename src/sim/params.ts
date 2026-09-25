@@ -185,8 +185,13 @@ export const PED_DENSITY = 1 / m(90);
  * and the ceiling only exists so a pathological map cannot allocate without
  * bound.
  */
-export const FLEET_CEILING = 3000;
-export const PED_CEILING = 1500;
+//
+// They are ALSO what the renderer sizes its instance buffers from
+// (`render/agents.ts`), so the simulation can never hold an agent the screen
+// cannot draw. They used to be 3000 and 1500 against buffers of 1200 and 1000:
+// past those, agents existed, took road space and held claims, invisibly.
+export const FLEET_CEILING = 1200;
+export const PED_CEILING = 1000;
 
 /**
  * Share of the ceiling allowed on a narrow screen.

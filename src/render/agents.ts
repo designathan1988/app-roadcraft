@@ -25,7 +25,7 @@ import type { SimWorld } from '@sim/world';
 import type { Vehicle as SimVehicle } from '@sim/vehicles/state';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
-import { DT } from '@sim/params';
+import { DT, FLEET_CEILING, PED_CEILING } from '@sim/params';
 import { CITIZEN_MODELS, createRiggedCitizens, type CitizenClipKey } from './riggedCitizens';
 import { kerbTransfer, seatPerson, type KerbStop } from '@sim/vehicles/kerbStops';
 import { FOOTWAY_RISE } from '@world/roadTypes';
@@ -49,9 +49,12 @@ import { DOOR_SWING, createKerbFigure, kerbFigure, occupantPlays, type Play } fr
  * capacity overflow drops detail instead of allocating during a frame.
  */
 
-/** Fleet and crowd the buffers are sized for. Both sit under the sim ceilings. */
-const MAX_VEHICLES = 1_200;
-const MAX_PEDS = 1_000;
+/**
+ * Fleet and crowd the buffers are sized for: the simulation's own ceilings,
+ * so nothing can be simulated that cannot be drawn.
+ */
+const MAX_VEHICLES = FLEET_CEILING;
+const MAX_PEDS = PED_CEILING;
 /** Dogs are flavour, not a second crowd. A hundred bounds the extra work. */
 const MAX_RIDERS = 400;
 
