@@ -52,6 +52,9 @@
           <span class="menu-label" data-i18n="menu.language">Language</span>
           <select id="languageSelect" data-i18n-label="action.language" aria-label="Language"></select>
         </label>
+        <button id="aboutButton" class="icon-button" type="button" data-i18n-title="action.about" data-i18n-label="action.about" title="About" aria-label="About">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.5"/></svg><span class="menu-label" data-i18n="action.about">About</span>
+        </button>
         </div>
         <div class="button-group">
           <button id="undoAction" class="icon-button" data-i18n-title="action.undo" data-i18n-label="action.undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
@@ -259,9 +262,15 @@
 
     <div class="statusbar glass">
       <span id="roadCount">0 roads</span><i></i><span id="nodeCount">0 nodes</span><i></i><span id="vehicleCount">0 vehicles</span><i></i><span id="pedCount">0 people</span>
-      <span class="spacer"></span><span id="auditReadout"></span><i></i><span id="zoomReadout">100%</span>
+      <span class="spacer"></span><span id="auditReadout"></span><i></i><span id="zoomReadout">100%</span><i></i><span id="buildStamp" class="build-stamp"></span>
     </div>
   </main>
+  <dialog id="aboutDialog" class="about-dialog glass">
+    <h2 data-i18n="about.title">About Roadcraft</h2>
+    <p><strong data-i18n="about.build">Build</strong> <span id="aboutBuild"></span></p>
+    <div id="aboutCredits"></div>
+    <form method="dialog"><button class="about-close" data-i18n="about.close">Close</button></form>
+  </dialog>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

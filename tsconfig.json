@@ -33,6 +33,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"],
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts", "build-stamp.ts"],
   "exclude": ["node_modules", "dist", "tests/**/_*", "tests/**/_*/**"]
 }

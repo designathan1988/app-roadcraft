@@ -435,6 +435,12 @@ body { user-select: none; -webkit-user-select: none; }
 .statusbar i { width: 1px; height: 12px; background: var(--ui-border); }
 .statusbar .spacer { flex: 1; }
 #auditReadout.bad { color: var(--danger); }
+.statusbar .build-stamp { font-variant-numeric: tabular-nums; opacity: 0.85; }
+.about-dialog { max-width: min(560px, calc(100vw - 32px)); color: var(--text); padding: 18px 20px; border: 1px solid var(--ui-border); border-radius: 12px; }
+.about-dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+.about-dialog h2 { margin: 0 0 10px; font-size: 16px; }
+.about-dialog .about-close { margin-top: 12px; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--ui-border); background: transparent; color: var(--text); cursor: pointer; }
+.about-dialog #aboutCredits { font-size: 12px; max-height: 50vh; overflow: auto; white-space: pre-wrap; }
 #auditReadout.good { color: var(--accent); }
 
 .minimap-panel { position: absolute; right: 14px; bottom: 54px; width: 218px; padding: 10px; }

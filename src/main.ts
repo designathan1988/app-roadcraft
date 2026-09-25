@@ -34,6 +34,8 @@ import { Persistence, exportToFile, importFromFile, type SavedSettings } from '@
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
 import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
+import { mountBuildStamp } from '@ui/buildStamp';
+import { mountAbout } from '@ui/about';
 import { LANGUAGES, initLanguage, language, onLanguageChange, plural, setLanguage, t } from '@ui/i18n';
 import {
   nodeCountLabel,
@@ -1337,6 +1339,8 @@ congestionButton.onclick = () => {
 congestionButton.classList.toggle('active', congestionOverlay);
 congestionButton.setAttribute('aria-pressed', String(congestionOverlay));
 initChrome(requestDraw);
+mountBuildStamp(document.getElementById('buildStamp'));
+mountAbout();
 
 (document.getElementById('newMap') as HTMLButtonElement).onclick = () => {
   if (!window.confirm(t('confirm.newMap'))) return;
