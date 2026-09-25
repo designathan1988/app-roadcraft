@@ -7,7 +7,7 @@ import {
   bodyOf,
   generateBody,
 } from '@world/buildings/blueprints';
-import { FloorCache, floorHeight } from '@world/buildings/foundation';
+import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
 import { footprintCells, levelHeight, localDirToWorld } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
@@ -66,6 +66,8 @@ export interface ToolView {
   ray(screen: Vec2): Ray3;
   /** The height the terrain is drawn at. */
   groundAt(x: number, y: number): number;
+  /** The paving an entrance opens onto (NaN off the roads); none in a headless test. */
+  readonly pavedAt?: PavedAt;
   /** Handle hit radius, CSS px. */
   readonly pickPixels: number;
 }
@@ -168,8 +170,9 @@ export class BuildingTool {
 
   /** Ground-floor height: cached for stored buildings, measured for a preview. */
   floorOf(b: Building): number {
-    if (this.preview && b === this.preview.building) return floorHeight(b, this.view.groundAt);
-    return this.floors.floorOf(b, this.view.groundAt, `${this.host.groundKey()}:${this.host.context().doc.buildings.revision}`);
+    if (this.preview && b === this.preview.building) return floorHeight(b, this.view.groundAt, this.view.pavedAt);
+    const key = `${this.host.groundKey()}:${this.host.context().doc.buildings.revision}`;
+    return this.floors.floorOf(b, this.view.groundAt, key, this.view.pavedAt);
   }
 
   selected(): Building | null {

@@ -9,15 +9,24 @@ import {
 } from 'three';
 
 import { m } from '@world/units';
-import { type Foundation, type GroundAt, STEP_RISE, STEP_RUN, foundationOf } from '@world/buildings/foundation';
+import {
+  type Entrance,
+  type Foundation,
+  type GroundAt,
+  type PavedAt,
+  STEP_RUN,
+  foundationOf,
+} from '@world/buildings/foundation';
 import {
   type FacadeBay,
   SAWTOOTH_PITCH,
   SHED_PITCH,
+  SIDE_NORMAL,
   GABLE_PITCH,
   cellBeyond,
   facadeBays,
   levelElevation,
+  levelHeight,
   occupancy,
   roofRise,
   volumeHeight,
@@ -301,13 +310,19 @@ function emitBuilding(
   groundAt: GroundAt,
   shell: Shell,
   parts: Record<PartKind, Placement[]>,
+  pavedAt?: PavedAt,
 ): void {
   const e = new Emitter(b, shell, parts);
   const u = b.module;
   const occ = occupancy(b);
   const bays = facadeBays(b, occ);
-  const f: Foundation = foundationOf(b, groundAt, bays);
+  const f: Foundation = foundationOf(b, groundAt, bays, pavedAt);
   const floor = f.floor;
+  const entranceKey = (volume: number, side: Side, index: number): string => `${volume}:${side}:${index}`;
+  const entrances = new Map<string, Entrance>(f.entrances.map((x) => [entranceKey(x.volume, x.side, x.index), x]));
+  /** The opening of an entrance, in its bay's face frame. */
+  const entranceOpening = (x: Entrance): Opening =>
+    openingOf(x.component, u, levelHeight(b, 0)) ?? { a0: u * 0.2, a1: u * 0.8, h0: 0, h1: levelHeight(b, 0) * 0.7, depth: REVEAL };
   const palette = PALETTES[b.palette % PALETTES.length] ?? PALETTES[0]!;
   // A small, stable shade per building, so a street of one preset is not a
   // single flat colour.
@@ -318,10 +333,21 @@ function emitBuilding(
   const plinth = linear(PLINTH);
   const awning = new Color().setHex(palette.awning);
 
-  // ---- plinth: from below the lowest ground up to the floor
+  // ---- plinth: from below the lowest ground up to the floor, notched where
+  // a flight of steps is set into the building
   for (const v of b.volumes) {
     if (v.base !== 0) continue;
-    e.box(v.x * u - PLINTH_GROW, v.y * u - PLINTH_GROW, (v.x + v.w) * u + PLINTH_GROW, (v.y + v.d) * u + PLINTH_GROW, f.bottom, floor, plinth);
+    const notches = new Map<Side, { a0: number; a1: number; recess: number }[]>();
+    for (const x of f.entrances) {
+      if (x.volume !== v.id || x.recess <= 0) continue;
+      const o = entranceOpening(x);
+      const frame = sideFrame(b, v, x.side, x.index);
+      const start = x.side === 0 || x.side === 2 ? frame.ax : frame.ay;
+      const list = notches.get(x.side) ?? [];
+      list.push({ a0: start + o.a0, a1: start + o.a1, recess: x.recess });
+      notches.set(x.side, list);
+    }
+    emitPlinth(e, v, u, f.bottom, floor, plinth, notches);
   }
 
   // ---- facades, bay by bay: only outside walls are in `bays`
@@ -333,7 +359,8 @@ function emitBuilding(
     const face: BayFace = { ...sideFrame(b, v, bay.side, bay.index), z0: floor + bay.z, W: bay.width, H: bay.height };
     const left = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index - 1}`);
     const right = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index + 1}`);
-    emitBay(e, face, bay, wall, trim, awning, left === 'pillar', right === 'pillar');
+    const recess = bay.level === 0 ? entrances.get(entranceKey(bay.volume, bay.side, bay.index))?.recess ?? 0 : 0;
+    emitBay(e, face, bay, wall, trim, awning, left === 'pillar', right === 'pillar', recess);
   }
 
   // ---- storey bands and cornices, per volume
@@ -348,18 +375,25 @@ function emitBuilding(
   // ---- roofs
   for (const v of b.volumes) emitRoof(e, b, v, occ, floor, wall, trim, roofColour);
 
-  // ---- entrance steps
+  // ---- entrance steps: outside, down to the ground in front, or set into
+  // the building where the paving leaves no room for them
   for (const entrance of f.entrances) {
     if (entrance.steps <= 0) continue;
     const v = volumes.get(entrance.volume) as Volume;
     const frame = sideFrame(b, v, entrance.side, entrance.index);
     const face: BayFace = { ...frame, z0: floor, W: u, H: 1 };
-    const opening = openingOf(entrance.component, u, levelElevation(b, 1) || b.groundHeight);
-    const halfW = ((opening ? opening.a1 - opening.a0 : u * 0.6) + m(0.5)) / 2;
+    const opening = entranceOpening(entrance);
     const n = e.N(face.nx, face.ny);
     const bottom = Math.min(entrance.ground, floor) - m(0.4);
+    // Every riser the same: the flight spans exactly ground to floor.
+    const riser = (floor - entrance.ground) / entrance.steps;
+    if (entrance.recess > 0) {
+      emitRecessedFlight(e, face, opening.a0, opening.a1, entrance, floor, bottom, riser, plinth);
+      continue;
+    }
+    const halfW = (opening.a1 - opening.a0 + m(0.5)) / 2;
     for (let j = 0; j < entrance.steps; j++) {
-      const top = floor - j * STEP_RISE;
+      const top = floor - j * riser;
       const d0 = -(j === 0 ? 0 : STEP_RUN * (j + 1));
       const d1 = -STEP_RUN * (j + 2);
       const a0 = u / 2 - halfW;
@@ -395,6 +429,8 @@ function emitBay(
   awning: Color,
   pillarLeft: boolean,
   pillarRight: boolean,
+  /** An entrance whose flight is set into the building: the opening becomes a porch this deep. */
+  recess = 0,
 ): void {
   const out = e.N(f.nx, f.ny);
   const along = e.N(f.tx, f.ty);
@@ -413,19 +449,22 @@ function emitBay(
     return;
   }
 
-  const o = openingOf(bay.component, W, H);
-  if (!o) {
+  const found = openingOf(bay.component, W, H);
+  if (!found) {
     e.rect(f, 0, W, 0, H, 0, out, wall);
     return;
   }
+  // A porch runs down to the floor and back to the door; its floor is the
+  // top of the flight, so it has no sill of its own.
+  const o = recess > 0 ? { ...found, h0: 0, depth: recess } : found;
   // The wall around the hole, then the four reveals into it.
   e.rect(f, 0, o.a0, 0, H, 0, out, wall);
   e.rect(f, o.a1, W, 0, H, 0, out, wall);
   e.rect(f, o.a0, o.a1, 0, o.h0, 0, out, wall);
   e.rect(f, o.a0, o.a1, o.h1, H, 0, out, wall);
-  e.jamb(f, o.a0, o.h0, o.h1, 0, o.depth, along, trim);
-  e.jamb(f, o.a1, o.h0, o.h1, 0, o.depth, back, trim);
-  e.strip(f, o.a0, o.a1, o.h0, 0, o.depth, [0, 0, 1], trim);
+  e.jamb(f, o.a0, o.h0, o.h1, 0, o.depth, along, recess > 0 ? wall : trim);
+  e.jamb(f, o.a1, o.h0, o.h1, 0, o.depth, back, recess > 0 ? wall : trim);
+  if (recess <= 0) e.strip(f, o.a0, o.a1, o.h0, 0, o.depth, [0, 0, 1], trim);
   e.strip(f, o.a0, o.a1, o.h1, 0, o.depth, [0, 0, -1], trim);
 
   const w = o.a1 - o.a0;
@@ -462,6 +501,97 @@ function emitBay(
       break;
     default:
       break;
+  }
+}
+
+/**
+ * A ground volume's plinth, from `bottom` to `floor`, PLINTH_GROW proud of the
+ * walls: its four sides and the ledge along their top (the rest of the top is
+ * under the floor, never seen), with a notch cut into a side wherever a
+ * flight of steps is set into the building.
+ * Notch intervals are along the side's own axis (+x on sides 0 and 2, +y on
+ * 1 and 3), in local units.
+ */
+function emitPlinth(
+  e: Emitter,
+  v: Volume,
+  u: number,
+  bottom: number,
+  floor: number,
+  c: Rgb,
+  notches: ReadonlyMap<Side, readonly { a0: number; a1: number; recess: number }[]>,
+): void {
+  const g = PLINTH_GROW;
+  const x0 = v.x * u - g;
+  const y0 = v.y * u - g;
+  const x1 = (v.x + v.w) * u + g;
+  const y1 = (v.y + v.d) * u + g;
+  for (const side of SIDES) {
+    // The side as a line in the plan: where it runs along its axis and where it stands across it.
+    const alongX = side === 0 || side === 2;
+    const lo = alongX ? x0 : y0;
+    const hi = alongX ? x1 : y1;
+    const at = side === 0 ? y0 : side === 1 ? x1 : side === 2 ? y1 : x0;
+    const inward = side === 0 || side === 3 ? 1 : -1;
+    const point = (a: number, depth: number, z: number): V3 =>
+      alongX ? e.L(a, at + inward * depth, z) : e.L(at + inward * depth, a, z);
+    const n = SIDE_NORMAL[side];
+    const out = e.N(n.x, n.y);
+    const cuts = [...(notches.get(side) ?? [])].sort((p, q) => p.a0 - q.a0);
+    let from = lo;
+    const wallTo = (to: number): void => {
+      if (to - from < 1e-4) return;
+      e.shell.face([point(from, 0, bottom), point(to, 0, bottom), point(to, 0, floor), point(from, 0, floor)], out, c);
+      e.shell.face([point(from, 0, floor), point(to, 0, floor), point(to, g, floor), point(from, g, floor)], [0, 0, 1], c);
+    };
+    for (const cut of cuts) {
+      wallTo(cut.a0);
+      // The notch's cheeks, facing into it; the flight fills its floor and back.
+      const depth = g + cut.recess;
+      const t = alongX ? e.N(1, 0) : e.N(0, 1);
+      e.shell.face([point(cut.a0, 0, bottom), point(cut.a0, depth, bottom), point(cut.a0, depth, floor), point(cut.a0, 0, floor)], t, c);
+      e.shell.face([point(cut.a1, depth, bottom), point(cut.a1, 0, bottom), point(cut.a1, 0, floor), point(cut.a1, depth, floor)], [-t[0], -t[1], 0], c);
+      from = cut.a1;
+    }
+    wallTo(hi);
+  }
+}
+
+/**
+ * A flight set into the building: from the plinth's face up to the door at
+ * `recess` behind the facade, between the porch's jambs. Treads share the run
+ * evenly, the top one is the landing in front of the door.
+ */
+function emitRecessedFlight(
+  e: Emitter,
+  face: BayFace,
+  a0: number,
+  a1: number,
+  entrance: Entrance,
+  floor: number,
+  bottom: number,
+  riser: number,
+  c: Rgb,
+): void {
+  const n = e.N(face.nx, face.ny);
+  const start = -PLINTH_GROW;
+  if (entrance.threshold > PLINTH_GROW) {
+    // The slab over the verge, from the paving to the foot of the flight.
+    const top = entrance.ground - floor;
+    const out = -entrance.threshold;
+    const t = e.N(face.tx, face.ty);
+    e.rect(face, a0, a1, bottom - floor, top, out, n, c);
+    e.shell.face([e.P(face, a0, top, out), e.P(face, a1, top, out), e.P(face, a1, top, start), e.P(face, a0, top, start)], [0, 0, 1], c);
+    e.shell.face([e.P(face, a1, bottom - floor, out), e.P(face, a1, bottom - floor, start), e.P(face, a1, top, start), e.P(face, a1, top, out)], t, c);
+    e.shell.face([e.P(face, a0, bottom - floor, start), e.P(face, a0, bottom - floor, out), e.P(face, a0, top, out), e.P(face, a0, top, start)], [-t[0], -t[1], 0], c);
+  }
+  const tread = (entrance.recess - start) / (entrance.steps + 1);
+  for (let k = 0; k < entrance.steps; k++) {
+    const top = entrance.ground + (k + 1) * riser - floor;
+    const d0 = start + k * tread;
+    // Each block runs to the door, so only its riser and its tread show.
+    e.rect(face, a0, a1, bottom - floor, top, d0, n, c);
+    e.shell.face([e.P(face, a0, top, d0), e.P(face, a1, top, d0), e.P(face, a1, top, entrance.recess), e.P(face, a0, top, entrance.recess)], [0, 0, 1], c);
   }
 }
 
@@ -620,10 +750,10 @@ function writeMatrix(out: Float32Array, offset: number, p: Placement): void {
   out[offset + 12] = p.x; out[offset + 13] = p.z; out[offset + 14] = -p.y; out[offset + 15] = 1;
 }
 
-export function emitChunk(b: Building, groundAt: GroundAt): BuildingChunk {
+export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): BuildingChunk {
   const shell = new Shell();
   const parts = Object.fromEntries(PART_KINDS.map((k) => [k, [] as Placement[]])) as Record<PartKind, Placement[]>;
-  emitBuilding(b, groundAt, shell, parts);
+  emitBuilding(b, groundAt, shell, parts, pavedAt);
   const batches = {} as Record<PartKind, PartBatch>;
   for (const kind of PART_KINDS) {
     const list = parts[kind];
@@ -744,6 +874,7 @@ export function buildBuildingMeshes(
   groundAt: GroundAt,
   kit: BuildingKit,
   ghost = false,
+  pavedAt?: PavedAt,
 ): BuildingMeshes {
-  return assembleBuildingMeshes([...buildings].map((b) => emitChunk(b, groundAt)), kit, ghost);
+  return assembleBuildingMeshes([...buildings].map((b) => emitChunk(b, groundAt, pavedAt)), kit, ghost);
 }

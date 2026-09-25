@@ -88,6 +88,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       };
     },
     groundAt: (x, y) => scene.terrainHeightAt(x, y),
+    pavedAt: (x, y) => scene.pavedHeightAt(x, y),
     pickPixels: 16,
   };
 

@@ -149,11 +149,28 @@ record it cannot read rather than refusing the whole map.
   never pokes through a floor;
 * the plinth runs down to `PLINTH_BURY` below the **lowest** sample, so a
   building on a slope stands on a visible stone base instead of floating;
-* every entrance whose threshold is more than a step above the ground in front
-  of it gets a flight of steps down to that ground - the entrance meets the
-  street level;
+* an entrance reads what a person stands on in front of it: the **paving**
+  (footway or carriageway, `pavedAt`, which the renderer answers from the
+  solved road surfaces as `SceneHandle.pavedHeightAt`) where there is some,
+  the land elsewhere. The terrain under and beside a footway is shaped well
+  below the paving (`SHAPE_DROP`), so reading the land there sent flights
+  down into a trench, across the footway and into the street;
+* the ground floor is never below the paving an entrance opens onto;
+* every entrance whose threshold is more than a step above that surface gets
+  a flight of steps down to it, **and the flight never crosses paving**: it
+  runs out in front of the facade only as far as the paving's edge
+  (`pavingEdge`). Where there is no room - the usual case, a building snapped
+  to the back of a footway - the flight is **set into the building**:
+  `Entrance.recess` deep, the opening becomes a porch, the plinth is notched
+  for it, and a threshold slab (`Entrance.threshold`) bridges the verge to
+  the footway. A volume too shallow for the whole flight takes as many treads
+  as fit;
 * a site whose ground varies by more than `MAX_PLINTH` is refused
   (`problem: 'slope'`).
+
+Every caller that needs the floor passes the same two functions - the tool
+(`ToolView.groundAt` / `pavedAt`, for handles and picking), the renderer and
+the tests - so the handles, the picking and the drawn building agree on it.
 
 Because the foundation is recomputed on every rebuild, a building on terrain
 that is later sculpted adapts by itself: its plinth grows or shrinks and its
