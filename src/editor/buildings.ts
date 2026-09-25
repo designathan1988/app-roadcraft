@@ -1,5 +1,6 @@
 import type { Vec2 } from '@core/vec2';
 import { clamp } from '@core/scalar';
+import { METERS_PER_UNIT } from '@world/units';
 import {
   type BlueprintBody,
   DEFAULT_PALETTE,
@@ -7,13 +8,14 @@ import {
   storeyUse,
   upperStoreyFrom,
 } from '@world/buildings/blueprints';
-import { MAX_ELEMENT, MIN_ELEMENT, elementRing, onGround, runFor, takeElementId } from '@world/buildings/elements';
+import { MAX_ELEMENT, MIN_ELEMENT, elementClash, elementRing, onGround, runFor, takeElementId } from '@world/buildings/elements';
 import {
   GRID,
   MIN_SIZE,
   SIDE_NORMAL,
   baysOn,
   footprintBox,
+  footprintCentre,
   footprintRects,
   isSupported,
   localDirToWorld,
@@ -145,11 +147,12 @@ function shiftBays(v: Volume, sides: readonly Side[], shift: number): void {
  * snapped to the grid. Bays re-divide the new length; a side that grew at its
  * start keeps its single-bay overrides on the bays they were set on.
  */
-export function opResize(b: Building, volumeId: number, side: Side, delta: number): boolean {
+export function opResize(b: Building, volumeId: number, side: Side, delta: number, snap = true): boolean {
   const v = volumeById(b, volumeId);
   if (!v || delta === 0) return false;
   const along = side === 1 || side === 3 ? 'w' : 'd';
-  const size = clamp(snapLength(v[along] + delta), MIN_SIZE, MAX_SIZE);
+  // Snapped to the grid unless the player holds Alt; free, to the centimetre.
+  const size = clamp(snap ? snapLength(v[along] + delta) : Math.round((v[along] + delta) * METERS_PER_UNIT * 100) / 100 / METERS_PER_UNIT, MIN_SIZE, MAX_SIZE);
   const change = size - v[along];
   if (Math.abs(change) < 1e-9) return false;
   // The sides that run along the one moved, whose bays recount.
@@ -588,10 +591,11 @@ function cutRelief(r: Relief, region: FaceRegion): Relief[] {
  * units snapped to `RELIEF_STEP`; 0 flattens it again. A relief the region
  * overlaps keeps the part of it outside the region.
  */
-export function opSetRelief(b: Building, volumeId: number, region: FaceRegion, depth: number): boolean {
+export function opSetRelief(b: Building, volumeId: number, region: FaceRegion, depth: number, snap = true): boolean {
   const v = volumeById(b, volumeId);
   if (!v) return false;
-  const d = clamp(Math.round(depth / RELIEF_STEP) * RELIEF_STEP, -MAX_RECESS, MAX_PROJECTION);
+  const step = snap ? RELIEF_STEP : 0.025;
+  const d = clamp(Math.round(depth / step) * step, -MAX_RECESS, MAX_PROJECTION);
   const before = JSON.stringify(v.reliefs ?? []);
   const kept = (v.reliefs ?? []).flatMap((r) => cutRelief(r, region));
   if (Math.abs(d) > 1e-9) kept.push({ ...region, depth: d });
@@ -673,4 +677,92 @@ export function opRemoveElement(b: Building, id: number): boolean {
   if (next.length > 0) b.elements = next;
   else delete b.elements;
   return true;
+}
+
+// =============================================================== mirror and repeat
+
+const MIRROR_SIDE: Readonly<Record<Side, Side>> = { 0: 0, 1: 3, 2: 2, 3: 1 };
+
+/**
+ * Mirrors a building left to right in its own frame - volumes, bays and their
+ * overrides, reliefs, per-face materials, elements, cores and a shed's fall -
+ * keeping its footprint's centre where it was.
+ */
+export function opMirror(b: Building): boolean {
+  const before = footprintCentre(b);
+  const flipSide = (side: Side): Side => MIRROR_SIDE[side];
+  for (const v of b.volumes) {
+    const count = (side: Side): number => baysOn(b, v, side);
+    v.x = -(v.x + v.w);
+    for (const storey of v.storeys) {
+      const facade = storey.facade;
+      if (facade.sides) {
+        const sides: Partial<Record<Side, BayComponent>> = {};
+        for (const [key, value] of Object.entries(facade.sides)) sides[flipSide(Number(key) as Side)] = value;
+        facade.sides = sides;
+      }
+      if (facade.bays) {
+        const bays: Record<string, BayComponent> = {};
+        for (const [key, value] of Object.entries(facade.bays)) {
+          const [s, i] = key.split(':').map(Number) as [Side, number];
+          const side = flipSide(s);
+          bays[bayKey(side, side === 0 || side === 2 ? count(side) - 1 - i : i)] = value;
+        }
+        facade.bays = bays;
+      }
+      for (const space of storey.spaces ?? []) space.x = -(space.x + space.w);
+    }
+    for (const r of v.reliefs ?? []) {
+      r.side = flipSide(r.side);
+      if (r.side === 0 || r.side === 2) {
+        const n = count(r.side);
+        [r.bay0, r.bay1] = [n - 1 - r.bay1, n - 1 - r.bay0];
+      }
+    }
+    if (v.materials?.sides) {
+      const sides: Partial<Record<Side, NonNullable<Volume['materials']>['wall']>> = {};
+      for (const [key, value] of Object.entries(v.materials.sides)) sides[flipSide(Number(key) as Side)] = value;
+      v.materials.sides = sides as NonNullable<NonNullable<Volume['materials']>['sides']>;
+    }
+    if (v.fall !== undefined) v.fall = flipSide(v.fall);
+  }
+  for (const e of b.elements ?? []) {
+    e.x = -e.x;
+    e.facing = flipSide(e.facing);
+  }
+  for (const core of b.cores) core.x = -(core.x + b.module);
+  const after = footprintCentre(b);
+  b.x += before.x - after.x;
+  b.y += before.y - after.y;
+  return true;
+}
+
+/**
+ * Repeats an element in a row across its facing - pillars along a facade, a
+ * run of canopies - every `spacing` world units, as many times as fit within
+ * the building's extent on that axis without standing inside a volume.
+ * Returns how many copies were added.
+ */
+export function opRepeatElement(b: Building, id: number, spacing?: number): number {
+  const e = b.elements?.find((x) => x.id === id);
+  if (!e) return 0;
+  const alongX = e.facing === 0 || e.facing === 2;
+  const step = snapLength(spacing ?? Math.max(e.w * 2, b.module));
+  const box = footprintBox(b);
+  // Out to the building's corners: a row of pillars ends on them.
+  const lo = alongX ? box.x0 : box.y0;
+  const hi = alongX ? box.x1 : box.y1;
+  const start = alongX ? e.x : e.y;
+  let added = 0;
+  for (const dir of [1, -1]) {
+    for (let k = 1; k < 64; k++) {
+      const at = start + dir * k * step;
+      if (at < lo - 1e-6 || at > hi + 1e-6) break;
+      const copy = { ...e, x: alongX ? at : e.x, y: alongX ? e.y : at };
+      if (elementClash(b, { ...copy, id: -1 })) break;
+      opAddElement(b, copy);
+      added++;
+    }
+  }
+  return added;
 }

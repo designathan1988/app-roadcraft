@@ -35,6 +35,8 @@ export interface BuildingOverlayInput {
   } | null;
   readonly handles: readonly Handle[];
   readonly label: { readonly text: string; readonly valid: boolean; readonly building: Building; readonly floor: number } | null;
+  /** The live measure of the gesture in progress, beside the pointer. */
+  readonly measure?: { readonly text: string; readonly x: number; readonly y: number; readonly z: number } | null;
 }
 
 export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: BuildingOverlayInput): void {
@@ -120,6 +122,21 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
     ctx.fill();
     ctx.fillStyle = valid ? SELECTION : INVALID;
     ctx.fillText(text, s.x, s.y - 9.5);
+  }
+  if (input.measure) {
+    // A dimension, as a drawing would give it: large, beside the handle.
+    const { text, x, y, z } = input.measure;
+    const s = project(x, y, z);
+    ctx.font = '700 13px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const width = ctx.measureText(text).width + 18;
+    ctx.fillStyle = 'rgba(12,18,16,0.88)';
+    ctx.beginPath();
+    ctx.roundRect(s.x + 14, s.y - 34, width, 24, 11);
+    ctx.fill();
+    ctx.fillStyle = RELIEF;
+    ctx.fillText(text, s.x + 14 + width / 2, s.y - 22);
   }
   ctx.restore();
 }

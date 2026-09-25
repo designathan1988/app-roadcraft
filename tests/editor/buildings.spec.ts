@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { GRID, MIN_SIZE, groundProjections, reliefAt, ridgeAlongX, roofRise } from '@world/buildings/geometry';
+import { GRID, MIN_SIZE, footprintCentre, groundProjections, reliefAt, ridgeAlongX, roofRise } from '@world/buildings/geometry';
 import { migrateBuilding } from '@world/buildings/serialize';
 import { elementsAgainstBay, groundElements, runFor } from '@world/buildings/elements';
 import type { BuildingElement } from '@world/buildings/types';
@@ -27,7 +27,9 @@ import {
   opSetRelief,
   opSetRoofShape,
   opAddElement,
+  opMirror,
   opRemoveElement,
+  opRepeatElement,
   opUpdateElement,
   opRotate,
   opSetComponent,
@@ -479,5 +481,59 @@ describe('free elements', () => {
     expect(back.nextElementId).toBeGreaterThan(id);
     expect(opRemoveElement(b, id)).toBe(true);
     expect(b.elements).toBeUndefined();
+  });
+});
+
+describe('mirror, repeat and free dragging', () => {
+  const block = (): Building => ({ ...generateBody('residential', bays(4), bays(3), 2), id: 1, x: 10, y: 20, rotation: 0.3 } as unknown as Building);
+
+  it('mirrors a building in place, and twice is the original', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    v.storeys[0]!.facade.bays = { '0:0': 'door', '1:1': 'shopfront' };
+    v.reliefs = [{ side: 0, bay0: 0, bay1: 1, storey0: 1, storey1: 1, depth: 2 }];
+    v.materials = { sides: { 1: { finish: 'glass', colour: 0x9fb8c4 } } };
+    b.elements = [{ id: 1, kind: 'pillar', x: 3, y: -2, facing: 1, w: 1, d: 1, z: 0, h: 5 }];
+    const original = JSON.parse(JSON.stringify(b)) as Building;
+    const centre = footprintCentre(b);
+    expect(opMirror(b)).toBe(true);
+    const moved = footprintCentre(b);
+    expect(moved.x).toBeCloseTo(centre.x, 9);
+    expect(moved.y).toBeCloseTo(centre.y, 9);
+    // The door that was in the first front bay is in the last one now, the right side's shopfront on the left.
+    expect(v.storeys[0]!.facade.bays).toEqual({ '0:3': 'door', '3:1': 'shopfront' });
+    expect(v.reliefs![0]).toMatchObject({ side: 0, bay0: 2, bay1: 3 });
+    expect(v.materials!.sides![3]!.finish).toBe('glass');
+    expect(b.elements![0]).toMatchObject({ x: -3, facing: 3 });
+    opMirror(b);
+    expect(b.x).toBeCloseTo(original.x, 9);
+    expect(b.y).toBeCloseTo(original.y, 9);
+    expect(JSON.stringify(b.volumes)).toBe(JSON.stringify(original.volumes));
+    expect(b.elements).toEqual(original.elements);
+  });
+
+  it('repeats a pillar in a row along the building, never inside it', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    const id = opAddElement(b, { kind: 'pillar', x: v.x + v.w / 2, y: v.y - 2, facing: 0, w: 1, d: 1, z: 0, h: 5 });
+    const added = opRepeatElement(b, id, bays(1));
+    // Every module from corner to corner: four more beside the first.
+    expect(added).toBe(4);
+    expect(structuralProblem(b)).toBeNull();
+    const xs = b.elements!.map((e) => e.x).sort((p, q) => p - q);
+    expect(xs[0]!).toBeGreaterThanOrEqual(v.x);
+    expect(xs[xs.length - 1]!).toBeLessThanOrEqual(v.x + v.w);
+  });
+
+  it('snaps a pull to the grid, or follows it freely with Alt', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    const w = v.w;
+    opResize(b, 1, 1, 1.3);
+    expect(v.w).toBeCloseTo(w + GRID, 9);
+    opResize(b, 1, 1, 0.33, false);
+    expect(v.w).toBeCloseTo(w + GRID + 0.33, 1);
+    // To the centimetre, no coarser.
+    expect(Math.abs(v.w * 0.4 * 100 - Math.round(v.w * 0.4 * 100))).toBeLessThan(1e-6);
   });
 });

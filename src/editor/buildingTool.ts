@@ -43,7 +43,9 @@ import {
   opRotate,
   opSetComponent,
   opAddElement,
+  opMirror,
   opRemoveElement,
+  opRepeatElement,
   opSetParameters,
   opSetRelief,
   opUpdateElement,
@@ -165,6 +167,13 @@ export class BuildingTool {
   component: BayComponent | null = null;
   scope: FacadeScope = 'bay';
   materialScope: MaterialScope = 'volume';
+  /** Alt held: drags follow the pointer freely, without snapping to the grid. */
+  free = false;
+  /**
+   * What the gesture in progress measures, for the overlay to show beside
+   * it: a length or a depth (world units) at a world point, or a count.
+   */
+  measure: { readonly kind: 'length' | 'depth' | 'floors'; readonly value: number; readonly x: number; readonly y: number; readonly z: number } | null = null;
   /** The kind of free element the palette has armed: the pointer places one. */
   armed: ElementKind | null = null;
   preview: BuildingPreview | null = null;
@@ -500,6 +509,19 @@ export class BuildingTool {
     this.report(result);
   }
 
+  /** Mirrors the selected building left to right, in place. */
+  mirrorSelected(): void {
+    this.onSelected((draft) => opMirror(draft));
+  }
+
+  /** Repeats the selected element in a row along the building. */
+  repeatElement(): void {
+    const id = this.selection?.element;
+    if (id === undefined || id === null) return;
+    const result = this.onSelected((draft) => opRepeatElement(draft, id) > 0);
+    if (!result.ok && !result.problem) this.host.flash('building.element.noRoom');
+  }
+
   /** Resizes or turns the selected element. */
   updateElement(patch: ElementPatch): void {
     const id = this.selection?.element;
@@ -742,6 +764,9 @@ export class BuildingTool {
       case 'storeys': {
         const steps = Math.round((drag.start.y - screen.y) / drag.pixelsPerStorey);
         opSetStoreys(draft, drag.volume, drag.count + steps);
+        const v = volumeById(draft, drag.volume);
+        const top = this.handles().find((h) => h.kind === 'storeys');
+        if (v && top) this.measure = { kind: 'floors', value: v.storeys.length, x: top.x, y: top.y, z: top.z };
         break;
       }
       case 'side': {
@@ -751,8 +776,10 @@ export class BuildingTool {
         if (drag.wing || shift) {
           if (along >= MIN_SIZE) opAddWing(draft, drag.volume, drag.side, along);
         } else {
-          opResize(draft, drag.volume, drag.side, along);
+          opResize(draft, drag.volume, drag.side, along, !this.free);
         }
+        const v = volumeById(draft, drag.volume);
+        if (v) this.measure = { kind: 'length', value: drag.side === 1 || drag.side === 3 ? v.w : v.d, x: p.x, y: p.y, z: drag.z };
         break;
       }
       case 'move': {
@@ -769,7 +796,10 @@ export class BuildingTool {
         // Push-pull: out along the face's normal is a projection, in a recess.
         const p = this.view.planeAt(screen, drag.z);
         const along = (p.x - drag.start.x) * drag.dir.x + (p.y - drag.start.y) * drag.dir.y;
-        opSetRelief(draft, drag.volume, drag.region, drag.depth + along);
+        opSetRelief(draft, drag.volume, drag.region, drag.depth + along, !this.free);
+        const v = volumeById(draft, drag.volume);
+        const depth = v ? reliefAt(v, drag.region.side, drag.region.bay0, drag.region.storey0)?.depth ?? 0 : 0;
+        this.measure = { kind: 'depth', value: depth, x: p.x, y: p.y, z: drag.z };
         break;
       }
       case 'rotate': {
@@ -789,6 +819,7 @@ export class BuildingTool {
   pointerUp(cancelled: boolean): void {
     const drag = this.drag;
     this.drag = null;
+    this.measure = null;
     if (!drag) return;
     if (cancelled) {
       this.setPreview(this.mode === 'place' ? this.preview : null);

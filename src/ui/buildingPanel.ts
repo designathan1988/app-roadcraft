@@ -29,7 +29,7 @@ export interface BuildingPanelActions {
   removeUserBlueprint(key: string): void;
   /** `commit` is false while a slider is being dragged, true on release. */
   setParameter(name: BuildingParam, value: number, commit: boolean): void;
-  action(name: 'storeyUp' | 'storeyDown' | 'setback' | 'removeVolume' | 'rotate' | 'duplicate' | 'colour' | 'saveBlueprint' | 'delete' | 'ridge' | 'fall' | 'turnElement' | 'removeElement'): void;
+  action(name: 'storeyUp' | 'storeyDown' | 'setback' | 'removeVolume' | 'rotate' | 'duplicate' | 'colour' | 'saveBlueprint' | 'delete' | 'ridge' | 'fall' | 'turnElement' | 'removeElement' | 'repeatElement' | 'mirror'): void;
   /** Arms a free element (the same one again disarms it). */
   armElement(kind: ElementKind): void;
   /** Sets the selected element's width, length or height, world units. */

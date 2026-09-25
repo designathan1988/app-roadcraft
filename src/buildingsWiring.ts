@@ -117,6 +117,16 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   };
 
   const tool = new BuildingTool(view, host);
+  // Alt held frees a drag from the grid (Windows convention; the key is read
+  // from the window so the pointer handlers need not pass it).
+  const setFree = (free: boolean): void => {
+    if (tool.free === free) return;
+    tool.free = free;
+    host.changed();
+  };
+  window.addEventListener('keydown', (e) => setFree(e.altKey));
+  window.addEventListener('keyup', (e) => setFree(e.altKey));
+  window.addEventListener('blur', () => setFree(false));
 
   const panel = initBuildingPanel({
     setMode: (mode) => tool.setMode(mode),
@@ -151,6 +161,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           break;
         }
         case 'removeElement': tool.removeElement(); break;
+        case 'repeatElement': tool.repeatElement(); break;
+        case 'mirror': tool.mirrorSelected(); break;
         case 'ridge': {
           const v = selectedVolume();
           if (v) tool.setRoofShape({ ridge: ridgeAlongX(v) ? 'y' : 'x' });
@@ -322,6 +334,16 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           : null,
         handles: tool.handles(),
         label,
+        measure: tool.measure
+          ? {
+            text: tool.measure.kind === 'floors'
+              ? plural('building.floors', tool.measure.value)
+              : `${(tool.measure.value * METERS_PER_UNIT).toFixed(tool.measure.kind === 'depth' ? 2 : 1)} m`,
+            x: tool.measure.x,
+            y: tool.measure.y,
+            z: tool.measure.z,
+          }
+          : null,
       });
     },
     restored() {
