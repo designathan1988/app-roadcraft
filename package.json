@@ -20,6 +20,7 @@
     "verify": "npm run check && npm run verify:visual && npm run verify:citizens",
     "verify:citizens": "npm run build && node scripts/verify-citizens.mjs",
     "verify:visual": "npm run build && node scripts/verify-visual.mjs",
+    "verify:buildings": "npm run build && node scripts/verify-buildings.mjs",
     "screens": "npm run build && node scripts/verify-visual.mjs -- --shots"
   },
   "devDependencies": {
