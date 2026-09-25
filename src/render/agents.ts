@@ -10,6 +10,8 @@ import {
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   Object3D,
+  Quaternion,
+  Vector3,
   SphereGeometry,
   type BufferGeometry,
   type Material,
@@ -714,8 +716,28 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   let froll = 0;
   let fcos = 1;
   let fsin = 0;
+  /**
+   * THE vehicle's one transform, as a rotation: yaw, then pitch about its
+   * lateral axis, then roll about its own forward axis (road camber less a
+   * two-wheeler's lean). Every part - body, glass, wheels, lamps, the wheel,
+   * the people in it - is placed through it, and nothing samples its own
+   * height. Before, each vehicle had one height at its centre and a frame
+   * with yaw only: on a gradient the body stayed level, one axle's wheels
+   * sank and the other's floated, and raked parts slid against the body.
+   */
+  const fq = new Quaternion();
+  const qPitch = new Quaternion();
+  const qRoll = new Quaternion();
+  const qPart = new Quaternion();
+  const qLocal = new Quaternion();
+  const vOffset = new Vector3();
+  const AXIS_Y = new Vector3(0, 1, 0);
+  const AXIS_Z = new Vector3(0, 0, 1);
+  const AXIS_X = new Vector3(1, 0, 0);
+  const eulerScratch = new Object3D();
+  eulerScratch.rotation.order = 'YXZ';
 
-  const frameAt = (x: number, y: number, angle: number, deck: number, roll = 0): void => {
+  const frameAt = (x: number, y: number, angle: number, deck: number, roll = 0, pitch = 0, roadRoll = 0): void => {
     fx = x;
     fy = y;
     fyaw = angle;
@@ -725,7 +747,26 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     froll = roll;
     fcos = Math.cos(roll);
     fsin = Math.sin(roll);
+    fq.setFromAxisAngle(AXIS_Y, angle);
+    qPitch.setFromAxisAngle(AXIS_Z, pitch);
+    qRoll.setFromAxisAngle(AXIS_X, roadRoll - roll);
+    fq.multiply(qPitch).multiply(qRoll);
   };
+
+  /** A point in the current frame (forward, up, left) to world (x, y) and height. */
+  const toWorld = (along: number, up: number, side: number, out: { x: number; y: number; h: number }): void => {
+    vOffset.set(along, up, -side).applyQuaternion(fq);
+    out.x = fx + vOffset.x;
+    out.y = fy - vOffset.z;
+    out.h = fdeck + vOffset.y;
+  };
+  const partPoint = { x: 0, y: 0, h: 0 };
+
+  /** Per-vehicle suspension state: the frame eases towards the road, never snaps. */
+  const suspension = new Map<number, { deck: number; pitch: number; roll: number; seen: number }>();
+  let suspensionClock = typeof performance !== 'undefined' ? performance.now() : 0;
+  let suspensionDt = 0;
+  let suspensionFrame = 0;
 
   /**
    * Writes one instance, positioned in the current agent's frame.
@@ -748,12 +789,14 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     yaw = 0,
   ): void => {
     if (part.n >= part.mesh.instanceMatrix.count) return;
-    // Leaning: the offset rolls about the road-level forward axis, and the
-    // part with it (a roll to the left tips +Y towards the left, local -Z).
-    const leanSide = froll === 0 ? side : side * fcos + up * fsin;
-    const leanUp = froll === 0 ? up : up * fcos - side * fsin;
-    object.position.set(fx + fdx * along - fdy * leanSide, fdeck + leanUp, -(fy + fdy * along + fdx * leanSide));
-    object.rotation.set(-froll, fyaw + yaw, rake);
+    // Through the vehicle's one transform (`fq`): position and orientation
+    // both, so a lean or a gradient carries every part together.
+    toWorld(along, up, side, partPoint);
+    object.position.set(partPoint.x, partPoint.h, -partPoint.y);
+    eulerScratch.rotation.set(0, yaw, rake);
+    qLocal.setFromEuler(eulerScratch.rotation);
+    qPart.copy(fq).multiply(qLocal);
+    object.quaternion.copy(qPart);
     object.scale.set(sx, sy, sz);
     object.updateMatrix();
     part.mesh.setMatrixAt(part.n, object.matrix);
@@ -878,7 +921,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     { seed: 0, gender: 'f', ageClass: 'adult', company: 0 };
 
   /** The whole person in a seat: its world point, written without allocating. */
-  const seatPoint = { x: 0, y: 0 };
+  const seatPoint: { x: number; y: number; h?: number } = { x: 0, y: 0, h: 0 };
 
   /**
    * The people in a car, each in a seat of the model: the driver at the wheel
@@ -903,7 +946,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       if ((vehicle.seats & (1 << index)) === 0 || index === moving) continue;
       const seat = model.seats[index]!;
       if (seat.row > rowsDrawn) continue;
-      seatWorldInto(seat, seatPoint);
+      seatWorldInto(seat, seatPoint, seat.hipY);
       const person = seatPerson(vehicle, index);
       // With whom they ride, so nobody in one vehicle wears the same body.
       const who = OCCUPANT;
@@ -917,7 +960,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       // draws them at the size the pose was solved at.
       const plays = occupantPlays(seat, who.seed, frameClock, seatPlays);
       const fixed = seat.pose === 'car' ? 0 : 1;
-      const drawn = pedestrians.drawClip(who, seatPoint.x, seatPoint.y, fdeck + seat.hipY, fyaw, plays as readonly { key: CitizenClipKey; phase: number; weight: number }[],
+      const drawn = pedestrians.drawClip(who, seatPoint.x, seatPoint.y, seatPoint.h ?? fdeck + seat.hipY, fyaw, plays as readonly { key: CitizenClipKey; phase: number; weight: number }[],
         0, seatFitScale(seat), false, fixed);
       if (seat.driver) driverScale = drawn;
     }
@@ -944,22 +987,31 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   /** A steering wheel about its column: yaw with the vehicle, tilt, then the turn. */
   const placeSteeringWheel = (part: Part, along: number, side: number, up: number, tilt: number, turn: number, size = 1): void => {
     if (part.n >= part.mesh.instanceMatrix.count) return;
-    object.position.set(fx + fdx * along - fdy * side, fdeck + up, -(fy + fdy * along + fdx * side));
-    object.rotation.order = 'YZX';
-    object.rotation.set(turn, fyaw, tilt);
+    toWorld(along, up, side, partPoint);
+    object.position.set(partPoint.x, partPoint.h, -partPoint.y);
+    eulerScratch.rotation.order = 'YZX';
+    eulerScratch.rotation.set(turn, 0, tilt);
+    qLocal.setFromEuler(eulerScratch.rotation);
+    eulerScratch.rotation.order = 'YXZ';
+    object.quaternion.copy(fq).multiply(qLocal);
     // The rim at the driver's size too, so the hands on it are on it.
     object.scale.set(size, size, size);
     object.updateMatrix();
-    object.rotation.order = 'YXZ';
     part.mesh.setMatrixAt(part.n, object.matrix);
     part.n++;
   };
 
   const seatWorld = (seat: { x: number; z: number }): { x: number; y: number } =>
     ({ x: fx + fdx * seat.x + fdy * seat.z, y: fy + fdy * seat.x - fdx * seat.z });
-  const seatWorldInto = (seat: { x: number; z: number }, out: { x: number; y: number }): void => {
-    out.x = fx + fdx * seat.x + fdy * seat.z;
-    out.y = fy + fdy * seat.x - fdx * seat.z;
+  /**
+   * A seat (X forward, Z to the right, `up` above the road) to world, through
+   * the vehicle's transform: on a gradient the people ride with the car.
+   */
+  const seatWorldInto = (seat: { x: number; z: number }, out: { x: number; y: number; h?: number }, up = 0): void => {
+    toWorld(seat.x, up, -seat.z, partPoint);
+    out.x = partPoint.x;
+    out.y = partPoint.y;
+    out.h = partPoint.h;
   };
 
   /** Somebody at the kerb this frame (`occupants.kerbFigure`), reused. */
@@ -992,8 +1044,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     const identity = { seed: person.seed, gender: person.gender, ageClass: person.ageClass };
     if (seat && door.kind === 'hinge' && !(progress.walked >= 1 && (stop.phase === 'hold' || stop.phase === 'close'))) {
       const f = kerbFigure({ seat, door, foot: toVehicle(person.footX, person.footY) }, stop.kind, progress.seated, progress.walked, kerb);
-      seatWorldInto(f, seatPoint);
-      pedestrians.drawClip(identity, seatPoint.x, seatPoint.y, fdeck + f.y, fyaw + f.heading, f.plays,
+      seatWorldInto(f, seatPoint, f.y);
+      pedestrians.drawClip(identity, seatPoint.x, seatPoint.y, seatPoint.h ?? fdeck + f.y, fyaw + f.heading, f.plays,
         0, f.seated ? seatFitScale(seat) : Infinity, f.anchor === 'pelvis' ? false : f.anchor === 'feet' ? true : 'pelvisOver');
       return;
     }
@@ -1108,6 +1160,13 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   return {
     meshes,
     sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY, options = {}) {
+      const now = typeof performance !== 'undefined' ? performance.now() : suspensionClock + 16;
+      suspensionDt = Math.min(0.1, Math.max(0, (now - suspensionClock) / 1000));
+      suspensionClock = now;
+      suspensionFrame++;
+      if (suspensionFrame % 600 === 0) {
+        for (const [id, ride] of suspension) if (suspensionFrame - ride.seen > 120) suspension.delete(id);
+      }
       pedestrians.begin(options.pedestrianDetail ?? 2, zoom);
       for (const part of allParts) part.n = 0;
       const band = !detailed ? 0 : zoom >= NEAR_DETAIL_ZOOM ? 2 : 1;
@@ -1134,8 +1193,48 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         // A two-wheeler leans into its bend and, stopped, tilts onto the
         // rider's foot on the road (`TwoWheelerFit.stopTilt`).
         const fit = twoWheeled ? twoWheelerParts.get(vehicle.archetype.id)?.model.fit : undefined;
-        frameAt(pose.p.x, pose.p.y, pose.angle, deck,
-          twoWheeled ? leanOf(world, vehicle) + (fit ? fit.stopTilt * (1 - riderMoving(vehicle)) : 0) : 0);
+        // The road under each axle and each side: pitch from the axles, roll
+        // from the sides, height where the frame's origin sits between them.
+        // Sampled on the vehicle's own road, so a deck or a bore is what it
+        // rides on, never the ground under or over it.
+        const cx = pose.p.x;
+        const cy = pose.p.y;
+        const ux = Math.cos(pose.angle);
+        const uy = Math.sin(pose.angle);
+        const front = plan.axleAlong[0] ?? plan.length * 0.35;
+        const rear = plan.axleAlong[plan.axleAlong.length - 1] ?? -plan.length * 0.35;
+        const seg = lane?.segment ?? (lane ? world.connector(lane.id)?.inSegment : undefined);
+        const hFront = elevationAt(world, cx + ux * front, cy + uy * front, seg);
+        const hRear = elevationAt(world, cx + ux * rear, cy + uy * rear, seg);
+        let wantPitch = Math.atan2(hFront - hRear, Math.max(1e-3, front - rear));
+        let wantDeck = hRear + (0 - rear) * (hFront - hRear) / Math.max(1e-3, front - rear);
+        let wantRoll = 0;
+        if (!twoWheeled && plan.axleSide > 0) {
+          const t = plan.axleSide;
+          const hLeft = elevationAt(world, cx - uy * t, cy + ux * t, seg);
+          const hRight = elevationAt(world, cx + uy * t, cy - ux * t, seg);
+          wantRoll = Math.atan2(hLeft - hRight, 2 * t);
+        }
+        // Nothing mad from a sample that fell off the road (a far end hanging
+        // over a junction on another level): keep to a gradient a road has.
+        if (!Number.isFinite(wantPitch) || Math.abs(wantPitch) > 0.35) { wantPitch = 0; wantDeck = deck; }
+        if (!Number.isFinite(wantRoll) || Math.abs(wantRoll) > 0.25) wantRoll = 0;
+        // Suspension: a critically damped ease towards the road, so a change
+        // of grade is ridden over, not jolted.
+        let ride = suspension.get(vehicle.id);
+        if (!ride || Math.abs(ride.deck - wantDeck) > 2) {
+          ride = { deck: wantDeck, pitch: wantPitch, roll: wantRoll, seen: suspensionFrame };
+          suspension.set(vehicle.id, ride);
+        } else {
+          const k = 1 - Math.exp(-suspensionDt / 0.12);
+          ride.deck += (wantDeck - ride.deck) * k;
+          ride.pitch += (wantPitch - ride.pitch) * k;
+          ride.roll += (wantRoll - ride.roll) * k;
+          ride.seen = suspensionFrame;
+        }
+        frameAt(pose.p.x, pose.p.y, pose.angle, ride.deck,
+          twoWheeled ? leanOf(world, vehicle) + (fit ? fit.stopTilt * (1 - riderMoving(vehicle)) : 0) : 0,
+          ride.pitch, ride.roll);
         const paintHex = hexOf(vehicle.color);
         const look = vehicleLook(vehicle.id, plan.seats);
         occupantBand = vehicleBand;
