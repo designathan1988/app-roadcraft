@@ -6,10 +6,10 @@ import {
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { pedHash } from '@sim/peds/behaviour';
-import type { Ped } from '@sim/peds/state';
+import type { Ped, PedParty } from '@sim/peds/state';
 import { DT } from '@sim/params';
 import { m } from '@world/units';
-import { CITIZEN_MODELS } from './citizenCatalog';
+import { CITIZEN_MODELS, type DressStyle, wardrobeOf } from './citizenCatalog';
 import { NO_HELMET, RIDER_CLIPS, helmetShape, type RiderClip, type RiderClipKey } from './riderPoses';
 import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
 import {
@@ -94,6 +94,16 @@ interface CitizenBatch {
  */
 /** No two people within this distance of each other wear the same body, if the roster allows. */
 const CAST_NEAR = m(25);
+
+/**
+ * How a party is dressed: colleagues in office clothes, one lone walker in
+ * four too (people on their way to or from work), everybody else casual.
+ */
+export function dressFor(party: Pick<PedParty, 'id' | 'archetype'>): DressStyle {
+  if (party.archetype === 'colleagues') return 'business';
+  if (party.archetype === 'solo') return (pedHash(party.id ^ 0x5eed) & 3) === 0 ? 'business' : 'casual';
+  return 'casual';
+}
 /** Frames undrawn after which a person's body is forgotten: about a minute. */
 const CAST_FORGET = 3600;
 const CHILD_ON_ADULT = 0.64;
@@ -390,11 +400,20 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
 
   const everyone: number[] = [];
   /** Bodies a pedestrian may be drawn as, by sex and by whether it is a child's. */
-  const pools = { f: { adult: [] as number[], child: [] as number[] }, m: { adult: [] as number[], child: [] as number[] } };
+  const pools = {
+    f: { adult: [] as number[], business: [] as number[], child: [] as number[] },
+    m: { adult: [] as number[], business: [] as number[], child: [] as number[] },
+  };
   models.forEach((id, index) => {
+    // Uniforms are not street clothes (`citizenCatalog.wardrobeOf`).
+    const wardrobe = wardrobeOf(id);
+    if (wardrobe === 'uniform') return;
     everyone.push(index);
     const child = id.includes('_child');
-    pools[id.includes('female') ? 'f' : 'm'][child ? 'child' : 'adult'].push(index);
+    const sex = pools[id.includes('female') ? 'f' : 'm'];
+    if (child) sex.child.push(index);
+    else if (wardrobe === 'business') sex.business.push(index);
+    else sex.adult.push(index);
   });
   /** Adult bodies a helmet fits on (`riderPoses.NO_HELMET`): motorcyclists are drawn from these. */
   const helmeted = {
@@ -411,7 +430,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
    * roster is drawn on an adult one, scaled down to a child's height; an
    * older person walks on an adult body with the elder's walk.
    */
-  function poolFor(ped: Pick<Ped, 'gender' | 'ageClass'>, helmet: boolean):
+  function poolFor(ped: Pick<Ped, 'gender' | 'ageClass'>, helmet: boolean, style: DressStyle = 'casual'):
     { pool: readonly number[]; size: number; spare?: readonly number[]; spareSize?: number } | null {
     const sex = pools[ped.gender === 'f' ? 'f' : 'm'];
     const other = pools[ped.gender === 'f' ? 'm' : 'f'];
@@ -425,6 +444,9 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       if (sex.adult.length) return { pool: sex.adult, size: CHILD_ON_ADULT };
       if (other.child.length) return { pool: other.child, size: 1 };
     } else {
+      // Everybody in a group dressed alike: colleagues in office clothes, the
+      // rest - families, couples, friends - in everyday ones.
+      if (style === 'business' && ped.ageClass === 'adult' && sex.business.length) return { pool: sex.business, size: 1 };
       if (sex.adult.length) return { pool: sex.adult, size: 1 };
       if (other.adult.length) return { pool: other.adult, size: 1 };
     }
@@ -450,13 +472,13 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   const wearers = new Map<number, Set<number>>();
   let castFrame = 0;
   function bodyFor(ped: Pick<Ped, 'gender' | 'ageClass'>, hash: number, helmet: boolean,
-    seed: number, x: number, y: number, company: number): { index: number; size: number } | null {
+    seed: number, x: number, y: number, company: number, style: DressStyle = 'casual'): { index: number; size: number } | null {
     const known = cast.get(seed);
     if (known) {
       known.x = x; known.y = y; known.seen = castFrame;
       return known;
     }
-    const choice = poolFor(ped, helmet);
+    const choice = poolFor(ped, helmet, style);
     if (!choice) return null;
     const { pool, spare } = choice;
     let size = choice.size;
@@ -574,7 +596,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
      */
     draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number) {
       const hash = pedHash(ped.id);
-      const body = bodyFor(ped, hash, false, ped.id, x, y, ped.party.size > 1 ? ped.party.id + 1 : 0);
+      const body = bodyFor(ped, hash, false, ped.id, x, y, ped.party.size > 1 ? ped.party.id + 1 : 0, dressFor(ped.party));
       if (!body) return;
       const index = body.index;
       const batch = batches.get(index);
@@ -628,7 +650,9 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
      */
     drawClip(identity: { readonly seed: number; readonly gender: 'f' | 'm'; readonly ageClass: 'child' | 'adult' | 'elder';
       /** Who they are with - a vehicle's occupants, negative - so none of them wears the same body. */
-      readonly company?: number },
+      readonly company?: number;
+      /** How the people they are with are dressed. */
+      readonly style?: DressStyle },
       pelvisX: number, pelvisY: number, pelvisHeight: number, heading: number,
       plays: readonly { readonly key: CitizenClipKey; readonly phase: number; readonly weight: number;
         /** For a walk: ground covered, world units; the phase then follows this body's own stride. */
@@ -636,7 +660,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       lean = 0, maxScale = Infinity, fromGround: boolean | 'pelvisOver' = false, fixedScale = 0,
       helmet: Matrix4 | null = null): number {
       const hash = pedHash(identity.seed);
-      const body = bodyFor(identity, hash, helmet !== null, identity.seed, pelvisX, pelvisY, identity.company ?? 0);
+      const body = bodyFor(identity, hash, helmet !== null, identity.seed, pelvisX, pelvisY, identity.company ?? 0,
+        identity.style ?? 'casual');
       if (!body) return 0;
       const batch = batches.get(body.index);
       if (!batch) {

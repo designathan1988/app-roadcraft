@@ -4,7 +4,7 @@ import { createPed, type Ped, type PedParty } from '@sim/peds/state';
 import { m } from '@world/units';
 
 function pair(): [Ped, Ped, Map<number, Ped>] {
-  const party: PedParty = { id: 100, size: 2, pace: m(1), hasChild: true, goal: null, trip: 0 };
+  const party: PedParty = { id: 100, size: 2, archetype: 'family', pace: m(1), hasChild: true, goal: null, trip: 0 };
   const first = createPed({ id: 100, color: '#fff', speed: m(1), file: 0,
     ageClass: 'adult', gender: 'f', party, rank: 0,
     edge: 'walk:1', entry: 'node:1', s: 5, lat: 0, tick: 0 });

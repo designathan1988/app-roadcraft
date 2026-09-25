@@ -83,3 +83,27 @@ export const CITIZEN_CATALOG = [
 ] as const;
 
 export const CITIZEN_MODELS: readonly string[] = CITIZEN_CATALOG.map(model => model.id);
+
+/**
+ * What a body is dressed for.
+ *
+ * `uniform` is a job's outfit - a footballer's kit, a security guard, a
+ * surgeon, a pilot, a site worker - which only makes sense in its own place.
+ * Drawn at random into the street crowd, uniforms put a footballer, a
+ * bouncer and a man in a suit into one "group" of friends. They are left out
+ * of the crowd entirely (and so never downloaded) until the game has places
+ * they belong to. `business` dresses colleagues; `casual` everybody else.
+ */
+export type Wardrobe = 'casual' | 'business' | 'uniform';
+
+const UNIFORMS = ['construction_', 'chef_', 'delivery_', 'gardener_', 'medical_', 'pilot_', 'police_',
+  'security_', 'sports_', 'wood_'];
+
+export function wardrobeOf(id: string): Wardrobe {
+  if (id.startsWith('business_')) return 'business';
+  if (UNIFORMS.some((prefix) => id.startsWith(prefix))) return 'uniform';
+  return 'casual';
+}
+
+/** A style a person is dressed in: what the group they are with calls for. */
+export type DressStyle = 'casual' | 'business';

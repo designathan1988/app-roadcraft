@@ -90,10 +90,21 @@ export interface PedActivity {
   slot: number;
 }
 
+/**
+ * What kind of group a party is, chosen BEFORE its members: the members are
+ * then drawn inside it, so a party is people who belong together - a parent
+ * and children, a couple, friends of an age, colleagues, elderly friends -
+ * never a child, a teenager and a pensioner thrown together at random.
+ */
+export type PartyArchetype = 'solo' | 'family' | 'couple' | 'friends' | 'colleagues' | 'elders';
+export const PARTY_ARCHETYPES: readonly PartyArchetype[] = ['solo', 'family', 'couple', 'friends', 'colleagues', 'elders'];
+
 export interface PedParty {
   /** The pacer's id, and the seed every member's destination is drawn from. */
   readonly id: PedId;
   readonly size: number;
+  /** The kind of group (`PartyArchetype`); the renderer dresses it to match. */
+  readonly archetype: PartyArchetype;
   /** Walking pace of the slowest member. Nobody in a party outwalks it. */
   readonly pace: number;
   /**

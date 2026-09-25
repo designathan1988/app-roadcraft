@@ -952,8 +952,9 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   };
 
   /** A seated person's identity, reused: seat, sex, age and the vehicle they are in. */
-  const OCCUPANT: { seed: number; gender: 'f' | 'm'; ageClass: 'child' | 'adult' | 'elder'; company: number } =
-    { seed: 0, gender: 'f', ageClass: 'adult', company: 0 };
+  const OCCUPANT: { seed: number; gender: 'f' | 'm'; ageClass: 'child' | 'adult' | 'elder'; company: number;
+    style: 'casual' | 'business' } =
+    { seed: 0, gender: 'f', ageClass: 'adult', company: 0, style: 'casual' };
 
   /** The whole person in a seat: its world point, written without allocating. */
   const seatPoint: { x: number; y: number; h?: number } = { x: 0, y: 0, h: 0 };
@@ -989,6 +990,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       OCCUPANT.gender = person.gender;
       OCCUPANT.ageClass = person.ageClass;
       OCCUPANT.company = -(vehicle.id + 1);
+      // Everyone in one car dressed alike: a car in five on a work trip.
+      OCCUPANT.style = agentHash(vehicle.id ^ 0x0ff1ce) % 5 === 0 ? 'business' : 'casual';
       // The seat's pose (`riderPoses.ts`) with a glance now and then
       // (`occupants.ts`). A car seat sizes its occupant to clear the roof
       // lining; an upright cab or bus seat, whose feet must be on the floor,

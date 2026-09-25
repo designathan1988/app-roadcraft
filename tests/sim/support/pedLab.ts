@@ -117,7 +117,7 @@ export function placeWalkers(sim: SimWorld, walkers: readonly LabWalker[]): Ped[
     let party = parties.get(key);
     if (!party) {
       const size = walkers.filter((q) => (q.party ?? Number.NaN) === key).length || 1;
-      party = { id: sim.nextPedId, size, pace: PED.maxSpeed, hasChild: false, goal: null, trip: 0 };
+      party = { id: sim.nextPedId, size, archetype: size > 1 ? 'friends' : 'solo', pace: PED.maxSpeed, hasChild: false, goal: null, trip: 0 };
       parties.set(key, party);
     }
     (party as { pace: number }).pace = Math.min(party.pace, speed);

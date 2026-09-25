@@ -1,9 +1,9 @@
 import { clamp } from '@core/scalar';
 import { DT, PED, PED_CEILING, PED_DENSITY } from '../params';
 import type { SimWorld } from '../world';
-import { PED_BEHAVIOUR, preferredLateral } from './behaviour';
+import { PED_BEHAVIOUR, pedHash, preferredLateral } from './behaviour';
 import type { SidewalkEdge } from './sidewalk';
-import { createPed, pedSnapshot, type Ped, type PedAgeClass, type PedParty } from './state';
+import { createPed, pedSnapshot, type PartyArchetype, type Ped, type PedAgeClass, type PedParty } from './state';
 
 const SPAWN_INTERVAL = 0.7;
 const COLORS = [
@@ -109,6 +109,27 @@ function rollAgeClasses(w: SimWorld, size: number): PedAgeClass[] {
   });
 }
 
+/**
+ * What kind of group a party of these ages is. Read from the ages, never
+ * drawn, so no random stream changes: a child with an adult or an elder is a
+ * family (a grandparent out with a grandchild too), an adult with an elder
+ * is family, elders together are elderly friends, two adults a couple or
+ * friends, more adults friends or colleagues - by the party's own hash.
+ */
+export function partyArchetype(ages: readonly PedAgeClass[], id: number): PartyArchetype {
+  if (ages.length === 1) return 'solo';
+  const child = ages.includes('child');
+  const adult = ages.includes('adult');
+  const elder = ages.includes('elder');
+  if (child && (adult || elder)) return 'family';
+  if (adult && elder) return 'family';
+  if (elder) return 'elders';
+  if (child) return 'friends';
+  const h = pedHash(id ^ 0x9a47);
+  if (ages.length === 2) return (h & 3) < 2 ? 'couple' : 'friends';
+  return (h & 7) < 2 ? 'colleagues' : 'friends';
+}
+
 /** Free-flow speed for one pedestrian, from the distribution their age draws. */
 function rollSpeed(w: SimWorld, ageClass: PedAgeClass): number {
   if (ageClass === 'child') {
@@ -133,6 +154,7 @@ function spawnParty(w: SimWorld, edge: SidewalkEdge, head: number, size: number)
   // member exists. Drawing every trait up front is also what keeps the party
   // consuming one contiguous run of each stream however large it is.
   const ageClasses = rollAgeClasses(w, size);
+  const archetype = partyArchetype(ageClasses, w.nextPedId);
   const speeds: number[] = [];
   let pace = PED.maxSpeed;
   let hasChild = false;
@@ -144,7 +166,7 @@ function spawnParty(w: SimWorld, edge: SidewalkEdge, head: number, size: number)
     if (speed < pace) pace = speed;
   }
 
-  const party: PedParty = { id: w.nextPedId, size, pace, hasChild, goal: null, trip: 0 };
+  const party: PedParty = { id: w.nextPedId, size, archetype, pace, hasChild, goal: null, trip: 0 };
   const members: Ped[] = [];
   const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
   const spacing = Math.max(PED_BEHAVIOUR.shoulder,
