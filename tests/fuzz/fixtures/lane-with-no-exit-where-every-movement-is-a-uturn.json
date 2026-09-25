@@ -1,0 +1,42 @@
+{
+ "name": "lane-with-no-exit-where-every-movement-is-a-uturn",
+ "category": "deadLanelet",
+ "detail": "no exit at node 2",
+ "sim": null,
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    -57.01,
+    228.86
+   ],
+   "b": [
+    -299.74,
+    285.55
+   ],
+   "type": 2,
+   "curve": {
+    "t": 0.55,
+    "h": 64
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -298.49,
+    293.56
+   ],
+   "b": [
+    1.36,
+    253.09
+   ],
+   "type": 1,
+   "curve": {
+    "t": 0.66,
+    "h": 63.15
+   },
+   "structure": "ground"
+  }
+ ]
+}

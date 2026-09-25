@@ -327,6 +327,13 @@ export class LaneletGraph {
         if (!inLane || inLane.segment === undefined) continue;
         const inDir = endDirection(inLane.centre);
         const legal: { outId: LaneletId; outLane: Lanelet; turn: TurnKind; carried: boolean }[] = [];
+        // U-turns the lane-count rule above set aside. They come back only for
+        // a lane that has nothing else: where two roads both run back to the
+        // same node (a lens of two curves), EVERY movement classifies as a
+        // U-turn, and dropping them all left the lane with no exit at all - a
+        // car driving into a node it can never leave (the fuzzer's
+        // `deadLanelet`).
+        const dropped: typeof legal = [];
 
         for (const outId of outbound) {
           const outLane = this.lanelets.get(outId);
@@ -350,10 +357,11 @@ export class LaneletGraph {
             roadProfile(outSegment.type, outSegment.lanes, outSegment.direction),
             outSegment.direction,
           );
+          if (node.blockedMovements.includes(movementKey(inLane.segment, outLane.segment))) continue;
           if (turn === 'uturn' && outbound.length > inLanes) {
+            dropped.push({ outId, outLane, turn, carried });
             continue;
           }
-          if (node.blockedMovements.includes(movementKey(inLane.segment, outLane.segment))) continue;
           legal.push({ outId, outLane, turn, carried });
           if (laneIsPlausible(inLane, outLane, carried ? 'through' : turn, inLanes, outLanes)) {
             addConnector(inId, inLane, outId, outLane, turn, carried);
@@ -365,6 +373,7 @@ export class LaneletGraph {
         // no route at all: vehicles spawned there would reach a green signal
         // with no connector to request. Merge that lane onto the best legal
         // outbound path only when the normal pairing produced none.
+        if (this.exitsOf(inId).length === 0 && !legal.length) legal.push(...dropped);
         if (this.exitsOf(inId).length === 0 && legal.length) {
           legal.sort((a, b) =>
             fallbackTurnRank(a.turn) - fallbackTurnRank(b.turn) ||
