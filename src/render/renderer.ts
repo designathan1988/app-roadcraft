@@ -20,7 +20,8 @@ import { Digest } from '@core/digest';
 import type { Vec2 } from '@core/vec2';
 import type { SegmentId } from '@world/ids';
 import type { Network } from '@world/network';
-import { buildRoadElevation, type RoadElevation } from '@world/elevation';
+import { GROUND_ONLY, buildRoadElevation, type RoadElevation } from '@world/elevation';
+import { ROAD_TYPES, casingHalf, sidewalkHalf } from '@world/roadTypes';
 import type { RoadStructure } from '@world/structures';
 import type { SimWorld } from '@sim/world';
 import type { Viewport } from '@view/viewport';
@@ -30,7 +31,7 @@ import { createEnvironment } from './environment';
 import { createMaterials, type SceneMaterials } from './materials';
 import { createIsoRig } from './isoViewport';
 import { createPostChain, type PostChain } from './postprocess';
-import { buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
+import { FOOTWAY_RISE, buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
 import { PLANT_NEAR_ZOOM, buildScenery, createSceneryKit, type Scenery, type SceneryKit } from './scenery';
 import { GRASS_MIN_ZOOM } from './grass';
 import { advanceWind } from './wind';
@@ -100,6 +101,11 @@ export interface SceneHandle {
   setBuildingPreview(preview: BuildingPreviewInput | null): void;
   /** The height the terrain is drawn at — what anything laid on it must clear. */
   terrainHeightAt(x: number, y: number): number;
+  /**
+   * The height of the paving at a point - footway or carriageway of a road at
+   * grade - or NaN off the roads. What a building's entrance opens onto.
+   */
+  pavedHeightAt(x: number, y: number): number;
   resize(): void;
   draw(net: Network, sim: SimWorld, alpha: number, delta: number, options?: DrawOptions): void;
   setQuality(level: QualityLevel | 'auto'): void;
@@ -230,6 +236,21 @@ export function createSceneRenderer(
   ): number => {
     if (!elevation) return terrain.renderedHeightAt(x, y);
     return segment === undefined ? elevation.at(x, y) : elevation.onSegment(segment, x, y);
+  };
+
+  /** See `SceneHandle.pavedHeightAt`. */
+  const pavedHeightAt = (x: number, y: number): number => {
+    if (!elevation || !elevation.has(GROUND_ONLY)) return NaN;
+    const road = elevation.roadAt(x, y, GROUND_ONLY);
+    const rt = road.type >= 0 ? ROAD_TYPES[road.type] : undefined;
+    if (!rt) return NaN;
+    // `half` is this road's own casing (its lanes may be set individually):
+    // the footway ends a casing band inside it and starts a footway further in.
+    const footway = road.half - (casingHalf(rt) - sidewalkHalf(rt));
+    const across = Math.abs(road.across);
+    if (across > footway) return NaN;
+    const deck = elevation.at(x, y, GROUND_ONLY);
+    return across > footway - rt.sidewalk ? deck + FOOTWAY_RISE : deck;
   };
 
   const agents: AgentMeshes = createAgentMeshes(deckHeight, onAssetsReady);
@@ -397,6 +418,7 @@ export function createSceneRenderer(
     terrainHeightAt(x, y) {
       return terrain.renderedHeightAt(x, y);
     },
+    pavedHeightAt,
     setBuildingPreview(preview) {
       buildings.setPreview(preview);
     },
@@ -427,7 +449,7 @@ export function createSceneRenderer(
       } else {
         rebuildWorld(net);
       }
-      buildings.update(net.doc, terrain.renderedHeightAt, `${net.doc.terrainRevision}:${rebuilds}`);
+      buildings.update(net.doc, terrain.renderedHeightAt, `${net.doc.terrainRevision}:${rebuilds}`, pavedHeightAt);
       if (scenery && (excludedFor.scenery !== scenery || excludedFor.version !== buildings.version)) {
         scenery.exclude(net.doc.buildings.size > 0 ? buildings.covers : null);
         excludedFor = { scenery, version: buildings.version };

@@ -1,25 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_MODULE } from '@world/buildings/types';
+
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { BLUEPRINTS, generateBody } from '@world/buildings/blueprints';
-import { MAX_PLINTH, PLINTH_MIN, foundationOf } from '@world/buildings/foundation';
+import { MAX_PLINTH, PLINTH_MIN, floorHeight, flightRun, foundationOf } from '@world/buildings/foundation';
 import {
   buildingHeight,
   facadeBays,
   footprintRects,
   levelElevation,
   localToWorld,
-  occupancy,
+  clashes,
   worldToLocal,
 } from '@world/buildings/geometry';
 import { buildingHandles } from '@world/buildings/handles';
+import { FLAT_ROOF_MATERIAL, PALETTE_MATERIALS, applyMaterial, roofMaterial, wallMaterial } from '@world/buildings/materials';
 import { pickBuilding } from '@world/buildings/pick';
 import { migrateBuilding } from '@world/buildings/serialize';
 import { deriveSpaces, floorArea } from '@world/buildings/spaces';
 import { convexOverlap, structuralProblem, validateBuilding } from '@world/buildings/validate';
 import { type Building, asBuildingId, componentAt } from '@world/buildings/types';
 import { isSerializedDoc } from '@editor/persistence';
+
+/** `n` default modules, world units. */
+const bays = (n: number): number => n * DEFAULT_MODULE;
 
 /**
  * The modular building model (docs/buildings.md): a building is data, and
@@ -31,7 +37,7 @@ const flat = (): number => 0;
 
 function building(overrides: Partial<Building> = {}): Building {
   return {
-    ...generateBody('residential', 4, 3, 3),
+    ...generateBody('residential', bays(4), bays(3), 3),
     id: asBuildingId(1),
     x: 100,
     y: 100,
@@ -70,11 +76,11 @@ describe('building geometry', () => {
 
   it('builds no facade where two volumes share a wall', () => {
     const b = building();
-    b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: 4 });
+    b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: 4 * b.module });
     const bays = facadeBays(b);
     // Two 4x3 blocks side by side: 2*(8+3) exposed bays a storey.
     expect(bays.length).toBe(22 * 3);
-    expect(occupancy(b).clashes).toHaveLength(0);
+    expect(clashes(b)).toHaveLength(0);
   });
 
   it('resolves a facade bay, then side, then fill', () => {
@@ -125,6 +131,59 @@ describe('foundations', () => {
     expect(level.steps).toBe(0);
   });
 
+  // The front of `building()` is the line y = 100, facing -y.
+  const doorOf = (f: ReturnType<typeof foundationOf>) => f.entrances.find((e) => e.component === 'door')!;
+  /** Paving at height `h` from `edge` units in front of the facade outwards. */
+  const pavingFrom = (edge: number, h = 0) => (_x: number, y: number): number => (y < 100 - edge ? h : NaN);
+
+  it('never runs a flight of steps across the paving in front of it', () => {
+    const b = building();
+    // The land under the building a little higher than in front of it.
+    const land = (_x: number, y: number): number => (y >= 100 ? 0.5 : 0);
+    const roomy = doorOf(foundationOf(b, land, undefined, pavingFrom(5)));
+    expect(roomy.steps).toBeGreaterThan(0);
+    expect(roomy.recess).toBe(0);
+    expect(flightRun(roomy.steps)).toBeLessThanOrEqual(5);
+    // On the back of a footway there is no room at all: the flight is set
+    // into the building, starting on the ground at the facade.
+    const tight = doorOf(foundationOf(b, land, undefined, pavingFrom(0.3)));
+    expect(tight.steps).toBeGreaterThan(0);
+    expect(tight.recess).toBeCloseTo(flightRun(tight.steps), 9);
+    expect(tight.recess).toBeLessThan(3 * b.module);
+    expect(tight.ground).toBe(0);
+  });
+
+  it('starts a recessed flight on the footway, not in the verge beside it', () => {
+    const b = building();
+    // Half a unit of verge between the facade and the footway, shaped down
+    // with the road well below the paving.
+    const land = (_x: number, y: number): number => (y >= 100 ? 1 : -2);
+    const door = doorOf(foundationOf(b, land, undefined, pavingFrom(0.5)));
+    expect(door.recess).toBeGreaterThan(0);
+    expect(door.ground).toBe(0);
+    expect(door.threshold).toBeGreaterThan(0.4);
+    expect(door.threshold).toBeLessThanOrEqual(0.5);
+  });
+
+  it('reads the footway an entrance opens onto, not the land shaped under it', () => {
+    const b = building();
+    // The land falls away under the road in front; the footway stays up.
+    const land = (_x: number, y: number): number => (y >= 100 ? 0 : -4);
+    expect(doorOf(foundationOf(b, land)).steps).toBeGreaterThan(5);
+    const door = doorOf(foundationOf(b, land, undefined, pavingFrom(0.3, 0.1)));
+    expect(door.ground).toBeCloseTo(0.1, 9);
+    expect(door.steps).toBe(0);
+  });
+
+  it('never stands a door below the paving it opens onto', () => {
+    const b = building();
+    const raised = pavingFrom(0.3, 2);
+    const f = foundationOf(b, flat, undefined, raised);
+    expect(f.floor).toBeCloseTo(2 + PLINTH_MIN, 9);
+    expect(floorHeight(b, flat, raised)).toBeCloseTo(f.floor, 9);
+    expect(doorOf(f).steps).toBe(0);
+  });
+
   it('refuses a site steeper than the plinth can take', () => {
     const doc = new RoadDoc();
     const b = building();
@@ -137,10 +196,10 @@ describe('foundations', () => {
 describe('validation', () => {
   it('rejects overlapping volumes and volumes over nothing', () => {
     const b = building();
-    b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: 2 });
+    b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: bays(2) });
     expect(structuralProblem(b)).toBe('overlap');
     const c = building();
-    c.volumes.push({ ...JSON.parse(JSON.stringify(c.volumes[0])), id: 2, x: 3, base: 3, w: 3 });
+    c.volumes.push({ ...JSON.parse(JSON.stringify(c.volumes[0])), id: 2, x: bays(3), base: 3, w: bays(3) });
     expect(structuralProblem(c)).toBe('support');
   });
 
@@ -216,7 +275,7 @@ describe('serialisation', () => {
     const back = RoadDoc.fromJSON(json);
     expect(back.toJSON().buildings).toEqual(doc.toJSON().buildings);
     // The allocator survives: a new building does not reuse an id.
-    const next = back.buildings.add({ ...generateBody('commercial', 2, 2, 1), x: 0, y: 0, rotation: 0 } as Building);
+    const next = back.buildings.add({ ...generateBody('commercial', bays(2), bays(2), 1), x: 0, y: 0, rotation: 0 } as Building);
     expect(next.id).toBe(BLUEPRINTS.length + 1);
   });
 
@@ -229,9 +288,9 @@ describe('serialisation', () => {
   });
 
   it('repairs a damaged building and drops an unreadable one, keeping the map', () => {
-    const good = { ...generateBody('residential', 3, 3, 2), id: 1, x: 0, y: 0, rotation: 0 };
+    const good = { ...generateBody('residential', bays(3), bays(3), 2), id: 1, x: 0, y: 0, rotation: 0 };
     const damaged = {
-      ...generateBody('commercial', 3, 3, 2),
+      ...generateBody('commercial', bays(3), bays(3), 2),
       id: 2, x: 50, y: 0, rotation: 0,
       module: 999, use: 'castle', palette: -4,
       future: { keep: true },
@@ -249,7 +308,7 @@ describe('serialisation', () => {
   });
 
   it('migrates a storey with unknown components to its fill', () => {
-    const raw = { ...generateBody('residential', 2, 2, 1), id: 4, x: 0, y: 0 } as Record<string, unknown>;
+    const raw = { ...generateBody('residential', bays(2), bays(2), 1), id: 4, x: 0, y: 0 } as Record<string, unknown>;
     const v = (raw.volumes as Record<string, unknown>[])[0]!;
     v.storeys = [{ facade: { fill: 'hologram', bays: { '0:0': 'door', '9:1': 'door', '0:1': 'lava' } } }];
     const b = migrateBuilding(raw)!;
@@ -258,7 +317,7 @@ describe('serialisation', () => {
 
   it('keeps the buildings revision still when a road-only replace leaves them equal', () => {
     const doc = new RoadDoc();
-    doc.buildings.add({ ...generateBody('residential', 3, 3, 2), x: 0, y: 0, rotation: 0 } as Building);
+    doc.buildings.add({ ...generateBody('residential', bays(3), bays(3), 2), x: 0, y: 0, rotation: 0 } as Building);
     const before = doc.buildings.revision;
     const clone = doc.clone();
     clone.addNode({ x: 500, y: 500 });
@@ -278,5 +337,95 @@ describe('extension points', () => {
 
   it('has a footprint for every ground volume', () => {
     expect(footprintRects(building())).toHaveLength(1);
+  });
+});
+
+describe('materials', () => {
+  const brick = { finish: 'brick', colour: 0xa4563f } as const;
+  const glass = { finish: 'glass', colour: 0x9fb8c4 } as const;
+
+  it('resolves a wall from the side, the volume, the building, then the palette', () => {
+    const b = building();
+    const v = b.volumes[0]!;
+    expect(wallMaterial(b, v, 0)).toEqual(PALETTE_MATERIALS[b.palette]!.wall);
+    applyMaterial(b, { scope: 'building', slot: 'wall' }, brick);
+    expect(wallMaterial(b, v, 0)).toEqual(brick);
+    applyMaterial(b, { scope: 'side', volume: v.id, side: 1 }, glass);
+    expect(wallMaterial(b, v, 1)).toEqual(glass);
+    expect(wallMaterial(b, v, 0)).toEqual(brick);
+    // A wider scope repaints everything under it.
+    applyMaterial(b, { scope: 'building', slot: 'wall' }, { finish: 'plaster', colour: 0xffffff });
+    expect(wallMaterial(b, v, 1).finish).toBe('plaster');
+    expect(v.materials).toBeUndefined();
+  });
+
+  it('gives a flat roof its membrane and a pitched one the palette tiles until told otherwise', () => {
+    const b = building();
+    const v = b.volumes[0]!;
+    v.roof = 'flat';
+    expect(roofMaterial(b, v)).toEqual(FLAT_ROOF_MATERIAL);
+    v.roof = 'gable';
+    expect(roofMaterial(b, v)).toEqual(PALETTE_MATERIALS[b.palette]!.roof);
+    expect(applyMaterial(b, { scope: 'volume', volume: v.id, slot: 'roof' }, { finish: 'metal', colour: 0x333333 })).toBe(true);
+    expect(roofMaterial(b, v).finish).toBe('metal');
+    expect(applyMaterial(b, { scope: 'volume', volume: v.id, slot: 'roof' }, { finish: 'metal', colour: 0x333333 })).toBe(false);
+  });
+
+  it('keeps valid materials through a round trip and drops broken ones', () => {
+    const b = building();
+    applyMaterial(b, { scope: 'building', slot: 'trim' }, glass);
+    applyMaterial(b, { scope: 'side', volume: b.volumes[0]!.id, side: 2 }, brick);
+    const back = migrateBuilding(JSON.parse(JSON.stringify(b)))!;
+    expect(back.materials?.trim).toEqual(glass);
+    expect(back.volumes[0]!.materials?.sides?.[2]).toEqual(brick);
+    const broken = migrateBuilding({ ...JSON.parse(JSON.stringify(b)), materials: { wall: { finish: 'cheese', colour: 1 }, roof: { finish: 'tile', colour: -5 } } })!;
+    expect(broken.materials).toBeUndefined();
+  });
+});
+
+describe('free dimensions', () => {
+  it('reads a schema 1 building, measured in cells, as the same building in world units', () => {
+    const module = 7.5;
+    const old = {
+      id: 3, schema: 1, x: 10, y: 20, rotation: 0, use: 'residential', module, groundHeight: 9, storeyHeight: 7.75, palette: 0,
+      volumes: [{ id: 1, x: -1, y: 0, w: 4, d: 3, base: 0, roof: 'flat', storeys: [{ facade: { fill: 'window', bays: { '0:2': 'door' } } }] }],
+      cores: [{ id: 1, x: 2, y: 1, kind: 'lift', from: 0, to: 1 }],
+      nextVolumeId: 2,
+    };
+    const b = migrateBuilding(old)!;
+    const v = b.volumes[0]!;
+    expect([v.x, v.y, v.w, v.d]).toEqual([-7.5, 0, 30, 22.5]);
+    expect(b.cores[0]).toMatchObject({ x: 15, y: 7.5 });
+    expect(b.schema).toBe(2);
+    // The same four bays across the front, the door still in the third.
+    const front = facadeBays(b).filter((bay) => bay.side === 0);
+    expect(front).toHaveLength(4);
+    expect(front[2]!.component).toBe('door');
+    // And a current building is not scaled again.
+    expect(migrateBuilding(JSON.parse(JSON.stringify(b)))!.volumes[0]!.w).toBe(30);
+  });
+
+  it('shares a side of any length into bays of about a module', () => {
+    const b = building();
+    const v = b.volumes[0]!;
+    v.w = 26.25; // 10.5 m: four bays of 2.625 m
+    const front = facadeBays(b).filter((bay) => bay.side === 0 && bay.level === 0);
+    expect(front).toHaveLength(4);
+    for (const bay of front) expect(bay.width).toBeCloseTo(26.25 / 4, 9);
+  });
+
+  it('keeps the exposed piece of a bay a neighbour only partly stands against, as wall', () => {
+    const b = building();
+    const v = b.volumes[0]!;
+    // A one-storey block against the right side, over half of its first bay.
+    b.volumes.push({ id: 2, x: v.x + v.w, y: v.y, w: bays(2), d: bays(0.5), base: 0, roof: 'flat', storeys: [{ facade: { fill: 'window' } }] });
+    const right = facadeBays(b).filter((bay) => bay.volume === v.id && bay.side === 1 && bay.level === 0);
+    const first = right.filter((bay) => bay.index === 0);
+    expect(first).toHaveLength(1);
+    expect(first[0]!.component).toBe('wall');
+    expect(first[0]!.start).toBeCloseTo(bays(0.5), 9);
+    expect(first[0]!.width).toBeCloseTo(bays(0.5), 9);
+    // Above the block the whole bay is outside again.
+    expect(facadeBays(b).filter((bay) => bay.volume === v.id && bay.side === 1 && bay.level === 1 && bay.index === 0)[0]!.width).toBeCloseTo(bays(1), 9);
   });
 });

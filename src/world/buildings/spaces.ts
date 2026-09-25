@@ -37,11 +37,11 @@ export function deriveSpaces(b: Building): StoreySpaces[] {
         const kind = level > 0 && use === 'commercial' ? 'office' : KIND[use];
         const alongX = v.w >= v.d;
         const length = alongX ? v.w : v.d;
-        const split = use === 'residential' ? Math.max(1, Math.ceil(length / 4)) : 1;
+        const split = use === 'residential' ? Math.max(1, Math.ceil(length / (4 * b.module) - 1e-9)) : 1;
         spaces = [];
         let start = 0;
         for (let n = 0; n < split; n++) {
-          const size = Math.round(((n + 1) * length) / split) - start;
+          const size = ((n + 1) * length) / split - start;
           spaces.push(alongX
             ? { id: n + 1, x: v.x + start, y: v.y, w: size, d: v.d, kind, use }
             : { id: n + 1, x: v.x, y: v.y + start, w: v.w, d: size, kind, use });
@@ -56,7 +56,7 @@ export function deriveSpaces(b: Building): StoreySpaces[] {
 
 /** Gross floor area, in square world units: every storey of every volume. */
 export function floorArea(b: Building): number {
-  let cells = 0;
-  for (const v of b.volumes) cells += v.w * v.d * v.storeys.length;
-  return cells * b.module * b.module;
+  let area = 0;
+  for (const v of b.volumes) area += v.w * v.d * v.storeys.length;
+  return area;
 }

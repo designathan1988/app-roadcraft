@@ -1,6 +1,6 @@
 import type { Vec2 } from '@core/vec2';
 import type { BlueprintBody } from '@world/buildings/blueprints';
-import { buildingBounds, footprintCells, footprintRects } from '@world/buildings/geometry';
+import { GRID, buildingBounds, footprintBox, footprintRects } from '@world/buildings/geometry';
 import { ROAD_CLEARANCE } from '@world/buildings/validate';
 import type { Building, BuildingId } from '@world/buildings/types';
 import type { RoadDoc } from '@world/doc';
@@ -32,8 +32,8 @@ export interface FootprintSize {
 }
 
 export function footprintSize(body: BlueprintBody | Building): FootprintSize {
-  const f = footprintCells(body as Building);
-  return { width: (f.x1 - f.x0) * body.module, depth: (f.y1 - f.y0) * body.module, module: body.module };
+  const f = footprintBox(body as Building);
+  return { width: f.x1 - f.x0, depth: f.y1 - f.y0, module: body.module };
 }
 
 /** How far from a road a footprint still snaps to it, beyond its own depth. */
@@ -64,8 +64,7 @@ export function snapPlacement(
     };
     return flush(doc, aligned, size, true, ignore);
   }
-  const u = size.module;
-  const snapped = { x: Math.round(cursor.x / u) * u, y: Math.round(cursor.y / u) * u };
+  const snapped = { x: Math.round(cursor.x / GRID) * GRID, y: Math.round(cursor.y / GRID) * GRID };
   return { anchor: frontAnchor(snapped, size, rotation), rotation: normaliseAngle(rotation), kind: 'grid' };
 }
 
@@ -92,8 +91,8 @@ function snapToRoad(net: Network, size: FootprintSize, cursor: Vec2): PlacementS
     const oy = frame.n.y * side;
     // The front (local -y) faces the road: (sin r, -cos r) = -outward.
     const rotation = Math.atan2(-ox, oy);
-    // Along the road, the anchor snaps to half-modules from the road's start.
-    const step = size.module / 2;
+    // Along the road, the anchor snaps to the grid from the road's start.
+    const step = GRID;
     const s = Math.round(hit.s / step) * step;
     const along = ribbon.full.sampleAt(Math.max(0, Math.min(ribbon.full.length, s)));
     best = {

@@ -150,7 +150,10 @@ function terrainBakes(anisotropy: number): {
     {
       size: 512,
       worldSize: 42,
-      relief: 2.2,
+      // Kept quiet: the ground is the backdrop, so the fine grain is low in
+      // contrast and the green is muted, and the variation that reads is the
+      // slow one, the clumps and dry patches.
+      relief: 1.1,
       shade: (x, y, out) => {
         const u = x / 512;
         const v = y / 512;
@@ -158,9 +161,9 @@ function terrainBakes(anisotropy: number): {
         const clump = fbm(grassClump, u * 11, v * 11, 11, 4);
         const dry = clump > 0.58 ? (clump - 0.58) * 2.4 : 0;
         const moss = clump < 0.4 ? (0.4 - clump) * 1.6 : 0;
-        out.r = 0.13 + fine * 0.08 + dry * 0.3 + clump * 0.04;
-        out.g = 0.21 + fine * 0.12 + clump * 0.1 + dry * 0.2 - moss * 0.03;
-        out.b = 0.075 + fine * 0.05 + dry * 0.09 + moss * 0.02;
+        out.r = 0.16 + fine * 0.03 + dry * 0.22 + clump * 0.04;
+        out.g = 0.215 + fine * 0.045 + clump * 0.07 + dry * 0.15 - moss * 0.02;
+        out.b = 0.11 + fine * 0.02 + dry * 0.07 + moss * 0.015;
         out.h = fine * 0.65 + clump * 0.35;
         out.rough = 0.99;
       },

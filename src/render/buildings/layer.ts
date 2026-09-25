@@ -3,7 +3,7 @@ import { Group } from 'three';
 import { pointInPolygon } from '@core/polygon';
 import type { Vec2 } from '@core/vec2';
 import type { RoadDoc } from '@world/doc';
-import type { GroundAt } from '@world/buildings/foundation';
+import type { GroundAt, PavedAt } from '@world/buildings/foundation';
 import { buildingBounds, footprintRects } from '@world/buildings/geometry';
 import type { Building, BuildingId } from '@world/buildings/types';
 import { m } from '@world/units';
@@ -31,8 +31,11 @@ export interface BuildingLayer {
   readonly triangles: number;
   /** Bumped whenever the stored buildings are rebuilt. */
   readonly version: number;
-  /** Rebuilds what is stale. Returns true if the stored buildings were rebuilt. */
-  update(doc: RoadDoc, groundAt: GroundAt, groundKey: string): boolean;
+  /**
+   * Rebuilds what is stale. Returns true if the stored buildings were rebuilt.
+   * `pavedAt` is the paving (footways, carriageways) entrances open onto.
+   */
+  update(doc: RoadDoc, groundAt: GroundAt, groundKey: string, pavedAt?: PavedAt): boolean;
   setPreview(preview: BuildingPreviewInput | null): void;
   /** Whether a world point is under a building (for the scenery's plant cull). */
   covers(x: number, y: number): boolean;
@@ -59,11 +62,11 @@ export function createBuildingLayer(): BuildingLayer {
    * whose ground it moved; everything else is concatenated from here.
    */
   const chunks = new Map<BuildingId, { key: string; chunk: BuildingChunk }>();
-  const chunkFor = (b: Building, groundAt: GroundAt): BuildingChunk => {
-    const key = `${JSON.stringify(b)}|${groundDigest(b, groundAt)}`;
+  const chunkFor = (b: Building, groundAt: GroundAt, pavedAt?: PavedAt): BuildingChunk => {
+    const key = `${JSON.stringify(b)}|${groundDigest(b, groundAt, pavedAt)}`;
     const known = chunks.get(b.id);
     if (known && known.key === key) return known.chunk;
-    const chunk = emitChunk(b, groundAt);
+    const chunk = emitChunk(b, groundAt, pavedAt);
     chunks.set(b.id, { key, chunk });
     return chunk;
   };
@@ -99,7 +102,7 @@ export function createBuildingLayer(): BuildingLayer {
     get version() {
       return version;
     },
-    update(doc, groundAt, groundKey) {
+    update(doc, groundAt, groundKey, pavedAt) {
       const hides = preview?.hides ?? null;
       const key = `${doc.buildings.revision}|${groundKey}|${hides}`;
       let rebuilt = false;
@@ -111,7 +114,7 @@ export function createBuildingLayer(): BuildingLayer {
         }
         const shown = [...doc.buildings.all()].filter((b) => b.id !== hides);
         for (const id of chunks.keys()) if (!doc.buildings.has(id)) chunks.delete(id);
-        stored = assembleBuildingMeshes(shown.map((b) => chunkFor(b, groundAt)), kit);
+        stored = assembleBuildingMeshes(shown.map((b) => chunkFor(b, groundAt, pavedAt)), kit);
         group.add(stored.group);
         index(doc.buildings.all());
         version++;
@@ -127,7 +130,7 @@ export function createBuildingLayer(): BuildingLayer {
         }
         if (preview) {
           kit.setGhostValid(preview.valid);
-          ghost = buildBuildingMeshes([preview.building], groundAt, kit, true);
+          ghost = buildBuildingMeshes([preview.building], groundAt, kit, true, pavedAt);
           ghost.group.renderOrder = 2;
           group.add(ghost.group);
         }
@@ -155,16 +158,17 @@ export function createBuildingLayer(): BuildingLayer {
 
 /**
  * A fingerprint of the ground under and around a building: a 6 x 6 grid over
- * its bounds grown by two modules (the entrance steps land out there). Any
- * change the foundation could see changes this.
+ * its bounds grown by two modules (the entrance steps land out there), of the
+ * land and of the paving. Any change the foundation could see changes this.
  */
-function groundDigest(b: Building, groundAt: GroundAt): string {
+function groundDigest(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): string {
   const box = buildingBounds(b, b.module * 2);
   let out = '';
   for (let i = 0; i <= 5; i++) {
     for (let j = 0; j <= 5; j++) {
-      const h = groundAt(box.minX + ((box.maxX - box.minX) * i) / 5, box.minY + ((box.maxY - box.minY) * j) / 5);
-      out += `${h.toFixed(2)},`;
+      const x = box.minX + ((box.maxX - box.minX) * i) / 5;
+      const y = box.minY + ((box.maxY - box.minY) * j) / 5;
+      out += `${groundAt(x, y).toFixed(2)}${pavedAt ? `/${pavedAt(x, y).toFixed(2)}` : ''},`;
     }
   }
   return out;

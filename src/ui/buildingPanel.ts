@@ -2,11 +2,12 @@ import { BLUEPRINTS, type Blueprint } from '@world/buildings/blueprints';
 import {
   BAY_COMPONENTS,
   type BayComponent,
-  type BuildingUse,
   ROOF_KINDS,
   type RoofKind,
   type Side,
 } from '@world/buildings/types';
+import { FINISHES, type Finish, type MaterialSpec, STYLES } from '@world/buildings/materials';
+import { ELEMENT_KINDS, type ElementKind } from '@world/buildings/types';
 import { METERS_PER_UNIT } from '@world/units';
 import { plural, t } from './i18n';
 
@@ -18,26 +19,37 @@ import { plural, t } from './i18n';
  */
 
 export type BuildingScope = 'bay' | 'storey' | 'side' | 'volume';
+export type MaterialScope = 'building' | 'volume' | 'face' | 'roof';
 export type BuildingParam = 'width' | 'depth' | 'storeys' | 'storeyHeight' | 'module';
 
 export interface BuildingPanelActions {
   setMode(mode: 'place' | 'edit'): void;
-  setUse(use: BuildingUse): void;
   chooseBlueprint(key: string): void;
   chooseUserBlueprint(key: string): void;
   removeUserBlueprint(key: string): void;
   /** `commit` is false while a slider is being dragged, true on release. */
   setParameter(name: BuildingParam, value: number, commit: boolean): void;
-  action(name: 'storeyUp' | 'storeyDown' | 'setback' | 'removeVolume' | 'rotate' | 'duplicate' | 'colour' | 'saveBlueprint' | 'delete'): void;
+  action(name: 'storeyUp' | 'storeyDown' | 'setback' | 'removeVolume' | 'rotate' | 'duplicate' | 'colour' | 'saveBlueprint' | 'delete' | 'ridge' | 'fall' | 'turnElement' | 'removeElement' | 'repeatElement' | 'mirror'): void;
+  /** Arms a free element (the same one again disarms it). */
+  armElement(kind: ElementKind): void;
+  /** Sets the selected element's width, length or height, world units. */
+  setElement(name: 'w' | 'd' | 'h', value: number): void;
+  /** Pushes the picked face region to `depth` world units (negative: in). */
+  setRelief(depth: number): void;
+  /** Roof pitch, degrees; `commit` false while the slider is dragged. */
+  setPitch(degrees: number, commit: boolean): void;
   addWing(side: Side): void;
   setRoof(roof: RoofKind): void;
   armComponent(component: BayComponent | null): void;
   setScope(scope: BuildingScope): void;
+  setMaterialScope(scope: MaterialScope): void;
+  applyStyle(key: string): void;
+  /** A new finish keeps the current colour, a new colour the current finish. */
+  paint(patch: Partial<MaterialSpec>): void;
 }
 
 export interface BuildingPanelState {
   readonly mode: 'place' | 'edit';
-  readonly use: BuildingUse;
   readonly blueprintKey: string | null;
   readonly userBlueprints: readonly Blueprint[];
   /** Slider values, world units for lengths, cells for counts. */
@@ -51,6 +63,16 @@ export interface BuildingPanelState {
   };
   readonly component: BayComponent | null;
   readonly scope: BuildingScope;
+  readonly materialScope: MaterialScope;
+  /** The picked face region: its size and how far it is pushed; null when none. */
+  readonly face: { readonly bays: number; readonly storeys: number; readonly depth: number } | null;
+  readonly armed: ElementKind | null;
+  /** The selected free element, if one is. */
+  readonly element: { readonly kind: ElementKind; readonly w: number; readonly d: number; readonly h: number } | null;
+  /** The selected volume's roof: its pitch and which shape controls apply. */
+  readonly roofShape: { readonly pitch: number; readonly pitched: boolean; readonly ridge: boolean; readonly fall: boolean } | null;
+  /** What the current material target is built in; null when there is none (a face scope with no face picked). */
+  readonly material: MaterialSpec | null;
 }
 
 export interface BuildingPanel {
@@ -58,6 +80,7 @@ export interface BuildingPanel {
 }
 
 const ICON_PRESET: Readonly<Record<string, string>> = {
+  block: '<path d="M4 8l8-4 8 4v10l-8 4-8-4Z"/><path d="M4 8l8 4 8-4M12 12v10"/>',
   house: '<path d="M4 20V11l8-6 8 6v9Z"/><path d="M10 20v-5h4v5"/>',
   rowhouse: '<path d="M3 20V9l4-3 4 3v11M11 20V9l4-3 4 3v11"/>',
   apartments: '<path d="M5 20V5h14v15"/><path d="M8 8h2m4 0h2M8 12h2m4 0h2M8 16h2m4 0h2"/>',
@@ -89,12 +112,41 @@ const ICON_ROOF: Readonly<Record<RoofKind, string>> = {
   sawtooth: '<path d="M3 18v-7l5-4v4l5-4v4l5-4v11"/>',
 };
 
+const ICON_FINISH: Readonly<Record<Finish, string>> = {
+  plaster: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M7 9c2-1 3 1 5 0s3-1 5 0M7 14c2-1 3 1 5 0s3-1 5 0"/>',
+  brick: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9h16M4 14h16M10 4v5M15 9v5M9 14v6"/>',
+  stone: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 10h16M4 15h16M12 4v6M8 10v5M16 10v5M12 15v5"/>',
+  concrete: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M12 4v16M4 12h16"/><circle cx="8" cy="8" r=".6"/><circle cx="16" cy="16" r=".6"/>',
+  wood: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 4v16M12 4v16M16 4v16"/>',
+  metal: '<path d="M4 20V4m4 16V4m4 16V4m4 16V4m4 16V4"/><path d="M4 4h16M4 20h16"/>',
+  glass: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M12 4v16M4 12h16M7 7l3-3M14 14l3-3"/>',
+  tile: '<path d="M3 17c2-3 4-3 6 0 2-3 4-3 6 0 2-3 4-3 6 0M3 11c2-3 4-3 6 0 2-3 4-3 6 0 2-3 4-3 6 0"/>',
+  roofing: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9h16M4 14h16M4 19h16"/>',
+};
+
+/** Colours offered at a click; any other comes from the colour picker. */
+const SWATCHES: readonly number[] = [
+  0xf2efe8, 0xe6d8bd, 0xd8c297, 0xc98f5a, 0xa4563f, 0x72412f, 0x9c6b43,
+  0xbdbcb4, 0x8f9ba5, 0x55585c, 0x2f3134, 0x7d8c6a, 0x5d7a8f, 0x9fb8c4,
+];
+
+const ICON_ELEMENT: Readonly<Record<ElementKind, string>> = {
+  stair: '<path d="M4 20h4v-4h4v-4h4V8h4"/><path d="M4 20V8"/>',
+  ramp: '<path d="M3 19h18L3 11Z"/>',
+  pillar: '<path d="M7 4h10M7 20h10M9 4v16m6-16v16"/>',
+  canopy: '<path d="M4 6v14"/><path d="M4 9h15l-2 3H4"/>',
+  wall: '<rect x="3" y="9" width="18" height="9"/><path d="M3 13.5h18M9 9v4.5m6 0V18"/>',
+  slab: '<path d="M3 12l9-4 9 4-9 4Z"/><path d="M3 12v2l9 4 9-4v-2"/>',
+};
+
+const hexOf = (colour: number): string => `#${colour.toString(16).padStart(6, '0')}`;
+
 const svg = (body: string): string =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 
 const PARAMS: readonly BuildingParam[] = ['width', 'depth', 'storeys', 'storeyHeight', 'module'];
 /** Lengths are shown and entered in metres; the model works in world units. */
-const IN_METRES: ReadonlySet<BuildingParam> = new Set(['storeyHeight', 'module']);
+const IN_METRES: ReadonlySet<BuildingParam> = new Set(['width', 'depth', 'storeyHeight', 'module']);
 
 export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel {
   const root = document.getElementById('buildingPalette') as HTMLElement;
@@ -110,9 +162,6 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
   root.querySelectorAll<HTMLButtonElement>('[data-building-mode]').forEach((b) => {
     b.onclick = () => actions.setMode(b.dataset['buildingMode'] === 'edit' ? 'edit' : 'place');
   });
-  root.querySelectorAll<HTMLButtonElement>('[data-building-use]').forEach((b) => {
-    b.onclick = () => actions.setUse(b.dataset['buildingUse'] as BuildingUse);
-  });
   root.querySelectorAll<HTMLButtonElement>('[data-building-action]').forEach((b) => {
     b.onclick = () => actions.action(b.dataset['buildingAction'] as Parameters<BuildingPanelActions['action']>[0]);
   });
@@ -120,6 +169,91 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
     b.onclick = () => actions.addWing(Number(b.dataset['buildingWing']) as Side);
   });
   scope.onchange = () => actions.setScope(scope.value as BuildingScope);
+  root.querySelectorAll<HTMLButtonElement>('[data-material-scope]').forEach((b) => {
+    b.onclick = () => actions.setMaterialScope(b.dataset['materialScope'] as MaterialScope);
+  });
+  const styles = document.getElementById('buildingStyles') as HTMLElement;
+  for (const style of STYLES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'building-style';
+    b.dataset['style'] = style.key;
+    // A swatch of the style's wall, trim and roof, then its name.
+    const chip = (c: number): string => `<i style="background:${hexOf(c)}"></i>`;
+    b.innerHTML = `<span class="chips">${chip(style.materials.wall.colour)}${chip(style.materials.trim.colour)}${chip(style.materials.roof.colour)}</span><span class="name"></span>`;
+    b.onclick = () => actions.applyStyle(style.key);
+    styles.appendChild(b);
+  }
+  const finishes = document.getElementById('buildingFinishes') as HTMLElement;
+  for (const finish of FINISHES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'building-component building-finish';
+    b.dataset['finish'] = finish;
+    b.innerHTML = `${svg(ICON_FINISH[finish])}<span></span>`;
+    b.onclick = () => actions.paint({ finish });
+    finishes.appendChild(b);
+  }
+  const swatches = document.getElementById('buildingSwatches') as HTMLElement;
+  for (const colour of SWATCHES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'building-swatch';
+    b.dataset['colour'] = String(colour);
+    b.style.setProperty('--swatch', hexOf(colour));
+    b.setAttribute('aria-label', hexOf(colour));
+    b.onclick = () => actions.paint({ colour });
+    swatches.appendChild(b);
+  }
+  const custom = document.createElement('input');
+  custom.type = 'color';
+  custom.className = 'building-swatch custom';
+  // `change` only: one pick, one undo step, not one per drag of the picker.
+  custom.onchange = () => actions.paint({ colour: parseInt(custom.value.slice(1), 16) });
+  swatches.appendChild(custom);
+  const materialNote = document.getElementById('buildingMaterialNote') as HTMLElement;
+  const elementButtons = document.getElementById('buildingElements') as HTMLElement;
+  for (const kind of ELEMENT_KINDS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'building-component building-element';
+    b.dataset['element'] = kind;
+    b.innerHTML = `${svg(ICON_ELEMENT[kind])}<span></span>`;
+    b.onclick = () => actions.armElement(kind);
+    elementButtons.appendChild(b);
+  }
+  const elementBox = document.getElementById('buildingElement') as HTMLElement;
+  const elementNote = document.getElementById('buildingElementNote') as HTMLElement;
+  const elementSummary = document.getElementById('buildingElementSummary') as HTMLElement;
+  const elementInputs = [...root.querySelectorAll<HTMLInputElement>('[data-element-param]')];
+  for (const input of elementInputs) {
+    const output = input.nextElementSibling as HTMLOutputElement;
+    input.oninput = () => {
+      output.textContent = Number(input.value).toFixed(2);
+    };
+    input.onchange = () => actions.setElement(input.dataset['elementParam'] as 'w' | 'd' | 'h', Number(input.value) / METERS_PER_UNIT);
+  }
+  const faceBox = document.getElementById('buildingFace') as HTMLElement;
+  const faceNote = document.getElementById('buildingFaceNote') as HTMLElement;
+  const faceSummary = document.getElementById('buildingFaceSummary') as HTMLElement;
+  const reliefDepth = document.getElementById('buildingReliefDepth') as HTMLInputElement;
+  const reliefDepthValue = document.getElementById('buildingReliefDepthValue') as HTMLOutputElement;
+  reliefDepth.oninput = () => {
+    reliefDepthValue.textContent = Number(reliefDepth.value).toFixed(2);
+  };
+  // One release, one edit (and one undo step).
+  reliefDepth.onchange = () => actions.setRelief(Number(reliefDepth.value) / METERS_PER_UNIT);
+  root.querySelectorAll<HTMLButtonElement>('[data-building-relief]').forEach((b) => {
+    b.onclick = () => actions.setRelief(Number(b.dataset['buildingRelief']) / METERS_PER_UNIT);
+  });
+  const roofShape = document.getElementById('buildingRoofShape') as HTMLElement;
+  const pitch = document.getElementById('buildingPitch') as HTMLInputElement;
+  const pitchValue = document.getElementById('buildingPitchValue') as HTMLOutputElement;
+  pitch.oninput = () => {
+    pitchValue.textContent = `${pitch.value}°`;
+    actions.setPitch(Number(pitch.value), false);
+  };
+  pitch.onchange = () => actions.setPitch(Number(pitch.value), true);
 
   for (const bp of BLUEPRINTS) {
     const b = document.createElement('button');
@@ -212,7 +346,6 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
       });
     };
     toggle('[data-building-mode]', 'data-building-mode', state.mode);
-    toggle('[data-building-use]', 'data-building-use', state.use);
     toggle('.building-preset[data-preset]', 'data-preset', state.mode === 'place' ? state.blueprintKey : null);
     toggle('.building-component', 'data-component', state.component);
     toggle('[data-roof]', 'data-roof', state.selection?.roof ?? null);
@@ -227,6 +360,46 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
       output.textContent = IN_METRES.has(name) ? value.toFixed(1) : String(value);
     }
     if (scope.value !== state.scope) scope.value = state.scope;
+    toggle('[data-material-scope]', 'data-material-scope', state.materialScope);
+    toggle('.building-finish', 'data-finish', state.material?.finish ?? null);
+    toggle('.building-swatch[data-colour]', 'data-colour', state.material ? String(state.material.colour) : null);
+    if (state.material && document.activeElement !== custom) custom.value = hexOf(state.material.colour);
+    materialNote.hidden = !(state.materialScope === 'face' && state.material === null && state.selection !== null);
+    toggle('.building-element', 'data-element', state.armed);
+    elementBox.hidden = state.element === null;
+    elementNote.hidden = state.element !== null || state.armed === null;
+    if (state.element) {
+      const el = state.element;
+      elementSummary.textContent = t(`building.element.${el.kind}`);
+      for (const input of elementInputs) {
+        if (document.activeElement === input) continue;
+        const metres = el[input.dataset['elementParam'] as 'w' | 'd' | 'h'] * METERS_PER_UNIT;
+        input.value = String(Math.round(metres * 20) / 20);
+        (input.nextElementSibling as HTMLOutputElement).textContent = metres.toFixed(2);
+      }
+    }
+    faceBox.hidden = state.face === null;
+    faceNote.hidden = state.face !== null;
+    if (state.face) {
+      faceSummary.textContent = t('building.face.summary', {
+        bays: plural('building.bays', state.face.bays),
+        floors: plural('building.floors', state.face.storeys),
+      });
+      if (document.activeElement !== reliefDepth) {
+        const metres = state.face.depth * METERS_PER_UNIT;
+        reliefDepth.value = String(Math.round(metres * 20) / 20);
+        reliefDepthValue.textContent = metres.toFixed(2);
+      }
+    }
+    roofShape.hidden = !state.roofShape?.pitched;
+    if (state.roofShape) {
+      if (document.activeElement !== pitch) {
+        pitch.value = String(state.roofShape.pitch);
+        pitchValue.textContent = `${state.roofShape.pitch}°`;
+      }
+      (roofShape.querySelector('[data-building-action="ridge"]') as HTMLButtonElement).hidden = !state.roofShape.ridge;
+      (roofShape.querySelector('[data-building-action="fall"]') as HTMLButtonElement).hidden = !state.roofShape.fall;
+    }
     // Each mode shows its own sections: presets to place, the selection to edit.
     // Presets stay reachable while editing, as a compact row of icons.
     root.classList.toggle('editing', state.mode === 'edit');
@@ -251,6 +424,20 @@ export function initBuildingPanel(actions: BuildingPanelActions): BuildingPanel 
   return { refresh };
 }
 
+/** Replaces the presets' icons with pictures of the models they place. */
+export function setPresetThumbnails(images: ReadonlyMap<string, string>): void {
+  document.querySelectorAll<HTMLButtonElement>('#buildingPresets .building-preset').forEach((b) => {
+    const url = images.get(b.dataset['preset'] ?? '');
+    const icon = b.querySelector('svg, img');
+    if (!url || !icon) return;
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    img.className = 'building-thumb';
+    icon.replaceWith(img);
+  });
+}
+
 /** Re-renders the script-built labels after a language change. */
 export function refreshBuildingPanelLabels(): void {
   const presets = document.getElementById('buildingPresets');
@@ -265,6 +452,23 @@ export function refreshBuildingPanelLabels(): void {
     b.title = label;
     b.setAttribute('aria-label', label);
   });
+  document.querySelectorAll<HTMLButtonElement>('#buildingStyles .building-style').forEach((b) => {
+    const label = t(`building.style.${b.dataset['style']}`);
+    (b.querySelector('.name') as HTMLElement).textContent = label;
+    b.title = label;
+  });
+  document.querySelectorAll<HTMLButtonElement>('#buildingElements .building-element').forEach((b) => {
+    const label = t(`building.element.${b.dataset['element']}`);
+    (b.querySelector('span') as HTMLElement).textContent = label;
+    b.title = label;
+  });
+  document.querySelectorAll<HTMLButtonElement>('#buildingFinishes .building-finish').forEach((b) => {
+    const label = t(`building.finish.${b.dataset['finish']}`);
+    (b.querySelector('span') as HTMLElement).textContent = label;
+    b.title = label;
+  });
+  const picker = document.querySelector<HTMLInputElement>('#buildingSwatches input');
+  if (picker) picker.title = t('building.colourPick');
   document.querySelectorAll<HTMLButtonElement>('#buildingComponents .building-component').forEach((b) => {
     const label = t(`building.component.${b.dataset['component']}`);
     (b.querySelector('span') as HTMLElement).textContent = label;

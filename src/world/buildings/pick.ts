@@ -1,4 +1,4 @@
-import { buildingBounds, levelElevation, roofRise, volumeHeight, volumeRectLocal, worldToLocal } from './geometry';
+import { bayWidth, baysOn, buildingBounds, elementRect, levelElevation, roofRise, volumeHeight, volumeRectLocal, worldToLocal } from './geometry';
 import type { Building, BuildingId, Side } from './types';
 
 /**
@@ -25,6 +25,8 @@ export interface BuildingHit {
   readonly storey: number;
   /** Bay index along the face, for a side face. */
   readonly index: number;
+  /** The free element hit, when it was one rather than a volume. */
+  readonly element?: number;
   readonly t: number;
   readonly x: number;
   readonly y: number;
@@ -73,9 +75,9 @@ export function pickBuilding(
       for (let k = 0; k < v.storeys.length; k++) {
         if (zr >= levelElevation(b, v.base + k) - 1e-6) level = v.base + k;
       }
-      const along = face === 0 || face === 2 ? lx / b.module - v.x : ly / b.module - v.y;
-      const count = face === 0 || face === 2 ? v.w : v.d;
-      const index = Math.max(0, Math.min(count - 1, Math.floor(along)));
+      const side = face === 'top' ? 0 : face;
+      const along = (face === 0 || face === 2 ? lx - v.x : ly - v.y) / bayWidth(b, v, side);
+      const index = Math.max(0, Math.min(baysOn(b, v, side) - 1, Math.floor(along)));
       const world = { x: b.x + lx * c - ly * s, y: b.y + lx * s + ly * c };
       best = {
         building: b.id,
@@ -88,6 +90,26 @@ export function pickBuilding(
         x: world.x,
         y: world.y,
         z,
+      };
+    }
+    for (const el of b.elements ?? []) {
+      const [x0, y0, x1, y1] = elementRect(el);
+      const hit = slab([o.x, o.y, ray.oz], [dx, dy, ray.dz], [x0, y0, floor + el.z], [x1, y1, floor + el.z + el.h]);
+      if (!hit || (best && hit.t >= best.t)) continue;
+      const lx = o.x + dx * hit.t;
+      const ly = o.y + dy * hit.t;
+      best = {
+        building: b.id,
+        volume: b.volumes[0]?.id ?? 1,
+        face: 'top',
+        level: 0,
+        storey: 0,
+        index: 0,
+        element: el.id,
+        t: hit.t,
+        x: b.x + lx * c - ly * s,
+        y: b.y + lx * s + ly * c,
+        z: ray.oz + ray.dz * hit.t,
       };
     }
   }

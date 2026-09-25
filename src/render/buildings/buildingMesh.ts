@@ -8,21 +8,58 @@ import {
   Uint32BufferAttribute,
 } from 'three';
 
+import type { Vec2 } from '@core/vec2';
 import { m } from '@world/units';
-import { type Foundation, type GroundAt, STEP_RISE, STEP_RUN, foundationOf } from '@world/buildings/foundation';
+import {
+  type Entrance,
+  type Foundation,
+  type GroundAt,
+  type PavedAt,
+  STEP_RUN,
+  flightRun,
+  foundationOf,
+} from '@world/buildings/foundation';
 import {
   type FacadeBay,
-  SAWTOOTH_PITCH,
-  SHED_PITCH,
-  GABLE_PITCH,
-  cellBeyond,
+  SIDE_NORMAL,
+  bayWidth,
+  baysOn,
+  coveredSpans,
+  exposedParts,
   facadeBays,
   levelElevation,
-  occupancy,
+  levelHeight,
+  projectionRect,
+  ridgeAlongX,
   roofRise,
+  roofSlope,
+  sawtoothRun,
+  shedFall,
+  sideLength,
+  sideStart,
   volumeHeight,
 } from '@world/buildings/geometry';
-import { type BayComponent, type Building, type Side, type Volume, SIDES, baysOn, volumeTop } from '@world/buildings/types';
+import {
+  type Finish,
+  type MaterialSpec,
+  FINISHES,
+  paletteOf,
+  plinthMaterial,
+  roofMaterial,
+  trimMaterial,
+  wallMaterial,
+} from '@world/buildings/materials';
+import { elementRect, onGround, stairSteps } from '@world/buildings/elements';
+import {
+  type BayComponent,
+  type Building,
+  type BuildingElement,
+  type Relief,
+  type Side,
+  type Volume,
+  SIDES,
+  volumeTop,
+} from '@world/buildings/types';
 import { type BuildingKit, PART_KINDS, type PartKind } from './kit';
 
 /**
@@ -53,27 +90,23 @@ interface Placement {
 
 type Rgb = readonly [number, number, number];
 
-/** Wall, trim (bands, reveals, parapet caps) and pitched-roof colour per palette. */
-const PALETTES: readonly { wall: number; trim: number; roof: number; awning: number }[] = [
-  { wall: 0xe6d8bd, trim: 0xf4eee2, roof: 0x9c4f3a, awning: 0x2f6f5e },
-  { wall: 0xa4563f, trim: 0xe0d6c6, roof: 0x4a4b50, awning: 0x8c2f2a },
-  { wall: 0xbdbcb4, trim: 0xdcdcd6, roof: 0x55585c, awning: 0x2d4f7a },
-  { wall: 0xd8c297, trim: 0xf0e6cf, roof: 0x8a5a3c, awning: 0xb5452b },
-  { wall: 0xf0efe9, trim: 0xc9ccc9, roof: 0x5b5f63, awning: 0x2f6f5e },
-  { wall: 0x72412f, trim: 0xd2c4b2, roof: 0x3d3e42, awning: 0xc4832d },
-  { wall: 0x8f9ba5, trim: 0xe0e5e8, roof: 0x4f5357, awning: 0x2d4f7a },
-  { wall: 0x939b91, trim: 0xc4c8c1, roof: 0x6f7577, awning: 0xc4a02d },
-];
-const PLINTH = 0x7f786d;
-const FLAT_ROOF = 0x76746e;
-const TERRACE = 0xb0a595;
-const ARCADE_FLOOR = 0x9d968a;
-const SAW_GLASS = 0x3c5360;
+/** A surface's colour (linear) and the finish it is drawn with. */
+interface Paint {
+  readonly rgb: Rgb;
+  readonly finish: Finish;
+}
 
 const linear = (hex: number, shade = 1): Rgb => {
   const c = new Color().setHex(hex);
   return [c.r * shade, c.g * shade, c.b * shade];
 };
+
+const paint = (m: MaterialSpec, shade = 1): Paint => ({ rgb: linear(m.colour, shade), finish: m.finish });
+
+const TERRACE: Paint = paint({ finish: 'stone', colour: 0xb0a595 });
+const ARCADE_FLOOR: Paint = paint({ finish: 'stone', colour: 0x9d968a });
+const SAW_GLASS: Paint = paint({ finish: 'glass', colour: 0x3c5360 });
+const ROOF_PLANT: Paint = paint({ finish: 'concrete', colour: 0x6c6a64 });
 
 // ------------------------------------------------------------------ dimensions
 const REVEAL = m(0.2);
@@ -145,30 +178,95 @@ function openingOf(component: BayComponent, W: number, H: number): Opening | nul
 
 // ------------------------------------------------------------------ shell builder
 
-/** Flat-shaded, vertex-coloured triangles in THREE's axes; winding fixed per face. */
-class Shell {
+/** One finish's share of a shell: flat-shaded, vertex-coloured, UV'd triangles. */
+class ShellPart {
   readonly position: number[] = [];
   readonly normal: number[] = [];
   readonly colour: number[] = [];
+  readonly uv: number[] = [];
   readonly index: number[] = [];
+}
+
+/**
+ * Triangles in THREE's axes, one buffer set per finish; winding fixed per face.
+ *
+ * UVs are in WORLD units laid on the face's own plane: along the face
+ * horizontally and up it (up the slope, on a roof), so a texture's courses of
+ * brick or rows of tiles run level on every wall and every roof. Each finish's
+ * material scales them to its tile (`kit.ts`).
+ */
+/** Smooth 3D value noise, 0..1, for tone that drifts over a whole facade. */
+function macroNoise(x: number, y: number, z: number): number {
+  const hash = (i: number, j: number, k: number): number => {
+    let h = Math.imul(i | 0, 0x27d4eb2d) ^ Math.imul(j | 0, 0x165667b1) ^ Math.imul(k | 0, 0x3c6ef372);
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+    return ((h ^ (h >>> 13)) >>> 0) / 4_294_967_296;
+  };
+  const x0 = Math.floor(x), y0 = Math.floor(y), z0 = Math.floor(z);
+  const s = (t: number): number => t * t * (3 - 2 * t);
+  const fx = s(x - x0), fy = s(y - y0), fz = s(z - z0);
+  const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+  const plane = (k: number): number =>
+    lerp(lerp(hash(x0, y0, k), hash(x0 + 1, y0, k), fx), lerp(hash(x0, y0 + 1, k), hash(x0 + 1, y0 + 1, k), fx), fy);
+  return lerp(plane(z0), plane(z0 + 1), fz);
+}
+
+/** World units over which a facade's tone drifts. */
+const MACRO_SCALE = m(12);
+/** How far above the ground floor a wall's weathering at the base reaches. */
+const GRIME_REACH = m(1.2);
+
+class Shell {
+  readonly parts = new Map<Finish, ShellPart>();
+  /**
+   * The ground floor's height for the building being emitted: walls darken
+   * towards it (splash and dirt at the base), which also seats the building
+   * on the ground. NaN turns it off.
+   */
+  ground = Number.NaN;
 
   /**
    * A planar polygon (3 or 4 world points, x/y map, z up) facing world normal
    * `n`. The winding is measured, never assumed: world y is mirrored into
    * three's z, which flips handedness (AGENTS.md trap: winding).
    */
-  face(points: readonly (readonly [number, number, number])[], n: readonly [number, number, number], c: Rgb): void {
-    const base = this.position.length / 3;
-    const three = points.map(([x, y, z]) => [x, z, -y] as const);
-    const length = Math.hypot(n[0], n[1], n[2]) || 1;
-    const nx = n[0] / length;
-    const ny = n[2] / length;
-    const nz = -n[1] / length;
-    for (const p of three) {
-      this.position.push(p[0], p[1], p[2]);
-      this.normal.push(nx, ny, nz);
-      this.colour.push(c[0], c[1], c[2]);
+  face(points: readonly (readonly [number, number, number])[], n: readonly [number, number, number], c: Paint): void {
+    let part = this.parts.get(c.finish);
+    if (!part) {
+      part = new ShellPart();
+      this.parts.set(c.finish, part);
     }
+    const base = part.position.length / 3;
+    const length = Math.hypot(n[0], n[1], n[2]) || 1;
+    const wx = n[0] / length;
+    const wy = n[1] / length;
+    const wz = n[2] / length;
+    // The face's own axes, in world: horizontal along it, and up it.
+    const flat = Math.hypot(wx, wy);
+    const tx = flat > 1e-6 ? -wy / flat : 1;
+    const ty = flat > 1e-6 ? wx / flat : 0;
+    // n x t: straight up on a wall, up the slope on a roof, +y on a flat.
+    const bx = -wz * ty;
+    const by = wz * tx;
+    const bz = wx * ty - wy * tx;
+    const three = points.map(([x, y, z]) => [x, z, -y] as const);
+    const nx = wx;
+    const ny = wz;
+    const nz = -wy;
+    const wall = Math.abs(wz) < 0.5;
+    points.forEach(([x, y, z], i) => {
+      const q = three[i] as readonly [number, number, number];
+      part.position.push(q[0], q[1], q[2]);
+      part.normal.push(nx, ny, nz);
+      // No two stretches of wall quite the same tone, and the base weathered.
+      let tone = 0.97 + macroNoise(x / MACRO_SCALE, y / MACRO_SCALE, z / MACRO_SCALE) * 0.06;
+      if (wall && Number.isFinite(this.ground)) {
+        const t = Math.min(1, Math.max(0, (z - this.ground) / GRIME_REACH));
+        tone *= 0.8 + 0.2 * t * t * (3 - 2 * t);
+      }
+      part.colour.push(c.rgb[0] * tone, c.rgb[1] * tone, c.rgb[2] * tone);
+      part.uv.push(x * tx + y * ty, x * bx + y * by + z * bz);
+    });
     const a = three[0] as readonly [number, number, number];
     const b = three[1] as readonly [number, number, number];
     const d = three[2] as readonly [number, number, number];
@@ -179,25 +277,17 @@ class Shell {
     const cz = ux * vy - uy * vx;
     const forward = cx * nx + cy * ny + cz * nz >= 0;
     const tri = (i: number, j: number, k: number): void => {
-      if (forward) this.index.push(base + i, base + j, base + k);
-      else this.index.push(base + i, base + k, base + j);
+      if (forward) part.index.push(base + i, base + j, base + k);
+      else part.index.push(base + i, base + k, base + j);
     };
     tri(0, 1, 2);
     if (points.length === 4) tri(0, 2, 3);
   }
 
   get triangles(): number {
-    return this.index.length / 3;
-  }
-
-  geometry(): BufferGeometry {
-    const g = new BufferGeometry();
-    g.setAttribute('position', new Float32BufferAttribute(this.position, 3));
-    g.setAttribute('normal', new Float32BufferAttribute(this.normal, 3));
-    g.setAttribute('color', new Float32BufferAttribute(this.colour, 3));
-    g.setIndex(new Uint32BufferAttribute(this.index, 1));
-    g.computeBoundingSphere();
-    return g;
+    let n = 0;
+    for (const part of this.parts.values()) n += part.index.length / 3;
+    return n;
   }
 }
 
@@ -217,14 +307,14 @@ interface BayFace {
   H: number;
 }
 
-function sideFrame(b: Building, v: Volume, side: Side, index: number): Pick<BayFace, 'ax' | 'ay' | 'tx' | 'ty' | 'nx' | 'ny'> {
-  const u = b.module;
-  switch (side) {
-    case 0: return { ax: (v.x + index) * u, ay: v.y * u, tx: 1, ty: 0, nx: 0, ny: -1 };
-    case 2: return { ax: (v.x + index) * u, ay: (v.y + v.d) * u, tx: 1, ty: 0, nx: 0, ny: 1 };
-    case 1: return { ax: (v.x + v.w) * u, ay: (v.y + index) * u, tx: 0, ty: 1, nx: 1, ny: 0 };
-    default: return { ax: v.x * u, ay: (v.y + index) * u, tx: 0, ty: 1, nx: -1, ny: 0 };
-  }
+/**
+ * The frame of a face of `side`, starting `along` units from the side's
+ * start, its plane `push` units out from the side (negative: set back).
+ */
+function sideFrame(v: Volume, side: Side, along: number, push = 0): Pick<BayFace, 'ax' | 'ay' | 'tx' | 'ty' | 'nx' | 'ny'> {
+  const s = sideStart(v, side);
+  const n = SIDE_NORMAL[side];
+  return { ax: s.x + s.tx * along + n.x * push, ay: s.y + s.ty * along + n.y * push, tx: s.tx, ty: s.ty, nx: n.x, ny: n.y };
 }
 
 // ------------------------------------------------------------------ one building
@@ -260,13 +350,13 @@ class Emitter {
   }
 
   /** A rectangle on (or parallel to) a bay face. */
-  rect(f: BayFace, a0: number, a1: number, h0: number, h1: number, depth: number, n: V3, c: Rgb): void {
+  rect(f: BayFace, a0: number, a1: number, h0: number, h1: number, depth: number, n: V3, c: Paint): void {
     if (a1 - a0 < 1e-4 || h1 - h0 < 1e-4) return;
     this.shell.face([this.P(f, a0, h0, depth), this.P(f, a1, h0, depth), this.P(f, a1, h1, depth), this.P(f, a0, h1, depth)], n, c);
   }
 
   /** An axis-aligned box in the local plan: sides and top (the bottom is never seen). */
-  box(x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, c: Rgb, top: Rgb = c): void {
+  box(x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, c: Paint, top: Paint = c): void {
     if (z1 - z0 < 1e-4) return;
     const sh = this.shell;
     sh.face([this.L(x0, y0, z0), this.L(x1, y0, z0), this.L(x1, y0, z1), this.L(x0, y0, z1)], this.N(0, -1), c);
@@ -277,12 +367,12 @@ class Emitter {
   }
 
   /** A horizontal strip at height h, from depth d0 to d1 into the wall. */
-  strip(f: BayFace, a0: number, a1: number, h: number, d0: number, d1: number, n: V3, c: Rgb): void {
+  strip(f: BayFace, a0: number, a1: number, h: number, d0: number, d1: number, n: V3, c: Paint): void {
     this.shell.face([this.P(f, a0, h, d0), this.P(f, a1, h, d0), this.P(f, a1, h, d1), this.P(f, a0, h, d1)], n, c);
   }
 
   /** A vertical strip across the wall's thickness at `a`, from h0 to h1. */
-  jamb(f: BayFace, a: number, h0: number, h1: number, d0: number, d1: number, n: V3, c: Rgb): void {
+  jamb(f: BayFace, a: number, h0: number, h1: number, d0: number, d1: number, n: V3, c: Paint): void {
     this.shell.face([this.P(f, a, h0, d0), this.P(f, a, h0, d1), this.P(f, a, h1, d1), this.P(f, a, h1, d0)], n, c);
   }
 
@@ -301,27 +391,54 @@ function emitBuilding(
   groundAt: GroundAt,
   shell: Shell,
   parts: Record<PartKind, Placement[]>,
+  pavedAt?: PavedAt,
 ): void {
   const e = new Emitter(b, shell, parts);
-  const u = b.module;
-  const occ = occupancy(b);
-  const bays = facadeBays(b, occ);
-  const f: Foundation = foundationOf(b, groundAt, bays);
+  const bays = facadeBays(b);
+  const f: Foundation = foundationOf(b, groundAt, bays, pavedAt);
   const floor = f.floor;
-  const palette = PALETTES[b.palette % PALETTES.length] ?? PALETTES[0]!;
+  shell.ground = floor;
+  const entranceKey = (volume: number, side: Side, index: number): string => `${volume}:${side}:${index}`;
+  const entrances = new Map<string, Entrance>(f.entrances.map((x) => [entranceKey(x.volume, x.side, x.index), x]));
+  /** The opening of an entrance, in its bay's face frame. */
+  const entranceOpening = (x: Entrance): Opening =>
+    openingOf(x.component, x.width, levelHeight(b, 0)) ??
+    { a0: x.width * 0.2, a1: x.width * 0.8, h0: 0, h1: levelHeight(b, 0) * 0.7, depth: REVEAL };
+  /** Where an entrance's bay starts along its side. */
+  const entranceStart = (x: Entrance, v: Volume): number => x.index * bayWidth(b, v, x.side);
   // A small, stable shade per building, so a street of one preset is not a
   // single flat colour.
   const shade = 0.93 + (((b.id * 2654435761) >>> 0) % 1000) / 1000 * 0.12;
-  const wall = linear(palette.wall, shade);
-  const trim = linear(palette.trim);
-  const roofColour = linear(palette.roof);
-  const plinth = linear(PLINTH);
-  const awning = new Color().setHex(palette.awning);
+  const wallOf = (v: Volume, side: Side): Paint => paint(wallMaterial(b, v, side), shade);
+  // Mouldings - bands, cornices, copings, reveals - are smooth: a finish with
+  // a pattern (formwork ties, courses) repeated along a moulding reads as rivets.
+  const trimSpec = trimMaterial(b);
+  const trim = paint({ finish: trimSpec.finish === 'metal' ? 'metal' : 'plaster', colour: trimSpec.colour });
+  const plinth = paint(plinthMaterial(b));
+  const awning = new Color().setHex(paletteOf(b).awning);
 
-  // ---- plinth: from below the lowest ground up to the floor
+  // ---- plinth: from below the lowest ground up to the floor, notched where
+  // a flight of steps is set into the building
   for (const v of b.volumes) {
     if (v.base !== 0) continue;
-    e.box(v.x * u - PLINTH_GROW, v.y * u - PLINTH_GROW, (v.x + v.w) * u + PLINTH_GROW, (v.y + v.d) * u + PLINTH_GROW, f.bottom, floor, plinth);
+    const notches = new Map<Side, { a0: number; a1: number; recess: number }[]>();
+    for (const x of f.entrances) {
+      if (x.volume !== v.id || x.recess <= 0) continue;
+      const o = entranceOpening(x);
+      const frame = sideFrame(v, x.side, entranceStart(x, v));
+      const start = x.side === 0 || x.side === 2 ? frame.ax : frame.ay;
+      const list = notches.get(x.side) ?? [];
+      list.push({ a0: start + o.a0, a1: start + o.a1, recess: x.recess });
+      notches.set(x.side, list);
+    }
+    emitPlinth(e, v, f.bottom, floor, plinth, notches);
+    // A projection standing on the ground stands on the plinth too.
+    for (const r of v.reliefs ?? []) {
+      const rect = r.storey0 === 0 ? projectionRect(b, v, r) : null;
+      if (!rect) continue;
+      const g = PLINTH_GROW;
+      e.box(rect[0] - g, rect[1] - g, rect[2] + g, rect[3] + g, f.bottom, floor, plinth);
+    }
   }
 
   // ---- facades, bay by bay: only outside walls are in `bays`
@@ -330,10 +447,16 @@ function emitBuilding(
   const volumes = new Map(b.volumes.map((v) => [v.id, v]));
   for (const bay of bays) {
     const v = volumes.get(bay.volume) as Volume;
-    const face: BayFace = { ...sideFrame(b, v, bay.side, bay.index), z0: floor + bay.z, W: bay.width, H: bay.height };
+    const face: BayFace = { ...sideFrame(v, bay.side, bay.start, bay.push), z0: floor + bay.z, W: bay.width, H: bay.height };
     const left = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index - 1}`);
     const right = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index + 1}`);
-    emitBay(e, face, bay, wall, trim, awning, left === 'pillar', right === 'pillar');
+    const recess = bay.level === 0 ? entrances.get(entranceKey(bay.volume, bay.side, bay.index))?.recess ?? 0 : 0;
+    emitBay(e, face, bay, wallOf(v, bay.side), trim, awning, left === 'pillar', right === 'pillar', recess);
+  }
+
+  // ---- reliefs: the cheeks, head and sill of every face region pushed in or out
+  for (const v of b.volumes) {
+    for (const r of v.reliefs ?? []) emitRelief(e, b, v, r, floor, wallOf(v, r.side), trim);
   }
 
   // ---- storey bands and cornices, per volume
@@ -341,29 +464,36 @@ function emitBuilding(
     for (let k = 1; k < v.storeys.length; k++) {
       const level = v.base + k;
       if (level === 0) continue;
-      band(e, v, u, floor + levelElevation(b, level), BAND_OUT, BAND_H, trim);
+      band(e, v, floor + levelElevation(b, level), BAND_OUT, BAND_H, trim);
     }
   }
 
   // ---- roofs
-  for (const v of b.volumes) emitRoof(e, b, v, occ, floor, wall, trim, roofColour);
+  for (const v of b.volumes) emitRoof(e, b, v, floor, (side) => wallOf(v, side), trim, paint(roofMaterial(b, v)));
 
-  // ---- entrance steps
+  // ---- entrance steps: outside, down to the ground in front, or set into
+  // the building where the paving leaves no room for them
   for (const entrance of f.entrances) {
     if (entrance.steps <= 0) continue;
     const v = volumes.get(entrance.volume) as Volume;
-    const frame = sideFrame(b, v, entrance.side, entrance.index);
-    const face: BayFace = { ...frame, z0: floor, W: u, H: 1 };
-    const opening = openingOf(entrance.component, u, levelElevation(b, 1) || b.groundHeight);
-    const halfW = ((opening ? opening.a1 - opening.a0 : u * 0.6) + m(0.5)) / 2;
+    const frame = sideFrame(v, entrance.side, entranceStart(entrance, v), entrance.push);
+    const face: BayFace = { ...frame, z0: floor, W: entrance.width, H: 1 };
+    const opening = entranceOpening(entrance);
     const n = e.N(face.nx, face.ny);
     const bottom = Math.min(entrance.ground, floor) - m(0.4);
+    // Every riser the same: the flight spans exactly ground to floor.
+    const riser = (floor - entrance.ground) / entrance.steps;
+    if (entrance.recess > 0) {
+      emitRecessedFlight(e, face, opening.a0, opening.a1, entrance, floor, bottom, riser, plinth);
+      continue;
+    }
+    const halfW = (opening.a1 - opening.a0 + m(0.5)) / 2;
     for (let j = 0; j < entrance.steps; j++) {
-      const top = floor - j * STEP_RISE;
+      const top = floor - j * riser;
       const d0 = -(j === 0 ? 0 : STEP_RUN * (j + 1));
       const d1 = -STEP_RUN * (j + 2);
-      const a0 = u / 2 - halfW;
-      const a1 = u / 2 + halfW;
+      const a0 = entrance.width / 2 - halfW;
+      const a1 = entrance.width / 2 + halfW;
       // Front, top and the two cheeks of this step's block.
       e.rect(face, a0, a1, bottom - floor, top - floor, d1, n, plinth);
       shell.face([e.P(face, a0, top - floor, d0), e.P(face, a1, top - floor, d0), e.P(face, a1, top - floor, d1), e.P(face, a0, top - floor, d1)], [0, 0, 1], plinth);
@@ -373,28 +503,55 @@ function emitBuilding(
     }
   }
 
+  // ---- the lot: a paved apron round the base, and a path to the street
+  emitLot(e, b, f, groundAt, pavedAt);
+
+  // ---- free elements: stairs, ramps, pillars, canopies, walls, slabs
+  for (const el of b.elements ?? []) {
+    const look = el.material ? paint(el.material) : elementPaint(b, el.kind);
+    emitElement(e, el, floor, f.bottom, look);
+  }
+
   // ---- cores: a lift overrun on the highest flat roof over the core
+  const u = b.module;
   for (const core of b.cores) {
     let best: Volume | null = null;
+    const cx = core.x + u / 2;
+    const cy = core.y + u / 2;
     for (const v of b.volumes) {
-      if (core.x < v.x || core.x >= v.x + v.w || core.y < v.y || core.y >= v.y + v.d) continue;
+      if (cx < v.x || cx >= v.x + v.w || cy < v.y || cy >= v.y + v.d) continue;
       if (!best || volumeTop(v) > volumeTop(best)) best = v;
     }
     if (!best || (best.roof !== 'flat' && best.roof !== 'terrace')) continue;
     const z = floor + volumeHeight(b, best);
-    e.box(core.x * u, core.y * u, (core.x + 1) * u, (core.y + 1) * u, z, z + m(3), trim, linear(FLAT_ROOF, 0.9));
+    e.box(core.x, core.y, core.x + u, core.y + u, z, z + m(3), trim, ROOF_PLANT);
   }
+}
+
+/** How much light a window reveal keeps: it sits in the wall's own shadow. */
+const REVEAL_SHADE = 0.68;
+
+const shaded = (c: Paint, k: number): Paint => ({ rgb: [c.rgb[0] * k, c.rgb[1] * k, c.rgb[2] * k], finish: c.finish });
+
+/** A stable number per bay, for choosing among window variants. */
+function bayHash(bay: FacadeBay): number {
+  let h = Math.imul(bay.volume + 1, 0x27d4eb2d) ^ Math.imul(bay.level + 7, 0x165667b1) ^ Math.imul(bay.side + 3, 0x3c6ef372) ^ Math.imul(bay.index + 11, 0x85ebca6b);
+  h ^= Math.imul(Math.round(bay.x * 7), 0x2c1b3c6d) ^ Math.imul(Math.round(bay.y * 7), 0x297a2d39);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  return (h ^ (h >>> 13)) >>> 0;
 }
 
 function emitBay(
   e: Emitter,
   f: BayFace,
   bay: FacadeBay,
-  wall: Rgb,
-  trim: Rgb,
+  wall: Paint,
+  trim: Paint,
   awning: Color,
   pillarLeft: boolean,
   pillarRight: boolean,
+  /** An entrance whose flight is set into the building: the opening becomes a porch this deep. */
+  recess = 0,
 ): void {
   const out = e.N(f.nx, f.ny);
   const along = e.N(f.tx, f.ty);
@@ -405,7 +562,7 @@ function emitBay(
     // An arcade: the wall steps back, a column stands on the facade line.
     e.rect(f, 0, W, 0, H, ARCADE, out, wall);
     e.strip(f, 0, W, H, 0, ARCADE, [0, 0, -1], trim);
-    e.strip(f, 0, W, 0.02, 0, ARCADE, [0, 0, 1], linear(ARCADE_FLOOR));
+    e.strip(f, 0, W, 0.02, 0, ARCADE, [0, 0, 1], ARCADE_FLOOR);
     if (!pillarLeft) e.jamb(f, 0, 0, H, 0, ARCADE, along, wall);
     if (!pillarRight) e.jamb(f, W, 0, H, 0, ARCADE, back, wall);
     const d = m(0.55);
@@ -413,31 +570,50 @@ function emitBay(
     return;
   }
 
-  const o = openingOf(bay.component, W, H);
-  if (!o) {
+  const found = openingOf(bay.component, W, H);
+  if (!found) {
     e.rect(f, 0, W, 0, H, 0, out, wall);
     return;
   }
+  // A porch runs down to the floor and back to the door; its floor is the
+  // top of the flight, so it has no sill of its own.
+  const o = recess > 0 ? { ...found, h0: 0, depth: recess } : found;
   // The wall around the hole, then the four reveals into it.
   e.rect(f, 0, o.a0, 0, H, 0, out, wall);
   e.rect(f, o.a1, W, 0, H, 0, out, wall);
   e.rect(f, o.a0, o.a1, 0, o.h0, 0, out, wall);
   e.rect(f, o.a0, o.a1, o.h1, H, 0, out, wall);
-  e.jamb(f, o.a0, o.h0, o.h1, 0, o.depth, along, trim);
-  e.jamb(f, o.a1, o.h0, o.h1, 0, o.depth, back, trim);
-  e.strip(f, o.a0, o.a1, o.h0, 0, o.depth, [0, 0, 1], trim);
-  e.strip(f, o.a0, o.a1, o.h1, 0, o.depth, [0, 0, -1], trim);
+  // The reveals are in the wall's shadow: darkened here, so a recess reads as
+  // one even where the ambient occlusion pass is off (the lower tiers).
+  const reveal = shaded(recess > 0 ? wall : trim, REVEAL_SHADE);
+  e.jamb(f, o.a0, o.h0, o.h1, 0, o.depth, along, reveal);
+  e.jamb(f, o.a1, o.h0, o.h1, 0, o.depth, back, reveal);
+  if (recess <= 0) e.strip(f, o.a0, o.a1, o.h0, 0, o.depth, [0, 0, 1], shaded(trim, 0.92));
+  e.strip(f, o.a0, o.a1, o.h1, 0, o.depth, [0, 0, -1], shaded(reveal, 0.8));
 
   const w = o.a1 - o.a0;
   const h = o.h1 - o.h0;
   const am = (o.a0 + o.a1) / 2;
   const hm = (o.h0 + o.h1) / 2;
   switch (bay.component) {
-    case 'window':
-      e.put('glass', f, am, hm, o.depth, w, h, 1);
+    case 'window': {
+      // No two rows alike: some rooms darker, some curtained, some with the
+      // roller shutter part way down - picked from the bay, so stable.
+      const pick = bayHash(bay) % 20;
+      e.put(pick < 5 ? 'glassDark' : 'glass', f, am, hm, o.depth, w, h, 1);
+      if (pick >= 5 && pick < 9) {
+        const side = w * 0.26;
+        e.put('curtain', f, o.a0 + side / 2, hm, o.depth - m(0.015), side, h, m(0.01));
+        e.put('curtain', f, o.a1 - side / 2, hm, o.depth - m(0.015), side, h, m(0.01));
+      } else if (pick >= 9 && pick < 13) {
+        const down = h * (0.25 + (pick - 9) * 0.15);
+        e.put('shutter', f, am, o.h1 - down / 2, o.depth - m(0.05), w, down, m(0.04));
+      }
       e.put('frame', f, am, hm, o.depth - m(0.03), w, h, m(0.06));
+      // The sill: out past the wall, with a drip.
       e.put('concrete', f, am, o.h0 - m(0.03), (o.depth - m(0.07)) / 2, w + m(0.14), m(0.06), o.depth + m(0.07));
       break;
+    }
     case 'wideWindow':
       e.put('glass', f, am, hm, o.depth, w, h, 1);
       e.put('frame', f, am, hm, o.depth - m(0.03), w, h, m(0.05));
@@ -450,7 +626,13 @@ function emitBay(
       break;
     case 'door':
       e.put('door', f, am, hm, o.depth + m(0.03), w, h, m(0.06));
-      if (bay.level === 0) e.put('concrete', f, am, o.h1 + m(0.3), -m(0.45), w + m(0.7), m(0.12), m(0.9));
+      if (bay.level === 0) {
+        // A canopy over the door: a slab with a fascia at its edge (a drip),
+        // and two brackets under it into the wall.
+        e.put('concrete', f, am, o.h1 + m(0.3), -m(0.45), w + m(0.7), m(0.12), m(0.9));
+        e.put('concrete', f, am, o.h1 + m(0.26), -m(0.88), w + m(0.7), m(0.2), m(0.05));
+        for (const side of [-1, 1]) e.put('frame', f, am + side * (w / 2 + m(0.2)), o.h1 + m(0.12), -m(0.25), m(0.06), m(0.3), m(0.5));
+      }
       break;
     case 'shopfront':
       e.put('glass', f, am, hm, o.depth, w, h, 1);
@@ -465,57 +647,485 @@ function emitBay(
   }
 }
 
-/** A horizontal band around a volume at height z (a storey line or a cornice). */
-function band(e: Emitter, v: Volume, u: number, z: number, out: number, height: number, c: Rgb): void {
-  const x0 = v.x * u - out;
-  const y0 = v.y * u - out;
-  const x1 = (v.x + v.w) * u + out;
-  const y1 = (v.y + v.d) * u + out;
-  e.box(x0, y0, x1, y1, z - height / 2, z + height / 2, c);
+/**
+ * A ground volume's plinth, from `bottom` to `floor`, PLINTH_GROW proud of the
+ * walls: its four sides and the ledge along their top (the rest of the top is
+ * under the floor, never seen), with a notch cut into a side wherever a
+ * flight of steps is set into the building.
+ * Notch intervals are along the side's own axis (+x on sides 0 and 2, +y on
+ * 1 and 3), in local units.
+ */
+function emitPlinth(
+  e: Emitter,
+  v: Volume,
+  bottom: number,
+  floor: number,
+  c: Paint,
+  notches: ReadonlyMap<Side, readonly { a0: number; a1: number; recess: number }[]>,
+): void {
+  const g = PLINTH_GROW;
+  const x0 = v.x - g;
+  const y0 = v.y - g;
+  const x1 = v.x + v.w + g;
+  const y1 = v.y + v.d + g;
+  for (const side of SIDES) {
+    // The side as a line in the plan: where it runs along its axis and where it stands across it.
+    const alongX = side === 0 || side === 2;
+    const lo = alongX ? x0 : y0;
+    const hi = alongX ? x1 : y1;
+    const at = side === 0 ? y0 : side === 1 ? x1 : side === 2 ? y1 : x0;
+    const inward = side === 0 || side === 3 ? 1 : -1;
+    const point = (a: number, depth: number, z: number): V3 =>
+      alongX ? e.L(a, at + inward * depth, z) : e.L(at + inward * depth, a, z);
+    const n = SIDE_NORMAL[side];
+    const out = e.N(n.x, n.y);
+    const cuts = [...(notches.get(side) ?? [])].sort((p, q) => p.a0 - q.a0);
+    let from = lo;
+    const wallTo = (to: number): void => {
+      if (to - from < 1e-4) return;
+      e.shell.face([point(from, 0, bottom), point(to, 0, bottom), point(to, 0, floor), point(from, 0, floor)], out, c);
+      e.shell.face([point(from, 0, floor), point(to, 0, floor), point(to, g, floor), point(from, g, floor)], [0, 0, 1], c);
+    };
+    for (const cut of cuts) {
+      wallTo(cut.a0);
+      // The notch's cheeks, facing into it; the flight fills its floor and back.
+      const depth = g + cut.recess;
+      const t = alongX ? e.N(1, 0) : e.N(0, 1);
+      e.shell.face([point(cut.a0, 0, bottom), point(cut.a0, depth, bottom), point(cut.a0, depth, floor), point(cut.a0, 0, floor)], t, c);
+      e.shell.face([point(cut.a1, depth, bottom), point(cut.a1, 0, bottom), point(cut.a1, 0, floor), point(cut.a1, depth, floor)], [-t[0], -t[1], 0], c);
+      from = cut.a1;
+    }
+    wallTo(hi);
+  }
 }
+
+/**
+ * A flight set into the building: from the plinth's face up to the door at
+ * `recess` behind the facade, between the porch's jambs. Treads share the run
+ * evenly, the top one is the landing in front of the door.
+ */
+function emitRecessedFlight(
+  e: Emitter,
+  face: BayFace,
+  a0: number,
+  a1: number,
+  entrance: Entrance,
+  floor: number,
+  bottom: number,
+  riser: number,
+  c: Paint,
+): void {
+  const n = e.N(face.nx, face.ny);
+  const start = -PLINTH_GROW;
+  if (entrance.threshold > PLINTH_GROW) {
+    // The slab over the verge, from the paving to the foot of the flight.
+    const top = entrance.ground - floor;
+    const out = -entrance.threshold;
+    const t = e.N(face.tx, face.ty);
+    e.rect(face, a0, a1, bottom - floor, top, out, n, c);
+    e.shell.face([e.P(face, a0, top, out), e.P(face, a1, top, out), e.P(face, a1, top, start), e.P(face, a0, top, start)], [0, 0, 1], c);
+    e.shell.face([e.P(face, a1, bottom - floor, out), e.P(face, a1, bottom - floor, start), e.P(face, a1, top, start), e.P(face, a1, top, out)], t, c);
+    e.shell.face([e.P(face, a0, bottom - floor, start), e.P(face, a0, bottom - floor, out), e.P(face, a0, top, out), e.P(face, a0, top, start)], [-t[0], -t[1], 0], c);
+  }
+  const tread = (entrance.recess - start) / (entrance.steps + 1);
+  for (let k = 0; k < entrance.steps; k++) {
+    const top = entrance.ground + (k + 1) * riser - floor;
+    const d0 = start + k * tread;
+    // Each block runs to the door, so only its riser and its tread show.
+    e.rect(face, a0, a1, bottom - floor, top, d0, n, c);
+    e.shell.face([e.P(face, a0, top, d0), e.P(face, a1, top, d0), e.P(face, a1, top, entrance.recess), e.P(face, a0, top, entrance.recess)], [0, 0, 1], c);
+  }
+}
+
+/**
+ * The frame of a relief: its two cheeks and its head and sill, between the
+ * side's plane and the region's (whose bays the facade loop already drew,
+ * pushed). A projection's head is a cap and its sill a soffit; a recess's are
+ * a ceiling and a floor.
+ */
+function emitRelief(e: Emitter, b: Building, v: Volume, r: Relief, floor: number, wall: Paint, trim: Paint): void {
+  const count = baysOn(b, v, r.side);
+  const top = v.storeys.length - 1;
+  if (r.depth === 0 || r.bay0 > count - 1 || r.storey0 > top) return;
+  const w = bayWidth(b, v, r.side);
+  const a0 = Math.max(0, r.bay0) * w;
+  const a1 = (Math.min(count - 1, r.bay1) + 1) * w;
+  const z0 = floor + levelElevation(b, v.base + Math.max(0, r.storey0));
+  const z1 = floor + levelElevation(b, v.base + Math.min(top, r.storey1) + 1);
+  const s = sideStart(v, r.side);
+  const n = SIDE_NORMAL[r.side];
+  const d = r.depth;
+  const P = (a: number, z: number, out: number): V3 => e.L(s.x + s.tx * a + n.x * out, s.y + s.ty * a + n.y * out, z);
+  const t = e.N(s.tx, s.ty);
+  const into: V3 = [-t[0], -t[1], 0];
+  const out = d > 0;
+  // Cheeks: facing away from the region on a projection, into it on a recess.
+  e.shell.face([P(a0, z0, 0), P(a0, z0, d), P(a0, z1, d), P(a0, z1, 0)], out ? into : t, wall);
+  e.shell.face([P(a1, z0, d), P(a1, z0, 0), P(a1, z1, 0), P(a1, z1, d)], out ? t : into, wall);
+  e.shell.face([P(a0, z1, 0), P(a1, z1, 0), P(a1, z1, d), P(a0, z1, d)], [0, 0, out ? 1 : -1], trim);
+  e.shell.face([P(a0, z0, 0), P(a1, z0, 0), P(a1, z0, d), P(a0, z0, d)], [0, 0, out ? -1 : 1], trim);
+}
+
+/**
+ * What stands on a flat roof: a water tank on a plinth and a roof hatch, in a
+ * corner picked from the building's id (so a street is not a row of copies),
+ * on roofs big enough to walk on.
+ */
+function emitRoofPlant(e: Emitter, b: Building, v: Volume, z: number, trim: Paint): void {
+  // Drains in two opposite corners, where the roof's fall takes the water.
+  for (const [dx, dy] of [[m(0.7), m(0.7)], [v.w - m(0.7), v.d - m(0.7)]] as const) {
+    const x = v.x + dx;
+    const y = v.y + dy;
+    e.box(x - m(0.18), y - m(0.18), x + m(0.18), y + m(0.18), z, z + 0.02, DRAIN);
+  }
+  if (v.w < m(6) || v.d < m(6)) return;
+  const pick = ((b.id * 2654435761 + v.id * 40503) >>> 0) % 4;
+  const inset = m(1.4);
+  const tank = m(2.2);
+  const cx = pick % 2 === 0 ? v.x + inset + tank / 2 : v.x + v.w - inset - tank / 2;
+  const cy = pick < 2 ? v.y + v.d - inset - tank / 2 : v.y + inset + tank / 2;
+  // The water tank on its plinth, with a lid proud of it and a hatch in the lid.
+  e.box(cx - tank / 2 - m(0.15), cy - tank / 2 - m(0.15), cx + tank / 2 + m(0.15), cy + tank / 2 + m(0.15), z, z + m(0.3), ROOF_PLANT);
+  e.box(cx - tank / 2, cy - tank / 2, cx + tank / 2, cy + tank / 2, z + m(0.3), z + m(1.8), trim);
+  e.box(cx - tank / 2 - m(0.06), cy - tank / 2 - m(0.06), cx + tank / 2 + m(0.06), cy + tank / 2 + m(0.06), z + m(1.8), z + m(1.9), ROOF_PLANT);
+  e.box(cx - m(0.3), cy - m(0.3), cx + m(0.3), cy + m(0.3), z + m(1.9), z + m(1.98), shaded(ROOF_PLANT, 0.8));
+  // The roof hatch, diagonally across from the tank.
+  const hx = pick % 2 === 0 ? v.x + v.w - m(2.4) : v.x + m(1.6);
+  const hy = pick < 2 ? v.y + m(1.6) : v.y + v.d - m(2.4);
+  e.box(hx, hy, hx + m(0.8), hy + m(0.8), z, z + m(0.45), ROOF_PLANT);
+  // Two air-conditioning condensers on a rail, with their fan grilles, on
+  // roofs with room for them.
+  if (v.w >= m(9) && v.d >= m(7)) {
+    const ux = pick % 2 === 0 ? v.x + v.w - m(1.4) : v.x + m(1.4);
+    const uy = v.y + v.d / 2;
+    for (const k of [-1, 1]) {
+      const y = uy + k * m(0.65);
+      e.box(ux - m(0.45), y - m(0.4), ux + m(0.45), y + m(0.4), z + m(0.15), z + m(0.85), CONDENSER);
+      e.box(ux - m(0.28), y - m(0.28), ux + m(0.28), y + m(0.28), z + m(0.85), z + m(0.87), DRAIN);
+    }
+  }
+  // A lift's machine room, with its door, on a building tall enough for one.
+  if (v.storeys.length + v.base >= 4 && b.cores.length === 0) {
+    const mx = v.x + v.w / 2;
+    const my = v.y + v.d / 2;
+    e.box(mx - m(1.3), my - m(1.3), mx + m(1.3), my + m(1.3), z, z + m(2.5), trim, ROOF_PLANT);
+    e.box(mx - m(0.45), my - m(1.34), mx + m(0.45), my - m(1.3), z + m(0.05), z + m(2.1), DOOR_PAINT);
+  }
+}
+
+const DRAIN: Paint = paint({ finish: 'metal', colour: 0x2d3033 });
+const CONDENSER: Paint = paint({ finish: 'metal', colour: 0xc9ccc9 });
+const DOOR_PAINT: Paint = paint({ finish: 'metal', colour: 0x5c6468 });
+
+const ELEMENT_CONCRETE: Paint = paint({ finish: 'concrete', colour: 0xcfcac0 });
+
+/** What an element is made of until the player says otherwise. */
+function elementPaint(b: Building, kind: BuildingElement['kind']): Paint {
+  switch (kind) {
+    case 'canopy': return ELEMENT_CONCRETE;
+    case 'wall': return paint(paletteOf(b).wall);
+    default: return ELEMENT_CONCRETE;
+  }
+}
+
+/**
+ * One free element. A stair is a block per step, every riser the same; a
+ * ramp a slope with its cheeks; the rest are boxes. Whatever stands on the
+ * ground reaches down to the plinth's bottom, so it meets sloping land.
+ */
+function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: number, c: Paint): void {
+  const [x0, y0, x1, y1] = elementRect(el);
+  const zb = onGround(el) ? bottom : floor + el.z;
+  const z0 = floor + el.z;
+  const z1 = z0 + el.h;
+  if (el.kind === 'stair' || el.kind === 'ramp') {
+    // The run measured from the foot (the `facing` end) inwards.
+    const sub = (u0: number, u1: number): [number, number, number, number] => {
+      switch (el.facing) {
+        case 0: return [x0, y0 + u0, x1, y0 + u1];
+        case 2: return [x0, y1 - u1, x1, y1 - u0];
+        case 3: return [x0 + u0, y0, x0 + u1, y1];
+        default: return [x1 - u1, y0, x1 - u0, y1];
+      }
+    };
+    if (el.kind === 'stair') {
+      const n = stairSteps(el);
+      const tread = el.d / n;
+      // A low flight is solid, like steps cast in place.
+      if (el.h <= STAIR_SOLID) {
+        for (let k = 0; k < n; k++) {
+          const [a0, b0, a1, b1] = sub(k * tread, (k + 1) * tread);
+          e.box(a0, b0, a1, b1, zb, z0 + ((k + 1) * el.h) / n, c);
+        }
+        return;
+      }
+      emitOpenStair(e, el, [x0, y0, x1, y1], z0, zb, c);
+      return;
+    }
+    // A ramp: its slope, rising from the foot, over two cheeks.
+    const foot = sub(0, 0);
+    const head = sub(el.d, el.d);
+    const [fa0, fb0, fa1, fb1] = foot;
+    const [ha0, hb0, ha1, hb1] = head;
+    const nf = SIDE_NORMAL[el.facing];
+    const slope = el.h / el.d;
+    const alongX = el.facing === 1 || el.facing === 3;
+    const footPts: [V3, V3] = alongX ? [e.L(fa0, fb0, z0), e.L(fa0, fb1, z0)] : [e.L(fa0, fb0, z0), e.L(fa1, fb0, z0)];
+    const headPts: [V3, V3] = alongX ? [e.L(ha0, hb0, z1), e.L(ha0, hb1, z1)] : [e.L(ha0, hb0, z1), e.L(ha1, hb0, z1)];
+    e.shell.face([footPts[0], footPts[1], headPts[1], headPts[0]], e.N(nf.x * slope, nf.y * slope, 1), c);
+    const cheek = (i: 0 | 1, n: V3): void => {
+      const f = footPts[i];
+      const h = headPts[i];
+      e.shell.face([[f[0], f[1], zb], [h[0], h[1], zb], h, f], n, c);
+    };
+    const t = alongX ? e.N(0, 1) : e.N(1, 0);
+    cheek(0, [-t[0], -t[1], 0]);
+    cheek(1, t);
+    e.shell.face([[footPts[0][0], footPts[0][1], zb], [footPts[1][0], footPts[1][1], zb], footPts[1], footPts[0]], e.N(nf.x, nf.y), c);
+    e.shell.face([[headPts[0][0], headPts[0][1], zb], [headPts[1][0], headPts[1][1], zb], headPts[1], headPts[0]], e.N(-nf.x, -nf.y), c);
+    return;
+  }
+  if (el.kind === 'canopy') {
+    // A cantilevered slab: a fascia down its free edge (the drip) and two
+    // steel brackets under it back to the wall.
+    e.box(x0, y0, x1, y1, z0, z1, c);
+    const n = SIDE_NORMAL[el.facing];
+    const lip = m(0.05);
+    const [lx0, ly0, lx1, ly1] = el.facing === 0 ? [x0, y0, x1, y0 + lip] : el.facing === 2 ? [x0, y1 - lip, x1, y1] : el.facing === 3 ? [x0, y0, x0 + lip, y1] : [x1 - lip, y0, x1, y1];
+    e.box(lx0 - Math.abs(n.y) * lip, ly0 - Math.abs(n.x) * lip, lx1 + Math.abs(n.y) * lip, ly1 + Math.abs(n.x) * lip, z0 - m(0.12), z1, shaded(c, 0.95));
+    const across = el.facing === 0 || el.facing === 2;
+    for (const t of [0.15, 0.85]) {
+      const bx = across ? x0 + (x1 - x0) * t : (x0 + x1) / 2;
+      const by = across ? (y0 + y1) / 2 : y0 + (y1 - y0) * t;
+      const half = el.d * 0.35;
+      e.box(
+        across ? bx - m(0.04) : bx - half,
+        across ? by - half : by - m(0.04),
+        across ? bx + m(0.04) : bx + half,
+        across ? by + half : by + m(0.04),
+        z0 - m(0.35),
+        z0,
+        RAIL,
+      );
+    }
+    return;
+  }
+  e.box(x0, y0, x1, y1, zb, z1, c);
+}
+
+const APRON = m(0.9);
+const PATH_WIDTH = m(1.4);
+const PATH_REACH = m(14);
+const LOT_LIFT = 0.06;
+const PAVING: Paint = paint({ finish: 'stone', colour: 0xbdb5a6 });
+
+/**
+ * What seats a building in its lot: a paved apron round the base of every
+ * ground volume, laid on the land (sampled, so it follows a slope) and left
+ * out where there is paving already; and, from every way in that does not
+ * open straight onto a footway, a path out to the nearest one.
+ */
+function emitLot(e: Emitter, b: Building, f: Foundation, groundAt: GroundAt, pavedAt: PavedAt | undefined): void {
+  const paved = (x: number, y: number): boolean => pavedAt !== undefined && Number.isFinite(pavedAt(x, y));
+  const up: V3 = [0, 0, 1];
+  const strip = (from: Vec2, to: Vec2, width: number, nx: number, ny: number): void => {
+    // A strip `width` out from the line from -> to (local), along normal (nx, ny).
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    const pieces = Math.max(1, Math.ceil(length / m(2)));
+    for (let i = 0; i < pieces; i++) {
+      const a = { x: from.x + ((to.x - from.x) * i) / pieces, y: from.y + ((to.y - from.y) * i) / pieces };
+      const c = { x: from.x + ((to.x - from.x) * (i + 1)) / pieces, y: from.y + ((to.y - from.y) * (i + 1)) / pieces };
+      const quad = [a, c, { x: c.x + nx * width, y: c.y + ny * width }, { x: a.x + nx * width, y: a.y + ny * width }];
+      const world = quad.map((p) => e.L(p.x, p.y, 0));
+      if (world.some((w) => paved(w[0], w[1]))) continue;
+      e.shell.face(world.map((w) => [w[0], w[1], groundAt(w[0], w[1]) + LOT_LIFT] as V3), up, PAVING);
+    }
+  };
+  for (const v of b.volumes) {
+    if (v.base !== 0) continue;
+    const g = PLINTH_GROW;
+    for (const side of SIDES) {
+      const n = SIDE_NORMAL[side];
+      const s0 = sideStart(v, side);
+      const length = sideLength(v, side);
+      // From corner to corner, grown past the corners so the apron closes round them.
+      const from = { x: s0.x - s0.tx * (g + APRON) + n.x * g, y: s0.y - s0.ty * (g + APRON) + n.y * g };
+      const to = { x: s0.x + s0.tx * (length + g + APRON) + n.x * g, y: s0.y + s0.ty * (length + g + APRON) + n.y * g };
+      strip(from, to, APRON, n.x, n.y);
+    }
+  }
+  for (const x of f.entrances) {
+    if (!pavedAt) break;
+    // Where the paving is right there, the entrance already opens onto it.
+    let reach = 0;
+    for (let d = APRON; d <= PATH_REACH; d += m(0.5)) {
+      if (paved(x.x + x.nx * d, x.y + x.ny * d)) {
+        reach = d;
+        break;
+      }
+    }
+    if (reach <= APRON + m(0.5)) continue;
+    const c = Math.cos(b.rotation);
+    const s = Math.sin(b.rotation);
+    // The entrance's point and normal in the local frame.
+    const lx = (x.x - b.x) * c + (x.y - b.y) * s;
+    const ly = -(x.x - b.x) * s + (x.y - b.y) * c;
+    const nx = x.nx * c + x.ny * s;
+    const ny = -x.nx * s + x.ny * c;
+    const start = APRON + m(0.1) + flightRun(x.steps);
+    const half = PATH_WIDTH / 2;
+    strip(
+      { x: lx + nx * start - ny * half, y: ly + ny * start + nx * half },
+      { x: lx + nx * start + ny * half, y: ly + ny * start - nx * half },
+      reach - start,
+      nx,
+      ny,
+    );
+  }
+}
+
+/** A flight taller than this is built open: treads on a raking slab, with handrails. */
+const STAIR_SOLID = m(1.2);
+const TREAD = m(0.05);
+const WAIST = m(0.25);
+const HANDRAIL = m(0.95);
+
+/**
+ * A tall flight as it is really built: every step a tread and a riser, the
+ * lot carried by a raking concrete slab (the waist) with its cheeks, and a
+ * handrail on both sides on a post at each end. A solid wedge that tall reads
+ * as a ramp of rubble, not a stair.
+ */
+function emitOpenStair(
+  e: Emitter,
+  el: BuildingElement,
+  [x0, y0, x1, y1]: [number, number, number, number],
+  z0: number,
+  zb: number,
+  c: Paint,
+): void {
+  const n = stairSteps(el);
+  const tread = el.d / n;
+  const riser = el.h / n;
+  // A point `u` along the run from the foot, `a` across it, at height z.
+  const P = (u: number, a: number, z: number): V3 => {
+    switch (el.facing) {
+      case 0: return e.L(x0 + a, y0 + u, z);
+      case 2: return e.L(x0 + a, y1 - u, z);
+      case 3: return e.L(x0 + u, y0 + a, z);
+      default: return e.L(x1 - u, y0 + a, z);
+    }
+  };
+  const nf = SIDE_NORMAL[el.facing];
+  const out = e.N(nf.x, nf.y);
+  const across = el.facing === 0 || el.facing === 2 ? e.N(1, 0) : e.N(0, 1);
+  const back: V3 = [-across[0], -across[1], 0];
+  const w = el.w;
+  for (let k = 0; k < n; k++) {
+    const top = z0 + (k + 1) * riser;
+    const u0 = k * tread;
+    const u1 = (k + 1) * tread;
+    // The riser (down to the step below, or to the ground for the first) and the tread.
+    const below = k === 0 ? zb : z0 + k * riser - TREAD;
+    e.shell.face([P(u0, 0, below), P(u0, w, below), P(u0, w, top), P(u0, 0, top)], out, c);
+    e.shell.face([P(u0, 0, top), P(u0, w, top), P(u1, w, top), P(u1, 0, top)], [0, 0, 1], c);
+    // The step's ends, down to the waist.
+    const base = Math.max(zb, z0 + (el.h * u0) / el.d - WAIST);
+    e.shell.face([P(u0, 0, base), P(u1, 0, base), P(u1, 0, top), P(u0, 0, top)], back, c);
+    e.shell.face([P(u1, w, base), P(u0, w, base), P(u0, w, top), P(u1, w, top)], across, c);
+  }
+  // The waist: a raking slab under the steps, from the ground up to the top.
+  const slope = el.h / el.d;
+  const soffit = (u: number): number => Math.max(zb, z0 + slope * u - WAIST);
+  e.shell.face([P(0, 0, soffit(0)), P(0, w, soffit(0)), P(el.d, w, soffit(el.d)), P(el.d, 0, soffit(el.d))], e.N(-nf.x * slope, -nf.y * slope, -1), c);
+  // Handrails: a slim rail over each edge, at a constant height above the nosings.
+  const rail = m(0.05);
+  for (const a of [rail, w - rail]) {
+    const r0 = z0 + riser + HANDRAIL;
+    const r1 = z0 + el.h + HANDRAIL;
+    e.shell.face([P(0, a - rail, r0), P(0, a + rail, r0), P(el.d, a + rail, r1), P(el.d, a - rail, r1)], e.N(nf.x * slope, nf.y * slope, 1), RAIL);
+    e.shell.face([P(0, a + rail, r0 - rail * 2), P(el.d, a + rail, r1 - rail * 2), P(el.d, a + rail, r1), P(0, a + rail, r0)], across, RAIL);
+    e.shell.face([P(el.d, a - rail, r1 - rail * 2), P(0, a - rail, r0 - rail * 2), P(0, a - rail, r0), P(el.d, a - rail, r1)], back, RAIL);
+    // Posts at the foot and the head, and one between every few steps.
+    const every = Math.max(1, Math.round(m(1.2) / tread));
+    for (let k = 0; k < n; k += every) postAt(e, P, k * tread + tread / 2, a, z0 + (k + 1) * riser, HANDRAIL);
+    postAt(e, P, el.d - tread / 2, a, z0 + el.h, HANDRAIL);
+  }
+}
+
+const RAIL: Paint = paint({ finish: 'metal', colour: 0x3a3f42 });
+
+/** A slim square post of the handrail, from a tread up to the rail. */
+function postAt(e: Emitter, P: (u: number, a: number, z: number) => V3, u: number, a: number, z: number, h: number): void {
+  const r = m(0.025);
+  const corners: V3[] = [P(u - r, a - r, 0), P(u + r, a - r, 0), P(u + r, a + r, 0), P(u - r, a + r, 0)];
+  for (let i = 0; i < 4; i++) {
+    const p = corners[i] as V3;
+    const q = corners[(i + 1) % 4] as V3;
+    const mid: V3 = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, 0];
+    const centre: V3 = [(corners[0]![0] + corners[2]![0]) / 2, (corners[0]![1] + corners[2]![1]) / 2, 0];
+    e.shell.face([[p[0], p[1], z], [q[0], q[1], z], [q[0], q[1], z + h], [p[0], p[1], z + h]], [mid[0] - centre[0], mid[1] - centre[1], 0], RAIL);
+  }
+}
+
+/** A horizontal band around a volume at height z (a storey line or a cornice). */
+function band(e: Emitter, v: Volume, z: number, out: number, height: number, c: Paint): void {
+  // A moulding is a PROFILE, not a slab: a fillet under a projecting drip,
+  // whose shadow line is what makes it read at a distance.
+  const tier = (o: number, z0: number, z1: number, paint: Paint): void =>
+    e.box(v.x - o, v.y - o, v.x + v.w + o, v.y + v.d + o, z0, z1, paint);
+  tier(out * 0.45, z - height / 2, z - height * 0.1, shaded(c, 0.94));
+  tier(out, z - height * 0.1, z + height / 2, c);
+}
+
 
 function emitRoof(
   e: Emitter,
   b: Building,
   v: Volume,
-  occ: ReturnType<typeof occupancy>,
   floor: number,
-  wall: Rgb,
-  trim: Rgb,
-  roofColour: Rgb,
+  wallOf: (side: Side) => Paint,
+  trim: Paint,
+  roofColour: Paint,
 ): void {
-  const u = b.module;
   const top = volumeTop(v);
   const z = floor + volumeHeight(b, v);
-  const x0 = v.x * u;
-  const y0 = v.y * u;
-  const x1 = (v.x + v.w) * u;
-  const y1 = (v.y + v.d) * u;
+  const x0 = v.x;
+  const y0 = v.y;
+  const x1 = v.x + v.w;
+  const y1 = v.y + v.d;
   const sh = e.shell;
   const up: V3 = [0, 0, 1];
 
   if (v.roof === 'flat' || v.roof === 'terrace') {
     const terrace = v.roof === 'terrace';
-    sh.face([e.L(x0, y0, z), e.L(x1, y0, z), e.L(x1, y1, z), e.L(x0, y1, z)], up, linear(terrace ? TERRACE : FLAT_ROOF));
+    sh.face([e.L(x0, y0, z), e.L(x1, y0, z), e.L(x1, y1, z), e.L(x0, y1, z)], up, terrace ? TERRACE : roofColour);
+    if (!terrace) emitRoofPlant(e, b, v, z, trim);
     // Its top stays just under the roof: a face shared with the roof cap
     // z-fights into stripes.
-    band(e, v, u, z - m(0.2), CORNICE_OUT, m(0.36), trim);
+    band(e, v, z - m(0.2), CORNICE_OUT, m(0.36), trim);
     // An edge bay gets a parapet (or a railing, on a terrace) only where the
     // roof really ends: not against a neighbour of the same or greater height.
     for (const side of SIDES) {
-      const count = baysOn(v, side);
-      for (let index = 0; index < count; index++) {
-        const [ci, cj] = cellBeyond(v, side, index);
-        if (occ.at(ci, cj, top - 1) !== undefined || occ.at(ci, cj, top) !== undefined) continue;
-        const frame = sideFrame(b, v, side, index);
-        const face: BayFace = { ...frame, z0: z, W: u, H: PARAPET_H };
-        if (terrace) {
-          e.put('roofRailing', face, u / 2, 0, m(0.12), u, m(1.0), 1);
-        } else {
-          const out = e.N(face.nx, face.ny);
-          e.rect(face, 0, u, 0, PARAPET_H, 0, out, wall);
-          e.rect(face, 0, u, 0, PARAPET_H, PARAPET_T, [-out[0], -out[1], 0], linear(FLAT_ROOF, 1.15));
-          e.strip(face, 0, u, PARAPET_H, 0, PARAPET_T, up, trim);
+      // Only where the roof really ends: not against a neighbour as tall or taller.
+      const spans = [...coveredSpans(b, v, side, top - 1), ...coveredSpans(b, v, side, top)].sort((p, q) => p[0] - q[0]);
+      const step = bayWidth(b, v, side);
+      for (const [p0, p1] of exposedParts(spans, 0, sideLength(v, side))) {
+        // In bay-sized pieces, so a railing keeps its baluster spacing.
+        const pieces = Math.max(1, Math.round((p1 - p0) / step));
+        const W = (p1 - p0) / pieces;
+        for (let k = 0; k < pieces; k++) {
+          const face: BayFace = { ...sideFrame(v, side, p0 + k * W), z0: z, W, H: PARAPET_H };
+          if (terrace) {
+            e.put('roofRailing', face, W / 2, 0, m(0.12), W, m(1.0), 1);
+          } else {
+            const out = e.N(face.nx, face.ny);
+            e.rect(face, 0, W, 0, PARAPET_H, 0, out, wallOf(side));
+            e.rect(face, 0, W, 0, PARAPET_H, PARAPET_T, [-out[0], -out[1], 0], shaded(wallOf(side), 0.82));
+            // The coping: proud of both faces, so the rain drips clear of them.
+            e.strip(face, 0, W, PARAPET_H, -m(0.05), PARAPET_T + m(0.05), up, trim);
+            e.rect(face, 0, W, PARAPET_H - m(0.06), PARAPET_H, -m(0.05), out, shaded(trim, 0.9));
+          }
         }
       }
     }
@@ -523,14 +1133,14 @@ function emitRoof(
   }
 
   const rise = roofRise(b, v);
-  const alongX = v.w >= v.d;
+  const slope = roofSlope(v);
   if (v.roof === 'gable' || v.roof === 'hip') {
+    const alongX = ridgeAlongX(v);
     // Work in a frame whose "long" axis runs along the ridge.
     const span = alongX ? y1 - y0 : x1 - x0;
-    const pitch = GABLE_PITCH;
-    const eave = z - EAVES * pitch;
+    const eave = z - EAVES * slope;
     const ridge = z + rise;
-    const hip = v.roof === 'hip' ? span / 2 : 0;
+    const hip = v.roof === 'hip' ? Math.min(span / 2, (alongX ? x1 - x0 : y1 - y0) / 2) : 0;
     const Lp = (along: number, across: number, height: number): V3 =>
       alongX ? e.L(along, across, height) : e.L(across, along, height);
     const a0 = alongX ? x0 : y0;
@@ -538,16 +1148,16 @@ function emitRoof(
     const c0 = alongX ? y0 : x0;
     const c1 = alongX ? y1 : x1;
     const cm = (c0 + c1) / 2;
-    const nNear = alongX ? e.N(0, -1, 1) : e.N(-1, 0, 1);
-    const nFar = alongX ? e.N(0, 1, 1) : e.N(1, 0, 1);
+    const nNear = alongX ? e.N(0, -slope, 1) : e.N(-slope, 0, 1);
+    const nFar = alongX ? e.N(0, slope, 1) : e.N(slope, 0, 1);
     const o = EAVES;
     const r0 = a0 + hip;
     const r1 = a1 - hip;
     // The two long slopes.
     sh.face([Lp(a0 - o, c0 - o, eave), Lp(a1 + o, c0 - o, eave), Lp(r1, cm, ridge), Lp(r0, cm, ridge)], nNear, roofColour);
     sh.face([Lp(a1 + o, c1 + o, eave), Lp(a0 - o, c1 + o, eave), Lp(r0, cm, ridge), Lp(r1, cm, ridge)], nFar, roofColour);
-    const endLow = alongX ? e.N(-1, 0, 1) : e.N(0, -1, 1);
-    const endHigh = alongX ? e.N(1, 0, 1) : e.N(0, 1, 1);
+    const endLow = alongX ? e.N(-slope, 0, 1) : e.N(0, -slope, 1);
+    const endHigh = alongX ? e.N(slope, 0, 1) : e.N(0, slope, 1);
     if (v.roof === 'hip') {
       sh.face([Lp(a0 - o, c1 + o, eave), Lp(a0 - o, c0 - o, eave), Lp(r0, cm, ridge)], endLow, roofColour);
       sh.face([Lp(a1 + o, c0 - o, eave), Lp(a1 + o, c1 + o, eave), Lp(r1, cm, ridge)], endHigh, roofColour);
@@ -555,34 +1165,61 @@ function emitRoof(
       // Gable ends: wall-coloured triangles.
       const w0 = alongX ? e.N(-1, 0) : e.N(0, -1);
       const w1 = alongX ? e.N(1, 0) : e.N(0, 1);
-      sh.face([Lp(a0, c0, z), Lp(a0, c1, z), Lp(a0, cm, ridge)], w0, wall);
-      sh.face([Lp(a1, c1, z), Lp(a1, c0, z), Lp(a1, cm, ridge)], w1, wall);
+      sh.face([Lp(a0, c0, z), Lp(a0, c1, z), Lp(a0, cm, ridge)], w0, wallOf(alongX ? 3 : 0));
+      sh.face([Lp(a1, c1, z), Lp(a1, c0, z), Lp(a1, cm, ridge)], w1, wallOf(alongX ? 1 : 2));
     }
     return;
   }
 
   if (v.roof === 'shed') {
-    const run = y1 - y0;
-    const high = z + run * SHED_PITCH;
-    const o = EAVES;
-    sh.face([e.L(x0 - o, y0 - o, z - o * SHED_PITCH), e.L(x1 + o, y0 - o, z - o * SHED_PITCH), e.L(x1 + o, y1 + o, high + o * SHED_PITCH), e.L(x0 - o, y1 + o, high + o * SHED_PITCH)], e.N(0, -1, 4), roofColour);
-    sh.face([e.L(x0, y0, z), e.L(x0, y1, z), e.L(x0, y1, high)], e.N(-1, 0), wall);
-    sh.face([e.L(x1, y1, z), e.L(x1, y0, z), e.L(x1, y1, high)], e.N(1, 0), wall);
-    sh.face([e.L(x1, y1, z), e.L(x0, y1, z), e.L(x0, y1, high), e.L(x1, y1, high)], e.N(0, 1), wall);
+    // One slope, low along the side it falls towards and high along the
+    // opposite one. Q(a, t) is a point of the plan: `a` along the low eave
+    // (0..1), `t` from the low eave to the high one (0..1).
+    const fall = shedFall(v);
+    const lowAlongX = fall === 0 || fall === 2;
+    const eaveLength = lowAlongX ? x1 - x0 : y1 - y0;
+    const run = lowAlongX ? y1 - y0 : x1 - x0;
+    const Q = (a: number, t: number, height: number): V3 => {
+      switch (fall) {
+        case 0: return e.L(x0 + a * (x1 - x0), y0 + t * (y1 - y0), height);
+        case 2: return e.L(x0 + a * (x1 - x0), y1 - t * (y1 - y0), height);
+        case 3: return e.L(x0 + t * (x1 - x0), y0 + a * (y1 - y0), height);
+        default: return e.L(x1 - t * (x1 - x0), y0 + a * (y1 - y0), height);
+      }
+    };
+    const high = z + run * slope;
+    const oa = EAVES / eaveLength;
+    const ot = EAVES / run;
+    const nf = SIDE_NORMAL[fall];
+    sh.face(
+      [Q(-oa, -ot, z - EAVES * slope), Q(1 + oa, -ot, z - EAVES * slope), Q(1 + oa, 1 + ot, high + EAVES * slope), Q(-oa, 1 + ot, high + EAVES * slope)],
+      e.N(nf.x * slope, nf.y * slope, 1),
+      roofColour,
+    );
+    // The two end walls, rising with the slope, and the tall wall at the back.
+    const back = ((fall + 2) % 4) as Side;
+    const ends = SIDES.filter((x) => x !== fall && x !== back);
+    for (const end of ends) {
+      const a = (lowAlongX ? end === 3 : end === 0) ? 0 : 1;
+      const n = SIDE_NORMAL[end];
+      sh.face([Q(a, 0, z), Q(a, 1, z), Q(a, 1, high)], e.N(n.x, n.y), wallOf(end));
+    }
+    const nb = SIDE_NORMAL[back];
+    sh.face([Q(0, 1, z), Q(1, 1, z), Q(1, 1, high), Q(0, 1, high)], e.N(nb.x, nb.y), wallOf(back));
     return;
   }
 
   // Sawtooth: teeth of up to two cells, glazed on their steep face.
-  const tooth = Math.min(2, v.d) * u;
-  const toothRise = tooth * 0.5 * SAWTOOTH_PITCH;
-  const glass = linear(SAW_GLASS);
+  const tooth = sawtoothRun(b, v);
+  const toothRise = tooth * 0.5 * slope;
+  const glass = SAW_GLASS;
   for (let t0 = y0; t0 < y1 - 1e-6; t0 += tooth) {
     const t1 = Math.min(y1, t0 + tooth);
     const h = toothRise * ((t1 - t0) / tooth);
     sh.face([e.L(x0, t0, z), e.L(x1, t0, z), e.L(x1, t1, z + h), e.L(x0, t1, z + h)], e.N(0, -1, 2), roofColour);
     sh.face([e.L(x1, t1, z), e.L(x0, t1, z), e.L(x0, t1, z + h), e.L(x1, t1, z + h)], e.N(0, 1), glass);
-    sh.face([e.L(x0, t0, z), e.L(x0, t1, z), e.L(x0, t1, z + h)], e.N(-1, 0), wall);
-    sh.face([e.L(x1, t1, z), e.L(x1, t0, z), e.L(x1, t1, z + h)], e.N(1, 0), wall);
+    sh.face([e.L(x0, t0, z), e.L(x0, t1, z), e.L(x0, t1, z + h)], e.N(-1, 0), wallOf(3));
+    sh.face([e.L(x1, t1, z), e.L(x1, t0, z), e.L(x1, t1, z + h)], e.N(1, 0), wallOf(1));
   }
 }
 
@@ -601,11 +1238,17 @@ export interface PartBatch {
  * (see `layer.ts`), so an edit re-emits one building and merely concatenates
  * the rest.
  */
-export interface BuildingChunk {
+export interface ShellChunk {
   readonly position: Float32Array;
   readonly normal: Float32Array;
   readonly colour: Float32Array;
+  readonly uv: Float32Array;
   readonly index: Uint32Array;
+}
+
+export interface BuildingChunk {
+  /** The shell, one fragment per finish it uses. */
+  readonly shells: Readonly<Partial<Record<Finish, ShellChunk>>>;
   readonly parts: Readonly<Record<PartKind, PartBatch>>;
 }
 
@@ -620,10 +1263,10 @@ function writeMatrix(out: Float32Array, offset: number, p: Placement): void {
   out[offset + 12] = p.x; out[offset + 13] = p.z; out[offset + 14] = -p.y; out[offset + 15] = 1;
 }
 
-export function emitChunk(b: Building, groundAt: GroundAt): BuildingChunk {
+export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): BuildingChunk {
   const shell = new Shell();
   const parts = Object.fromEntries(PART_KINDS.map((k) => [k, [] as Placement[]])) as Record<PartKind, Placement[]>;
-  emitBuilding(b, groundAt, shell, parts);
+  emitBuilding(b, groundAt, shell, parts, pavedAt);
   const batches = {} as Record<PartKind, PartBatch>;
   for (const kind of PART_KINDS) {
     const list = parts[kind];
@@ -640,13 +1283,18 @@ export function emitChunk(b: Building, groundAt: GroundAt): BuildingChunk {
     });
     batches[kind] = { matrices, colours, count: list.length };
   }
-  return {
-    position: new Float32Array(shell.position),
-    normal: new Float32Array(shell.normal),
-    colour: new Float32Array(shell.colour),
-    index: new Uint32Array(shell.index),
-    parts: batches,
-  };
+  const shells: Partial<Record<Finish, ShellChunk>> = {};
+  for (const [finish, part] of shell.parts) {
+    if (part.index.length === 0) continue;
+    shells[finish] = {
+      position: new Float32Array(part.position),
+      normal: new Float32Array(part.normal),
+      colour: new Float32Array(part.colour),
+      uv: new Float32Array(part.uv),
+      index: new Uint32Array(part.index),
+    };
+  }
+  return { shells, parts: batches };
 }
 
 /**
@@ -660,35 +1308,43 @@ export function assembleBuildingMeshes(chunks: readonly BuildingChunk[], kit: Bu
   const meshes: (Mesh | InstancedMesh)[] = [];
   let triangles = 0;
 
-  let vertices = 0;
-  let indices = 0;
-  for (const chunk of chunks) {
-    vertices += chunk.position.length / 3;
-    indices += chunk.index.length;
-  }
-  if (indices > 0) {
+  for (const finish of FINISHES) {
+    let vertices = 0;
+    let indices = 0;
+    for (const chunk of chunks) {
+      const part = chunk.shells[finish];
+      if (!part) continue;
+      vertices += part.position.length / 3;
+      indices += part.index.length;
+    }
+    if (indices === 0) continue;
     const position = new Float32Array(vertices * 3);
     const normal = new Float32Array(vertices * 3);
     const colour = new Float32Array(vertices * 3);
+    const uv = new Float32Array(vertices * 2);
     const index = new Uint32Array(indices);
     let v = 0;
     let n = 0;
     for (const chunk of chunks) {
-      position.set(chunk.position, v * 3);
-      normal.set(chunk.normal, v * 3);
-      colour.set(chunk.colour, v * 3);
-      for (let i = 0; i < chunk.index.length; i++) index[n + i] = (chunk.index[i] as number) + v;
-      v += chunk.position.length / 3;
-      n += chunk.index.length;
+      const part = chunk.shells[finish];
+      if (!part) continue;
+      position.set(part.position, v * 3);
+      normal.set(part.normal, v * 3);
+      colour.set(part.colour, v * 3);
+      uv.set(part.uv, v * 2);
+      for (let i = 0; i < part.index.length; i++) index[n + i] = (part.index[i] as number) + v;
+      v += part.position.length / 3;
+      n += part.index.length;
     }
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(position, 3));
     g.setAttribute('normal', new Float32BufferAttribute(normal, 3));
     g.setAttribute('color', new Float32BufferAttribute(colour, 3));
+    g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
     g.setIndex(new Uint32BufferAttribute(index, 1));
     g.computeBoundingSphere();
-    const mesh = new Mesh(g, ghost ? kit.ghostShell : kit.shell);
-    mesh.name = ghost ? 'building-preview-shell' : 'building-shell';
+    const mesh = new Mesh(g, ghost ? kit.ghostShell : kit.shell[finish]);
+    mesh.name = ghost ? `building-preview-shell-${finish}` : `building-shell-${finish}`;
     mesh.castShadow = !ghost;
     mesh.receiveShadow = !ghost;
     meshes.push(mesh);
@@ -744,6 +1400,7 @@ export function buildBuildingMeshes(
   groundAt: GroundAt,
   kit: BuildingKit,
   ghost = false,
+  pavedAt?: PavedAt,
 ): BuildingMeshes {
-  return assembleBuildingMeshes([...buildings].map((b) => emitChunk(b, groundAt)), kit, ghost);
+  return assembleBuildingMeshes([...buildings].map((b) => emitChunk(b, groundAt, pavedAt)), kit, ghost);
 }

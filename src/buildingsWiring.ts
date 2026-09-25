@@ -2,8 +2,8 @@ import type { Vec2 } from '@core/vec2';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
-import { footprintCells, topLevel } from '@world/buildings/geometry';
-import { type BuildingUse, BUILDING_USES, volumeById } from '@world/buildings/types';
+import { DEFAULT_PITCH, footprintBox, ridgeAlongX, shedFall, topLevel } from '@world/buildings/geometry';
+import { type Side, type Volume, volumeById } from '@world/buildings/types';
 import { METERS_PER_UNIT } from '@world/units';
 import { type EditResult, clearBuildingsOnRoads, deleteBuilding } from '@editor/buildings';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
@@ -11,7 +11,9 @@ import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
 import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
-import { type BuildingPanelState, initBuildingPanel, refreshBuildingPanelLabels } from '@ui/buildingPanel';
+import { type BuildingPanelState, initBuildingPanel, refreshBuildingPanelLabels, setPresetThumbnails } from '@ui/buildingPanel';
+import { renderBuildingThumbnails } from '@render/buildings/thumbnails';
+import { BLUEPRINTS } from '@world/buildings/blueprints';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
 import { plural, t } from '@ui/i18n';
 
@@ -88,6 +90,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       };
     },
     groundAt: (x, y) => scene.terrainHeightAt(x, y),
+    pavedAt: (x, y) => scene.pavedHeightAt(x, y),
     pickPixels: 16,
   };
 
@@ -116,10 +119,19 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   };
 
   const tool = new BuildingTool(view, host);
+  // Alt held frees a drag from the grid (Windows convention; the key is read
+  // from the window so the pointer handlers need not pass it).
+  const setFree = (free: boolean): void => {
+    if (tool.free === free) return;
+    tool.free = free;
+    host.changed();
+  };
+  window.addEventListener('keydown', (e) => setFree(e.altKey));
+  window.addEventListener('keyup', (e) => setFree(e.altKey));
+  window.addEventListener('blur', () => setFree(false));
 
   const panel = initBuildingPanel({
     setMode: (mode) => tool.setMode(mode),
-    setUse: (use) => tool.setUse(use),
     chooseBlueprint: (key) => tool.chooseBlueprint(key),
     chooseUserBlueprint(key) {
       const bp = library.list().find((b) => b.key === key);
@@ -145,6 +157,24 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         case 'duplicate': tool.duplicateSelected(); break;
         case 'colour': tool.cyclePalette(); break;
         case 'delete': tool.deleteSelected(); break;
+        case 'turnElement': {
+          const el = tool.selectedElement();
+          if (el) tool.updateElement({ facing: ((el.facing + 1) % 4) as Side });
+          break;
+        }
+        case 'removeElement': tool.removeElement(); break;
+        case 'repeatElement': tool.repeatElement(); break;
+        case 'mirror': tool.mirrorSelected(); break;
+        case 'ridge': {
+          const v = selectedVolume();
+          if (v) tool.setRoofShape({ ridge: ridgeAlongX(v) ? 'y' : 'x' });
+          break;
+        }
+        case 'fall': {
+          const v = selectedVolume();
+          if (v) tool.setRoofShape({ fall: ((shedFall(v) + 1) % 4) as Side });
+          break;
+        }
         case 'saveBlueprint': {
           const b = tool.selected();
           if (!b) break;
@@ -164,7 +194,39 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       if (component && tool.selection?.bay) tool.applyToSelectedBay(component);
     },
     setScope: (scope) => tool.setScope(scope),
+    setMaterialScope: (scope) => tool.setMaterialScope(scope),
+    setRelief: (depth) => tool.setRelief(depth),
+    armElement: (kind) => tool.armElement(kind),
+    applyStyle: (key) => tool.applyStyle(key),
+    setElement: (name, value) => tool.updateElement({ [name]: value }),
+    setPitch(degrees, commit) {
+      if (commit) tool.setRoofShape({ pitch: degrees });
+    },
+    paint: (patch) => tool.paint(patch),
   });
+
+  const selectedVolume = (): Volume | undefined => {
+    const b = tool.selected();
+    return b && tool.selection ? volumeById(b, tool.selection.volume) : undefined;
+  };
+
+  const faceState = (): BuildingPanelState['face'] => {
+    const region = tool.mode === 'edit' ? tool.faceRegion() : null;
+    if (!region) return null;
+    return { bays: region.bay1 - region.bay0 + 1, storeys: region.storey1 - region.storey0 + 1, depth: tool.reliefDepth() };
+  };
+
+  const roofShapeState = (): BuildingPanelState['roofShape'] => {
+    const v = tool.mode === 'edit' ? selectedVolume() : undefined;
+    if (!v) return null;
+    const pitched = v.roof !== 'flat' && v.roof !== 'terrace';
+    return {
+      pitch: v.pitch ?? DEFAULT_PITCH[v.roof] ?? 30,
+      pitched,
+      ridge: v.roof === 'gable' || v.roof === 'hip',
+      fall: v.roof === 'shed',
+    };
+  };
 
   const panelState = (): BuildingPanelState => {
     const b = tool.mode === 'edit' ? tool.selected() : null;
@@ -182,24 +244,32 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       };
     let selection: BuildingPanelState['selection'] = null;
     if (b && v) {
-      const f = footprintCells(b);
+      const f = footprintBox(b);
       selection = {
         floors: topLevel(b),
-        width: (f.x1 - f.x0) * b.module,
-        depth: (f.y1 - f.y0) * b.module,
+        width: f.x1 - f.x0,
+        depth: f.y1 - f.y0,
         volumes: b.volumes.length,
         roof: v.roof,
       };
     }
     return {
       mode: tool.mode,
-      use: b?.use ?? body.use,
       blueprintKey: tool.blueprintKey,
       userBlueprints: library.list(),
       params,
       selection,
       component: tool.component,
       scope: tool.scope,
+      materialScope: tool.materialScope,
+      face: faceState(),
+      armed: tool.armed,
+      element: (() => {
+        const el = tool.mode === 'edit' ? tool.selectedElement() : null;
+        return el ? { kind: el.kind, w: el.w, d: el.d, h: el.h } : null;
+      })(),
+      roofShape: roofShapeState(),
+      material: tool.mode === 'edit' ? tool.currentMaterial() : null,
     };
   };
 
@@ -210,6 +280,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   };
 
   const floorOf = tool.floorOf.bind(tool);
+  let thumbnailsDone = false;
 
   return {
     tool,
@@ -224,10 +295,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     },
     key(e) {
       const ctrl = e.ctrlKey || e.metaKey;
-      if (!ctrl && /^[1-4]$/.test(e.key)) {
-        tool.setUse(BUILDING_USES[Number(e.key) - 1] as BuildingUse);
-        return true;
-      }
       if (ctrl && e.key.toLowerCase() === 'c' && tool.copySelected()) {
         deps.flash('building.copied');
         return true;
@@ -237,6 +304,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     activate() {
       panelDirty = true;
       refreshPanel();
+      if (!thumbnailsDone) {
+        thumbnailsDone = true;
+        // After this frame, so opening the palette is not held up by it.
+        requestAnimationFrame(() => setPresetThumbnails(renderBuildingThumbnails(scene.gl, BLUEPRINTS)));
+      }
     },
     deactivate() {
       tool.deactivate();
@@ -255,8 +327,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       let label: Parameters<typeof drawBuildingOverlay>[1]['label'] = null;
       if (preview) {
         const floors = topLevel(preview.building);
-        const f = footprintCells(preview.building);
-        const size = `${((f.x1 - f.x0) * preview.building.module * METERS_PER_UNIT).toFixed(0)} × ${((f.y1 - f.y0) * preview.building.module * METERS_PER_UNIT).toFixed(0)} m`;
+        const f = footprintBox(preview.building);
+        const size = `${((f.x1 - f.x0) * METERS_PER_UNIT).toFixed(1)} × ${((f.y1 - f.y0) * METERS_PER_UNIT).toFixed(1)} m`;
         const text = preview.problem
           ? t(`building.problem.${preview.problem}`)
           : `${plural('building.floors', floors)} · ${size}`;
@@ -266,10 +338,20 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         project: view.project,
         hover: hovered && tool.mode === 'edit' ? { building: hovered, floor: floorOf(hovered) } : null,
         selected: shown && tool.selection && tool.mode === 'edit'
-          ? { building: shown, volume: tool.selection.volume, floor: floorOf(shown), bay: tool.selection.bay }
+          ? { building: shown, volume: tool.selection.volume, floor: floorOf(shown), bay: tool.selection.bay, region: tool.faceRegion() }
           : null,
         handles: tool.handles(),
         label,
+        measure: tool.measure
+          ? {
+            text: tool.measure.kind === 'floors'
+              ? plural('building.floors', tool.measure.value)
+              : `${(tool.measure.value * METERS_PER_UNIT).toFixed(tool.measure.kind === 'depth' ? 2 : 1)} m`,
+            x: tool.measure.x,
+            y: tool.measure.y,
+            z: tool.measure.z,
+          }
+          : null,
       });
     },
     restored() {

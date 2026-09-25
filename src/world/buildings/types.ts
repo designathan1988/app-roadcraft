@@ -1,4 +1,5 @@
 import { m } from '../units';
+import type { BuildingMaterials, MaterialSpec, VolumeMaterials } from './materials';
 
 /**
  * The modular building model. See docs/buildings.md.
@@ -12,8 +13,13 @@ declare const BuildingIdBrand: unique symbol;
 export type BuildingId = number & { readonly [BuildingIdBrand]: true };
 export const asBuildingId = (n: number): BuildingId => n as BuildingId;
 
-/** The schema written on every stored building. See `serialize.ts`. */
-export const BUILDING_SCHEMA = 1;
+/**
+ * The schema written on every stored building. See `serialize.ts`.
+ *
+ * 1: volumes, cores and spaces measured in whole cells of `module`.
+ * 2: measured in world units, any size (the editor snaps them to `GRID`).
+ */
+export const BUILDING_SCHEMA = 2;
 
 export const BUILDING_USES = ['residential', 'commercial', 'industrial', 'mixed'] as const;
 export type BuildingUse = (typeof BUILDING_USES)[number];
@@ -59,8 +65,8 @@ export interface Facade {
 
 /**
  * Extension point: a subdivision of a storey (a flat, a shop, a corridor).
- * Stored and round-tripped; nothing simulates it yet. Cells are in the
- * building's local grid.
+ * Stored and round-tripped; nothing simulates it yet. A rectangle of the
+ * building's local frame, world units.
  */
 export interface Space {
   id: number;
@@ -80,7 +86,24 @@ export interface Storey {
   spaces?: Space[];
 }
 
-/** A rectangular block of cells, standing on level `base`. */
+/**
+ * A region of one face pushed in or out: whole bays `bay0..bay1` of `side`,
+ * on storeys `storey0..storey1` of the volume, moved `depth` world units
+ * along the face's outward normal - negative is a RECESS (a loggia, an inset
+ * panel, a porch), positive a PROJECTION (a bay window, a raised panel, a
+ * pilaster). Stored in bays and storeys, so it follows the facade when the
+ * volume is resized.
+ */
+export interface Relief {
+  side: Side;
+  bay0: number;
+  bay1: number;
+  storey0: number;
+  storey1: number;
+  depth: number;
+}
+
+/** A rectangular block, standing on level `base`: a rectangle of the local frame, world units. */
 export interface Volume {
   id: number;
   x: number;
@@ -91,10 +114,50 @@ export interface Volume {
   roof: RoofKind;
   /** Bottom to top: storey k occupies level `base + k`. */
   storeys: Storey[];
+  /** This volume's own walls and roof, over the building's (see `materials.ts`). */
+  materials?: VolumeMaterials;
+  /** Faces pushed in or out (see `Relief`). */
+  reliefs?: Relief[];
+  /** Roof pitch in degrees, for pitched roofs; absent = the roof kind's default. */
+  pitch?: number;
+  /**
+   * Which way a pitched roof runs. Gable and hip: the ridge along the local x
+   * axis ('x') or y ('y'); absent = along the longer side. Shed: the side it
+   * falls towards (absent = the front).
+   */
+  ridge?: 'x' | 'y';
+  fall?: Side;
+}
+
+/** Free parts a building can be given besides its volumes. See docs/buildings.md, "Elements". */
+export const ELEMENT_KINDS = ['stair', 'ramp', 'pillar', 'canopy', 'wall', 'slab'] as const;
+export type ElementKind = (typeof ELEMENT_KINDS)[number];
+
+/**
+ * A free part of a building: a flight of stairs, a ramp, a pillar, a canopy,
+ * a free-standing wall, a slab. A box of the building's local frame - its
+ * plan centred on `(x, y)`, `w` across and `d` along the direction it faces
+ * (`facing`, a side of the local frame), from `z` above the ground floor up
+ * `h`. For a stair or a ramp `facing` is the way it goes DOWN and `h` its
+ * rise; for a canopy `facing` is the way it projects and `h` its thickness.
+ * It moves, turns and is demolished with its building.
+ */
+export interface BuildingElement {
+  id: number;
+  kind: ElementKind;
+  x: number;
+  y: number;
+  facing: Side;
+  w: number;
+  d: number;
+  z: number;
+  h: number;
+  material?: MaterialSpec;
 }
 
 /**
- * Extension point: a vertical circulation shaft. A lift core is drawn as an
+ * Extension point: a vertical circulation shaft, a module square whose
+ * corner is at `(x, y)` in the local frame. A lift core is drawn as an
  * overrun box on a flat roof; nothing moves in it yet.
  */
 export interface Core {
@@ -115,7 +178,7 @@ export interface Building {
   /** Radians, counter-clockwise, of the local +x axis. */
   rotation: number;
   use: BuildingUse;
-  /** Width of one grid cell / facade bay, world units. */
+  /** The width a facade bay aims at, world units: each side is shared into bays of about this. */
   module: number;
   /** Height of level 0, world units. */
   groundHeight: number;
@@ -123,11 +186,16 @@ export interface Building {
   storeyHeight: number;
   /** Per-level height overrides, building-wide; `null`/absent = default. */
   levels?: (number | null)[];
-  /** Facade colour scheme, an index into the renderer's palette table. */
+  /** Colour scheme: the default material of every surface (`PALETTE_MATERIALS`). */
   palette: number;
+  /** Building-wide materials, over the palette (see `materials.ts`). */
+  materials?: BuildingMaterials;
   volumes: Volume[];
+  /** Free parts: stairs, ramps, pillars, canopies, walls, slabs. */
+  elements?: BuildingElement[];
   cores: Core[];
   nextVolumeId: number;
+  nextElementId?: number;
   name?: string;
   /** The blueprint this building was placed from, for the UI only. */
   blueprint?: string;
@@ -142,9 +210,14 @@ export const DEFAULT_MODULE = m(3);
 export const MIN_STOREY_HEIGHT = m(2.6);
 export const MAX_STOREY_HEIGHT = m(9);
 export const MAX_STOREYS = 60;
-/** Widest a volume may be, in cells, on either axis. */
-export const MAX_CELLS = 40;
+/** Widest a volume may be on either axis, world units. */
+export const MAX_SIZE = m(160);
 export const MAX_VOLUMES = 24;
+/** Deepest a recess may go into a volume, and furthest a projection may stand out. */
+export const MAX_RECESS = m(4);
+export const MAX_PROJECTION = m(2.4);
+export const MIN_PITCH = 5;
+export const MAX_PITCH = 60;
 export const PALETTE_COUNT = 8;
 
 export const isBuildingUse = (v: unknown): v is BuildingUse =>
@@ -154,6 +227,8 @@ export const isBayComponent = (v: unknown): v is BayComponent =>
 export const isRoofKind = (v: unknown): v is RoofKind =>
   (ROOF_KINDS as readonly unknown[]).includes(v);
 export const isSide = (v: unknown): v is Side => v === 0 || v === 1 || v === 2 || v === 3;
+export const isElementKind = (v: unknown): v is ElementKind => (ELEMENT_KINDS as readonly unknown[]).includes(v);
+export const MAX_ELEMENTS = 64;
 
 export const bayKey = (side: Side, index: number): string => `${side}:${index}`;
 
@@ -166,9 +241,6 @@ export function componentAt(facade: Facade, side: Side, index: number): BayCompo
 export function cloneBuilding<T extends Building>(b: T): T {
   return JSON.parse(JSON.stringify(b)) as T;
 }
-
-/** The number of bays on one side of a volume. */
-export const baysOn = (v: Volume, side: Side): number => (side === 0 || side === 2 ? v.w : v.d);
 
 /** The level a volume's roof sits on (one past its top storey). */
 export const volumeTop = (v: Volume): number => v.base + v.storeys.length;

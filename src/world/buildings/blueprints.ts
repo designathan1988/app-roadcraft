@@ -6,11 +6,13 @@ import {
   type Core,
   type Facade,
   type RoofKind,
+  type Side,
   type Storey,
   type Volume,
   BUILDING_SCHEMA,
   DEFAULT_MODULE,
   bayKey,
+  componentAt,
 } from './types';
 
 /**
@@ -84,10 +86,16 @@ export const DEFAULT_PALETTE: Readonly<Record<BuildingUse, number>> = {
   mixed: 3,
 };
 
+/** Whole bays along a length, at about one module each. */
+const bayCount = (length: number, module: number): number => Math.max(1, Math.round(length / module));
+
+/** `n` default modules, world units: how the presets below are measured. */
+const bays = (n: number): number => n * DEFAULT_MODULE;
+
 /**
- * The parametric generator: a single volume of `w x d` cells and `storeys`
- * storeys, with the facades and roof its use implies. Every preset and the
- * "type" buttons start from this.
+ * The parametric generator: a single volume `w x d` world units and `storeys`
+ * storeys, with the facades and roof its use implies. The presets start from
+ * this.
  */
 export function generateBody(
   use: BuildingUse,
@@ -96,6 +104,7 @@ export function generateBody(
   storeys: number,
   options: { module?: number; groundHeight?: number; storeyHeight?: number; roof?: RoofKind; palette?: number } = {},
 ): BlueprintBody {
+  const across = bayCount(w, options.module ?? DEFAULT_MODULE);
   const volume: Volume = {
     id: 1,
     x: 0,
@@ -104,7 +113,7 @@ export function generateBody(
     d,
     base: 0,
     roof: options.roof ?? defaultRoof(use, storeys),
-    storeys: Array.from({ length: storeys }, (_, level) => defaultStorey(use, level, w)),
+    storeys: Array.from({ length: storeys }, (_, level) => defaultStorey(use, level, across)),
   };
   return {
     schema: BUILDING_SCHEMA,
@@ -119,17 +128,83 @@ export function generateBody(
   };
 }
 
+/** What an access component becomes on a storey above the street. */
+const ABOVE_STREET: Partial<Record<BayComponent, BayComponent>> = {
+  door: 'window',
+  shopfront: 'wideWindow',
+  loadingDoor: 'window',
+};
+
+/**
+ * A storey for above `source`, in the building's own style rather than a
+ * category's: the same facade, with every way in (a door, a shopfront, a
+ * loading door) turned into the window that belongs above it.
+ */
+export function upperStoreyFrom(source: Storey): Storey {
+  const lift = (c: BayComponent): BayComponent => ABOVE_STREET[c] ?? c;
+  const facade: Facade = { fill: lift(source.facade.fill) };
+  if (source.facade.sides) {
+    facade.sides = Object.fromEntries(Object.entries(source.facade.sides).map(([k, c]) => [k, lift(c)]));
+  }
+  if (source.facade.bays) {
+    // A single-bay override that now says what its side says anyway is dropped.
+    const kept = Object.entries(source.facade.bays)
+      .map(([key, c]) => [key, lift(c)] as const)
+      .filter(([key, c]) => c !== componentAt({ ...facade, bays: {} }, Number(key.split(':')[0]) as Side, 0));
+    if (kept.length > 0) facade.bays = Object.fromEntries(kept);
+  }
+  const storey: Storey = { facade };
+  if (source.use) storey.use = source.use;
+  return storey;
+}
+
+/**
+ * The neutral starting block: no category, just a mass of `w x d` units and
+ * `storeys` storeys with windows all round, a door in the middle of the
+ * front and a flat roof. Everything else is shaped from here.
+ */
+export function generateBlock(
+  w: number,
+  d: number,
+  storeys: number,
+  options: { module?: number; groundHeight?: number; storeyHeight?: number; roof?: RoofKind; palette?: number } = {},
+): BlueprintBody {
+  const across = bayCount(w, options.module ?? DEFAULT_MODULE);
+  const ground: Storey = { facade: { fill: 'window', bays: { [bayKey(0, Math.floor(across / 2))]: 'door' } } };
+  const volume: Volume = {
+    id: 1,
+    x: 0,
+    y: 0,
+    w,
+    d,
+    base: 0,
+    roof: options.roof ?? 'flat',
+    storeys: Array.from({ length: storeys }, (_, level) => (level === 0 ? ground : upperStoreyFrom(ground))),
+  };
+  return {
+    schema: BUILDING_SCHEMA,
+    use: 'mixed',
+    module: options.module ?? DEFAULT_MODULE,
+    groundHeight: options.groundHeight ?? DEFAULT_GROUND_HEIGHT,
+    storeyHeight: options.storeyHeight ?? DEFAULT_STOREY_HEIGHT,
+    palette: options.palette ?? 4,
+    volumes: [volume],
+    cores: [],
+    nextVolumeId: 2,
+  };
+}
+
 function withCore(body: BlueprintBody, core: Omit<Core, 'id'>): BlueprintBody {
   body.cores.push({ id: body.cores.length + 1, ...core });
   return body;
 }
 
 function house(): BlueprintBody {
-  return generateBody('residential', 3, 3, 2, { palette: 0, roof: 'gable' });
+  return generateBody('residential', bays(3), bays(3), 2, { palette: 0, roof: 'gable' });
 }
 
 function rowhouse(): BlueprintBody {
-  const body = generateBody('residential', 2, 4, 3, { palette: 1, roof: 'gable' });
+  const body = generateBody('residential', bays(2), bays(4), 3, { palette: 1, roof: 'gable' });
   const v = body.volumes[0] as Volume;
   v.storeys[0] = { facade: { fill: 'window', bays: { [bayKey(0, 0)]: 'door' } } };
   for (let k = 1; k < v.storeys.length; k++) v.storeys[k] = { facade: { fill: 'window', bays: { [bayKey(0, 1)]: 'balcony' } } };
@@ -137,60 +212,60 @@ function rowhouse(): BlueprintBody {
 }
 
 function apartments(): BlueprintBody {
-  const body = generateBody('residential', 6, 4, 5, { palette: 4, roof: 'flat' });
+  const body = generateBody('residential', bays(6), bays(4), 5, { palette: 4, roof: 'flat' });
   const v = body.volumes[0] as Volume;
   for (let k = 1; k < v.storeys.length; k++) {
-    const bays: Record<string, BayComponent> = {};
-    for (let i = 0; i < v.w; i++) bays[bayKey(0, i)] = i % 2 === 0 ? 'balcony' : 'window';
-    for (let i = 0; i < v.w; i++) bays[bayKey(2, i)] = i % 2 === 1 ? 'balcony' : 'window';
-    v.storeys[k] = { facade: { fill: 'window', bays } };
+    const front: Record<string, BayComponent> = {};
+    for (let i = 0; i < 6; i++) front[bayKey(0, i)] = i % 2 === 0 ? 'balcony' : 'window';
+    for (let i = 0; i < 6; i++) front[bayKey(2, i)] = i % 2 === 1 ? 'balcony' : 'window';
+    v.storeys[k] = { facade: { fill: 'window', bays: front } };
   }
-  return withCore(body, { x: 3, y: 2, kind: 'stairLift', from: 0, to: 5 });
+  return withCore(body, { x: bays(3), y: bays(2), kind: 'stairLift', from: 0, to: 5 });
 }
 
 function tower(): BlueprintBody {
-  const body = generateBody('mixed', 7, 6, 2, { palette: 2, roof: 'terrace' });
+  const body = generateBody('mixed', bays(7), bays(6), 2, { palette: 2, roof: 'terrace' });
   const podium = body.volumes[0] as Volume;
   podium.storeys[1] = { use: 'commercial', facade: { fill: 'wideWindow' } };
   const storeys: Storey[] = Array.from({ length: 12 }, () => ({
     use: 'residential',
     facade: { fill: 'window', sides: { 0: 'balcony', 2: 'balcony' } },
   }));
-  body.volumes.push({ id: 2, x: 1, y: 1, w: 5, d: 4, base: 2, roof: 'flat', storeys });
+  body.volumes.push({ id: 2, x: bays(1), y: bays(1), w: bays(5), d: bays(4), base: 2, roof: 'flat', storeys });
   body.nextVolumeId = 3;
-  return withCore(body, { x: 3, y: 3, kind: 'stairLift', from: 0, to: 14 });
+  return withCore(body, { x: bays(3), y: bays(3), kind: 'stairLift', from: 0, to: 14 });
 }
 
 function shop(): BlueprintBody {
-  const body = generateBody('commercial', 4, 3, 2, { palette: 3, roof: 'flat' });
+  const body = generateBody('commercial', bays(4), bays(3), 2, { palette: 3, roof: 'flat' });
   (body.volumes[0] as Volume).storeys[1] = { facade: { fill: 'window' } };
   return body;
 }
 
 function office(): BlueprintBody {
-  const body = generateBody('commercial', 6, 5, 8, { palette: 6, roof: 'flat' });
+  const body = generateBody('commercial', bays(6), bays(5), 8, { palette: 6, roof: 'flat' });
   const v = body.volumes[0] as Volume;
   v.storeys[0] = { facade: { fill: 'wideWindow', sides: { 0: 'pillar' }, bays: { [bayKey(0, 3)]: 'door' } } };
-  return withCore(body, { x: 3, y: 3, kind: 'stairLift', from: 0, to: 8 });
+  return withCore(body, { x: bays(3), y: bays(3), kind: 'stairLift', from: 0, to: 8 });
 }
 
 function mixedBlock(): BlueprintBody {
-  const body = generateBody('mixed', 5, 4, 4, { palette: 5, roof: 'hip' });
+  const body = generateBody('mixed', bays(5), bays(4), 4, { palette: 5, roof: 'hip' });
   return body;
 }
 
 function warehouse(): BlueprintBody {
-  return generateBody('industrial', 8, 6, 1, { palette: 7, roof: 'sawtooth', groundHeight: m(7) });
+  return generateBody('industrial', bays(8), bays(6), 1, { palette: 7, roof: 'sawtooth', groundHeight: m(7) });
 }
 
 function factory(): BlueprintBody {
-  const body = generateBody('industrial', 8, 5, 1, { palette: 7, roof: 'sawtooth', groundHeight: m(5.5) });
+  const body = generateBody('industrial', bays(8), bays(5), 1, { palette: 7, roof: 'sawtooth', groundHeight: m(5.5) });
   body.volumes.push({
     id: 2,
-    x: -3,
+    x: -bays(3),
     y: 0,
-    w: 3,
-    d: 3,
+    w: bays(3),
+    d: bays(3),
     base: 0,
     roof: 'flat',
     storeys: [
@@ -204,6 +279,7 @@ function factory(): BlueprintBody {
 
 /** The built-in presets, in palette order. Names are `building.preset.<key>`. */
 export const BLUEPRINTS: readonly Blueprint[] = [
+  { key: 'block', nameKey: 'building.preset.block', body: generateBlock(bays(4), bays(3), 2) },
   { key: 'house', nameKey: 'building.preset.house', body: house() },
   { key: 'rowhouse', nameKey: 'building.preset.rowhouse', body: rowhouse() },
   { key: 'apartments', nameKey: 'building.preset.apartments', body: apartments() },

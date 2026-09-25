@@ -143,20 +143,14 @@
           <button type="button" class="building-mode active" data-building-mode="place" aria-pressed="true" data-i18n="building.mode.place">Place</button>
           <button type="button" class="building-mode" data-building-mode="edit" aria-pressed="false" data-i18n="building.mode.edit">Edit</button>
         </div>
-        <div class="building-uses" role="group" data-i18n-label="building.uses" aria-label="Building type">
-          <button type="button" class="building-use" data-building-use="residential" data-i18n="building.use.residential">Residential</button>
-          <button type="button" class="building-use" data-building-use="commercial" data-i18n="building.use.commercial">Commercial</button>
-          <button type="button" class="building-use" data-building-use="industrial" data-i18n="building.use.industrial">Industrial</button>
-          <button type="button" class="building-use" data-building-use="mixed" data-i18n="building.use.mixed">Mixed use</button>
-        </div>
         <div id="buildingPlace">
           <div class="building-label" data-i18n="building.presets">Presets</div>
           <div id="buildingPresets" class="building-presets" role="group" data-i18n-label="building.presets" aria-label="Presets"></div>
           <div id="buildingUserPresets" class="building-presets"></div>
         </div>
         <div id="buildingParams" class="building-params">
-          <label class="terrain-control"><span data-i18n="building.param.width">Width</span> <input id="buildingWidth" type="range" min="1" max="16" value="4" step="1" /><output id="buildingWidthValue">4</output></label>
-          <label class="terrain-control"><span data-i18n="building.param.depth">Depth</span> <input id="buildingDepth" type="range" min="1" max="16" value="3" step="1" /><output id="buildingDepthValue">3</output></label>
+          <label class="terrain-control"><span data-i18n="building.param.width">Width</span> <input id="buildingWidth" type="range" min="2" max="60" value="12" step="0.5" /><output id="buildingWidthValue">12.0</output></label>
+          <label class="terrain-control"><span data-i18n="building.param.depth">Depth</span> <input id="buildingDepth" type="range" min="2" max="60" value="9" step="0.5" /><output id="buildingDepthValue">9.0</output></label>
           <label class="terrain-control"><span data-i18n="building.param.storeys">Floors</span> <input id="buildingStoreys" type="range" min="1" max="40" value="2" step="1" /><output id="buildingStoreysValue">2</output></label>
           <label class="terrain-control"><span data-i18n="building.param.storeyHeight">Floor height</span> <input id="buildingStoreyHeight" type="range" min="2.6" max="6" value="3.1" step="0.1" /><output id="buildingStoreyHeightValue">3.1</output></label>
           <label class="terrain-control"><span data-i18n="building.param.module">Module</span> <input id="buildingModule" type="range" min="2.4" max="6" value="3" step="0.1" /><output id="buildingModuleValue">3.0</output></label>
@@ -177,8 +171,54 @@
             <button type="button" data-building-wing="2" data-i18n="building.wing.2">Back</button>
             <button type="button" data-building-wing="3" data-i18n="building.wing.3">Left</button>
           </div>
+          <div class="building-label" data-i18n="building.elements">Elements</div>
+          <div id="buildingElements" class="building-components" role="group" data-i18n-label="building.elements" aria-label="Elements"></div>
+          <div id="buildingElementNote" class="building-note" data-i18n="building.element.hint">Pick an element, then point at a facade or the ground beside the building</div>
+          <div id="buildingElement" class="building-face">
+            <div id="buildingElementSummary" class="building-summary"></div>
+            <label class="terrain-control"><span data-i18n="building.element.w">Width</span> <input id="buildingElementW" data-element-param="w" type="range" min="0.2" max="16" value="1" step="0.05" /><output>1.00</output></label>
+            <label class="terrain-control"><span data-i18n="building.element.d">Length</span> <input id="buildingElementD" data-element-param="d" type="range" min="0.2" max="16" value="1" step="0.05" /><output>1.00</output></label>
+            <label class="terrain-control"><span data-i18n="building.element.h">Height</span> <input id="buildingElementH" data-element-param="h" type="range" min="0.2" max="16" value="1" step="0.05" /><output>1.00</output></label>
+            <div class="building-actions">
+              <button type="button" data-building-action="turnElement" data-i18n="building.element.turn">Turn</button>
+              <button type="button" data-building-action="repeatElement" data-i18n="building.element.repeat">Repeat</button>
+              <button type="button" class="danger" data-building-action="removeElement" data-i18n="building.element.remove">Remove</button>
+            </div>
+          </div>
+          <div class="building-label" data-i18n="building.face">Face</div>
+          <div id="buildingFaceNote" class="building-note" data-i18n="building.relief.pickFace">Click a facade to pick its bays (Shift+click: more)</div>
+          <div id="buildingFace" class="building-face">
+            <div id="buildingFaceSummary" class="building-summary"></div>
+            <label class="terrain-control"><span data-i18n="building.relief.depth">Depth</span> <input id="buildingReliefDepth" type="range" min="-4" max="2.4" value="0" step="0.05" /><output id="buildingReliefDepthValue">0.00</output></label>
+            <div class="building-actions three">
+              <button type="button" data-building-relief="-1.5" data-i18n="building.relief.recess">Recess</button>
+              <button type="button" data-building-relief="0.9" data-i18n="building.relief.project">Project</button>
+              <button type="button" data-building-relief="0.2" data-i18n="building.relief.emboss">Raise</button>
+              <button type="button" data-building-relief="-0.2" data-i18n="building.relief.inset">Inset</button>
+              <button type="button" data-building-relief="0" data-i18n="building.relief.flat">Flush</button>
+            </div>
+          </div>
           <div class="building-label" data-i18n="building.roof">Roof</div>
           <div id="buildingRoofs" class="building-actions three"></div>
+          <div id="buildingRoofShape" class="building-roof-shape">
+            <label class="terrain-control"><span data-i18n="building.pitch">Pitch</span> <input id="buildingPitch" type="range" min="5" max="60" value="30" step="1" /><output id="buildingPitchValue">30°</output></label>
+            <div class="building-actions">
+              <button type="button" data-building-action="ridge" data-i18n="building.ridge">Turn ridge</button>
+              <button type="button" data-building-action="fall" data-i18n="building.fall">Turn slope</button>
+            </div>
+          </div>
+          <div class="building-label" data-i18n="building.styles">Styles</div>
+          <div id="buildingStyles" class="building-styles" role="group" data-i18n-label="building.styles" aria-label="Styles"></div>
+          <div class="building-label" data-i18n="building.materials">Materials</div>
+          <div class="building-actions four building-material-scopes" role="group" data-i18n-label="building.material.scope" aria-label="Paint">
+            <button type="button" data-material-scope="building" data-i18n="building.material.scope.building">Building</button>
+            <button type="button" data-material-scope="volume" data-i18n="building.material.scope.volume">Volume</button>
+            <button type="button" data-material-scope="face" data-i18n="building.material.scope.face">Face</button>
+            <button type="button" data-material-scope="roof" data-i18n="building.material.scope.roof">Roof</button>
+          </div>
+          <div id="buildingFinishes" class="building-finishes" role="group" data-i18n-label="building.finish" aria-label="Finish"></div>
+          <div id="buildingSwatches" class="building-swatches" role="group" data-i18n-label="building.colourPick" aria-label="Colour"></div>
+          <div id="buildingMaterialNote" class="building-note" data-i18n="building.material.pickFace" hidden>Click a facade to paint that face</div>
           <div class="building-label" data-i18n="building.facade">Facade components</div>
           <div id="buildingComponents" class="building-components"></div>
           <div class="building-scope"><span data-i18n="building.scope">Apply to</span>
@@ -193,6 +233,7 @@
           <div class="building-actions">
             <button type="button" data-building-action="rotate" data-i18n="building.rotate">Rotate</button>
             <button type="button" data-building-action="duplicate" data-i18n="building.duplicate">Duplicate</button>
+            <button type="button" data-building-action="mirror" data-i18n="building.mirror">Mirror</button>
             <button type="button" data-building-action="colour" data-i18n="building.colour">Colour</button>
             <button type="button" data-building-action="saveBlueprint" data-i18n="building.saveBlueprint">Save blueprint</button>
             <button type="button" class="danger" data-building-action="delete" data-i18n="building.delete">Demolish</button>

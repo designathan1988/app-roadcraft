@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { GRID, MIN_SIZE, footprintCentre, groundProjections, reliefAt, ridgeAlongX, roofRise } from '@world/buildings/geometry';
+import { migrateBuilding } from '@world/buildings/serialize';
+import { elementsAgainstBay, groundElements, runFor } from '@world/buildings/elements';
+import type { BuildingElement } from '@world/buildings/types';
+import { structuralProblem } from '@world/buildings/validate';
+
+import { DEFAULT_MODULE } from '@world/buildings/types';
+
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { BLUEPRINTS, blueprintByKey, generateBody } from '@world/buildings/blueprints';
@@ -16,6 +24,13 @@ import {
   opAddWing,
   opRemoveVolume,
   opResize,
+  opSetRelief,
+  opSetRoofShape,
+  opAddElement,
+  opMirror,
+  opRemoveElement,
+  opRepeatElement,
+  opUpdateElement,
   opRotate,
   opSetComponent,
   opSetStoreys,
@@ -27,6 +42,9 @@ import { footprintSize, snapPlacement } from '@editor/buildingSnap';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
 import { History, restoreInto } from '@editor/history';
 import { commitDraft } from '@editor/commit';
+
+/** `n` default modules, world units. */
+const bays = (n: number): number => n * DEFAULT_MODULE;
 
 /**
  * The building commands and the tool that drives them (docs/buildings.md
@@ -71,7 +89,7 @@ describe('building operations', () => {
   });
 
   it('copies the upper storey up, not the ground floor with its door', () => {
-    const b = { ...generateBody('residential', 3, 3, 1), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
+    const b = { ...generateBody('residential', bays(3), bays(3), 1), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
     opSetStoreys(b, 1, 3);
     const doors = facadeBays(b).filter((bay) => bay.component === 'door');
     expect(doors).toHaveLength(1);
@@ -79,29 +97,29 @@ describe('building operations', () => {
   });
 
   it('grows a volume on its negative side and keeps each bay override on its bay', () => {
-    const b = { ...generateBody('residential', 3, 3, 1), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
+    const b = { ...generateBody('residential', bays(3), bays(3), 1), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
     const v = b.volumes[0]!;
     const doorBefore = facadeBays(b).find((bay) => bay.component === 'door')!;
-    expect(opResize(b, 1, 3, 2)).toBe(true);
-    expect(v.x).toBe(-2);
-    expect(v.w).toBe(5);
+    expect(opResize(b, 1, 3, bays(2))).toBe(true);
+    expect(v.x).toBe(-bays(2));
+    expect(v.w).toBe(bays(5));
     const doorAfter = facadeBays(b).find((bay) => bay.component === 'door')!;
     expect(doorAfter.x).toBeCloseTo(doorBefore.x, 9);
     // It never shrinks below one cell.
-    opResize(b, 1, 1, -20);
-    expect(v.w).toBe(1);
+    opResize(b, 1, 1, -bays(20));
+    expect(v.w).toBe(MIN_SIZE);
   });
 
   it('adds a wing that shares a wall, and a setback that stands on a terrace', () => {
-    const b = { ...generateBody('commercial', 6, 4, 3), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
-    const wing = opAddWing(b, 1, 1, 3)!;
+    const b = { ...generateBody('commercial', bays(6), bays(4), 3), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
+    const wing = opAddWing(b, 1, 1, bays(3))!;
     const w = volumeById(b, wing)!;
-    expect(w.x).toBe(6);
+    expect(w.x).toBe(bays(6));
     expect(w.storeys).toHaveLength(3);
     const setback = opAddSetback(b, 1)!;
     const s = volumeById(b, setback)!;
     expect(s.base).toBe(3);
-    expect(s.w).toBe(4);
+    expect(s.w).toBe(bays(4));
     expect(volumeById(b, 1)!.roof).toBe('terrace');
     // Removing the podium takes the setback with it, but leaves the wing.
     expect(opRemoveVolume(b, 1)).toBe(true);
@@ -109,7 +127,7 @@ describe('building operations', () => {
   });
 
   it('replaces a facade component by bay, storey, side and volume', () => {
-    const b = { ...generateBody('residential', 4, 3, 3), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
+    const b = { ...generateBody('residential', bays(4), bays(3), 3), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
     const v = b.volumes[0]!;
     opSetComponent(b, 1, 1, 1, 2, 'balcony', 'bay');
     expect(componentAt(v.storeys[1]!.facade, 1, 2)).toBe('balcony');
@@ -123,13 +141,13 @@ describe('building operations', () => {
   });
 
   it('regenerates the facades for a change of use', () => {
-    const b = { ...generateBody('residential', 4, 3, 2), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
+    const b = { ...generateBody('residential', bays(4), bays(3), 2), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
     opSetUse(b, 'commercial');
     expect(facadeBays(b).some((bay) => bay.component === 'shopfront')).toBe(true);
   });
 
   it('rotates about the footprint centre', () => {
-    const b = { ...generateBody('residential', 4, 2, 1), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
+    const b = { ...generateBody('residential', bays(4), bays(2), 1), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
     const centre = (x: Building): { x: number; y: number } => {
       const r = footprintRects(x)[0]!;
       return { x: (r[0]!.x + r[2]!.x) / 2, y: (r[0]!.y + r[2]!.y) / 2 };
@@ -160,7 +178,7 @@ describe('building commands', () => {
     const b = place(ctx);
     const before = JSON.stringify(doc.toJSON());
     // Grow the front out over the road.
-    const r = editBuilding(ctx, b.id, (draft) => opResize(draft, 1, 0, 40));
+    const r = editBuilding(ctx, b.id, (draft) => opResize(draft, 1, 0, bays(40)));
     expect(r.ok).toBe(false);
     expect(r.problem).toBe('road');
     expect(JSON.stringify(doc.toJSON())).toBe(before);
@@ -309,7 +327,7 @@ describe('the tool', () => {
     t.pointerDown(at, { x: 0, y: 0 }, false);
     t.pointerMove({ x: at.x + module * 2, y: at.y }, { x: 0, y: 0 }, false);
     t.pointerUp(false);
-    expect(doc.buildings.get(id)!.volumes[0]!.w).toBe(5);
+    expect(doc.buildings.get(id)!.volumes[0]!.w).toBe(bays(5));
     const again = t.handles().find((h) => h.kind === 'side' && h.dx > 0.5)!;
     const at2 = view.project(again.x, again.y, again.z);
     t.pointerDown(at2, { x: 0, y: 0 }, true);
@@ -355,5 +373,167 @@ describe('the tool', () => {
     expect(doc.buildings.size).toBe(2);
     expect(t.key('Delete', false, false)).toBe(true);
     expect(doc.buildings.size).toBe(1);
+  });
+});
+
+describe('free dimensions', () => {
+  it('pushes and pulls a side by any length, snapped to the grid', () => {
+    const b = { ...generateBody('residential', bays(4), bays(3), 1), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
+    const v = b.volumes[0]!;
+    expect(opResize(b, 1, 1, 3.1)).toBe(true);
+    expect(v.w).toBeCloseTo(bays(4) + 2 * GRID, 9);
+    expect(opResize(b, 1, 0, -0.2)).toBe(false);
+    // A wing of any depth, snapped too.
+    const wing = volumeById(b, opAddWing(b, 1, 2, 7.4)!)!;
+    expect(wing.d).toBeCloseTo(6 * GRID, 9);
+  });
+});
+
+describe('faces and roofs', () => {
+  const house = (): Building => ({ ...generateBody('residential', bays(4), bays(3), 3), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building);
+  const region = { side: 0, bay0: 1, bay1: 2, storey0: 1, storey1: 2 } as const;
+
+  it('pushes a region of a face out and in, replaces what overlaps it, and flattens it again', () => {
+    const b = house();
+    const v = b.volumes[0]!;
+    expect(opSetRelief(b, 1, region, 2.2)).toBe(true);
+    expect(v.reliefs).toEqual([{ ...region, depth: 2.25 }]);
+    const pushed = facadeBays(b).filter((bay) => bay.side === 0 && bay.storey === 1);
+    expect(pushed.filter((bay) => bay.push === 2.25).map((bay) => bay.index)).toEqual([1, 2]);
+    // A recess over part of it: the rest of the projection stays.
+    expect(opSetRelief(b, 1, { ...region, bay0: 2, storey1: 1 }, -3)).toBe(true);
+    const at = (index: number, storey: number): number | undefined => reliefAt(v, 0, index, storey)?.depth;
+    expect([at(1, 1), at(2, 1), at(1, 2), at(2, 2)]).toEqual([2.25, -3, 2.25, 2.25]);
+    // Flattening the whole region clears everything in it.
+    expect(opSetRelief(b, 1, region, 0)).toBe(true);
+    expect(v.reliefs).toBeUndefined();
+  });
+
+  it('refuses a recess that would cut through the volume, and counts a ground projection as footprint', () => {
+    const b = house();
+    // A shallow volume: 4.8 m deep, and a 4 m recess leaves too little behind.
+    b.volumes[0]!.d = 12;
+    opSetRelief(b, 1, region, -10);
+    expect(structuralProblem(b)).toBe('size');
+    const c = house();
+    opSetRelief(c, 1, { ...region, storey0: 0 }, 2);
+    expect(groundProjections(c)).toHaveLength(1);
+    expect(structuralProblem(c)).toBeNull();
+  });
+
+  it('sets a roof pitch, turns a ridge and a fall, and keeps them through a save', () => {
+    const b = house();
+    const v = b.volumes[0]!;
+    v.roof = 'gable';
+    const low = roofRise(b, v);
+    expect(opSetRoofShape(b, 1, { pitch: 50 })).toBe(true);
+    expect(roofRise(b, v)).toBeGreaterThan(low);
+    expect(opSetRoofShape(b, 1, { ridge: ridgeAlongX(v) ? 'y' : 'x' })).toBe(true);
+    expect(opSetRoofShape(b, 1, { fall: 3 })).toBe(true);
+    expect(opSetRoofShape(b, 1, { pitch: 500 })).toBe(true);
+    expect(v.pitch).toBe(60);
+    opSetRelief(b, 1, region, -1.5);
+    const back = migrateBuilding(JSON.parse(JSON.stringify(b)))!.volumes[0]!;
+    expect([back.pitch, back.ridge, back.fall]).toEqual([v.pitch, v.ridge, v.fall]);
+    expect(back.reliefs).toEqual(v.reliefs);
+  });
+});
+
+describe('free elements', () => {
+  const block = (): Building => ({ ...generateBody('residential', bays(4), bays(3), 2), id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building);
+
+  it('snaps a stair from a floor down to the ground, straight out first, then along the facade', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    const candidates = elementsAgainstBay(b, v, { volume: v.id, side: 1, index: 1, storey: 1 }, 'stair');
+    expect(candidates).toHaveLength(3);
+    const [straight, alongA, alongB] = candidates as [Omit<BuildingElement, 'id'>, Omit<BuildingElement, 'id'>, Omit<BuildingElement, 'id'>];
+    expect(straight.facing).toBe(1);
+    expect(straight.h).toBeCloseTo(levelElevation(b, 1), 9);
+    expect(straight.d).toBeCloseTo(runFor('stair', straight.h), 9);
+    expect([alongA.facing, alongB.facing].sort()).toEqual([0, 2]);
+    // None stands inside the building; each touches it.
+    for (const c of candidates) {
+      const draft = { ...b, elements: [{ ...c, id: 1 }] } as Building;
+      expect(structuralProblem(draft)).toBeNull();
+    }
+  });
+
+  it('refuses an element inside a volume, and counts a ground element as footprint', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    opAddElement(b, { kind: 'pillar', x: v.x + v.w / 2, y: v.y + v.d / 2, facing: 0, w: 1, d: 1, z: 0, h: 5 });
+    expect(structuralProblem(b)).toBe('overlap');
+    const c = block();
+    opAddElement(c, { kind: 'wall', x: 10, y: -10, facing: 0, w: 8, d: 0.6, z: 0, h: 4 });
+    expect(groundElements(c)).toHaveLength(1);
+    expect(structuralProblem(c)).toBeNull();
+  });
+
+  it('keeps a stair run matched to its rise, and survives a save', () => {
+    const b = block();
+    const id = opAddElement(b, { kind: 'stair', x: 0, y: -5, facing: 0, w: 3, d: 5, z: 0, h: 2 });
+    expect(opUpdateElement(b, id, { h: 6 })).toBe(true);
+    const e = b.elements![0]!;
+    expect(e.d).toBeCloseTo(runFor('stair', 6), 9);
+    const back = migrateBuilding(JSON.parse(JSON.stringify(b)))!;
+    expect(back.elements).toEqual(b.elements);
+    expect(back.nextElementId).toBeGreaterThan(id);
+    expect(opRemoveElement(b, id)).toBe(true);
+    expect(b.elements).toBeUndefined();
+  });
+});
+
+describe('mirror, repeat and free dragging', () => {
+  const block = (): Building => ({ ...generateBody('residential', bays(4), bays(3), 2), id: 1, x: 10, y: 20, rotation: 0.3 } as unknown as Building);
+
+  it('mirrors a building in place, and twice is the original', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    v.storeys[0]!.facade.bays = { '0:0': 'door', '1:1': 'shopfront' };
+    v.reliefs = [{ side: 0, bay0: 0, bay1: 1, storey0: 1, storey1: 1, depth: 2 }];
+    v.materials = { sides: { 1: { finish: 'glass', colour: 0x9fb8c4 } } };
+    b.elements = [{ id: 1, kind: 'pillar', x: 3, y: -2, facing: 1, w: 1, d: 1, z: 0, h: 5 }];
+    const original = JSON.parse(JSON.stringify(b)) as Building;
+    const centre = footprintCentre(b);
+    expect(opMirror(b)).toBe(true);
+    const moved = footprintCentre(b);
+    expect(moved.x).toBeCloseTo(centre.x, 9);
+    expect(moved.y).toBeCloseTo(centre.y, 9);
+    // The door that was in the first front bay is in the last one now, the right side's shopfront on the left.
+    expect(v.storeys[0]!.facade.bays).toEqual({ '0:3': 'door', '3:1': 'shopfront' });
+    expect(v.reliefs![0]).toMatchObject({ side: 0, bay0: 2, bay1: 3 });
+    expect(v.materials!.sides![3]!.finish).toBe('glass');
+    expect(b.elements![0]).toMatchObject({ x: -3, facing: 3 });
+    opMirror(b);
+    expect(b.x).toBeCloseTo(original.x, 9);
+    expect(b.y).toBeCloseTo(original.y, 9);
+    expect(JSON.stringify(b.volumes)).toBe(JSON.stringify(original.volumes));
+    expect(b.elements).toEqual(original.elements);
+  });
+
+  it('repeats a pillar in a row along the building, never inside it', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    const id = opAddElement(b, { kind: 'pillar', x: v.x + v.w / 2, y: v.y - 2, facing: 0, w: 1, d: 1, z: 0, h: 5 });
+    const added = opRepeatElement(b, id, bays(1));
+    // Every module from corner to corner: four more beside the first.
+    expect(added).toBe(4);
+    expect(structuralProblem(b)).toBeNull();
+    const xs = b.elements!.map((e) => e.x).sort((p, q) => p - q);
+    expect(xs[0]!).toBeGreaterThanOrEqual(v.x);
+    expect(xs[xs.length - 1]!).toBeLessThanOrEqual(v.x + v.w);
+  });
+
+  it('snaps a pull to the grid, or follows it freely with Alt', () => {
+    const b = block();
+    const v = b.volumes[0]!;
+    const w = v.w;
+    opResize(b, 1, 1, 1.3);
+    expect(v.w).toBeCloseTo(w + GRID, 9);
+    opResize(b, 1, 1, 0.33, false);
+    expect(v.w).toBeCloseTo(w + GRID + 0.33, 1);
+    // To the centimetre, no coarser.
+    expect(Math.abs(v.w * 0.4 * 100 - Math.round(v.w * 0.4 * 100))).toBeLessThan(1e-6);
   });
 });
