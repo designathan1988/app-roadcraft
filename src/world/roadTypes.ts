@@ -103,6 +103,17 @@ export const EDGE_LINE_DARK = '#2b2f30';
 
 /** Extra half-width of the kerb band beyond the asphalt edge. */
 const CURB_BAND = 0.9;
+
+/**
+ * Height of the footway above the carriageway, world units.
+ *
+ * ONE number for the cross-section: the renderer lifts the footway band by it
+ * and stands lamps, poles and pedestrians on it, and the elevation solver
+ * counts it into a raised deck's depth. It used to be two constants of the
+ * same value, `FOOTWAY_RISE` in render/roadSurfaces.ts and `FOOTWAY_DEPTH` in
+ * world/elevation.ts, free to drift apart.
+ */
+export const FOOTWAY_RISE = 0.36;
 /** Extra half-width of the casing beyond the footway edge. */
 const CASING_BAND = 1.5;
 

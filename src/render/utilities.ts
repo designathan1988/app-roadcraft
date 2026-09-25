@@ -15,7 +15,7 @@ import {
 
 import type { RoadDoc } from '@world/doc';
 import { GROUND_ONLY, type RoadElevation } from '@world/elevation';
-import { FOOTWAY_RISE } from './roadSurfaces';
+import { FOOTWAY_RISE } from '@world/roadTypes';
 import {
   POLE_ARM_DROP,
   POLE_ARM_HALF,

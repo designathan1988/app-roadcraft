@@ -5,7 +5,7 @@ import { Digest } from '@core/digest';
 import { offsetPolyline } from '@core/offset';
 import type { SegmentId } from '@world/ids';
 import type { Network } from '@world/network';
-import { Level, ROAD_TYPES, type SurfaceLevel } from '@world/roadTypes';
+import { FOOTWAY_RISE, Level, ROAD_TYPES, type SurfaceLevel } from '@world/roadTypes';
 import { levelRings } from '@world/surfaces';
 import {
   ROAD_STRUCTURES,
@@ -67,8 +67,6 @@ import {
  * throws a line of shade, and the granite kerb reads as a separate edge.
  */
 const KERB_RISE = 0.4;
-/** Height of the footway above the carriageway. */
-export const FOOTWAY_RISE = 0.36;
 /** Depth of the verge below the carriageway, where the grass starts. */
 const VERGE_DROP = 0.1;
 /**

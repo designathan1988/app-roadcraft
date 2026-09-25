@@ -3,7 +3,7 @@ import { type Aabb, expand as expandBox } from '@core/aabb';
 import type { Polyline } from '@core/polyline';
 import type { NodeId, SegmentId } from './ids';
 import type { Network } from './network';
-import { Level, casingHalf } from './roadTypes';
+import { FOOTWAY_RISE, Level, casingHalf } from './roadTypes';
 import {
   ROAD_GROUND_CLEARANCE,
   TUNNEL_BORE,
@@ -1003,7 +1003,7 @@ function solveRaised(
   const endH = landB ? hB + spec.clearance + RAMP_CREST * 0.25 : hB;
   // Nothing under the deck may come closer than this to its surface: the
   // structure's own depth and a margin of daylight under the soffit.
-  const underside = spec.deck + FOOTWAY_DEPTH + 1;
+  const underside = spec.deck + FOOTWAY_RISE + 1;
   for (let i = 0; i < h.length; i++) {
     const t = Math.min(1, Math.max(0, (step * i - profile.plateA) / run));
     const line = startH + (endH - startH) * t;
@@ -1056,8 +1056,6 @@ function solveRaised(
   flattenPlates(profile, hA, hB);
 }
 
-/** Height of the footway above the deck surface, part of a raised cross-section's depth. */
-const FOOTWAY_DEPTH = 0.36;
 
 /**
  * Height a ramp has gained `d` units past the plate edge: level at the edge, a

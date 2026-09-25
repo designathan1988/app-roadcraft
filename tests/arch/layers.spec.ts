@@ -68,3 +68,14 @@ describe('determinism', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('one writer per number', () => {
+  it('declares the footway height once, in world', () => {
+    // It was two constants of one value, `FOOTWAY_RISE` in render and
+    // `FOOTWAY_DEPTH` in world/elevation.ts, free to drift apart.
+    const declarations = tsFilesUnder(SRC)
+      .filter((file) => /const\s+FOOTWAY_(RISE|DEPTH)\s*=/.test(code(readFileSync(file, 'utf8'))))
+      .map((file) => relative(SRC, file).split(sep).join('/'));
+    expect(declarations).toEqual(['world/roadTypes.ts']);
+  });
+});

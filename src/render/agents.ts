@@ -28,7 +28,7 @@ import { m } from '@world/units';
 import { DT } from '@sim/params';
 import { CITIZEN_MODELS, createRiggedCitizens, type CitizenClipKey } from './riggedCitizens';
 import { kerbTransfer, seatPerson, type KerbStop } from '@sim/vehicles/kerbStops';
-import { FOOTWAY_RISE } from './roadSurfaces';
+import { FOOTWAY_RISE } from '@world/roadTypes';
 import { WheelOdometer, blinkOn, indicatorSide, pathCurvature, steerAngle } from './vehicleSignals';
 import {
   axleStations, buildBusModel, buildTruckModel, buildTwoWheelerModel, buildVehicleModel, seatFitScale, rimGeometry, spokedRimGeometry,
