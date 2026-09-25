@@ -16,7 +16,7 @@ import {
   worldToLocal,
 } from '@world/buildings/geometry';
 import { buildingHandles } from '@world/buildings/handles';
-import { PALETTE_MATERIALS, applyMaterial, roofMaterial, wallMaterial } from '@world/buildings/materials';
+import { FLAT_ROOF_MATERIAL, PALETTE_MATERIALS, applyMaterial, roofMaterial, wallMaterial } from '@world/buildings/materials';
 import { pickBuilding } from '@world/buildings/pick';
 import { migrateBuilding } from '@world/buildings/serialize';
 import { deriveSpaces, floorArea } from '@world/buildings/spaces';
@@ -359,11 +359,11 @@ describe('materials', () => {
     expect(v.materials).toBeUndefined();
   });
 
-  it('gives a flat roof a slab and a pitched one the palette tiles until told otherwise', () => {
+  it('gives a flat roof its membrane and a pitched one the palette tiles until told otherwise', () => {
     const b = building();
     const v = b.volumes[0]!;
     v.roof = 'flat';
-    expect(roofMaterial(b, v).finish).toBe('concrete');
+    expect(roofMaterial(b, v)).toEqual(FLAT_ROOF_MATERIAL);
     v.roof = 'gable';
     expect(roofMaterial(b, v)).toEqual(PALETTE_MATERIALS[b.palette]!.roof);
     expect(applyMaterial(b, { scope: 'volume', volume: v.id, slot: 'roof' }, { finish: 'metal', colour: 0x333333 })).toBe(true);

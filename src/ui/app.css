@@ -693,7 +693,13 @@ body { user-select: none; -webkit-user-select: none; }
 }.building-palette.editing .building-presets { grid-template-columns: repeat(5, 1fr); gap: 4px; }
 .building-palette.editing .building-preset { justify-content: center; padding: 5px 2px; }
 .building-palette.editing .building-preset span:not(.remove) { display: none; }
-.building-palette.editing #buildingPlace > .building-label { display: none; }
+.building-palette.editing #buildingPlace { display: none; }
+.building-palette { font-size: 12px; }
+.building-palette .building-label { font-size: 10.5px; margin: 14px 0 6px; color: var(--text, #e8f1ec); opacity: 0.72; font-weight: 600; }
+.building-palette .building-summary { font-size: 12.5px; }
+.building-palette .building-note { font-size: 11px; }
+.building-palette .building-actions button, .building-palette .building-component { min-height: 32px; font-size: 11px; }
+.building-palette .building-component span { font-size: 10px; }
 #buildingRoofs svg { width: 22px; height: 22px; }
 .building-face[hidden], .building-roof-shape[hidden], .building-note[hidden] { display: none; }
 .building-roof-shape .terrain-control { grid-template-columns: 62px 1fr 34px; margin-top: 7px; }

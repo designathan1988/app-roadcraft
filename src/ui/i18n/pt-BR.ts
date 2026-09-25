@@ -228,8 +228,8 @@ export const PT_BR: Dictionary = {
 
   // -------------------------------------------------------------- edifícios
   'tool.building': 'Edifícios',
-  'hint.building.place': 'Clique para posicionar · R: girar · Encaixa em vias e edifícios · Botão direito: câmera',
-  'hint.building.edit': 'Arraste as setas: telhado = pavimentos, lados = tamanho (Shift: nova ala) · Clique numa fachada, Shift+clique para mais vãos, e empurre ou puxe a seta amarela · ✥ mover · ⟳ girar',
+  'hint.building.place': 'Clique para construir · R gira',
+  'hint.building.edit': 'Arraste uma seta para moldar · clique numa fachada para editá-la',
   'hint.mobile.building.place': 'Toque para posicionar · 2 dedos: câmera',
   'hint.mobile.building.edit': 'Arraste as setas para moldar · 2 dedos: câmera',
   'building.title': 'EDIFÍCIOS',
@@ -269,7 +269,7 @@ export const PT_BR: Dictionary = {
   'building.wing.2': 'Fundos',
   'building.wing.3': 'Esquerda',
   'building.elements': 'Elementos',
-  'building.element.hint': 'Aponte para uma fachada (escadas e rampas descem daquele andar) ou para o chão ao lado do edifício e clique',
+  'building.element.hint': 'Aponte para uma fachada ou o chão e clique',
   'building.element.stair': 'Escada',
   'building.element.ramp': 'Rampa',
   'building.element.pillar': 'Pilar',
@@ -285,7 +285,7 @@ export const PT_BR: Dictionary = {
   'building.face.summary': '{bays} × {floors}',
   'building.bays.one': '1 vão',
   'building.bays.other': '{count} vãos',
-  'building.relief.pickFace': 'Clique numa fachada para escolher vãos (Shift+clique: mais) e empurre ou puxe a seta amarela',
+  'building.relief.pickFace': 'Clique numa fachada (Shift+clique: mais vãos) e puxe a seta amarela',
   'building.relief.depth': 'Profundidade',
   'building.relief.recess': 'Reentrância',
   'building.relief.project': 'Saliência',

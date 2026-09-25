@@ -150,7 +150,7 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
         const n = fbm(n1, (x / size) * 10, (y / size) * 10, 10, 4);
         const f = n2((x / size) * 80, (y / size) * 80, 80);
         const panel = cellHash(Math.floor(x / half), Math.floor(y / half), 0x9d) * 0.05;
-        grey(out, joint || tie ? 0.55 : 0.82 + panel + (n - 0.5) * 0.08 + (f - 0.5) * 0.03);
+        grey(out, joint || tie ? 0.68 : 0.82 + panel + (n - 0.5) * 0.06 + (f - 0.5) * 0.025);
         out.h = joint || tie ? 0 : 0.6 + f * 0.2;
         out.rough = 0.9;
       };

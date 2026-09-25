@@ -143,7 +143,9 @@ export function createBuildingKit(): BuildingKit {
     // Both sides in the shadow pass: a pane is one-sided, and three draws a
     // front-sided material's BACK faces for shadows, so a pane facing the sun
     // would let it straight through.
-    glass: new MeshStandardMaterial({ color: 0x2c4350, roughness: 0.08, metalness: 0.65, envMapIntensity: 1.3, shadowSide: DoubleSide }),
+    // Light and glossy enough to carry the sky: a dark flat pane reads as a
+    // hole painted on the wall, not as glass.
+    glass: new MeshStandardMaterial({ color: 0x55707f, roughness: 0.04, metalness: 0.8, envMapIntensity: 2.1, shadowSide: DoubleSide }),
     frame: new MeshStandardMaterial({ color: 0xe8e6df, roughness: 0.55, metalness: 0.05 }),
     concrete,
     door: new MeshStandardMaterial({ color: 0x5b3a26, roughness: 0.62, metalness: 0 }),

@@ -8,6 +8,7 @@ import {
   Uint32BufferAttribute,
 } from 'three';
 
+import type { Vec2 } from '@core/vec2';
 import { m } from '@world/units';
 import {
   type Entrance,
@@ -15,6 +16,7 @@ import {
   type GroundAt,
   type PavedAt,
   STEP_RUN,
+  flightRun,
   foundationOf,
 } from '@world/buildings/foundation';
 import {
@@ -194,8 +196,35 @@ class ShellPart {
  * brick or rows of tiles run level on every wall and every roof. Each finish's
  * material scales them to its tile (`kit.ts`).
  */
+/** Smooth 3D value noise, 0..1, for tone that drifts over a whole facade. */
+function macroNoise(x: number, y: number, z: number): number {
+  const hash = (i: number, j: number, k: number): number => {
+    let h = Math.imul(i | 0, 0x27d4eb2d) ^ Math.imul(j | 0, 0x165667b1) ^ Math.imul(k | 0, 0x3c6ef372);
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+    return ((h ^ (h >>> 13)) >>> 0) / 4_294_967_296;
+  };
+  const x0 = Math.floor(x), y0 = Math.floor(y), z0 = Math.floor(z);
+  const s = (t: number): number => t * t * (3 - 2 * t);
+  const fx = s(x - x0), fy = s(y - y0), fz = s(z - z0);
+  const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+  const plane = (k: number): number =>
+    lerp(lerp(hash(x0, y0, k), hash(x0 + 1, y0, k), fx), lerp(hash(x0, y0 + 1, k), hash(x0 + 1, y0 + 1, k), fx), fy);
+  return lerp(plane(z0), plane(z0 + 1), fz);
+}
+
+/** World units over which a facade's tone drifts. */
+const MACRO_SCALE = m(12);
+/** How far above the ground floor a wall's weathering at the base reaches. */
+const GRIME_REACH = m(1.2);
+
 class Shell {
   readonly parts = new Map<Finish, ShellPart>();
+  /**
+   * The ground floor's height for the building being emitted: walls darken
+   * towards it (splash and dirt at the base), which also seats the building
+   * on the ground. NaN turns it off.
+   */
+  ground = Number.NaN;
 
   /**
    * A planar polygon (3 or 4 world points, x/y map, z up) facing world normal
@@ -225,11 +254,18 @@ class Shell {
     const nx = wx;
     const ny = wz;
     const nz = -wy;
+    const wall = Math.abs(wz) < 0.5;
     points.forEach(([x, y, z], i) => {
       const q = three[i] as readonly [number, number, number];
       part.position.push(q[0], q[1], q[2]);
       part.normal.push(nx, ny, nz);
-      part.colour.push(c.rgb[0], c.rgb[1], c.rgb[2]);
+      // No two stretches of wall quite the same tone, and the base weathered.
+      let tone = 0.94 + macroNoise(x / MACRO_SCALE, y / MACRO_SCALE, z / MACRO_SCALE) * 0.12;
+      if (wall && Number.isFinite(this.ground)) {
+        const t = Math.min(1, Math.max(0, (z - this.ground) / GRIME_REACH));
+        tone *= 0.8 + 0.2 * t * t * (3 - 2 * t);
+      }
+      part.colour.push(c.rgb[0] * tone, c.rgb[1] * tone, c.rgb[2] * tone);
       part.uv.push(x * tx + y * ty, x * bx + y * by + z * bz);
     });
     const a = three[0] as readonly [number, number, number];
@@ -362,6 +398,7 @@ function emitBuilding(
   const bays = facadeBays(b);
   const f: Foundation = foundationOf(b, groundAt, bays, pavedAt);
   const floor = f.floor;
+  shell.ground = floor;
   const entranceKey = (volume: number, side: Side, index: number): string => `${volume}:${side}:${index}`;
   const entrances = new Map<string, Entrance>(f.entrances.map((x) => [entranceKey(x.volume, x.side, x.index), x]));
   /** The opening of an entrance, in its bay's face frame. */
@@ -463,6 +500,9 @@ function emitBuilding(
       shell.face([e.P(face, a0, bottom - floor, d1), e.P(face, a0, bottom - floor, d0), e.P(face, a0, top - floor, d0), e.P(face, a0, top - floor, d1)], [-tv[0], -tv[1], 0], plinth);
     }
   }
+
+  // ---- the lot: a paved apron round the base, and a path to the street
+  emitLot(e, b, f, groundAt, pavedAt);
 
   // ---- free elements: stairs, ramps, pillars, canopies, walls, slabs
   for (const el of b.elements ?? []) {
@@ -689,6 +729,26 @@ function emitRelief(e: Emitter, b: Building, v: Volume, r: Relief, floor: number
   e.shell.face([P(a0, z0, 0), P(a1, z0, 0), P(a1, z0, d), P(a0, z0, d)], [0, 0, out ? -1 : 1], trim);
 }
 
+/**
+ * What stands on a flat roof: a water tank on a plinth and a roof hatch, in a
+ * corner picked from the building's id (so a street is not a row of copies),
+ * on roofs big enough to walk on.
+ */
+function emitRoofPlant(e: Emitter, b: Building, v: Volume, z: number, trim: Paint): void {
+  if (v.w < m(6) || v.d < m(6)) return;
+  const pick = ((b.id * 2654435761 + v.id * 40503) >>> 0) % 4;
+  const inset = m(1.4);
+  const tank = m(2.2);
+  const cx = pick % 2 === 0 ? v.x + inset + tank / 2 : v.x + v.w - inset - tank / 2;
+  const cy = pick < 2 ? v.y + v.d - inset - tank / 2 : v.y + inset + tank / 2;
+  e.box(cx - tank / 2 - m(0.15), cy - tank / 2 - m(0.15), cx + tank / 2 + m(0.15), cy + tank / 2 + m(0.15), z, z + m(0.3), ROOF_PLANT);
+  e.box(cx - tank / 2, cy - tank / 2, cx + tank / 2, cy + tank / 2, z + m(0.3), z + m(1.9), trim, ROOF_PLANT);
+  // The hatch, diagonally across from the tank.
+  const hx = pick % 2 === 0 ? v.x + v.w - m(2.4) : v.x + m(1.6);
+  const hy = pick < 2 ? v.y + m(1.6) : v.y + v.d - m(2.4);
+  e.box(hx, hy, hx + m(0.8), hy + m(0.8), z, z + m(0.45), ROOF_PLANT);
+}
+
 const ELEMENT_CONCRETE: Paint = paint({ finish: 'concrete', colour: 0xcfcac0 });
 
 /** What an element is made of until the player says otherwise. */
@@ -723,10 +783,15 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
     if (el.kind === 'stair') {
       const n = stairSteps(el);
       const tread = el.d / n;
-      for (let k = 0; k < n; k++) {
-        const [a0, b0, a1, b1] = sub(k * tread, (k + 1) * tread);
-        e.box(a0, b0, a1, b1, zb, z0 + ((k + 1) * el.h) / n, c);
+      // A low flight is solid, like steps cast in place.
+      if (el.h <= STAIR_SOLID) {
+        for (let k = 0; k < n; k++) {
+          const [a0, b0, a1, b1] = sub(k * tread, (k + 1) * tread);
+          e.box(a0, b0, a1, b1, zb, z0 + ((k + 1) * el.h) / n, c);
+        }
+        return;
       }
+      emitOpenStair(e, el, [x0, y0, x1, y1], z0, zb, c);
       return;
     }
     // A ramp: its slope, rising from the foot, over two cheeks.
@@ -753,6 +818,161 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
     return;
   }
   e.box(x0, y0, x1, y1, zb, z1, c);
+}
+
+const APRON = m(0.9);
+const PATH_WIDTH = m(1.4);
+const PATH_REACH = m(14);
+const LOT_LIFT = 0.06;
+const PAVING: Paint = paint({ finish: 'stone', colour: 0xbdb5a6 });
+
+/**
+ * What seats a building in its lot: a paved apron round the base of every
+ * ground volume, laid on the land (sampled, so it follows a slope) and left
+ * out where there is paving already; and, from every way in that does not
+ * open straight onto a footway, a path out to the nearest one.
+ */
+function emitLot(e: Emitter, b: Building, f: Foundation, groundAt: GroundAt, pavedAt: PavedAt | undefined): void {
+  const paved = (x: number, y: number): boolean => pavedAt !== undefined && Number.isFinite(pavedAt(x, y));
+  const up: V3 = [0, 0, 1];
+  const strip = (from: Vec2, to: Vec2, width: number, nx: number, ny: number): void => {
+    // A strip `width` out from the line from -> to (local), along normal (nx, ny).
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    const pieces = Math.max(1, Math.ceil(length / m(2)));
+    for (let i = 0; i < pieces; i++) {
+      const a = { x: from.x + ((to.x - from.x) * i) / pieces, y: from.y + ((to.y - from.y) * i) / pieces };
+      const c = { x: from.x + ((to.x - from.x) * (i + 1)) / pieces, y: from.y + ((to.y - from.y) * (i + 1)) / pieces };
+      const quad = [a, c, { x: c.x + nx * width, y: c.y + ny * width }, { x: a.x + nx * width, y: a.y + ny * width }];
+      const world = quad.map((p) => e.L(p.x, p.y, 0));
+      if (world.some((w) => paved(w[0], w[1]))) continue;
+      e.shell.face(world.map((w) => [w[0], w[1], groundAt(w[0], w[1]) + LOT_LIFT] as V3), up, PAVING);
+    }
+  };
+  for (const v of b.volumes) {
+    if (v.base !== 0) continue;
+    const g = PLINTH_GROW;
+    for (const side of SIDES) {
+      const n = SIDE_NORMAL[side];
+      const s0 = sideStart(v, side);
+      const length = sideLength(v, side);
+      // From corner to corner, grown past the corners so the apron closes round them.
+      const from = { x: s0.x - s0.tx * (g + APRON) + n.x * g, y: s0.y - s0.ty * (g + APRON) + n.y * g };
+      const to = { x: s0.x + s0.tx * (length + g + APRON) + n.x * g, y: s0.y + s0.ty * (length + g + APRON) + n.y * g };
+      strip(from, to, APRON, n.x, n.y);
+    }
+  }
+  for (const x of f.entrances) {
+    if (!pavedAt) break;
+    // Where the paving is right there, the entrance already opens onto it.
+    let reach = 0;
+    for (let d = APRON; d <= PATH_REACH; d += m(0.5)) {
+      if (paved(x.x + x.nx * d, x.y + x.ny * d)) {
+        reach = d;
+        break;
+      }
+    }
+    if (reach <= APRON + m(0.5)) continue;
+    const c = Math.cos(b.rotation);
+    const s = Math.sin(b.rotation);
+    // The entrance's point and normal in the local frame.
+    const lx = (x.x - b.x) * c + (x.y - b.y) * s;
+    const ly = -(x.x - b.x) * s + (x.y - b.y) * c;
+    const nx = x.nx * c + x.ny * s;
+    const ny = -x.nx * s + x.ny * c;
+    const start = APRON + m(0.1) + flightRun(x.steps);
+    const half = PATH_WIDTH / 2;
+    strip(
+      { x: lx + nx * start - ny * half, y: ly + ny * start + nx * half },
+      { x: lx + nx * start + ny * half, y: ly + ny * start - nx * half },
+      reach - start,
+      nx,
+      ny,
+    );
+  }
+}
+
+/** A flight taller than this is built open: treads on a raking slab, with handrails. */
+const STAIR_SOLID = m(1.2);
+const TREAD = m(0.05);
+const WAIST = m(0.25);
+const HANDRAIL = m(0.95);
+
+/**
+ * A tall flight as it is really built: every step a tread and a riser, the
+ * lot carried by a raking concrete slab (the waist) with its cheeks, and a
+ * handrail on both sides on a post at each end. A solid wedge that tall reads
+ * as a ramp of rubble, not a stair.
+ */
+function emitOpenStair(
+  e: Emitter,
+  el: BuildingElement,
+  [x0, y0, x1, y1]: [number, number, number, number],
+  z0: number,
+  zb: number,
+  c: Paint,
+): void {
+  const n = stairSteps(el);
+  const tread = el.d / n;
+  const riser = el.h / n;
+  // A point `u` along the run from the foot, `a` across it, at height z.
+  const P = (u: number, a: number, z: number): V3 => {
+    switch (el.facing) {
+      case 0: return e.L(x0 + a, y0 + u, z);
+      case 2: return e.L(x0 + a, y1 - u, z);
+      case 3: return e.L(x0 + u, y0 + a, z);
+      default: return e.L(x1 - u, y0 + a, z);
+    }
+  };
+  const nf = SIDE_NORMAL[el.facing];
+  const out = e.N(nf.x, nf.y);
+  const across = el.facing === 0 || el.facing === 2 ? e.N(1, 0) : e.N(0, 1);
+  const back: V3 = [-across[0], -across[1], 0];
+  const w = el.w;
+  for (let k = 0; k < n; k++) {
+    const top = z0 + (k + 1) * riser;
+    const u0 = k * tread;
+    const u1 = (k + 1) * tread;
+    // The riser (down to the step below, or to the ground for the first) and the tread.
+    const below = k === 0 ? zb : z0 + k * riser - TREAD;
+    e.shell.face([P(u0, 0, below), P(u0, w, below), P(u0, w, top), P(u0, 0, top)], out, c);
+    e.shell.face([P(u0, 0, top), P(u0, w, top), P(u1, w, top), P(u1, 0, top)], [0, 0, 1], c);
+    // The step's ends, down to the waist.
+    const base = Math.max(zb, z0 + (el.h * u0) / el.d - WAIST);
+    e.shell.face([P(u0, 0, base), P(u1, 0, base), P(u1, 0, top), P(u0, 0, top)], back, c);
+    e.shell.face([P(u1, w, base), P(u0, w, base), P(u0, w, top), P(u1, w, top)], across, c);
+  }
+  // The waist: a raking slab under the steps, from the ground up to the top.
+  const slope = el.h / el.d;
+  const soffit = (u: number): number => Math.max(zb, z0 + slope * u - WAIST);
+  e.shell.face([P(0, 0, soffit(0)), P(0, w, soffit(0)), P(el.d, w, soffit(el.d)), P(el.d, 0, soffit(el.d))], e.N(-nf.x * slope, -nf.y * slope, -1), c);
+  // Handrails: a slim rail over each edge, at a constant height above the nosings.
+  const rail = m(0.05);
+  for (const a of [rail, w - rail]) {
+    const r0 = z0 + riser + HANDRAIL;
+    const r1 = z0 + el.h + HANDRAIL;
+    e.shell.face([P(0, a - rail, r0), P(0, a + rail, r0), P(el.d, a + rail, r1), P(el.d, a - rail, r1)], e.N(nf.x * slope, nf.y * slope, 1), RAIL);
+    e.shell.face([P(0, a + rail, r0 - rail * 2), P(el.d, a + rail, r1 - rail * 2), P(el.d, a + rail, r1), P(0, a + rail, r0)], across, RAIL);
+    e.shell.face([P(el.d, a - rail, r1 - rail * 2), P(0, a - rail, r0 - rail * 2), P(0, a - rail, r0), P(el.d, a - rail, r1)], back, RAIL);
+    // Posts at the foot and the head, and one between every few steps.
+    const every = Math.max(1, Math.round(m(1.2) / tread));
+    for (let k = 0; k < n; k += every) postAt(e, P, k * tread + tread / 2, a, z0 + (k + 1) * riser, HANDRAIL);
+    postAt(e, P, el.d - tread / 2, a, z0 + el.h, HANDRAIL);
+  }
+}
+
+const RAIL: Paint = paint({ finish: 'metal', colour: 0x3a3f42 });
+
+/** A slim square post of the handrail, from a tread up to the rail. */
+function postAt(e: Emitter, P: (u: number, a: number, z: number) => V3, u: number, a: number, z: number, h: number): void {
+  const r = m(0.025);
+  const corners: V3[] = [P(u - r, a - r, 0), P(u + r, a - r, 0), P(u + r, a + r, 0), P(u - r, a + r, 0)];
+  for (let i = 0; i < 4; i++) {
+    const p = corners[i] as V3;
+    const q = corners[(i + 1) % 4] as V3;
+    const mid: V3 = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, 0];
+    const centre: V3 = [(corners[0]![0] + corners[2]![0]) / 2, (corners[0]![1] + corners[2]![1]) / 2, 0];
+    e.shell.face([[p[0], p[1], z], [q[0], q[1], z], [q[0], q[1], z + h], [p[0], p[1], z + h]], [mid[0] - centre[0], mid[1] - centre[1], 0], RAIL);
+  }
 }
 
 /** A horizontal band around a volume at height z (a storey line or a cornice). */
@@ -785,6 +1005,7 @@ function emitRoof(
   if (v.roof === 'flat' || v.roof === 'terrace') {
     const terrace = v.roof === 'terrace';
     sh.face([e.L(x0, y0, z), e.L(x1, y0, z), e.L(x1, y1, z), e.L(x0, y1, z)], up, terrace ? TERRACE : roofColour);
+    if (!terrace) emitRoofPlant(e, b, v, z, trim);
     // Its top stays just under the roof: a face shared with the roof cap
     // z-fights into stripes.
     band(e, v, z - m(0.2), CORNICE_OUT, m(0.36), trim);

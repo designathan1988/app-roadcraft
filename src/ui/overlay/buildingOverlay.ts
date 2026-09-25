@@ -66,23 +66,14 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
   const sel = input.selected;
   if (sel) {
     const b = sel.building;
-    for (const v of b.volumes) if (v.base === 0) ring(volumeCorners(b, v, 0.6), sel.floor, SELECTION, 1.5);
     const v = volumeById(b, sel.volume);
     if (v) {
-      // The selected volume as a wire box.
-      const corners = volumeCorners(b, v);
-      const z0 = sel.floor + levelElevation(b, v.base);
-      const z1 = sel.floor + volumeHeight(b, v);
-      ring(corners, z0, SELECTION, 2);
-      ring(corners, z1, SELECTION, 2);
-      ctx.beginPath();
-      for (const p of corners) {
-        const a = project(p.x, p.y, z0);
-        const c = project(p.x, p.y, z1);
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(c.x, c.y);
-      }
-      ctx.stroke();
+      // No wire box over the building: a thin line where the selected volume
+      // stands, and its roof edge, is enough to say what is selected without
+      // hiding what it looks like.
+      const corners = volumeCorners(b, v, 0.4);
+      ring(corners, sel.floor + levelElevation(b, v.base), SELECTION, 1.25);
+      ring(volumeCorners(b, v, 0.2), sel.floor + volumeHeight(b, v), SELECTION_FAINT, 1);
       // The picked bay, as a filled quad on its facade.
       if (sel.bay) {
         const region = sel.region ?? { side: sel.bay.side, bay0: sel.bay.index, bay1: sel.bay.index, storey0: sel.bay.storey, storey1: sel.bay.storey };
@@ -141,6 +132,9 @@ const GLYPH: Readonly<Record<Handle['kind'], string>> = {
   relief: '',
 };
 
+/** The selected volume's roof edge: present, but quieter than the base line. */
+const SELECTION_FAINT = 'rgba(101,229,195,0.45)';
+
 /** The push-pull handle of a face region, in the second accent. */
 const RELIEF = '#ffc864';
 
@@ -150,7 +144,7 @@ function drawHandle(ctx: CanvasRenderingContext2D, h: Handle, project: (x: numbe
   ctx.strokeStyle = SELECTION;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, h.kind === 'side' || h.kind === 'relief' ? 8 : 11, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, h.kind === 'side' || h.kind === 'relief' ? 7 : 9, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   if (h.kind === 'relief') {

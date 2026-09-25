@@ -73,8 +73,8 @@ export const PALETTE_MATERIALS: readonly PaletteMaterials[] = [
   { wall: spec('metal', 0x939b91), trim: spec('concrete', 0xc4c8c1), roof: spec('metal', 0x6f7577), awning: 0xc4a02d },
 ];
 
-/** A flat roof's default: a membrane on a slab, whatever the palette. */
-export const FLAT_ROOF_MATERIAL = spec('concrete', 0x76746e);
+/** A flat roof's default: a smooth membrane, whatever the palette (a panel grid read as a floor). */
+export const FLAT_ROOF_MATERIAL = spec('plaster', 0x6d6b66);
 export const PLINTH_MATERIAL = spec('stone', 0x7f786d);
 
 export const paletteOf = (b: Building): PaletteMaterials =>

@@ -241,8 +241,8 @@ export const EN: Dictionary = {
 
   // -------------------------------------------------------------- buildings
   'tool.building': 'Buildings',
-  'hint.building.place': 'Click to place · R: rotate · Snaps to roads and buildings · Right button: camera',
-  'hint.building.edit': 'Drag the arrows: roof = floors, sides = size (Shift: new wing) · Click a facade, Shift+click for more bays, then push or pull the yellow arrow · ✥ move · ⟳ rotate',
+  'hint.building.place': 'Click to build · R turns it',
+  'hint.building.edit': 'Drag an arrow to shape it · click a facade to work on it',
   'hint.mobile.building.place': 'Tap to place · 2 fingers: camera',
   'hint.mobile.building.edit': 'Drag the arrows to shape it · 2 fingers: camera',
   'building.title': 'BUILDINGS',
@@ -282,7 +282,7 @@ export const EN: Dictionary = {
   'building.wing.2': 'Back',
   'building.wing.3': 'Left',
   'building.elements': 'Elements',
-  'building.element.hint': 'Point at a facade (stairs and ramps run down from that floor) or at the ground beside the building, then click',
+  'building.element.hint': 'Point at a facade or the ground, then click',
   'building.element.stair': 'Stairs',
   'building.element.ramp': 'Ramp',
   'building.element.pillar': 'Pillar',
@@ -298,7 +298,7 @@ export const EN: Dictionary = {
   'building.face.summary': '{bays} × {floors}',
   'building.bays.one': '1 bay',
   'building.bays.other': '{count} bays',
-  'building.relief.pickFace': 'Click a facade to pick its bays (Shift+click: more), then push or pull the yellow arrow',
+  'building.relief.pickFace': 'Click a facade (Shift+click for more bays), then pull the yellow arrow',
   'building.relief.depth': 'Depth',
   'building.relief.recess': 'Recess',
   'building.relief.project': 'Project',

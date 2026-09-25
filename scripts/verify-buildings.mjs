@@ -19,6 +19,22 @@ import process from 'node:process';
 
 const PORT = Number(process.env.ROADCRAFT_BUILDINGS_PORT ?? 5198);
 const SHOT_DIR = path.resolve('docs', 'screenshots');
+/** `--label before` / `--label after`: prefixes every screenshot, for side-by-side pairs. */
+const LABEL = (() => {
+  const i = process.argv.indexOf('--label');
+  return i >= 0 ? process.argv[i + 1] : 'current';
+})();
+
+/**
+ * The fixed cameras every showcase screenshot is taken from, so a "before" and
+ * an "after" can be compared: the same centre, the same zoom.
+ */
+const CAMERAS = [
+  { name: 'near', x: 8, y: 32, zoom: 12 },
+  { name: 'mid', x: 20, y: 30, zoom: 5 },
+  { name: 'far', x: 20, y: 20, zoom: 2.2 },
+  { name: 'overview', x: 0, y: 10, zoom: 1 },
+];
 const SOFTWARE_GL = process.env.ROADCRAFT_SOFTWARE_GL === '1';
 const LAUNCH_ARGS = SOFTWARE_GL
   ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox']
@@ -73,10 +89,42 @@ const PRELUDE = `
     T.pointerUp(false);
     return preview;
   };
-  const frame = (x, y, zoom) => { V.moveTo({ x, y }); V.zoomAt(innerWidth / 2, innerHeight / 2, zoom / V.zoom); };
+  // The game's own camera too: it is what the viewport is re-synced from.
+  const frame = (x, y, zoom) => {
+    V.moveTo({ x, y }); V.zoomAt(innerWidth / 2, innerHeight / 2, zoom / V.zoom);
+    R.camera.x = x; R.camera.y = y; R.camera.zoom = V.zoom;
+  };
 `;
 
 const SCENARIOS = [
+  {
+    name: 'showcase',
+    cameras: true,
+    run: `
+      clear(); street(); await tool();
+      const a = place('block', 0, 30);
+      if (a === null) return 'the block did not place';
+      T.addStoreys(2); T.setRoof('flat');
+      let b = D.buildings.get(a);
+      const v = b.volumes[0];
+      T.armElement('canopy');
+      aimAndClick(b, v.x + v.w / 2 + 0.01, v.y, 0);
+      T.armElement('canopy');
+      place('apartments', 60, 32);
+      place('house', -45, 26);
+      place('shop', 105, 27);
+      place('rowhouse', -80, 30);
+      place('rowhouse', -93, 30);
+      place('office', 40, -40);
+      place('house', -20, -32);
+      place('warehouse', -95, -45);
+      T.selection = null;
+      R.setTraffic(true);
+      R.runSim(20);
+      await settle();
+      return null;
+    `,
+  },
   {
     name: 'simple-house',
     run: `
@@ -290,12 +338,28 @@ fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 for (const scenario of SCENARIOS) {
   const problem = await page.evaluate(`(async () => { ${PRELUDE} ${scenario.run} })()`).catch((e) => `threw: ${e.message}`);
-  const shot = path.join(SHOT_DIR, `buildings-${scenario.name}.jpg`);
-  await page.screenshot({ path: shot, type: 'jpeg', quality: 82 });
+  if (scenario.cameras) {
+    for (const cam of CAMERAS) {
+      await page.evaluate(`(() => { const V = window.__roadcraft.scene().viewport; V.moveTo({ x: ${cam.x}, y: ${cam.y} }); V.zoomAt(innerWidth / 2, innerHeight / 2, ${cam.zoom} / V.zoom); const C = window.__roadcraft.camera; C.x = ${cam.x}; C.y = ${cam.y}; C.zoom = V.zoom; window.__roadcraft.redraw(); })()`);
+      await page.waitForTimeout(900);
+      const shot = path.join(SHOT_DIR, `buildings-${LABEL}-${scenario.name}-${cam.name}.jpg`);
+      await page.screenshot({ path: shot, type: 'jpeg', quality: 85 });
+      console.log(`shot  ${path.relative(process.cwd(), shot)}`);
+    }
+  } else {
+    const shot = path.join(SHOT_DIR, `buildings-${LABEL}-${scenario.name}.jpg`);
+    await page.screenshot({ path: shot, type: 'jpeg', quality: 82 });
+    if (!problem) console.log(`ok    ${scenario.name}  ${path.relative(process.cwd(), shot)}`);
+  }
   if (problem) fail(`${scenario.name}: ${problem}`);
-  else console.log(`ok    ${scenario.name}  ${path.relative(process.cwd(), shot)}`);
 }
 const report = await page.evaluate('window.__buildingsReport ?? null');
+// Frame rate with every scenario's buildings and the traffic running, per quality preset.
+for (const preset of ['high', 'low']) {
+  await page.evaluate(`window.__roadcraft.scene().setQuality('${preset}')`);
+  await page.waitForTimeout(3000);
+  console.log(`fps   ${preset} ${await page.evaluate('window.__roadcraft.scene().stats.fps')}`);
+}
 console.log('traffic', JSON.stringify(report));
 if (report && !(report.vehicles > 0)) fail('no vehicles ran among the buildings');
 if (pageErrors.length > 0) fail(`page errors: ${pageErrors.slice(0, 5).join(' | ')}`);
