@@ -117,9 +117,10 @@ async function save(name, url, note, spec) {
 }
 
 /** Moves the play view over a point, lets it draw, then takes the shot. */
-async function shoot(name, spec, note, zoom = 60) {
+async function shoot(name, spec, note, zoom = 60, settle = 0) {
   await page.evaluate(({ x, y, zoom }) => { window.__roadcraft.lookAt(x, y, zoom); }, { ...spec, zoom });
   await frames(4);
+  if (settle > 0) { await page.waitForTimeout(settle); await frames(4); }
   const url = await page.evaluate((s) => window.__roadcraft.scene().inspect?.shot(s) ?? null, spec);
   if (!url) throw new Error('no inspection camera: is this a development build?');
   await save(name, url, note, spec);
@@ -166,6 +167,7 @@ async function locate(kind, filter = {}) {
         const pose = pedPose(R.sim, p, 1);
         if (!pose) continue;
         out.push({ id: p.id, x: pose.p.x, y: pose.p.y, heading: pose.angle, party: p.party.size, partyId: p.party.id,
+          ageClass: p.ageClass, hasChild: p.party.hasChild,
           h: scene.elevationAt(pose.p.x, pose.p.y) + (edge.kind === 'crossing' ? 0 : FOOTWAY_RISE) });
       }
     }
@@ -328,18 +330,18 @@ if (want('bikes')) {
 if (want('people')) {
   const walkers = await locate('ped', { onFootway: true });
   const parties = new Map();
-  for (const w of walkers) if (w.party > 1 && !parties.has(w.partyId)) parties.set(w.partyId, w);
+  for (const w of walkers) if (w.party > 1 && (!parties.has(w.partyId) || w.ageClass === 'child')) parties.set(w.partyId, w);
   let i = 0;
-  for (const w of parties.values()) {
+  for (const w of [...parties.values()].sort((a, b) => Number(b.hasChild) - Number(a.hasChild))) {
     if (i++ >= LIMIT) break;
     await shoot(`group-${w.partyId}`, { x: w.x, y: w.y, h: w.h + M(0.9), azimuth: w.heading + 1.2, elevation: 0.12,
-      distance: M(7), fov: 30, width: 1400, height: 1000 }, `party ${w.partyId} (${w.party} people)`);
+      distance: M(7), fov: 30, width: 1400, height: 1000 }, `party ${w.partyId} (${w.party} people)`, 60, 1200);
   }
   i = 0;
   for (const w of walkers.filter((p) => p.party === 1)) {
     if (i++ >= LIMIT) break;
     await shoot(`solo-${w.id}`, { x: w.x, y: w.y, h: w.h + M(0.9), azimuth: w.heading + 1.0, elevation: 0.1,
-      distance: M(4.5), fov: 30, width: 1000, height: 1200 }, `walker #${w.id}`);
+      distance: M(4.5), fov: 30, width: 1000, height: 1200 }, `walker #${w.id}`, 60, 1200);
   }
 }
 

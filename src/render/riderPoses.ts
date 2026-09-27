@@ -33,6 +33,7 @@ import { Box3, Bone, Matrix4, Object3D, Quaternion, SkinnedMesh, Vector3 } from 
 export type RiderClipKey =
   | 'carDrive' | 'carDriveMirror' | 'carDriveRight'
   | 'carRide' | 'carRideLeft' | 'carRideRight'
+  | 'carRearRide' | 'carRearLeft' | 'carRearRight'
   | 'cabDrive' | 'cabDriveMirror' | 'cabDriveRight'
   | 'cabRide' | 'cabRideLeft' | 'cabRideRight'
   | 'chairSit' | 'chairSitLeft' | 'chairSitRight' | 'chairSitPhone'
@@ -230,8 +231,8 @@ const CAR_DRIVE: Targets = {
   // 0.15 m down, closer to the hip than a leg reaches without folding: the
   // knee rose above the hip, and every occupant sat with their knees at
   // their chest.
-  leftFoot: [0.17, -0.2, 0.8],
-  rightFoot: [-0.14, -0.2, 0.82],
+  leftFoot: [0.17, -0.08, 0.62],
+  rightFoot: [-0.14, -0.08, 0.64],
   leftHand: rimPoint(1.05),
   rightHand: rimPoint(-1.05),
   kneePole: [0, 1, 1],
@@ -242,13 +243,23 @@ const CAR_RIDE: Targets = {
   lean: -0.8,
   // Legs out, the knees a little over the hips: a passenger's feet go under
   // the seat in front, 0.75 m ahead of the hip point.
-  leftFoot: [0.16, -0.2, 0.75],
-  rightFoot: [-0.16, -0.2, 0.75],
+  leftFoot: [0.16, -0.08, 0.61],
+  rightFoot: [-0.16, -0.08, 0.61],
   leftHand: [0.13, 0.06, 0.3],
   rightHand: [-0.13, 0.06, 0.3],
   kneePole: [0, 1, 1],
   elbowPole: [0.3, -1, 0],
   look: -0.1,
+};
+
+/** A rear passenger folds their knees into the footwell beneath the front seat. */
+const CAR_REAR_RIDE: Targets = {
+  ...CAR_RIDE,
+  lean: -0.55,
+  leftFoot: [0.15, -0.13, 0.43],
+  rightFoot: [-0.15, -0.13, 0.44],
+  leftHand: [0.14, 0.04, 0.23],
+  rightHand: [-0.14, 0.04, 0.23],
 };
 
 /**
@@ -337,6 +348,9 @@ export const RIDER_CLIPS: readonly RiderClip[] = [
   still('carRide', CAR_RIDE),
   still('carRideLeft', turned(CAR_RIDE, 0.6)),
   still('carRideRight', turned(CAR_RIDE, -0.6)),
+  still('carRearRide', CAR_REAR_RIDE),
+  still('carRearLeft', turned(CAR_REAR_RIDE, 0.6)),
+  still('carRearRight', turned(CAR_REAR_RIDE, -0.6)),
   still('cabDrive', CAB_DRIVE),
   still('cabDriveMirror', turned(CAB_DRIVE, 0.6, 0)),
   still('cabDriveRight', turned(CAB_DRIVE, -0.5, 0)),

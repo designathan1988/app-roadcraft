@@ -74,14 +74,14 @@ export const CAR_PACKAGE = {
   /** Hip point over the floor (the heel point's floor), every car seat. */
   hipOverFloor: 0.27,
   /** Heel point: forward of the hip and below it, on the floor. */
-  heelForward: 0.84,
+  heelForward: 0.62,
   /** Recline of the seat back from vertical, radians. */
   recline: 0.42,
   /** Cushion: its top sits this far under the hip point, and reaches this far forward. */
   cushionDrop: 0.1,
   cushionReach: 0.42,
   /** A rear passenger's heels: forward of their hip, on the floor under the front seat's back edge. */
-  rearHeelForward: 0.5,
+  rearHeelForward: 0.43,
 } as const;
 
 /** A van's cab seat: the hip over the floor, and the heels ahead of it (`riderPoses` CAB poses). */
@@ -128,8 +128,8 @@ interface Style {
 const STYLES: Record<CarStyle, Style> = {
   sedan: {
     clearance: 0.14, floor: 0.24, couple: 0.9,
-    top: [[0.5, 0.43], [0.485, 0.5], [0.44, 0.555], [0.33, 0.6], [0.215, 0.645], [0.13, 0.78], [0.04, 0.965], [-0.05, 1], [-0.14, 0.985], [-0.2, 0.9],
-      [-0.29, 0.69], [-0.36, 0.675], [-0.44, 0.665], [-0.49, 0.63], [-0.5, 0.56]],
+    top: [[0.5, 0.43], [0.485, 0.5], [0.44, 0.555], [0.33, 0.6], [0.215, 0.645], [0.13, 0.78], [0.04, 0.995], [-0.05, 1], [-0.14, 0.995], [-0.24, 0.995],
+      [-0.3, 0.9], [-0.36, 0.675], [-0.44, 0.665], [-0.49, 0.63], [-0.5, 0.56]],
     noseLift: 0.12, tailLift: 0.12, screen: [0.215, 0.045], rear: [-0.17, -0.29], belt: [0.635, 0.69],
     doors: [0.215, -0.035, -0.205], quarter: true, tumble: 0.2, noseRadius: 0.42, tailRadius: 0.32, hip: 0.035,
   },

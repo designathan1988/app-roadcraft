@@ -39,6 +39,10 @@ export interface CitizenModel {
   readonly wardrobe: Wardrobe;
   readonly ageBand: AgeBand;
   readonly gender: Sex;
+  /** A visual variant uses the same licensed mesh and rig as this source. */
+  readonly sourceId?: string;
+  /** Clothing palette of a visual variant; zero keeps its source texture. */
+  readonly look?: number;
 }
 
 const WARDROBES: readonly Wardrobe[] = ['casual', 'smart-casual', 'business', 'sport-casual', 'traditional'];
@@ -72,8 +76,13 @@ export function whitelist(entries: readonly ManifestEntry[], available: readonly
   return out;
 }
 
-/** The street roster, in manifest order. These are the only bodies ever loaded. */
-export const CROWD: readonly CitizenModel[] = whitelist(manifest.models as readonly ManifestEntry[]);
+/** The street roster, including distinct clothing looks of real child bodies. */
+const REVIEWED = whitelist(manifest.models as readonly ManifestEntry[]);
+export const CROWD: readonly CitizenModel[] = [
+  ...REVIEWED,
+  ...REVIEWED.filter((model) => model.ageBand === 'child').flatMap((model) =>
+    [1, 2, 3].map((look) => ({ ...model, id: `${model.id}_look${look}`, sourceId: model.id, look }))),
+];
 /** Their ids, in the same order: the renderer's model indices. */
 export const CROWD_IDS: readonly string[] = CROWD.map((model) => model.id);
 
@@ -170,8 +179,6 @@ export interface Casting {
 
 /** No two people within this distance wear the same body, if the roster allows. World units. */
 export const CAST_NEAR = 62.5;
-/** A child drawn on an adult body is drawn this much smaller. */
-export const CHILD_ON_ADULT = 0.64;
 
 const hashOf = (n: number): number => {
   let h = (n | 0) + 0x7f4a7c15;
@@ -217,8 +224,8 @@ export class CastingRegistry {
 
   /**
    * The bodies a person may be drawn as under one code, best age first; an
-   * empty pool if none, and a `spare` deck for when every body of the pool
-   * is worn in their party (the roster has one girl's body and two boys').
+   * empty pool if none. Children only use models built with child anatomy;
+   * repeating one is preferable to shrinking an adult into a child.
    */
   candidates(ctx: CastingContext, code: DressCode, helmetFits: (id: string) => boolean = () => true):
     { pool: number[]; size: number; spare: number[]; spareSize: number } {
@@ -230,11 +237,11 @@ export class CastingRegistry {
       return out;
     };
     // An adult is any grown body; an elder a senior's first, a grown one when
-    // every senior's is worn; a child a child's, a young adult's at a child's
-    // height when every child's is worn.
+    // every senior's is worn. A child always has a real child body.
     if (ctx.ageClass === 'adult') return { pool: [...of('young'), ...of('adult')], size: 1, spare: [], spareSize: 1 };
-    const [first, second] = ctx.ageClass === 'elder' ? [of('senior'), of('adult')] : [of('child'), of('young')];
-    const spareSize = ctx.ageClass === 'child' ? CHILD_ON_ADULT : 1;
+    if (ctx.ageClass === 'child') return { pool: of('child'), size: 1, spare: [], spareSize: 1 };
+    const [first, second] = [of('senior'), of('adult')];
+    const spareSize = 1;
     if (first.length) return { pool: first, size: 1, spare: second, spareSize };
     if (second.length) return { pool: second, size: spareSize, spare: [], spareSize };
     return { pool: [], size: 1, spare: [], spareSize: 1 };

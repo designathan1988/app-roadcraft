@@ -128,14 +128,18 @@ export interface SeatedExtents {
  */
 export const SEATED_EXTENTS: SeatedExtents = { top: 0.94, bottom: 0.28, forward: 0.88, back: 0.33, half: 0.29 };
 
+/** Rear car passengers fold their legs into the shorter footwell. */
+export const REAR_SEATED_EXTENTS: SeatedExtents = { top: 0.97, bottom: 0.26, forward: 0.69, back: 0.25, half: 0.28 };
+
 /** The same for a bus or truck driver's upright seat. */
 export const CAB_EXTENTS: SeatedExtents = { top: 0.96, bottom: 0.46, forward: 0.72, back: 0.3, half: 0.3 };
 
 /** The same for a bus seat (`chairSit` and its variations). */
 export const CHAIR_EXTENTS: SeatedExtents = { top: 0.96, bottom: 0.55, forward: 0.66, back: 0.3, half: 0.28 };
 
-export const extentsOf = (seat: Pick<SeatModel, 'pose'>): SeatedExtents =>
-  seat.pose === 'chair' ? CHAIR_EXTENTS : seat.pose === 'cab' ? CAB_EXTENTS : SEATED_EXTENTS;
+export const extentsOf = (seat: Pick<SeatModel, 'pose' | 'row'>): SeatedExtents =>
+  seat.pose === 'chair' ? CHAIR_EXTENTS : seat.pose === 'cab' ? CAB_EXTENTS
+    : seat.row > 0 ? REAR_SEATED_EXTENTS : SEATED_EXTENTS;
 
 /**
  * The largest size a person may be drawn at in this seat and stay entirely

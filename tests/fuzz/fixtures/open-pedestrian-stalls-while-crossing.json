@@ -274,6 +274,5 @@
    "op": "removeNode",
    "pick": 0.7
   }
- ],
- "open": "Audit pedInRoadStalled: a pedestrian makes no progress for 3 s while on a crossing. Pedestrian scope, next run; not investigated here."
+ ]
 }

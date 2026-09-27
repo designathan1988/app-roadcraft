@@ -249,6 +249,5 @@
    "pick": 0.68,
    "at": 0.5
   }
- ],
- "open": "Audit staleClaim: a vehicle holding an admitted connector has not moved for STUCK_SECONDS. Found in 3 of 20 traffic runs; not investigated for lack of budget."
+ ]
 }

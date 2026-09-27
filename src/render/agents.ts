@@ -547,30 +547,13 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   });
   const trim = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.35, vertexColors: true });
   const glassMaterial = new MeshStandardMaterial({
-    color: 0x1a2328,
-    roughness: 0.04,
-    metalness: 0.1,
+    color: 0x7896a2,
+    roughness: 0.12,
+    metalness: 0.04,
     transparent: true,
-    // Clear enough to see who is driving.
-    //
-    // The camera looks down at 48 degrees, so the roof covers most of the
-    // cabin and the occupants are read through the SIDE glass and the
-    // windscreen. At 0.58 that glass was carrying more reflection than
-    // transmission and the figures inside were a suggestion rather than
-    // people. This is the one material in the scene whose job is to let
-    // something behind it be seen.
-    //
-    // Real people are now seated inside, and at 0.4 with a strong reflection
-    // they were still only a hint of a face at close zoom. Glass here carries
-    // more transmission than reflection, as tinted car glass seen from above
-    // on an overcast-bright day does.
-    //
-    // And then the cabin read as a glass box from the play zoom: seats,
-    // dashboard and carpet through every pane, the car no longer a car. Real
-    // automotive glass from above is dark and mirrors the sky; the people
-    // inside show only close up. Dark and reflective it is.
-    opacity: 0.74,
-    envMapIntensity: 1.7,
+    // Keep a cool tint while letting seated people read through the panes.
+    opacity: 0.34,
+    envMapIntensity: 0.8,
     // Panes are single sheets seen from both sides: the windscreen from above,
     // a door's window from inside when it swings open.
     side: DoubleSide,

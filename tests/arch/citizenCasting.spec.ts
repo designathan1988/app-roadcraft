@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import { CastingRegistry, CROWD } from '@render/citizenCasting';
 
 /**
  * ONE DOOR INTO THE ROSTER. The street had a footballer, a pilot and a man in
@@ -33,5 +34,20 @@ describe('citizen casting', () => {
       .map((file) => relative(SRC, file).split(sep).join('/'))
       .filter((file) => !ALLOWED.has(file) && ROSTER.test(code(readFileSync(join(SRC, file), 'utf8'))));
     expect(offenders).toEqual([]);
+  });
+
+  it('casts every child as a child body even when nearby child models are already worn', () => {
+    const casting = new CastingRegistry();
+    casting.beginFrame();
+    for (let seed = 1; seed <= 40; seed++) {
+      const body = casting.pickCitizenModel({
+        seed, gender: seed % 2 ? 'f' : 'm', ageClass: 'child',
+        company: 'family', companyId: Math.ceil(seed / 4), hasChild: true,
+        x: 0, y: 0,
+      });
+      expect(body, `child ${seed}`).not.toBeNull();
+      expect(CROWD[body!.index]!.ageBand, `child ${seed}`).toBe('child');
+      expect(body!.size, `child ${seed}`).toBe(1);
+    }
   });
 });

@@ -268,6 +268,7 @@ function considerTalk(w: SimWorld, p: Ped, edge: SidewalkEdge): void {
     STOP_END_ROOM + (room - STOP_END_ROOM) * (0.3 + 0.4 * unit(h, 16)), room);
   if (at === null) return;
   const party = companionsOn(w, p, edge);
+  if (party.length < 2) return;
   for (const q of party) if (q.s > at - m(3)) return;
   const hold = TALK_RANGE[0] + (TALK_RANGE[1] - TALK_RANGE[0]) * unit(h, 8);
   for (const q of party) {
@@ -307,6 +308,7 @@ export function arrivalActivity(w: SimWorld, p: Ped, seconds: number): void {
     // Only on a footway proper, with room to stand clear of the corner.
     if (edge.kind !== 'walk' || p.state !== 'Walking') return;
     const party = companionsOn(w, p, edge);
+    if (party.length < 2) return;
     let lead = 0;
     for (const q of party) lead = Math.max(lead, q.s);
     const at = clearSpot(w, edge, p.entry === edge.from, lead + m(1.5), edge.length - ARRIVAL_END_ROOM);
@@ -451,7 +453,7 @@ function layoutTalk(w: SimWorld, g: TalkGroup, edge: SidewalkEdge): void {
     }
     g.n = 0;
     g.alone = holding > 0 ? g.alone + DT : 0;
-    if (g.alone > TALK_ALONE) for (const q of members) endActivity(w, q);
+    if (holding > 0 || g.alone > TALK_ALONE) for (const q of members) endActivity(w, q);
     return;
   }
   g.alone = 0;
