@@ -6,6 +6,7 @@ import type { NodeId, SegmentId } from '@world/ids';
 import { CROSSWALK_DEPTH } from '@world/approach';
 import { buildRoadElevation } from '@world/elevation';
 import { LaneletGraph, type Lanelet } from '@world/lanelets';
+import { HEADING_CHORD, chordHeading } from '@world/heading';
 import { Level, halfWidth, roadProfile } from '@world/roadTypes';
 import { carriesPedestrians } from '@world/pedestrianAccess';
 import { levelPolygons } from '@world/surfaces';
@@ -277,6 +278,10 @@ function worstOffSurface(
 ): { p: Vec2; by: number } | null {
   let worst: { p: Vec2; by: number } | null = null;
   const samples = Math.max(16, Math.ceil((crossing.length + length) / 1.5));
+  const frameAt = (arc: number) => arc < 0
+    ? inbound.centre.sampleAt(inbound.length + arc)
+    : arc <= crossing.length ? crossing.centre.sampleAt(arc)
+      : outbound.centre.sampleAt(arc - crossing.length);
   for (let i = 0; i <= samples; i++) {
     const front = ((crossing.length + length) * i) / samples;
     const centre = front - length / 2;
@@ -285,16 +290,17 @@ function worstOffSurface(
     // and clamping it to the lane's start would hang it off the road.
     if (front - length < -inbound.length || front > crossing.length + outbound.length) continue;
     // A connector where a road simply runs on has no length, and no tangent.
-    const frame = centre < 0 || (crossing.length < 1e-3 && centre === 0)
-      ? inbound.centre.sampleAt(inbound.length + centre)
-      : centre <= crossing.length && crossing.length >= 1e-3
-        ? crossing.centre.sampleAt(centre)
-        : outbound.centre.sampleAt(centre - crossing.length);
+    const frame = frameAt(centre);
+    // Match the rendered body's short-chord heading, including across the
+    // lanelet boundary. A polyline tangent jumps at every vertex and reports
+    // a different swept rectangle from the simulation's actual vehicle pose.
+    const heading = chordHeading(frameAt(centre - HEADING_CHORD).p,
+      frameAt(centre + HEADING_CHORD).p, frame.t);
     for (const along of [-0.5, 0, 0.5]) {
       for (const across of [-0.5, 0.5]) {
         const p = {
-          x: frame.p.x + frame.t.x * along * length - frame.t.y * across * width,
-          y: frame.p.y + frame.t.y * along * length + frame.t.x * across * width,
+          x: frame.p.x + heading.x * along * length - heading.y * across * width,
+          y: frame.p.y + heading.y * along * length + heading.x * across * width,
         };
         if (asphalt.contains(p) || kerb.contains(p)) continue;
         const by = kerb.edgeDistance(p);

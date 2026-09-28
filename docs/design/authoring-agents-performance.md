@@ -26,6 +26,8 @@ The `pedestrian-crossing-seed3` stall is now fixed at its physical cause. On a t
 
 A curved ribbon had a further 0.36-unit hole where its offset side missed the straight chord of a two-leg junction mouth. Each curved leg now contributes a four-unit sampled overlap around its mouth, at the same half-width as its road level. The shrunk `curved-mouth-ribbon-gap` fixture passes. The post-change 80 × 40 world hunt found 0 `surfaceGap`, 0 `elevationStep`, and 0 exceptions, while `turnOffSurface` remained 5,063 in all 80 sequences. The full 16-scenario WebGL visual verifier passed again, with no page errors, non-finite mesh vertices, or asphalt below terrain outside tunnel bores. Turn trajectories remain the road release blocker.
 
+A representative two-leg bend showed that the existing single cubic put even its centreline 2.7 units outside asphalt; changing its one handle length did not solve it. A tangent-continuous pair of cubics through a searched point inside the junction fit the heaviest vehicle on that reduced case. This fallback runs only after the standard handle candidates fail and is memoised with the same geometry digest. The 80 × 40 hunt reduced `turnOffSurface` from 5,063 to 4,317 occurrences, with the other world categories still at zero. The 21 active fuzz regressions, 13 targeted collision/signal/class-join tests, and 16 WebGL visual scenes passed. Most remaining departures occur in complex five- and six-leg junctions; the road milestone remains open. Class-aware movement eligibility and a general bounded path planner are still needed before this category can pass, without widening road surfaces just to hide the defect.
+
 ## Reference study and decisions
 
 | Need | Reference behavior | Roadcraft decision |

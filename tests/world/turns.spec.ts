@@ -5,6 +5,8 @@ import { Network } from '@world/network';
 import { LaneletGraph, classifyTurn } from '@world/lanelets';
 import { perp } from '@core/vec2';
 import { createIsoRig } from '@render/isoViewport';
+import { JunctionSurface, turnFits } from '@world/turnPaths';
+import { HEAVY } from '@world/conflictPoints';
 
 /**
  * WHICH WAY IS LEFT.
@@ -56,6 +58,24 @@ describe('the world frame', () => {
     expect(classifyTurn(east, east)).toBe('through');
     expect(classifyTurn(east, { x: -1, y: 0 })).toBe('uturn');
   });
+});
+
+it('routes a long body through a sharply bent two-leg junction', () => {
+  const doc = new RoadDoc();
+  const a = doc.addNode({ x: 10.33, y: 345.49 });
+  const corner = doc.addNode({ x: -57.00686211875342, y: 228.85913358805914 });
+  const b = doc.addNode({ x: -299.74, y: 285.55 });
+  const straight = doc.addSegment(a.id, corner.id, 3);
+  const bent = doc.addSegment(corner.id, b.id, 4, { t: 0.55, h: 64 });
+  const net = new Network(doc); net.rebuild();
+  const graph = new LaneletGraph(); graph.build(doc, net);
+  const movement = [...graph.connectors.values()].find((c) =>
+    c.inSegment === bent!.id && c.outSegment === straight!.id && c.turn === 'left');
+  expect(movement).toBeDefined();
+  const incoming = graph.lanelets.get(movement!.fromLane)!.centre;
+  const turn = graph.lanelets.get(movement!.lanelet)!.centre;
+  const outgoing = graph.lanelets.get(movement!.toLane)!.centre;
+  expect(turnFits(incoming, turn, outgoing, new JunctionSurface(net, corner.id), HEAVY)).toBe(true);
 });
 
 /** A signalised cross with several lanes each way, and its lane graph. */

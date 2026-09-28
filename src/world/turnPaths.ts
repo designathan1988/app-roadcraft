@@ -5,7 +5,7 @@ import { GEO_EPS } from '@core/scalar';
 import type { NodeId } from './ids';
 import type { Network } from './network';
 import { Level } from './roadTypes';
-import { BODY_ENVELOPE, HEAVY } from './conflictPoints';
+import { BODY_ENVELOPE, HEAVY, type BodyClass } from './conflictPoints';
 import { HEADING_CHORD, chordHeading } from './heading';
 
 /**
@@ -46,10 +46,13 @@ interface Area { readonly poly: Poly; readonly box: Box }
 /** The drivable surface around one node: its junction plate and its legs. */
 export class JunctionSurface {
   private readonly areas: Area[] = [];
+  readonly centre: Vec2;
   /** Digest of every ring point, for `turnPath`'s memo. */
   readonly key: string;
 
   constructor(net: Network, node: NodeId) {
+    const at = net.doc.node(node);
+    this.centre = { x: at?.x ?? 0, y: at?.y ?? 0 };
     const add = (points: Poly): void => {
       if (points.length < 3) return;
       const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
@@ -68,6 +71,7 @@ export class JunctionSurface {
       }
     }
     const digest = new Digest();
+    digest.point(this.centre);
     for (const a of this.areas) {
       digest.add(a.poly.length);
       for (const p of a.poly) digest.point(p);
@@ -171,8 +175,8 @@ function waitingBodies(lane: WaitingLane): Rect[] {
  * is clear already).
  */
 function sweep(surface: JunctionSurface, inCentre: Polyline, path: Polyline, outCentre: Polyline,
-  waiting: readonly Rect[][]): number | null {
-  const { length, width } = BODY_ENVELOPE[HEAVY]!;
+  waiting: readonly Rect[][], body: BodyClass = HEAVY): number | null {
+  const { length, width } = BODY_ENVELOPE[body]!;
   const half = length / 2;
   const frameAt = (c: number) =>
     c < 0 ? inCentre.sampleAt(Math.max(0, inCentre.length + c))
@@ -223,15 +227,49 @@ export function turnPath(inCentre: Polyline, outCentre: Polyline, surface: Junct
   const key = `${laneEndKey(inCentre, true)}|${laneEndKey(outCentre, false)}|${surface.key}|` +
     waiting.map((lane) => laneEndKey(lane.centre, true, QUEUE_REACH)).join(',');
   const known = memo.get(key);
-  if (known !== undefined) return bezierTurn(inCentre, outCentre, known);
+  if (known !== undefined) return makeChoice(inCentre, outCentre, known);
   if (memo.size > MEMO_LIMIT) memo.clear();
-  const handle = chooseHandle(inCentre, outCentre, surface, waiting);
-  memo.set(key, handle);
-  return bezierTurn(inCentre, outCentre, handle);
+  const choice = chooseTurn(inCentre, outCentre, surface, waiting);
+  memo.set(key, choice);
+  return makeChoice(inCentre, outCentre, choice);
 }
 
-const memo = new Map<string, number>();
+/** Whether the selected movement contains a body of this size on its drawn surface. */
+export function turnFits(inCentre: Polyline, path: Polyline, outCentre: Polyline,
+  surface: JunctionSurface, body: BodyClass): boolean {
+  return sweep(surface, inCentre, path, outCentre, [], body) !== null;
+}
+
+type TurnChoice = number | { x: number; y: number; share: number };
+const memo = new Map<string, TurnChoice>();
 const MEMO_LIMIT = 50_000;
+const makeChoice = (a: Polyline, b: Polyline, choice: TurnChoice): Polyline =>
+  typeof choice === 'number' ? bezierTurn(a, b, choice) :
+    twoPieceTurn(a, b, { x: choice.x, y: choice.y }, choice.share);
+
+/** Two tangent-continuous cubics through a point inside the junction. */
+function twoPieceTurn(inCentre: Polyline, outCentre: Polyline, middle: Vec2, share: number): Polyline {
+  const start = inCentre.sampleAt(inCentre.length);
+  const end = outCentre.sampleAt(0);
+  const sum = { x: start.t.x + end.t.x, y: start.t.y + end.t.y };
+  const tangent = normalize(len(sum) > GEO_EPS ? sum : sub(end.p, start.p));
+  const cubic = (a: Vec2, b: Vec2, t0: Vec2, t1: Vec2): Vec2[] => {
+    const reach = len(sub(b, a)) * share;
+    const c0 = addScaled(a, t0, reach), c1 = addScaled(b, t1, -reach);
+    const points: Vec2[] = [];
+    for (let i = 0; i <= STEPS / 2; i++) {
+      const t = i / (STEPS / 2), u = 1 - t;
+      points.push({
+        x: u * u * u * a.x + 3 * u * u * t * c0.x + 3 * u * t * t * c1.x + t * t * t * b.x,
+        y: u * u * u * a.y + 3 * u * u * t * c0.y + 3 * u * t * t * c1.y + t * t * t * b.y,
+      });
+    }
+    return points;
+  };
+  const first = cubic(start.p, middle, start.t, tangent);
+  const second = cubic(middle, end.p, tangent, end.t);
+  return Polyline.fromPoints([...first, ...second.slice(1)]);
+}
 /** Reach of the sweep along the approach and exit: half the largest body plus the heading chord. */
 const LANE_REACH = BODY_ENVELOPE[HEAVY]!.length / 2 + HEADING_CHORD + SWEEP_STEP * 2;
 /** Spacing of the samples a lane's digest is taken from, world units. */
@@ -279,8 +317,8 @@ class Digest {
 }
 
 /** The handle `turnPath` settles on, by sweeping the candidates. */
-function chooseHandle(inCentre: Polyline, outCentre: Polyline, surface: JunctionSurface,
-  waiting: readonly WaitingLane[]): number {
+function chooseTurn(inCentre: Polyline, outCentre: Polyline, surface: JunctionSurface,
+  waiting: readonly WaitingLane[]): TurnChoice {
   const fallback = bezierTurn(inCentre, outCentre, FALLBACK_HANDLE);
   // The fallback is also the shape every movement was built with before, so a
   // movement that fits at no shorter handle is exactly as it was - and no
@@ -295,7 +333,29 @@ function chooseHandle(inCentre: Polyline, outCentre: Polyline, surface: Junction
       const path = bezierTurn(inCentre, outCentre, handle);
       if (sweep(surface, inCentre, path, outCentre, queues) !== null) return handle;
     }
-    return FALLBACK_HANDLE;
+    // One cubic cannot thread every acute two-leg mouth: in a seeded 72-degree
+    // bend even the motorcycle's centreline left the asphalt by 2.7 units.
+    // Search a small, deterministic grid of interior waypoints only for those
+    // otherwise impossible movements. Every candidate retains the inlet and
+    // outlet tangents; the same swept-heavy-body test decides if it is safe.
+    let alternate: { choice: TurnChoice; depth: number } | null = null;
+    const offsets: Vec2[] = [];
+    for (const dx of [-10, -5, 0, 5, 10]) for (const dy of [-10, -5, 0, 5, 10])
+      offsets.push({ x: dx, y: dy });
+    offsets.sort((a, b) => a.x * a.x + a.y * a.y - b.x * b.x - b.y * b.y || a.x - b.x || a.y - b.y);
+    for (const offset of offsets) {
+      const point = { x: surface.centre.x + offset.x, y: surface.centre.y + offset.y };
+      if (!surface.contains(point)) continue;
+      for (const share of [0.3, 0.4]) {
+        const candidate = twoPieceTurn(inCentre, outCentre, point, share);
+        const depth = sweep(surface, inCentre, candidate, outCentre, queues);
+        if (depth === null) continue;
+        const choice = { ...point, share };
+        if (depth === 0) return choice;
+        if (!alternate || depth < alternate.depth) alternate = { choice, depth };
+      }
+    }
+    return alternate?.choice ?? FALLBACK_HANDLE;
   }
   for (const handle of HANDLES) {
     if (handle === FALLBACK_HANDLE) return FALLBACK_HANDLE;
