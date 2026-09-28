@@ -256,6 +256,24 @@ export class CastingRegistry {
   pickCitizenModel(ctx: CastingContext, helmetFits: (id: string) => boolean = () => true): Casting | null {
     const known = this.cast.get(ctx.seed);
     if (known) {
+      const group = `${ctx.company}:${ctx.companyId}`;
+      if (known.group !== group) {
+        // A walker boarding a car keeps their body. That known wardrobe must
+        // settle the car's code before its generated occupants are cast.
+        const wardrobe = this.roster[known.index]!.wardrobe;
+        const options = codesFor(ctx.company, hashOf(ctx.companyId ^ 0x51ce),
+          ctx.hasChild ?? ctx.ageClass === 'child');
+        const code: DressCode = options.find((candidate) => candidate.includes(wardrobe)) ?? [wardrobe];
+        this.codes.set(group, code);
+        for (const [seed, entry] of this.cast) {
+          if (seed === ctx.seed || entry.group !== group) continue;
+          if (code.includes(this.roster[entry.index]!.wardrobe)) { entry.code = code; continue; }
+          this.cast.delete(seed);
+          this.wearers.get(entry.index)?.delete(seed);
+        }
+        known.group = group;
+        known.code = code;
+      }
       known.x = ctx.x;
       known.y = ctx.y;
       known.seen = this.frame;

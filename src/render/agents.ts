@@ -992,8 +992,11 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     // people really aboard.
     const seatCount = Math.min(model.seats.length, vehicle.archetype.seats);
     const hasChild = carriesChild(vehicle);
-    for (let index = 0; index < seatCount; index++) {
+    // A person picked up from the street already has a visible identity. Cast
+    // them first so generated seat occupants follow that person's dress code.
+    for (const pickedFirst of [true, false]) for (let index = 0; index < seatCount; index++) {
       if ((vehicle.seats & (1 << index)) === 0 || index === moving) continue;
+      if ((vehicle.people[index] !== undefined) !== pickedFirst) continue;
       const seat = model.seats[index]!;
       if (seat.row > rowsDrawn) continue;
       seatWorldInto(seat, seatPoint, seat.hipY);

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
-import { CastingRegistry, CROWD } from '@render/citizenCasting';
+import { CastingRegistry, CROWD, compatible, type CitizenModel } from '@render/citizenCasting';
 
 /**
  * ONE DOOR INTO THE ROSTER. The street had a footballer, a pilot and a man in
@@ -49,5 +49,29 @@ describe('citizen casting', () => {
       expect(CROWD[body!.index]!.ageBand, `child ${seed}`).toBe('child');
       expect(body!.size, `child ${seed}`).toBe(1);
     }
+  });
+
+  it('keeps a picked-up walker recognizable while recasting incompatible car occupants', () => {
+    const roster: CitizenModel[] = [
+      { id: 'smart', wardrobe: 'smart-casual', ageBand: 'adult', gender: 'f' },
+      { id: 'sport', wardrobe: 'sport-casual', ageBand: 'adult', gender: 'f' },
+      { id: 'casual', wardrobe: 'casual', ageBand: 'adult', gender: 'f' },
+    ];
+    let checked = false;
+    for (let vehicleId = 1; vehicleId <= 100 && !checked; vehicleId++) {
+      const casting = new CastingRegistry(roster);
+      const walker = { seed: 7, gender: 'f' as const, ageClass: 'adult' as const,
+        company: 'colleagues' as const, companyId: 700, x: 0, y: 0 };
+      const car = { ...walker, seed: 10_000 + vehicleId, company: 'car' as const, companyId: vehicleId };
+      const beforeWalker = casting.pickCitizenModel(walker)!;
+      const beforeCar = casting.pickCitizenModel(car)!;
+      if (roster[beforeCar.index]?.wardrobe !== 'sport-casual') continue;
+      const boarded = casting.pickCitizenModel({ ...walker, company: 'car', companyId: vehicleId })!;
+      const afterCar = casting.pickCitizenModel(car)!;
+      expect(boarded.index).toBe(beforeWalker.index);
+      expect(compatible(roster[boarded.index]!.wardrobe, roster[afterCar.index]!.wardrobe)).toBe(true);
+      checked = true;
+    }
+    expect(checked).toBe(true);
   });
 });

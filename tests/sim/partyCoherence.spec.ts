@@ -118,8 +118,9 @@ describe('pedestrian groups', () => {
         const seats = Math.min(32, v.archetype.seats);
         let hasChild = false;
         for (let i = 0; i < seats; i++) if ((v.seats & (1 << i)) && seatPerson(v, i).ageClass === 'child') hasChild = true;
-        for (let i = 0; i < seats; i++) {
+        for (const pickedFirst of [true, false]) for (let i = 0; i < seats; i++) {
           if ((v.seats & (1 << i)) === 0) continue;
+          if ((v.people[i] !== undefined) !== pickedFirst) continue;
           const who = seatPerson(v, i);
           const c = registry.pickCitizenModel({ ...who, company, companyId: v.id, hasChild, helmet: v.archetype.shape === 'motorcycle', x: 0, y: 0 });
           expect(c, `seat ${i} of vehicle ${v.id} got no body`).not.toBeNull();
