@@ -4,7 +4,7 @@ import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { signalPosts } from '@world/signalPosts';
 import { DT } from '../params';
 import type { SimWorld } from '../world';
-import { pedHash } from './behaviour';
+import { PED_BEHAVIOUR, pedHash } from './behaviour';
 import type { SidewalkEdge, SidewalkEdgeId } from './sidewalk';
 import type { Ped, PedActivity } from './state';
 
@@ -631,6 +631,13 @@ export function stepActivity(w: SimWorld, p: Ped, edge: SidewalkEdge, stopWithin
       const remaining = a.at - p.s;
       if (remaining < -m(1.5)) { endActivity(w, p); return null; }
       if (remaining <= ARRIVE && p.v < m(0.2)) {
+        if ((a.kind === 'look' || a.kind === 'phone') && a.side !== 0 &&
+          p.lat * a.side < Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin) * 0.4) {
+          // A roadside stop is only a stop after the walker reaches the edge
+          // of the footway. If that space stays occupied, give up the visit.
+          if (a.t > 5) { endActivity(w, p); return null; }
+          return 0;
+        }
         a.t = 0;
         a.fromX = p.x;
         a.fromY = p.y;

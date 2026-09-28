@@ -339,7 +339,7 @@ function lateralTarget(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
   const nextEdge = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
   const narrower = nextEdge ? Math.max(0, nextEdge.halfWidth - PED_BEHAVIOUR.lateralMargin) : usable;
   const remaining = edge.length - p.s;
-  if (nextEdge && narrower < usable && remaining < LINE_UP_DISTANCE) {
+  if (!stopping && nextEdge && narrower < usable && remaining < LINE_UP_DISTANCE) {
     const room = lerp(narrower, usable, clamp(remaining / LINE_UP_DISTANCE, 0, 1));
     target = clamp(target, -room, room);
   }
@@ -1157,7 +1157,7 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   const nextEdge = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
   const narrower = nextEdge ? Math.max(0, nextEdge.halfWidth - PED_BEHAVIOUR.lateralMargin) : usable;
   const remaining = edge.length - p.s;
-  if (nextEdge && narrower < usable && remaining < LINE_UP_DISTANCE && p.state !== 'Crossing') {
+  if (!stopping && nextEdge && narrower < usable && remaining < LINE_UP_DISTANCE && p.state !== 'Crossing') {
     const room = lerp(narrower, usable, clamp(remaining / LINE_UP_DISTANCE, 0, 1));
     target = clamp(target, -room, room);
   }
@@ -1170,7 +1170,12 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
     if (nextEdge?.kind === 'crossing') {
       const mouth = Math.max(0, nextEdge.halfWidth - PED_BEHAVIOUR.lateralMargin);
       const flank = Math.min(usable, mouth + KERB_FLANK);
-      target = (target >= 0 ? 1 : -1) * Math.max(flank, Math.abs(target));
+      const kerb = w.sidewalks.other(edge, p.entry);
+      const footwayNormal = w.sidewalks.orientedPath(edge, p.entry).sampleAt(p.s).n;
+      const crossingTangent = w.sidewalks.orientedPath(nextEdge, kerb).sampleAt(0).t;
+      const away = -(footwayNormal.x * crossingTangent.x + footwayNormal.y * crossingTangent.y);
+      const side = Math.abs(away) > 0.1 ? Math.sign(away) : target >= 0 ? 1 : -1;
+      target = side * Math.max(flank, Math.abs(target));
     }
     // Somebody going round the corner is held up against this waiter: step
     // aside for them, as a person at a kerb does. Standing firm left a
@@ -1182,7 +1187,7 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
       const across = (jam.x - frame.p.x) * frame.n.x + (jam.y - frame.p.y) * frame.n.y;
       target = p.lat + (across >= p.lat ? -1 : 1) * MAKE_ROOM;
     }
-  } else if (talking === null) {
+  } else if (talking === null && !stopping) {
     // Step around somebody slower, towards whichever side has more room.
     if (
       NEAR.leaderGap < PED_BEHAVIOUR.passLook &&
@@ -1210,7 +1215,7 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   }
 
   // Held up: commit to the side with more room and go there.
-  if (p.stuck > DODGE_AFTER && p.state !== 'WaitAtKerb') {
+  if (!stopping && p.stuck > DODGE_AFTER && p.state !== 'WaitAtKerb') {
     if (p.dodge === 0) p.dodge = p.lat >= 0 ? -1 : 1;
     // Already against the edge on the committed side and still shut in: that
     // side has nothing more to give, so try the other. The flip below only

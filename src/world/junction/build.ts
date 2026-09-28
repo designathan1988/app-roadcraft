@@ -200,8 +200,11 @@ export function buildJunction(
     ? Math.PI - Math.acos(Math.max(-1, Math.min(1,
       dot((legs[0] as Leg).dir, (legs[1] as Leg).dir))))
     : 0;
+  // The transition axis covers moderate changes in direction; a tighter
+  // corner needs a junction plate so large vehicles keep their swept area.
+  const MAX_CONTINUOUS_BEND = (55 * Math.PI) / 180;
   const throughBend = legs.length === 2 && bendAngle > 1e-5 &&
-    bendAngle < (150 * Math.PI) / 180;
+    bendAngle < MAX_CONTINUOUS_BEND;
   if (isTransition(legs) || throughBend) {
     const a = legs[0] as Leg;
     const b = legs[1] as Leg;

@@ -1,0 +1,24 @@
+{
+  "name": "freeform-highway-boulevard-curve-mouth",
+  "category": "surfaceGap",
+  "detail": "seg 2 s=20.1/260.5 across=-1 at (-78.5, 241.8)",
+  "sim": null,
+  "ops": [
+    {
+      "op": "draw",
+      "a": [10.33, 345.49],
+      "b": [-57.85, 229.35],
+      "type": 3,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "draw",
+      "a": [-57.01, 228.86],
+      "b": [-299.74, 285.55],
+      "type": 4,
+      "curve": { "t": 0.55, "h": 64 },
+      "structure": "ground"
+    }
+  ]
+}

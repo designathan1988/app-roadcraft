@@ -257,6 +257,5 @@
    "op": "removeNode",
    "pick": 0.51
   }
- ],
- "open": "The editor lets a road be drawn nearly on top of another of the same structure without meeting it (commitDraft splits only at crossings); the two carriageways overlap and cars on them collide. Rejecting overlapping drafts is an editor rule not yet written."
+ ]
 }
