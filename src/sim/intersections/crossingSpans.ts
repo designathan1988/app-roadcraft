@@ -5,6 +5,8 @@ import { m } from '@world/units';
 import { CROSSWALK_DEPTH } from '@world/approach';
 import type { CrossingId } from '../signals/plan';
 import type { SimWorld } from '../world';
+import type { Ped } from '../peds/state';
+import type { SidewalkEdge } from '../peds/sidewalk';
 
 /** Arc interval of a crossing, measured from its `from` kerb. */
 export interface CrossingSpan {
@@ -117,6 +119,17 @@ function sameFloats(a: Float64Array, b: Float64Array): boolean {
 export const PED_BODY = 1;
 export const PED_MIN_PACE = 2;
 export const PED_REACH_TIME = 4;
+/** Reserve the near half of a zebra before stopping a car for a pedestrian. */
+export const PED_CROSSING_STOP_BUFFER = CROSSWALK_DEPTH / 2 + 0.5;
+
+/** Whether this pedestrian occupies or will soon reach this movement's part of a zebra. */
+export function pedestrianAffectsSpan(p: Ped, edge: SidewalkEdge, span: CrossingSpan): boolean {
+  const forward = p.entry === edge.from;
+  const at = forward ? p.s : edge.length - p.s;
+  if (at >= span.s0 - PED_BODY && at <= span.s1 + PED_BODY) return true;
+  const ahead = forward ? span.s0 - at : at - span.s1;
+  return ahead > 0 && ahead < Math.max(p.v, PED_MIN_PACE) * PED_REACH_TIME;
+}
 
 /** Whether somebody on this crossing is in, or about to enter, the span. */
 export function pedestrianInSpan(w: SimWorld, connector: ConnectorId, crossing: CrossingId): CrossingSpan | null {
@@ -130,11 +143,7 @@ export function pedestrianInSpan(w: SimWorld, connector: ConnectorId, crossing: 
   for (const pedId of occupants) {
     const p = w.peds.get(pedId);
     if (!p) continue;
-    const forward = p.entry === edge.from;
-    const at = forward ? p.s : edge.length - p.s;
-    if (at >= span.s0 - PED_BODY && at <= span.s1 + PED_BODY) return span;
-    const ahead = forward ? span.s0 - at : at - span.s1;
-    if (ahead > 0 && ahead < Math.max(p.v, PED_MIN_PACE) * PED_REACH_TIME) return span;
+    if (pedestrianAffectsSpan(p, edge, span)) return span;
   }
   return null;
 }

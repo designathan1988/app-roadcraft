@@ -1,31 +1,129 @@
 {
   "carDrive": {
     "top": 0.934,
-    "bottom": -0.273,
+    "bottom": -0.236,
     "fwd": 0.878,
     "back": 0.323,
-    "half": 0.256,
+    "half": 0.282,
     "worst": {
       "top": "male_04",
       "fwd": "male_06",
       "back": "female_11",
-      "half": "wood_male_01",
-      "bottom": "sports_male_03"
+      "half": "male_19",
+      "bottom": "male_21"
+    }
+  },
+  "carDriveMirror": {
+    "top": 0.93,
+    "bottom": -0.236,
+    "fwd": 0.878,
+    "back": 0.308,
+    "half": 0.282,
+    "worst": {
+      "top": "male_04",
+      "fwd": "male_06",
+      "back": "male_09",
+      "half": "male_19",
+      "bottom": "male_21"
+    }
+  },
+  "carDriveRight": {
+    "top": 0.932,
+    "bottom": -0.236,
+    "fwd": 0.878,
+    "back": 0.319,
+    "half": 0.282,
+    "worst": {
+      "top": "male_04",
+      "fwd": "male_06",
+      "back": "female_11",
+      "half": "male_19",
+      "bottom": "male_21"
     }
   },
   "carRide": {
     "top": 0.934,
-    "bottom": -0.273,
-    "fwd": 0.848,
+    "bottom": -0.231,
+    "fwd": 0.858,
     "back": 0.321,
-    "half": 0.251,
+    "half": 0.272,
     "worst": {
       "top": "male_04",
-      "fwd": "business_male_04",
+      "fwd": "male_06",
       "back": "female_11",
-      "half": "male_16",
-      "bottom": "sports_male_03"
+      "half": "male_19",
+      "bottom": "male_21"
     }
   },
-  "bodies": 77
+  "carRideLeft": {
+    "top": 0.933,
+    "bottom": -0.231,
+    "fwd": 0.858,
+    "back": 0.305,
+    "half": 0.272,
+    "worst": {
+      "top": "male_04",
+      "fwd": "male_06",
+      "back": "male_09",
+      "half": "male_19",
+      "bottom": "male_21"
+    }
+  },
+  "carRideRight": {
+    "top": 0.93,
+    "bottom": -0.231,
+    "fwd": 0.858,
+    "back": 0.307,
+    "half": 0.272,
+    "worst": {
+      "top": "male_04",
+      "fwd": "male_06",
+      "back": "female_11",
+      "half": "male_21",
+      "bottom": "male_21"
+    }
+  },
+  "carRearRide": {
+    "top": 0.959,
+    "bottom": -0.251,
+    "fwd": 0.678,
+    "back": 0.241,
+    "half": 0.261,
+    "worst": {
+      "top": "male_04",
+      "fwd": "male_06",
+      "back": "female_11",
+      "half": "male_21",
+      "bottom": "delivery_male_01"
+    }
+  },
+  "carRearLeft": {
+    "top": 0.96,
+    "bottom": -0.251,
+    "fwd": 0.678,
+    "back": 0.228,
+    "half": 0.266,
+    "worst": {
+      "top": "male_04",
+      "fwd": "male_06",
+      "back": "male_09",
+      "half": "male_21",
+      "bottom": "delivery_male_01"
+    }
+  },
+  "carRearRight": {
+    "top": 0.959,
+    "bottom": -0.251,
+    "fwd": 0.678,
+    "back": 0.23,
+    "half": 0.272,
+    "worst": {
+      "top": "male_04",
+      "fwd": "male_06",
+      "back": "female_11",
+      "half": "male_21",
+      "bottom": "delivery_male_01"
+    }
+  },
+  "bodies": 53
 }

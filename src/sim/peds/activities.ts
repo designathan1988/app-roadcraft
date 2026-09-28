@@ -268,6 +268,7 @@ function considerTalk(w: SimWorld, p: Ped, edge: SidewalkEdge): void {
     STOP_END_ROOM + (room - STOP_END_ROOM) * (0.3 + 0.4 * unit(h, 16)), room);
   if (at === null) return;
   const party = companionsOn(w, p, edge);
+  if (party.length < 2) return;
   for (const q of party) if (q.s > at - m(3)) return;
   const hold = TALK_RANGE[0] + (TALK_RANGE[1] - TALK_RANGE[0]) * unit(h, 8);
   for (const q of party) {
@@ -307,6 +308,7 @@ export function arrivalActivity(w: SimWorld, p: Ped, seconds: number): void {
     // Only on a footway proper, with room to stand clear of the corner.
     if (edge.kind !== 'walk' || p.state !== 'Walking') return;
     const party = companionsOn(w, p, edge);
+    if (party.length < 2) return;
     let lead = 0;
     for (const q of party) lead = Math.max(lead, q.s);
     const at = clearSpot(w, edge, p.entry === edge.from, lead + m(1.5), edge.length - ARRIVAL_END_ROOM);
@@ -451,7 +453,7 @@ function layoutTalk(w: SimWorld, g: TalkGroup, edge: SidewalkEdge): void {
     }
     g.n = 0;
     g.alone = holding > 0 ? g.alone + DT : 0;
-    if (g.alone > TALK_ALONE) for (const q of members) endActivity(w, q);
+    if (holding > 0 || g.alone > TALK_ALONE) for (const q of members) endActivity(w, q);
     return;
   }
   g.alone = 0;
@@ -570,11 +572,23 @@ function companionThere(w: SimWorld, p: Ped): boolean {
  * The heading of the centre of this person's conversation, once they are at
  * their place in it; null while they are still walking to it.
  */
-export function talkFacing(p: Ped): number | null {
+export function talkFacing(w: SimWorld, p: Ped): number | null {
   const a = p.activity;
   if (a?.kind !== 'talk' || a.slot < 0) return null;
   if (a.phase !== 'hold' && !(a.slotS - p.s < ARRIVE && p.v < m(0.25))) return null;
-  const dx = a.faceX - p.x, dy = a.faceY - p.y;
+  // Once the others have reached the circle, look at where they actually
+  // stand. Local avoidance can leave them a little off their planned slots;
+  // facing the ideal centre then visibly looks past a companion.
+  let x = 0, y = 0, count = 0;
+  for (let k = 0; k < p.party.size; k++) {
+    const q = w.peds.get(p.party.id + k);
+    if (!q || q === p || q.party !== p.party || q.activity?.kind !== 'talk' || q.activity.phase !== 'hold') continue;
+    x += q.x;
+    y += q.y;
+    count++;
+  }
+  const dx = (count ? x / count : a.faceX) - p.x;
+  const dy = (count ? y / count : a.faceY) - p.y;
   if (Math.hypot(dx, dy) < m(0.15)) return null;
   return Math.atan2(dy, dx);
 }

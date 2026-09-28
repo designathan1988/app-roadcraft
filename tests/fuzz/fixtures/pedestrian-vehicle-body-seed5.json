@@ -1,0 +1,250 @@
+{
+  "name": "pedestrian-vehicle-body-seed5",
+  "category": "pedInRoadStalled",
+  "detail": "A car body already occupies the zebra when a walker asks to enter at a signal",
+  "sim": {
+    "seconds": 45,
+    "seed": 24301,
+    "intensity": 1.5
+  },
+  "ops": [
+    {
+      "op": "draw",
+      "a": [
+        340.87,
+        -669.39
+      ],
+      "b": [
+        700,
+        -635.44
+      ],
+      "type": 0,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "draw",
+      "a": [
+        376.58,
+        -669.39
+      ],
+      "b": [
+        376.58,
+        -540.69
+      ],
+      "type": 0,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "direction",
+      "pick": 0.61,
+      "direction": "aToB"
+    },
+    {
+      "op": "join",
+      "pick": 0.67
+    },
+    {
+      "op": "draw",
+      "a": [
+        471.05,
+        -615.36
+      ],
+      "b": [
+        282.11,
+        -521.79
+      ],
+      "type": 2,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "split",
+      "pick": 0.87,
+      "at": 0.56
+    },
+    {
+      "op": "draw",
+      "a": [
+        557.32,
+        322.65
+      ],
+      "b": [
+        700,
+        392.36
+      ],
+      "type": 3,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "draw",
+      "a": [
+        -123.03,
+        495.94
+      ],
+      "b": [
+        -189.81,
+        298.53
+      ],
+      "type": 0,
+      "curve": {
+        "t": 0.51,
+        "h": 29.69
+      },
+      "structure": "ground"
+    },
+    {
+      "op": "draw",
+      "a": [
+        700,
+        241.33
+      ],
+      "b": [
+        581.93,
+        502.27
+      ],
+      "type": 0,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "move",
+      "pick": 0.87,
+      "dx": 23.12,
+      "dy": 48.77
+    },
+    {
+      "op": "draw",
+      "a": [
+        -123.03,
+        495.94
+      ],
+      "b": [
+        132.59,
+        563.55
+      ],
+      "type": 3,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "upgrade",
+      "pick": 0.68
+    },
+    {
+      "op": "draw",
+      "a": [
+        700,
+        481.12
+      ],
+      "b": [
+        456.06,
+        532.89
+      ],
+      "type": 2,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "split",
+      "pick": 0.28,
+      "at": 0.52
+    },
+    {
+      "op": "draw",
+      "a": [
+        389.42,
+        -549.71
+      ],
+      "b": [
+        504.18,
+        -407
+      ],
+      "type": 1,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "control",
+      "pick": 0.74,
+      "control": "stop"
+    },
+    {
+      "op": "delete",
+      "pick": 0.83
+    },
+    {
+      "op": "move",
+      "pick": 0.51,
+      "dx": -5.35,
+      "dy": 43.26
+    },
+    {
+      "op": "draw",
+      "a": [
+        541.94,
+        586.85
+      ],
+      "b": [
+        556.64,
+        683.61
+      ],
+      "type": 0,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "draw",
+      "a": [
+        537.37,
+        542.81
+      ],
+      "b": [
+        545.88,
+        700
+      ],
+      "type": 2,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "draw",
+      "a": [
+        394.91,
+        -416.9
+      ],
+      "b": [
+        196.25,
+        -608.06
+      ],
+      "type": 0,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "draw",
+      "a": [
+        552.14,
+        624.93
+      ],
+      "b": [
+        478.78,
+        644.59
+      ],
+      "type": 1,
+      "curve": null,
+      "structure": "ground"
+    },
+    {
+      "op": "lanes",
+      "pick": 0.49,
+      "lanes": 4
+    },
+    {
+      "op": "removeNode",
+      "pick": 0.4
+    }
+  ]
+}

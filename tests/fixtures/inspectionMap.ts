@@ -12,15 +12,16 @@ import type { NodeId, SegmentId } from '@world/ids';
  *  - `bridge`: a bridge over a river;
  *  - `elevated`: an elevated road ramping up from grade and down again;
  *  - `tunnel`: a tunnel through a hill;
- *  - `acute`: a junction of two streets at 32 degrees.
+ *  - `acute`: a junction of two streets at 32 degrees;
+ *  - `city`: a signalised grid of avenues and streets, for crowds and traffic.
  *
  * Built through the document's public API, so it is geometry the editor can
  * make. Imported by node tests and, through the dev server, by the page.
  */
 export interface InspectionMap {
   readonly doc: RoadDoc;
-  readonly segments: Readonly<Record<'slope' | 'crossfall' | 'bridge' | 'elevated' | 'tunnel' | 'acuteA' | 'acuteB' | 'cross', SegmentId>>;
-  readonly nodes: Readonly<Record<'signal' | 'acute', NodeId>>;
+  readonly segments: Readonly<Record<'slope' | 'crossfall' | 'bridge' | 'elevated' | 'tunnel' | 'acuteA' | 'acuteB' | 'cross' | 'city', SegmentId>>;
+  readonly nodes: Readonly<Record<'signal' | 'acute' | 'city', NodeId>>;
 }
 
 export function buildInspectionMap(doc = new RoadDoc()): InspectionMap {
@@ -90,10 +91,34 @@ export function buildInspectionMap(doc = new RoadDoc()): InspectionMap {
   doc.addSegment(farC.id, acute.id, 2);
   if (!acuteA || !acuteB) throw new Error('inspection map: acute refused');
 
+  // ---- city: a grid of avenues and streets north of everything else, every
+  // inner junction signalised - the crowd, the groups and the traffic at
+  // their densest, for the census and the close-ups.
+  const grid: NodeId[][] = [];
+  const COLS = 5;
+  const ROWS = 4;
+  for (let r = 0; r < ROWS; r++) {
+    const row: NodeId[] = [];
+    for (let c = 0; c < COLS; c++) row.push(doc.addNode({ x: -600 + c * 220, y: 1500 + r * 200 }).id);
+    grid.push(row);
+  }
+  let cityStreet: SegmentId | undefined;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (c + 1 < COLS) {
+        const s = doc.addSegment(grid[r]![c]!, grid[r]![c + 1]!, r === 1 ? 3 : 2);
+        if (s && r === 1 && c === 1) cityStreet = s.id;
+      }
+      if (r + 1 < ROWS) doc.addSegment(grid[r]![c]!, grid[r + 1]![c]!, c === 2 ? 3 : 2);
+    }
+  }
+  for (let r = 1; r < ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) doc.setNodeControl(grid[r]![c]!, 'signal');
+  if (cityStreet === undefined) throw new Error('inspection map: city refused');
+
   return {
     doc,
     segments: { slope: slope.id, crossfall: crossfall.id, bridge: bridge.id, elevated: elevated.id, tunnel: tunnel.id,
-      acuteA: acuteA.id, acuteB: acuteB.id, cross: cross.id },
-    nodes: { signal: signal.id, acute: acute.id },
+      acuteA: acuteA.id, acuteB: acuteB.id, cross: cross.id, city: cityStreet },
+    nodes: { signal: signal.id, acute: acute.id, city: grid[1]![2]! },
   };
 }

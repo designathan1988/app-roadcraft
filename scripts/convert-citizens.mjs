@@ -29,6 +29,7 @@ const animationSource = process.env.ROADCRAFT_ANIMATION_SOURCE ?? findAnimation(
 if (!animationSource) throw new Error('Set ROADCRAFT_ANIMATION_SOURCE to the licensed UAL1_Standard.glb');
 const name=process.argv[2];
 if (!name) throw new Error('Usage: node scripts/convert-citizens.mjs Source_Avatar_Name');
+const facialKeys = (process.env.ROADCRAFT_FACIAL_KEYS ?? '').split(',').map(key => key.trim()).filter(Boolean);
 const data=fs.readFileSync(path.join(base,name,name+'.fbx')).toString('base64');
 const textures=Object.fromEntries(fs.readdirSync(path.join(base,name)).filter(f=>f.endsWith('.png')).map(f=>[f.toLowerCase().replace('.png','.tga'),'data:image/png;base64,'+fs.readFileSync(path.join(base,name,f)).toString('base64')]));
 const installedChrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -37,12 +38,14 @@ const browser=await chromium.launch({ ...(executablePath ? { executablePath } : 
 const page=await browser.newPage({viewport:{width:1200,height:900}});
 page.on('pageerror',e=>console.log('ERROR',e.message));
 page.on('console',e=>{if(e.type()==='error'||e.type()==='warning')console.log(e.text().slice(0,500));});
-await page.route('**/__pedestrian-review',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'}));
+await page.route('**/__pedestrian-review',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head>
+  <script type="importmap">{"imports":{"three":"/node_modules/.vite/deps/three.js"}}</script>
+  </head><body></body></html>`}));
 await page.route('**/__citizen-motion.glb', route => route.fulfill({
   contentType: 'model/gltf-binary', body: fs.readFileSync(animationSource),
 }));
 await page.goto(`${process.env.ROADCRAFT_ASSET_DEV_URL ?? 'http://127.0.0.1:5198'}/__pedestrian-review`);
-const info=await page.evaluate(async({data,textures})=>{
+const info=await page.evaluate(async({data,textures,facialKeys})=>{
  const T=await import('/node_modules/.vite/deps/three.js');
  const {FBXLoader}=await import('/node_modules/three/examples/jsm/loaders/FBXLoader.js');
  const manager=new T.LoadingManager();
@@ -63,7 +66,16 @@ const info=await page.evaluate(async({data,textures})=>{
  if (missingColour.length) throw new Error(`Missing colour textures: ${missingColour.join(', ')}`);
  rig.traverse(object => { object.name = object.name.replace(/^Bip\d+/, 'Bip01'); });
  const lights=[];rig.traverse(o=>{if(o.isLight||o.isCamera)lights.push(o)});lights.forEach(o=>o.removeFromParent());
- const meshes=[];rig.traverse(o=>{if(o.isMesh){meshes.push({name:o.name,type:o.type,count:o.geometry.attributes.position.count,materials:(Array.isArray(o.material)?o.material:[o.material]).map(m=>m.name),bones:o.skeleton?.bones.map(b=>b.name)});o.material=(Array.isArray(o.material)?o.material:[o.material]).map(m=>new T.MeshStandardMaterial({map:m.map,color:0xffffff,roughness:.9,side:T.FrontSide,alphaTest:.4}));}});
+ const meshes=[];rig.traverse(o=>{if(o.isMesh){
+  if(facialKeys.length&&o.morphTargetDictionary&&o.morphTargetInfluences){
+   const keep=facialKeys.map(key=>Object.entries(o.morphTargetDictionary).find(([name])=>name===key||name.endsWith('.'+key))?.[1]);
+   if(keep.some(index=>index===undefined))throw new Error(`Missing facial shape on ${o.name}: ${Object.keys(o.morphTargetDictionary).slice(0,20).join(', ')}`);
+   for(const [name,attributes]of Object.entries(o.geometry.morphAttributes))o.geometry.morphAttributes[name]=keep.map(index=>attributes[index]);
+   o.morphTargetDictionary=Object.fromEntries(facialKeys.map((key,index)=>[key,index]));
+   o.morphTargetInfluences=new Array(facialKeys.length).fill(0);
+  }
+  meshes.push({name:o.name,type:o.type,count:o.geometry.attributes.position.count,materials:(Array.isArray(o.material)?o.material:[o.material]).map(m=>m.name),bones:o.skeleton?.bones.map(b=>b.name)});o.material=(Array.isArray(o.material)?o.material:[o.material]).map(m=>new T.MeshStandardMaterial({map:m.map,color:0xffffff,roughness:.9,side:T.FrontSide,alphaTest:.4}));
+ }});
  document.body.innerHTML='';
  const renderer=new T.WebGLRenderer({antialias:true});renderer.setSize(1200,900);renderer.setClearColor(0x9da6ad);renderer.toneMapping=T.ACESFilmicToneMapping;document.body.append(renderer.domElement);
  const scene=new T.Scene();scene.add(rig);const box=new T.Box3().setFromObject(rig);const size=box.getSize(new T.Vector3());const centre=box.getCenter(new T.Vector3());const camera=new T.PerspectiveCamera(32,1200/900,.01,10000);camera.position.copy(centre).add(new T.Vector3(size.y*.6,size.y*.1,size.y*2));camera.lookAt(centre);scene.add(new T.HemisphereLight(0xffffff,0x66686b,2));const light=new T.DirectionalLight(0xffeadc,2);light.position.copy(centre).add(new T.Vector3(200,400,300));scene.add(light);
@@ -135,7 +147,7 @@ links.push({b,src,rest:b.quaternion.clone(),correction:src.getWorldQuaternion(ne
  window.rig=rig;window.scene=scene;window.camera=camera;window.renderer=renderer;
  function draw(){renderer.render(scene,camera);requestAnimationFrame(draw);}draw();
  return {meshes,size:size.toArray(),rotation:rig.rotation.toArray(),children:rig.children.map(c=>({name:c.name,position:c.position.toArray(),rotation:c.rotation.toArray(),scale:c.scale.toArray()}))};
-},{data,textures});console.log(name, info.size);fs.writeFileSync(path.join(base,name+'.glb'),Buffer.from(await page.evaluate(()=>window.exported),'base64'));
+},{data,textures,facialKeys});console.log(name, info.size);fs.writeFileSync(path.join(base,name+'.glb'),Buffer.from(await page.evaluate(()=>window.exported),'base64'));
 await page.waitForTimeout(150);
 for(const [index,time]of [.05,.25,.5,.75].entries()){await page.evaluate(t=>window.animateAt(t),time);await page.waitForTimeout(100);await page.screenshot({path:path.join(base,name+'-walk-'+index+'.png')});}
 await page.screenshot({path:path.join(base,name+'-preview.png')});

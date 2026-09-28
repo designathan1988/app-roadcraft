@@ -36,10 +36,12 @@ export interface InspectShot {
   readonly width?: number;
   readonly height?: number;
   /**
-   * Cut away a vehicle's roof and near side: the vehicle's centre and heading
-   * (radians), its roof cut height above `h`, and half its width.
+   * Cut away a vehicle's roof and near side: its heading (radians), its roof
+   * cut height above `h`, half its width, and its centre when the shot is
+   * framed on something else (a seat).
    */
-  readonly interior?: { readonly heading: number; readonly roofCut: number; readonly halfWidth: number };
+  readonly interior?: { readonly heading: number; readonly roofCut: number; readonly halfWidth: number;
+    readonly cx?: number; readonly cy?: number };
 }
 
 export interface Inspector {
@@ -89,7 +91,7 @@ export function createInspector(renderer: WebGLRenderer, scene: Scene): Inspecto
         const inset = spec.interior.halfWidth * 0.55;
         side.setFromNormalAndCoplanarPoint(
           normal.set(-nx, 0, ny),
-          point.set(spec.x + nx * inset, 0, -(spec.y + ny * inset)),
+          point.set((spec.interior.cx ?? spec.x) + nx * inset, 0, -((spec.interior.cy ?? spec.y) + ny * inset)),
         );
         renderer.clippingPlanes = [roof, side];
       }

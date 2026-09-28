@@ -166,6 +166,10 @@ const RAMP_CURVE = 20;
  * (see `roundGradeBreaks`), in world units (5 m each side).
  */
 const VERTICAL_CURVE_REACH = 12;
+/** Decay length of the grade correction just outside a flat junction plate. */
+const PLATE_TANGENT_REACH = 40;
+/** Cancels enough of the incoming grade to round the join without bending the whole hill. */
+const PLATE_TANGENT_SHARE = 0.55;
 /** Softness of the crest where a ramp meets its deck: a curve 16 units long. */
 const RAMP_CREST = 8 * RAMP_GRADE;
 /** Steepest gradient with which a deck is carried up to a higher deck it meets in the air. */
@@ -990,6 +994,14 @@ function solveGround(profile: Profile, nodeHeight: Map<NodeId, number>): void {
   const edgeB = stationIndex(profile, length - profile.plateB);
   const shiftA = hA - (base[edgeA] as number);
   const shiftB = hB - (base[edgeB] as number);
+  const baseAt = (s: number): number => {
+    const at = Math.min(base.length - 1, Math.max(0, s / step));
+    const lo = Math.floor(at);
+    const hi = Math.min(base.length - 1, lo + 1);
+    return (base[lo] as number) + ((base[hi] as number) - (base[lo] as number)) * (at - lo);
+  };
+  const slopeA = (baseAt(profile.plateA + step) - baseAt(profile.plateA - step)) / (2 * step);
+  const slopeB = (baseAt(length - profile.plateB + step) - baseAt(length - profile.plateB - step)) / (2 * step);
   // The transition is sized from the correction it has to carry.
   //
   // A fixed length adds `1.5 * shift / TIE_REACH` to the profile's own gradient
@@ -1038,6 +1050,19 @@ function solveGround(profile: Profile, nodeHeight: Map<NodeId, number>): void {
   }
   pinPlates(profile, hA, hB);
   roundGradeBreaks(profile, 'both');
+  // The height tie above has zero derivative at its end, so the designed
+  // line's own slope survives against the flat plate. A short derivative
+  // correction rounds that join; d*exp(-d/reach) starts with unit slope and
+  // fades without moving either node's pinned height.
+  for (let i = 0; i < h.length; i++) {
+    const s = step * i;
+    if (s <= profile.plateA || s >= length - profile.plateB) continue;
+    const fromA = s - profile.plateA;
+    const fromB = length - profile.plateB - s;
+    h[i] = (h[i] as number)
+      - PLATE_TANGENT_SHARE * slopeA * fromA * Math.exp(-fromA / PLATE_TANGENT_REACH)
+      + PLATE_TANGENT_SHARE * slopeB * fromB * Math.exp(-fromB / PLATE_TANGENT_REACH);
+  }
 }
 
 /**

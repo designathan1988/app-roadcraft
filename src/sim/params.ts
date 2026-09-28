@@ -140,10 +140,10 @@ export const SIGNAL = {
 
 /**
  * Pedestrians walk as agents that perceive and choose a velocity
- * (`sim/peds/agent.ts`); false is the older gate-and-nudge walker, kept for
- * comparison in the lab until the agent wins on every measure.
+ * (`sim/peds/agent.ts`), on footways and crossings alike. The crossing state
+ * machine still owns permission to enter; the agent owns movement once in.
  */
-export const PED_AGENT = { on: false, crossings: false };
+export const PED_AGENT = { on: true, crossings: true };
 
 /** Pedestrian parameters. */
 export const PED = {

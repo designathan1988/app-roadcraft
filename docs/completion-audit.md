@@ -239,3 +239,17 @@ Create local commits for completed changes; do not push without instruction.
   taken at a comfortable lateral acceleration, braked for in advance: worst
   3.9 and 3.6 m/s² after (d9abf82, `tests/sim/curvature.spec.ts`).
 - Dead exports: 26 declarations referenced nowhere were removed (3847022).
+
+## Current pedestrian navigation work (verification pending)
+
+The active worktree fixes corridor reversals, inconsistent physical/perceived
+positions, order-dependent neighbour velocities, missing footway links at
+two-leg nodes, unpainted crossing edges, generated furniture at crossing
+landings, and agent movement on crossings. It also makes crossing admission
+check vehicle bodies already occupying the zebra. The investigation and
+primary research are recorded in [pedestrian-navigation-audit.md](pedestrian-navigation-audit.md).
+The latest checkpoint passed `npm run check` (526 tests, 4 expected failures,
+2 skipped, lint, typecheck and build) and `npm run verify:visual` (16 scenarios,
+three-webgl backend). The broader 80-seed fuzz hunt, full roster-wide facial
+expression coverage, broad occupant visual inspection, and saturated traffic
+flow remain open. Block 7 and the full project remain open.

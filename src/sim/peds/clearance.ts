@@ -1,8 +1,7 @@
-import { type Vec2, addScaled } from '@core/vec2';
+import type { Vec2 } from '@core/vec2';
 import { m } from '@world/units';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { SIGNAL_POST_RADIUS, signalPosts } from '@world/signalPosts';
-import { DT } from '../params';
 import { vehiclePose } from '../pose';
 import type { SimWorld } from '../world';
 import type { Ped, PedId } from './state';
@@ -10,12 +9,16 @@ import type { SidewalkEdge } from './sidewalk';
 
 export interface Footprint {
   id: number; x: number; y: number; radius: number; cell: string;
+  /** Velocity at the start of the pedestrian step, fixed while agents decide. */
+  vx?: number; vy?: number;
   /** A person's party, while they are in a conversation with it; -1 otherwise. */
   talk?: number;
   forward?: Vec2; halfLength?: number; halfWidth?: number;
 }
 const CELL = m(4);
 const PERSON = m(0.3);
+const POINT_FRAME = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
+const LINE_FRAME = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
 const cell = (x: number, y: number): string => `${Math.floor(x / CELL)}:${Math.floor(y / CELL)}`;
 
 /**
@@ -128,7 +131,11 @@ export class PedestrianClearance {
     for (const p of w.pedsInIdOrder()) {
       const at = this.at(w, p);
       if (!at) continue;
+      const edge = w.sidewalks.edges.get(p.edge)!;
+      edge.corridor.frame(p.s, p.entry !== edge.from, POINT_FRAME);
       const footprint = { id: p.id, x: at.x, y: at.y, radius: PERSON, cell: '',
+        vx: POINT_FRAME.tx * p.v + POINT_FRAME.nx * p.latV,
+        vy: POINT_FRAME.ty * p.v + POINT_FRAME.ny * p.latV,
         talk: p.activity?.kind === 'talk' ? p.party.id : -1 };
       this.people.set(p.id, footprint);
       this.insert(footprint);
@@ -152,9 +159,9 @@ export class PedestrianClearance {
     return this.point(w, edge, p.entry, p.s, p.lat);
   }
 
-  point(w: SimWorld, edge: SidewalkEdge, entry: string, s: number, lat: number): Vec2 {
-    const frame = w.sidewalks.orientedPath(edge, entry).sampleAt(s);
-    return addScaled(frame.p, frame.n, lat);
+  point(_w: SimWorld, edge: SidewalkEdge, entry: string, s: number, lat: number): Vec2 {
+    edge.corridor.place(s, lat, entry !== edge.from, POINT_FRAME);
+    return { x: POINT_FRAME.x, y: POINT_FRAME.y };
   }
 
   /** How far the next step may go before touching a person or object. */
@@ -265,22 +272,23 @@ export class PedestrianClearance {
    * until it is not: the way through the near ones matters first.
    */
   clearLine(w: SimWorld, p: Ped, edge: SidewalkEdge, target: number, usable: number): number {
-    const frame = w.sidewalks.orientedPath(edge, p.entry).sampleAt(p.s);
-    const near = addScaled(frame.p, frame.n, p.lat);
+    const frame = edge.corridor.place(p.s, p.lat, p.entry !== edge.from, LINE_FRAME);
+    const near = { x: frame.x, y: frame.y };
     const pace = Math.max(p.v, AVOID_PACE);
     const reach = Math.min(AVOID_REACH, pace * AVOID_SECONDS);
     const blocked = BLOCKED;
     blocked.length = 0;
     this.visit(near.x, near.y, reach + m(2), other => {
       if (other.id === p.id) return;
-      // Vehicles are the crossing rules' business, not something to walk round.
-      if (other.id < 0 && other.id > -1_000_000) return;
+      // Permission to enter a crossing is the signal's decision. Once on it,
+      // a walker still needs a free line around any vehicle already stopped
+      // beside the zebra, just as around furniture or another person.
       const dx = other.x - near.x, dy = other.y - near.y;
-      const ahead = dx * frame.t.x + dy * frame.t.y;
+      const ahead = dx * frame.tx + dy * frame.ty;
       let across = other.radius, along = other.radius;
       if (other.forward && other.halfLength !== undefined && other.halfWidth !== undefined) {
-        const c = Math.abs(other.forward.x * frame.t.x + other.forward.y * frame.t.y);
-        const s = Math.abs(other.forward.x * frame.n.x + other.forward.y * frame.n.y);
+        const c = Math.abs(other.forward.x * frame.tx + other.forward.y * frame.ty);
+        const s = Math.abs(other.forward.x * frame.nx + other.forward.y * frame.ny);
         across = s * other.halfLength + c * other.halfWidth;
         along = c * other.halfLength + s * other.halfWidth;
       }
@@ -290,7 +298,12 @@ export class PedestrianClearance {
       if (other.id > 0) {
         const q = w.peds.get(other.id);
         if (q) {
-          const qAlong = ((q.x - q.prev.x) * frame.t.x + (q.y - q.prev.y) * frame.t.y) / DT;
+          // Companions deliberately close into a conversational ring. Their
+          // assigned places already keep bodies apart; treating each other
+          // as a detour here pushes them away from that ring for the entire
+          // hold and leaves them facing an empty centre.
+          if (p.activity?.kind === 'talk' && q.party === p.party && q.activity?.kind === 'talk') return;
+          const qAlong = (other.vx ?? 0) * frame.tx + (other.vy ?? 0) * frame.ty;
           const closing = pace - qAlong;
           // Going the same way no slower: never reached, so never in the way.
           if (closing < AVOID_CLOSING) return;
@@ -298,7 +311,7 @@ export class PedestrianClearance {
         }
       }
       if (meet > AVOID_SECONDS) return;
-      const lateral = dx * frame.n.x + dy * frame.n.y + p.lat;
+      const lateral = dx * frame.nx + dy * frame.ny + p.lat;
       const half = across + PERSON + AVOID_GAP;
       blocked.push({ lo: lateral - half, hi: lateral + half, meet: Math.max(0, meet), centre: lateral, core: across + PERSON });
     });

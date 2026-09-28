@@ -1,0 +1,19 @@
+{
+  "name": "pedestrian-crossing-seed3",
+  "category": "pedInRoadStalled",
+  "detail": "A soft vehicle comfort gap made a physically passable zebra impassable to the velocity solver",
+  "sim": { "seconds": 45, "seed": 24301, "intensity": 1.5 },
+  "ops": [
+    { "op": "draw", "a": [330.41, 116.68], "b": [351.35, 315.51], "curve": null, "structure": "ground", "type": 2 },
+    { "op": "delete", "pick": 0.97 },
+    { "op": "draw", "a": [163.03, -176.86], "b": [567.26, -462.28], "curve": { "h": 108.29, "t": 0.33 }, "structure": "elevated", "type": 1 },
+    { "op": "draw", "a": [287.54, -217.35], "b": [425.24, -235.21], "curve": null, "structure": "ground", "type": 2 },
+    { "op": "split", "pick": 0.83, "at": 0.62 },
+    { "op": "draw", "a": [392.96, -71.02], "b": [441.58, -390.68], "curve": { "h": -67.83, "t": 0.53 }, "structure": "ground", "type": 3 },
+    { "op": "draw", "a": [-416.33, 299.54], "b": [-576.47, 278.31], "curve": { "h": -50.57, "t": 0.33 }, "structure": "ground", "type": 2 },
+    { "op": "draw", "a": [424.75, -325.06], "b": [646.39, -405.71], "curve": { "h": 49.64, "t": 0.34 }, "structure": "ground", "type": 2 },
+    { "op": "draw", "a": [-456.9, 310.5], "b": [-457.52, 371.41], "curve": { "h": -10.32, "t": 0.61 }, "structure": "ground", "type": 2 },
+    { "op": "draw", "a": [413.46, -229.82], "b": [466.48, -31.95], "curve": null, "structure": "ground", "type": 0 },
+    { "op": "draw", "a": [217.53, -326.15], "b": [564.99, -174.33], "curve": null, "structure": "ground", "type": 3 }
+  ]
+}

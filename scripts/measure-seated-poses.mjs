@@ -20,10 +20,10 @@ const out = await page.evaluate(async () => {
   const { GLTFLoader } = await import('/node_modules/.vite/deps/three_addons_loaders_GLTFLoader__js.js');
   const { clone } = await import('/node_modules/.vite/deps/three_addons_utils_SkeletonUtils__js.js');
   const { CITIZEN_ASSET_URLS } = await import('/src/render/citizenAssets.ts');
-  const { CITIZEN_MODELS } = await import('/src/render/citizenCatalog.ts');
+  const { CROWD_IDS } = await import('/src/render/citizenCasting.ts');
   const { RIDER_CLIPS } = await import('/src/render/riderPoses.ts');
   const res = {};
-  const ids = CITIZEN_MODELS.map(m => m.id ?? m).filter(id => !String(id).includes('child'));
+  const ids = CROWD_IDS.filter(id => !id.includes('child'));
   for (const id of ids) {
     const gltf = await new GLTFLoader().loadAsync(CITIZEN_ASSET_URLS[id]);
     for (const clip of RIDER_CLIPS) {

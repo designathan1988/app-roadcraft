@@ -220,6 +220,5 @@
    "pick": 0.59,
    "structure": "tunnel"
   }
- ],
- "open": "Audit pedSignalContradiction (sim/invariants.ts): a pedestrian occupies a crossing that a vehicle's reserved connector drives over. Pedestrian crossing arbitration (sim/peds/crossingFsm.ts) is the next run's scope; not investigated here."
+ ]
 }

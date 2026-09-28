@@ -21,6 +21,28 @@ import { auditPedestrians } from './support/pedAudit';
  * is at the bench.
  */
 describe('pedestrian containment', () => {
+  it('builds corner paths without short reversals that flip the walking corridor', () => {
+    const maps = [fixtureDoc(), ...LAYOUTS.map((layout) => layoutDoc(layout, 170).doc)];
+    let corners = 0;
+    for (const doc of maps) {
+      const sim = simOf(doc, 7, 2);
+      for (const edge of sim.sidewalks.edges.values()) {
+        if (edge.kind !== 'corner') continue;
+        corners++;
+        const points = edge.path.toPoints();
+        for (let i = 2; i < points.length; i++) {
+          const a = points[i - 2]!, b = points[i - 1]!, c = points[i]!;
+          const ax = b.x - a.x, ay = b.y - a.y;
+          const bx = c.x - b.x, by = c.y - b.y;
+          const first = Math.hypot(ax, ay), second = Math.hypot(bx, by);
+          const cosine = (ax * bx + ay * by) / (first * second);
+          expect(cosine, `${edge.id} at vertex ${i}`).toBeGreaterThanOrEqual(-0.5);
+        }
+      }
+    }
+    expect(corners).toBeGreaterThan(40);
+  });
+
   it('keeps every pedestrian on the footway or a zebra on the saved player map', () => {
     const audit = auditPedestrians(simOf(fixtureDoc(), 3, 2), 90);
     expect(audit.pedSeconds).toBeGreaterThan(5000);

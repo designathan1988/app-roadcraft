@@ -114,7 +114,7 @@ function rollAgeClasses(w: SimWorld, size: number): PedAgeClass[] {
  * drawn, so no random stream changes: a child with an adult or an elder is a
  * family (a grandparent out with a grandchild too), an adult with an elder
  * is family, elders together are elderly friends, two adults a couple or
- * friends, more adults friends or colleagues - by the party's own hash.
+ * friends, more adults friends, colleagues or tourists - by the party's own hash.
  */
 export function partyArchetype(ages: readonly PedAgeClass[], id: number): PartyArchetype {
   if (ages.length === 1) return 'solo';
@@ -126,8 +126,11 @@ export function partyArchetype(ages: readonly PedAgeClass[], id: number): PartyA
   if (elder) return 'elders';
   if (child) return 'friends';
   const h = pedHash(id ^ 0x9a47);
-  if (ages.length === 2) return (h & 3) < 2 ? 'couple' : 'friends';
-  return (h & 7) < 2 ? 'colleagues' : 'friends';
+  // Adults out together who are not a couple or colleagues: one party in four
+  // of those is visitors seeing the town, the rest friends.
+  const tourists = ((h >>> 4) & 3) === 0;
+  if (ages.length === 2) return (h & 3) < 2 ? 'couple' : tourists ? 'tourists' : 'friends';
+  return (h & 7) < 2 ? 'colleagues' : tourists ? 'tourists' : 'friends';
 }
 
 /** Free-flow speed for one pedestrian, from the distribution their age draws. */

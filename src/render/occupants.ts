@@ -34,10 +34,15 @@ const SEAT_CLIPS: Readonly<Record<SeatPose, { readonly drive: readonly [RiderCli
   cab: { drive: ['cabDrive', 'cabDriveMirror', 'cabDriveRight'], ride: ['cabRide', 'cabRideLeft', 'cabRideRight'] },
   chair: { drive: ['chairSit', 'chairSitLeft', 'chairSitRight'], ride: ['chairSit', 'chairSitPhone', 'chairSitRight'] },
 };
+const REAR_CAR_CLIPS = ['carRearRide', 'carRearLeft', 'carRearRight'] as const;
+
+const clipsFor = (seat: Pick<SeatModel, 'pose' | 'driver' | 'row'>): readonly [RiderClipKey, RiderClipKey, RiderClipKey] =>
+  seat.pose === 'car' && !seat.driver && seat.row > 0
+    ? REAR_CAR_CLIPS : SEAT_CLIPS[seat.pose][seat.driver ? 'drive' : 'ride'];
 
 /** The pose somebody sits still in, in this seat. */
-export function seatBaseClip(seat: Pick<SeatModel, 'pose' | 'driver'>): RiderClipKey {
-  return SEAT_CLIPS[seat.pose][seat.driver ? 'drive' : 'ride'][0];
+export function seatBaseClip(seat: Pick<SeatModel, 'pose' | 'driver' | 'row'>): RiderClipKey {
+  return clipsFor(seat)[0];
 }
 
 /** A cheap integer hash, for the rhythm of one person's glances. */
@@ -60,8 +65,8 @@ const smooth = (x: number): number => {
  * choice come from `seed`, so two people side by side do not move together,
  * and a passenger on the right looks out of the right-hand window.
  */
-export function occupantPlays(seat: Pick<SeatModel, 'pose' | 'driver' | 'z'>, seed: number, time: number, out: Play[]): Play[] {
-  const clips = SEAT_CLIPS[seat.pose][seat.driver ? 'drive' : 'ride'];
+export function occupantPlays(seat: Pick<SeatModel, 'pose' | 'driver' | 'row' | 'z'>, seed: number, time: number, out: Play[]): Play[] {
+  const clips = clipsFor(seat);
   const h = mix(seed);
   const period = 6 + (h % 7);
   const t = time / period + ((h >>> 8) & 0xff) / 256;
@@ -101,7 +106,7 @@ export const LEAF_CLEARANCE = 0.42;
 /** Everything the choreography needs from the body model, in its frame (X forward, Z right). */
 export interface KerbPlaces {
   /** The seat's hip point and floor, world units. */
-  readonly seat: Pick<SeatModel, 'x' | 'z' | 'hipY' | 'floor' | 'pose' | 'driver'>;
+  readonly seat: Pick<SeatModel, 'x' | 'z' | 'hipY' | 'floor' | 'pose' | 'driver' | 'row'>;
   readonly door: Pick<DoorModel, 'side' | 'hingeX' | 'hingeZ' | 'length'>;
   /** Where the person stands on the footway, in the vehicle's frame. */
   readonly foot: { readonly x: number; readonly z: number };
@@ -196,7 +201,7 @@ export function kerbFigure(p: KerbPlaces, kind: 'drop' | 'pick', seated: number,
   }
   // In the car: `u` runs 0 in the seat to 1 stood up outside, for both ways.
   const u = 1 - seated;
-  const base = seatBaseClip({ pose: p.seat.pose === 'chair' ? 'car' : p.seat.pose, driver: false });
+  const base = seatBaseClip({ pose: p.seat.pose === 'chair' ? 'car' : p.seat.pose, driver: false, row: p.seat.row });
   const turnEnd = 0.3;
   const slideEnd = 0.55;
   const inboard = { x: p.seat.x, z: p.seat.z + side * m(0.1) };

@@ -49,10 +49,10 @@ function read(name: string) {
 }
 
 describe('rigged citizen catalog', () => {
-  it('ships 80 distinct source characters, with matching content hashes', () => {
-    expect(CITIZEN_MODELS).toHaveLength(80);
-    expect(new Set(CITIZEN_MODELS).size).toBe(80);
-    expect(new Set(catalog.models.map(model => model.sha256)).size).toBe(80);
+  it('ships 86 distinct source characters, with matching content hashes', () => {
+    expect(CITIZEN_MODELS).toHaveLength(86);
+    expect(new Set(CITIZEN_MODELS).size).toBe(86);
+    expect(new Set(catalog.models.map(model => model.sha256)).size).toBe(86);
     expect(catalog.models.map(model => model.id)).toEqual(CITIZEN_MODELS);
     for (const model of catalog.models) {
       expect(createHash('sha256').update(readFileSync(resolve(root, `${model.id}.glb`))).digest('hex')).toBe(model.sha256);

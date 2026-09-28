@@ -96,8 +96,8 @@ export interface PedActivity {
  * and children, a couple, friends of an age, colleagues, elderly friends -
  * never a child, a teenager and a pensioner thrown together at random.
  */
-export type PartyArchetype = 'solo' | 'family' | 'couple' | 'friends' | 'colleagues' | 'elders';
-export const PARTY_ARCHETYPES: readonly PartyArchetype[] = ['solo', 'family', 'couple', 'friends', 'colleagues', 'elders'];
+export type PartyArchetype = 'solo' | 'family' | 'couple' | 'friends' | 'colleagues' | 'elders' | 'tourists';
+export const PARTY_ARCHETYPES: readonly PartyArchetype[] = ['solo', 'family', 'couple', 'friends', 'colleagues', 'elders', 'tourists'];
 
 export interface PedParty {
   /** The pacer's id, and the seed every member's destination is drawn from. */
@@ -199,6 +199,8 @@ export interface Ped {
    * one way instead of hesitating on the spot.
    */
   dodge: number;
+  /** Side kept while passing an oriented obstacle, until it is behind. */
+  passSide: number;
   /**
    * Seconds left of a pause at a place reached: stopping to talk, to look
    * around, to check where next. Only ever set on arrival at a destination,
@@ -281,6 +283,7 @@ export function createPed(spec: PedSpec): Ped {
     offX: 0,
     offY: 0,
     dodge: 0,
+    passSide: 0,
     pause: 0,
     activity: null,
     turnV: 0,

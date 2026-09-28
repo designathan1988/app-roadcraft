@@ -1,5 +1,5 @@
 import {
-  BufferGeometry, DataTexture, DynamicDrawUsage, FloatType, Group, InstancedMesh,
+  BufferGeometry, Color, DataTexture, DynamicDrawUsage, Float32BufferAttribute, FloatType, Group, InstancedMesh,
   Matrix4, MeshDepthMaterial, MeshStandardMaterial, Object3D, Quaternion, RGBAFormat,
   RGBADepthPacking, SkinnedMesh, Texture, Vector3, type BufferAttribute,
 } from 'three';
@@ -9,7 +9,7 @@ import { pedHash } from '@sim/peds/behaviour';
 import type { Ped, PedParty } from '@sim/peds/state';
 import { DT } from '@sim/params';
 import { m } from '@world/units';
-import { CITIZEN_MODELS, type DressStyle, wardrobeOf } from './citizenCatalog';
+import { CROWD, CROWD_IDS, CastingRegistry, type CastingContext, type Company } from './citizenCasting';
 import { NO_HELMET, RIDER_CLIPS, helmetShape, type RiderClip, type RiderClipKey } from './riderPoses';
 import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
 import { type Gradient, shearMatrix } from './groundShear';
@@ -22,7 +22,7 @@ import {
   type Gait, type GaitClipName, type GaitClips, type GaitPlay,
 } from './citizenGait';
 
-export { CITIZEN_MODELS } from './citizenCatalog';
+export { CROWD_IDS } from './citizenCasting';
 /*
  * The citizen GLBs carry no clips. The Quaternius capture once converted onto
  * this skeleton is what hunched every walker, and nothing played it, so it was
@@ -79,7 +79,7 @@ interface ClipFrames {
   head?: Matrix4;
 }
 interface CitizenBatch {
-  meshes: InstancedMesh[]; local: Matrix4[]; clips: ClipFrames[];
+  meshes: InstancedMesh[]; sources: SkinnedMesh[]; local: Matrix4[]; clips: ClipFrames[];
   /** The same baked clips, by the name the gait plays them by. */
   gait: GaitClips;
   texture: DataTexture; pixels: Float32Array; width: number; count: number;
@@ -89,25 +89,23 @@ interface CitizenBatch {
   helmet: Matrix4 | null;
 }
 
-/**
- * Size of a child drawn on an adult body, when the roster has no child model
- * of their sex: without it a child walked the street at full adult height.
- */
-/** No two people within this distance of each other wear the same body, if the roster allows. */
-const CAST_NEAR = m(25);
-
-/**
- * How a party is dressed: colleagues in office clothes, one lone walker in
- * four too (people on their way to or from work), everybody else casual.
- */
-export function dressFor(party: Pick<PedParty, 'id' | 'archetype'>): DressStyle {
-  if (party.archetype === 'colleagues') return 'business';
-  if (party.archetype === 'solo') return (pedHash(party.id ^ 0x5eed) & 3) === 0 ? 'business' : 'casual';
-  return 'casual';
+/** The company a walker is dressed with (`citizenCasting.codesFor`): their party's kind, or alone. */
+export function companyOf(party: Pick<PedParty, 'size' | 'archetype'>): Company {
+  return party.size > 1 ? party.archetype : 'solo';
 }
+
 /** Frames undrawn after which a person's body is forgotten: about a minute. */
 const CAST_FORGET = 3600;
-const CHILD_ON_ADULT = 0.64;
+
+/** Who a figure drawn by `drawClip` is and with whom: the casting context without the place. */
+export interface ClipIdentity {
+  readonly seed: number;
+  readonly gender: 'f' | 'm';
+  readonly ageClass: 'child' | 'adult' | 'elder';
+  readonly company: Company;
+  readonly companyId: number;
+  readonly hasChild?: boolean;
+}
 
 const SKINNING = `
 uniform sampler2D citizenBones;
@@ -122,15 +120,112 @@ mat4 getBoneMatrix(const in float i) {
     texelFetch(citizenBones,ivec2(x+3,y),0));
 }`;
 
-function skinMaterial(material: MeshStandardMaterial | MeshDepthMaterial, uniform: { value: DataTexture }, mesh: SkinnedMesh): void {
+const CHILD_SHIRTS = [0x000000, 0x479f94, 0xe5b25d, 0x9672b7] as const;
+
+interface FacialExpression {
+  readonly blink: number;
+  readonly smile: number;
+  readonly brow: number;
+  readonly jaw: number;
+  readonly lookLeft: number;
+  readonly lookRight: number;
+}
+
+/** Each person carries a quiet, deterministic facial beat rather than a shared loop. */
+function facialExpression(seed: number, time: number, activity?: string): FacialExpression {
+  const hash = pedHash(seed ^ 0x4c9e3721);
+  const blinkPhase = (time * (0.72 + ((hash >>> 8) & 15) * 0.018) + (hash & 255) / 255) % 1;
+  const blink = blinkPhase > 0.93 ? Math.sin((blinkPhase - 0.93) / 0.07 * Math.PI) : 0;
+  const talking = activity === 'talk' ? 0.32 + 0.25 * Math.sin(time * 5 + (hash >>> 16)) : 0;
+  const look = Math.sin(time * 0.55 + (hash >>> 5)) * 0.32;
+  return {
+    blink,
+    smile: activity === 'talk' ? 0.32 : ((hash >>> 24) & 3) === 0 ? 0.12 : 0,
+    brow: activity === 'talk' ? 0.08 : 0,
+    jaw: Math.max(0, talking),
+    lookLeft: Math.max(0, look),
+    lookRight: Math.max(0, -look),
+  };
+}
+
+function setFacialExpression(batch: CitizenBatch, slot: number, expression: FacialExpression): void {
+  for (let i = 0; i < batch.meshes.length; i++) {
+    const source = batch.sources[i]!;
+    const influences = source.morphTargetInfluences;
+    const targets = source.morphTargetDictionary;
+    if (!influences || !targets) continue;
+    influences.fill(0);
+    const set = (name: string, value: number): void => {
+      const index = targets[name];
+      if (index !== undefined) influences[index] = value;
+    };
+    set('AU_45_Blink', expression.blink);
+    set('HB_07_MouthSmile', expression.smile);
+    set('AK_03_BrowInnerUp', expression.brow);
+    set('AK_25_JawOpen', expression.jaw);
+    set('AU_61_EyesTurnLeft', expression.lookLeft);
+    set('AU_62_EyesTurnRight', expression.lookRight);
+    const mesh = batch.meshes[i]!;
+    // three allocates an InstancedMesh's morph texture from `count`. Batches
+    // start invisible at count zero, so reserve their fixed capacity only for
+    // that first allocation, then restore the visible count for this frame.
+    const visible = mesh.count;
+    if (mesh.morphTexture === null) mesh.count = CAPACITY;
+    mesh.setMorphAt(slot, source);
+    mesh.count = visible;
+  }
+}
+
+function markChildShirt(mesh: SkinnedMesh): void {
+  const geometry = mesh.geometry;
+  if (geometry.getAttribute('clothingMask')) return;
+  const uv = geometry.getAttribute('uv');
+  const skin = geometry.getAttribute('skinIndex');
+  const weights = geometry.getAttribute('skinWeight');
+  const count = geometry.getAttribute('position').count;
+  const mask = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    if (!uv || uv.getX(i) < 0.32 || uv.getX(i) > 0.68) continue;
+    let torso = 0;
+    for (let k = 0; k < 4; k++) {
+      const bone = mesh.skeleton.bones[skin.getComponent(i, k)];
+      if (bone && /^Bip01_(Pelvis|Spine|Spine1|Spine2)$/.test(bone.name)) torso += weights.getComponent(i, k);
+    }
+    mask[i] = torso > 0.5 ? 1 : 0;
+  }
+  geometry.setAttribute('clothingMask', new Float32BufferAttribute(mask, 1));
+}
+
+function skinMaterial(material: MeshStandardMaterial | MeshDepthMaterial, uniform: { value: DataTexture },
+  mesh: SkinnedMesh, look = 0): void {
   material.defines = { ...material.defines, USE_SKINNING: '' };
   material.onBeforeCompile = shader => {
     shader.uniforms.citizenBones = uniform;
     shader.uniforms.bindMatrix = { value: mesh.bindMatrix };
     shader.uniforms.bindMatrixInverse = { value: mesh.bindMatrixInverse };
     shader.vertexShader = shader.vertexShader.replace('#include <skinning_pars_vertex>', SKINNING);
+    if (look > 0 && material instanceof MeshStandardMaterial) {
+      const tint = new Color(CHILD_SHIRTS[look]!);
+      shader.vertexShader = `attribute float clothingMask; varying float vClothingMask;\n${shader.vertexShader}`
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n vClothingMask = clothingMask;');
+      shader.fragmentShader = `varying float vClothingMask;\n${shader.fragmentShader}`;
+      // The centre island of the Rocketbox child body atlas is the shirt.
+      // Its folds and printed white details remain; hands, face and hair are
+      // outside that UV island and keep their authored colour.
+      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `
+        #include <map_fragment>
+        #ifdef USE_MAP
+        float shirtHigh = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
+        float shirtLow = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));
+        if (vClothingMask > 0.5 && shirtHigh - shirtLow > 0.09) {
+          float shade = clamp(shirtHigh / 0.68, 0.35, 1.2);
+          diffuseColor.rgb = vec3(${tint.r.toFixed(6)}, ${tint.g.toFixed(6)}, ${tint.b.toFixed(6)}) * shade;
+        }
+        #endif
+      `);
+    }
   };
-  material.customProgramCacheKey = () => 'citizen-skinning-v1';
+  material.customProgramCacheKey = () => `citizen-skinning-v2-look${look}`;
 }
 
 /** Longest stretch of baking between two frames, milliseconds. */
@@ -282,7 +377,7 @@ function gaitClips(clips: readonly ClipFrames[]): GaitClips {
   return Object.fromEntries(Object.entries(GAIT_AT).map(([name, at]) => [name, clips[at]!])) as unknown as GaitClips;
 }
 
-export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
+export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   onAssetsReady: () => void = () => {}) {
   const group = new Group();
   group.name = 'rigged-citizens';
@@ -305,7 +400,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
 
   async function load(index: number): Promise<void> {
     const loader = new GLTFLoader();
-    const url = CITIZEN_ASSET_URLS[models[index]!];
+    const url = CITIZEN_ASSET_URLS[CROWD[index]?.sourceId ?? models[index]!];
     if (!url) throw new Error(`Missing citizen asset: ${models[index]}`);
     const [asset, library] = await Promise.all([loader.loadAsync(url), loadRocketboxLibrary()]);
       asset.scene.traverse(o => {
@@ -332,11 +427,12 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       texture.needsUpdate = true;
       resources.add(texture);
       const uniform = { value: texture };
-      const batch: CitizenBatch = { meshes: [], local: [], clips, gait: gaitClips(clips), texture, pixels, width, rows,
+      const batch: CitizenBatch = { meshes: [], sources: [], local: [], clips, gait: gaitClips(clips), texture, pixels, width, rows,
         uniform, count: 0, lods: [], helmet };
       const parts: SkinnedMesh[] = [];
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh) parts.push(o); });
       for (const o of parts) {
+        if (CROWD[index]?.look) markChildShirt(o);
         const variants = [o.geometry];
         const lodIndices: unknown = o.geometry.userData['roadcraftLods'];
         if (Array.isArray(lodIndices)) for (const accessor of lodIndices) {
@@ -351,16 +447,19 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         }
         if (disposed) { for (const resource of resources) resource.dispose(); return; }
         const original = Array.isArray(o.material) ? o.material : [o.material];
-        const materials = original.map(source => {
+        const materials = original.map((source, materialIndex) => {
           const material = (source as MeshStandardMaterial).clone();
           material.color.setHex(0xffffff); // Preserve authored skin; never tint the whole citizen.
           material.roughness = 0.88;
           material.metalness = 0;
-          skinMaterial(material, uniform, o);
+          skinMaterial(material, uniform, o, materialIndex === 0 ? (CROWD[index]?.look ?? 0) : 0);
           resources.add(material);
           return material;
         });
         const mesh = new InstancedMesh(o.geometry, Array.isArray(o.material) ? materials : materials[0]!, CAPACITY);
+        // InstancedMesh does not initialise this array itself. WebGL's morph
+        // setup still reads it before it checks the per-instance texture.
+        if (o.morphTargetInfluences) mesh.morphTargetInfluences = [...o.morphTargetInfluences];
         mesh.name = `citizen-${models[index]}-${o.name}`;
         mesh.count = 0;
         mesh.frustumCulled = false;
@@ -378,6 +477,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         mesh.customDepthMaterial = depth;
         resources.add(mesh); resources.add(depth);
         batch.meshes.push(mesh);
+        batch.sources.push(o);
         batch.lods.push(variants);
         batch.local.push(o.matrixWorld.clone());
         group.add(mesh);
@@ -390,6 +490,9 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   }
 
   function request(index: number): Promise<void> {
+    // A body outside the reviewed whitelist must never be asked for; the
+    // browser checks (`verify:visual`) fail on this error.
+    if (!CROWD_IDS.includes(models[index] ?? '')) console.error(`Citizen outside the whitelist requested: ${models[index]}`);
     const pending = loading.get(index);
     if (pending) return pending;
     const slot = nextSlot++ % slots.length;
@@ -399,128 +502,16 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     return work;
   }
 
-  const everyone: number[] = [];
-  /** Bodies a pedestrian may be drawn as, by sex and by whether it is a child's. */
-  const pools = {
-    f: { adult: [] as number[], business: [] as number[], child: [] as number[] },
-    m: { adult: [] as number[], business: [] as number[], child: [] as number[] },
-  };
-  models.forEach((id, index) => {
-    // Uniforms are not street clothes (`citizenCatalog.wardrobeOf`).
-    const wardrobe = wardrobeOf(id);
-    if (wardrobe === 'uniform') return;
-    everyone.push(index);
-    const child = id.includes('_child');
-    const sex = pools[id.includes('female') ? 'f' : 'm'];
-    if (child) sex.child.push(index);
-    else if (wardrobe === 'business') sex.business.push(index);
-    else sex.adult.push(index);
-  });
-  /** Adult bodies a helmet fits on (`riderPoses.NO_HELMET`): motorcyclists are drawn from these. */
-  const helmeted = {
-    f: pools.f.adult.filter((i) => !NO_HELMET.has(models[i]!)),
-    m: pools.m.adult.filter((i) => !NO_HELMET.has(models[i]!)),
-  };
-
   /**
-   * The body one pedestrian is drawn as, and at what size.
-   *
-   * A woman is drawn as a woman and a child as a child: the model used to be
-   * picked from the id alone, so half the women were men and children walked
-   * at full adult height. A child with no child body of their sex in the
-   * roster is drawn on an adult one, scaled down to a child's height; an
-   * older person walks on an adult body with the elder's walk.
+   * Who is drawn as whom (`citizenCasting.ts`): the ONE casting function, for
+   * walkers, parties, drivers, passengers, riders and people at the kerb
+   * alike. `models` must be the crowd whitelist (`CROWD_IDS`), in its order.
    */
-  function poolFor(ped: Pick<Ped, 'gender' | 'ageClass'>, helmet: boolean, style: DressStyle = 'casual'):
-    { pool: readonly number[]; size: number; spare?: readonly number[]; spareSize?: number } | null {
-    const sex = pools[ped.gender === 'f' ? 'f' : 'm'];
-    const other = pools[ped.gender === 'f' ? 'm' : 'f'];
-    const fits = helmeted[ped.gender === 'f' ? 'f' : 'm'];
-    if (helmet && ped.ageClass !== 'child' && fits.length) return { pool: fits, size: 1 };
-    if (ped.ageClass === 'child') {
-      // There are one girl's body and two boys' in the roster: a second child
-      // nearby, who would be the first one's twin, is drawn on an adult body
-      // at a child's height instead.
-      if (sex.child.length) return { pool: sex.child, size: 1, spare: sex.adult, spareSize: CHILD_ON_ADULT };
-      if (sex.adult.length) return { pool: sex.adult, size: CHILD_ON_ADULT };
-      if (other.child.length) return { pool: other.child, size: 1 };
-    } else {
-      // Everybody in a group dressed alike: colleagues in office clothes, the
-      // rest - families, couples, friends - in everyday ones.
-      if (style === 'business' && ped.ageClass === 'adult' && sex.business.length) return { pool: sex.business, size: 1 };
-      if (sex.adult.length) return { pool: sex.adult, size: 1 };
-      if (other.adult.length) return { pool: other.adult, size: 1 };
-    }
-    return everyone.length ? { pool: everyone, size: 1 } : null;
-  }
-
-  /**
-   * The casting registry: which body each person is drawn as, chosen once,
-   * the first time they are drawn, and kept for as long as they are about.
-   *
-   * It used to be `pool[hash % pool.length]` - every person drawn
-   * independently of everybody round them - and with forty-odd bodies to a
-   * sex that put the same person twice among ten people near each other two
-   * times in three, and now and then twins side by side in one car. Now a
-   * body is dealt from a deck starting where the hash points, skipping any
-   * body worn by somebody within `CAST_NEAR` or by somebody of the same party
-   * or vehicle; if every one is taken, the one worn farthest away. A person is
-   * the same identity seated, getting out and walking off (the vehicle seat's
-   * seed is the pedestrian's id), so they keep their body throughout.
-   */
-  interface Cast { index: number; size: number; x: number; y: number; seen: number; group: number }
-  const cast = new Map<number, Cast>();
-  const wearers = new Map<number, Set<number>>();
-  let castFrame = 0;
-  function bodyFor(ped: Pick<Ped, 'gender' | 'ageClass'>, hash: number, helmet: boolean,
-    seed: number, x: number, y: number, company: number, style: DressStyle = 'casual'): { index: number; size: number } | null {
-    const known = cast.get(seed);
-    if (known) {
-      known.x = x; known.y = y; known.seen = castFrame;
-      return known;
-    }
-    const choice = poolFor(ped, helmet, style);
-    if (!choice) return null;
-    const { pool, spare } = choice;
-    let size = choice.size;
-    let index = -1;
-    let fallback = pool[hash % pool.length]!;
-    let farthest = -1;
-    const deck = pool.length + (spare?.length ?? 0);
-    for (let k = 0; k < deck; k++) {
-      const fromSpare = k >= pool.length;
-      const candidate = fromSpare ? spare![(hash + k) % spare!.length]! : pool[(hash + k) % pool.length]!;
-      let nearest = Infinity;
-      let taken = false;
-      for (const other of wearers.get(candidate) ?? []) {
-        const worn = cast.get(other);
-        if (!worn) continue;
-        if (company !== 0 && worn.group === company) { taken = true; break; }
-        nearest = Math.min(nearest, Math.hypot(worn.x - x, worn.y - y));
-      }
-      if (taken) continue;
-      if (nearest >= CAST_NEAR) {
-        index = candidate;
-        if (fromSpare) size = choice.spareSize ?? size;
-        break;
-      }
-      if (!fromSpare && nearest > farthest) { farthest = nearest; fallback = candidate; }
-    }
-    if (index < 0) index = fallback;
-    const entry: Cast = { index, size, x, y, seen: castFrame, group: company };
-    cast.set(seed, entry);
-    const list = wearers.get(index);
-    if (list) list.add(seed);
-    else wearers.set(index, new Set([seed]));
-    return entry;
-  }
-  /** Forgets whoever has not been drawn for `CAST_FORGET` frames: gone, or long out of sight. */
-  function forgetCast(): void {
-    for (const [seed, entry] of cast) {
-      if (castFrame - entry.seen < CAST_FORGET) continue;
-      cast.delete(seed);
-      wearers.get(entry.index)?.delete(seed);
-    }
+  const registry = new CastingRegistry(CROWD.filter((m) => models.includes(m.id))
+    .sort((p, q) => models.indexOf(p.id) - models.indexOf(q.id)), CAST_FORGET);
+  const helmetFits = (id: string): boolean => !NO_HELMET.has(id);
+  function bodyFor(ctx: CastingContext): { index: number; size: number } | null {
+    return registry.pickCitizenModel(ctx, helmetFits);
   }
   const mixClips: ClipFrames[] = [];
   const mixPhases: number[] = [];
@@ -529,7 +520,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
   /** Writes one citizen: blended bone palette plus instance transform. */
   function emit(batch: CitizenBatch, clips: readonly ClipFrames[], phases: readonly number[],
     weights: readonly number[], x: number, height: number, y: number, heading: number, scale: number,
-    lean = 0, ground: Gradient | null = null): void {
+    lean = 0, ground: Gradient | null = null, expression?: FacialExpression): void {
     const offset = batch.count * batch.width;
     batch.pixels.fill(0, offset, offset + batch.width);
     let total = 0;
@@ -557,6 +548,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       matrix.multiplyMatrices(transform.matrix, batch.local[i]!);
       batch.meshes[i]!.setMatrixAt(batch.count, matrix);
     }
+    if (expression) setFacialExpression(batch, batch.count, expression);
     batch.count++;
   }
 
@@ -578,8 +570,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     group,
     begin(level = 2, zoom = Infinity) {
       detail = level;
-      castFrame++;
-      if (castFrame % 240 === 0) forgetCast();
+      registry.beginFrame();
       lod = zoom >= 8 ? 0 : zoom >= 2 ? 1 : 2;
       group.userData.lod = lod;
       for (const batch of batches.values()) {
@@ -599,7 +590,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
     /** `ground`: the footway's gradient under the walker, so both feet stand on it (`groundShear.ts`). */
     draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number, ground: Gradient | null = null) {
       const hash = pedHash(ped.id);
-      const body = bodyFor(ped, hash, false, ped.id, x, y, ped.party.size > 1 ? ped.party.id + 1 : 0, dressFor(ped.party));
+      const body = bodyFor({ seed: ped.id, gender: ped.gender, ageClass: ped.ageClass, company: companyOf(ped.party),
+        companyId: ped.party.id, hasChild: ped.party.hasChild, x, y });
       if (!body) return;
       const index = body.index;
       const batch = batches.get(index);
@@ -628,7 +620,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         mixPhases.push(play.frame);
         mixWeights.push(play.weight);
       }
-      emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), 0, ground);
+      emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), 0, ground,
+        facialExpression(ped.id, time, ped.activity?.kind));
     },
     /**
      * Somebody in or on a vehicle, or stepping between a vehicle and the
@@ -651,11 +644,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
      * as drawn (`riderPoses.helmetShape`); the return value is then negative
      * if the body has none, and the helmet must not be drawn.
      */
-    drawClip(identity: { readonly seed: number; readonly gender: 'f' | 'm'; readonly ageClass: 'child' | 'adult' | 'elder';
-      /** Who they are with - a vehicle's occupants, negative - so none of them wears the same body. */
-      readonly company?: number;
-      /** How the people they are with are dressed. */
-      readonly style?: DressStyle },
+    drawClip(identity: ClipIdentity,
       pelvisX: number, pelvisY: number, pelvisHeight: number, heading: number,
       plays: readonly { readonly key: CitizenClipKey; readonly phase: number; readonly weight: number;
         /** For a walk: ground covered, world units; the phase then follows this body's own stride. */
@@ -663,8 +652,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       lean = 0, maxScale = Infinity, fromGround: boolean | 'pelvisOver' = false, fixedScale = 0,
       helmet: Matrix4 | null = null): number {
       const hash = pedHash(identity.seed);
-      const body = bodyFor(identity, hash, helmet !== null, identity.seed, pelvisX, pelvisY, identity.company ?? 0,
-        identity.style ?? 'casual');
+      const body = bodyFor({ ...identity, helmet: helmet !== null, x: pelvisX, y: pelvisY });
       if (!body) return 0;
       const batch = batches.get(body.index);
       if (!batch) {
@@ -720,7 +708,8 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
       const shiftAhead = fromGround === true ? 0 : (pelvisAhead / total) * scale;
       emit(batch, mixClips, mixPhases, mixWeights,
         pelvisX - leftX * drop * Math.sin(lean) - leftX * shiftLeft - aheadX * shiftAhead, pelvisHeight - drop * Math.cos(lean),
-        pelvisY - leftY * drop * Math.sin(lean) - leftY * shiftLeft - aheadY * shiftAhead, heading, scale, lean);
+        pelvisY - leftY * drop * Math.sin(lean) - leftY * shiftLeft - aheadY * shiftAhead, heading, scale, lean, null,
+        facialExpression(identity.seed, identity.seed * 0.13));
       if (helmet) {
         // This body's helmet on the head of the pose carrying the most
         // weight, through the transform `emit` just drew the body with: at
@@ -729,6 +718,15 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
         helmet.multiplyMatrices(transform.matrix, helmetBone.multiplyMatrices(headClip.head, batch.helmet));
       }
       return scale;
+    },
+    /**
+     * Every figure drawn last frame, as the casting chose them: model,
+     * wardrobe, company and its dress code (the runtime census). Recording
+     * starts on the first call.
+     */
+    census() {
+      registry.recordCensus = true;
+      return registry.census();
     },
     finish() {
       for (const batch of batches.values()) {
@@ -751,6 +749,7 @@ export function createRiggedCitizens(models: readonly string[] = CITIZEN_MODELS,
           mesh.instanceMatrix.clearUpdateRanges();
           if (batch.count > 0) mesh.instanceMatrix.addUpdateRange(0, batch.count * 16);
           mesh.instanceMatrix.needsUpdate = true;
+          if (mesh.morphTexture) mesh.morphTexture.needsUpdate = true;
         }
       }
     },
