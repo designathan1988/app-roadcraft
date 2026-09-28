@@ -178,6 +178,9 @@
 @media (max-width: 780px) {
   .building-creator { top: 74px; right: 8px; width: min(245px, 56vw); max-height: calc(100dvh - 280px); padding: 11px; }
   .creator-dock { left: 72px; right: 8px; width: auto; transform: none; bottom: max(96px, calc(env(safe-area-inset-bottom) + 90px)); padding: 6px; }
+  .creator-model-palette { width: 100%; gap: 3px; }
+  .creator-model-palette button { min-width: 0; width: calc((100% - 12px) / 5); padding: 3px 1px; font-size: 9.5px; line-height: 1.05; }
+  .creator-model-palette button svg { width: 18px; height: 18px; }
   .creator-dock .creator-rail button { min-height: 48px; font-size: 9px; }
   .creator-dock .creator-rail button svg { width: 18px; height: 18px; }
   .creator-dock-popover { max-height: 50dvh; overflow: auto; width: min(360px, calc(100vw - 80px)); }

@@ -43,6 +43,8 @@ The bottom palette also has a Paint tool with visual material swatches and a col
 
 The Openings tool now exposes the existing bay, storey, facade-side, and volume replacement scopes as icons in the same bottom palette. Choosing a window, broad glass bay, balcony, door, or wall arms a brush; clicking an opening applies it. In the visible game, one window became broad glass, a side-scope click replaced every opening on that facade with wall, and a subsequent window click restored all of them. These edits use the authored facade overrides and undo history; no numbered panel stage is required.
 
+At a 390 × 844 viewport, the five main modeling tools now fit in the bottom dock: the page scroll width is exactly 390 px and all button bounds remain inside the viewport. The mobile browser pass reported no page errors. The detailed building inspector remains collapsed by default and available for exact values.
+
 The first working operator is Extrude on a selected roof or wall sketch, positive and negative. Offset and Bevel then reuse the same profile/face representation. Chamfering a plan corner remains separate from beveling a face. Validation must reject self-intersecting offsets and an unsupported cut before a document mutation; it must explain the failure on the geometry being edited.
 
 ## Implementation and gates
