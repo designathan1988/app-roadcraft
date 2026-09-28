@@ -18,6 +18,7 @@ import { snapshot, type Vehicle } from './vehicles/state';
 import { pedSnapshot } from './peds/state';
 import { runAudit } from './invariants';
 import { signalStateFor } from './signals/query';
+import { bodyClassOfArchetype } from './vehicles/archetypes';
 
 export interface StepOptions {
   readonly traffic?: boolean;
@@ -375,7 +376,8 @@ function ensureVehicleRoutes(w: SimWorld): void {
     // It then drove to the stop line and stayed there for the rest of its life,
     // holding the head of its lane. This is not a broken route - it is a short
     // one - so it is extended rather than repaired.
-    if (v.route.length <= 1 && w.graph.exitsOf(lane.id).length > 0) {
+    if (v.route.length <= 1 && w.graph.exitsOf(lane.id).some((id) =>
+      (w.connector(id)?.maxBodyClass ?? -1) >= bodyClassOfArchetype(v.archetype))) {
       planFrom(w, v);
     }
   }

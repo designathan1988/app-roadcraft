@@ -4,7 +4,7 @@ import { type AuditIssue, issue } from './audit';
 import { anyGreen, signalStateFor } from './signals/query';
 import type { SignalController } from './signals/fsm';
 import { COARSE_EPS } from '@core/scalar';
-import { pedestrianAffectsSpan } from './intersections/crossingSpans';
+import { pedestrianAffectsSpan, reservationCoversCrossing } from './intersections/crossingSpans';
 
 /**
  * Runtime invariant checks.
@@ -239,12 +239,10 @@ export function runAudit(w: SimWorld, level: 'cheap' | 'full'): AuditIssue[] {
         if (lane?.kind === 'connector') connectorIds.add(lane.id);
         for (const connectorId of connectorIds) {
           const connector = w.connector(connectorId);
-          if (
-            connector?.node === node &&
-            (connector.inSegment === segment || connector.outSegment === segment)
-          ) {
+          if (connector?.node === node) {
             const span = w.crossingSpans.span(connector.id, p.occupying);
             if (span === null || (span && !pedestrianAffectsSpan(p, edge, span))) continue;
+            if (!reservationCoversCrossing(w, v, connector, segment, span)) continue;
             out.push(
               issue(
                 'pedSignalContradiction',

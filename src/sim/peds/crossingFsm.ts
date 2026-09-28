@@ -18,6 +18,7 @@ import {
 import { pedestrianSignalState, remainingProtectedTime } from '../signals/query';
 import { makeCrossingId } from '../signals/plan';
 import { PedestrianClearance, STUCK_RELEASE } from './clearance';
+import { reservationCoversCrossing } from '../intersections/crossingSpans';
 import { canStopComfortably } from '../vehicles/idm';
 import { vehiclePose } from '../pose';
 import { nextTowardGoal } from './route';
@@ -411,7 +412,14 @@ function advance(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClear
 
   if (!next) return repath(w, p, space);
 
-  if (!transfer(w, p, edge, next, exit, space)) return true;
+  if (!transfer(w, p, edge, next, exit, space)) {
+    if (edge.kind === 'crossing' && escapeBlockedCrossing(w, p, edge, next, exit, space)) {
+      p.route = [];
+      p.s = 0;
+      p.state = 'Walking';
+    }
+    return true;
+  }
   p.route.shift();
   p.s = Math.min(carried, next.length);
 
@@ -427,6 +435,29 @@ function advance(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClear
     p.state = 'Walking';
   }
   return true;
+}
+
+/** A blocked far kerb can be left by another connected, physically clear footway. */
+function escapeBlockedCrossing(w: SimWorld, p: Ped, current: SidewalkEdge,
+  blocked: SidewalkEdge, exit: string, space: PedestrianClearance): boolean {
+  const here = space.point(w, current, p.entry, current.length, p.lat);
+  const alternatives = w.sidewalks.edgesAt(exit)
+    .filter((id) => id !== current.id && id !== blocked.id)
+    .map((id) => w.sidewalks.edges.get(id))
+    .filter((edge): edge is SidewalkEdge => !!edge && edge.kind !== 'crossing')
+    .map((edge) => {
+      const frame = w.sidewalks.orientedPath(edge, exit).sampleAt(0);
+      const lateral = wallsClamp(edge, exit, 0,
+        (here.x - frame.p.x) * frame.n.x + (here.y - frame.p.y) * frame.n.y);
+      const target = space.point(w, edge, exit, 0, lateral);
+      return { edge, distance: dist(here, target) };
+    })
+    .filter((candidate) => candidate.distance <= m(3))
+    .sort((a, b) => a.distance - b.distance || a.edge.id.localeCompare(b.edge.id));
+  for (const candidate of alternatives) {
+    if (transfer(w, p, current, candidate.edge, exit, space)) return true;
+  }
+  return false;
 }
 
 function enterEdge(w: SimWorld, p: Ped, next: SidewalkEdge, space: PedestrianClearance): boolean {
@@ -678,9 +709,6 @@ export function mayEnterCrossing(w: SimWorld, p: Ped, crossing: SidewalkEdge): b
   return pedGapAccepted(w, p, crossing);
 }
 
-/** Margin past the span a vehicle's rear must reach before it stops counting. */
-const CLEAR_PAST = 6;
-
 /**
  * Every vehicle holding or clearing a connector, filed under each
  * `node:segment` that connector touches. Built once per pedestrian stage
@@ -704,7 +732,7 @@ function indexReservations(w: SimWorld): void {
     for (const connectorId of connectorIds) {
       const connector = w.connector(connectorId);
       if (!connector) continue;
-      for (const segment of new Set([connector.inSegment, connector.outSegment])) {
+      for (const segment of w.doc.node(connector.node)?.incident ?? []) {
         const key = `${connector.node}:${segment}`;
         const list = index.get(key);
         if (list) list.push({ v, connector: connectorId });
@@ -716,40 +744,10 @@ function indexReservations(w: SimWorld): void {
 
 function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): boolean {
   for (const { v, connector: connectorId } of RESERVATIONS.get(w)?.get(`${node}:${segment}`) ?? []) {
-    const lane = w.lanelet(v.lanelet);
-    {
-      const connector = w.connector(connectorId);
-      if (!connector || connector.node !== node) continue;
-      if (connector.inSegment !== segment && connector.outSegment !== segment) continue;
-      const span = w.crossingSpans.span(connector.id, `${node}:${segment}`);
-      // Never drives over this zebra at all.
-      if (span === null) continue;
-      // A token may be granted while its vehicle is still on the approach.
-      // When it can comfortably stop before this zebra, a waiting person may
-      // take the gap; pedestrianAhead then keeps the admitted vehicle behind
-      // the person. A vehicle already on the connector retains the hard gate.
-      //
-      // Only at the zebra of its OWN approach, which it meets before the box.
-      // The zebra across the leg it is turning into lies beyond the box, and a
-      // car that stops short of it stops inside the junction, across every
-      // other movement there: measured on a grid of streets, admitted cars
-      // stood mid-turn for five seconds and more behind somebody who had
-      // stepped out on the exit zebra because the car "could still stop".
-      if (span && lane?.kind === 'link' && connectorId === v.admittedConnector &&
-        connector.inSegment === segment && connector.outSegment !== segment) {
-        const distance = Math.max(0, lane.length - v.s) + span.along;
-        if (distance > m(2) && canStopComfortably(v.driver, v.v, distance)) continue;
-      }
-      // Its whole body is already past the stretch it drives over. Counting a
-      // vehicle that has gone by held walkers at a WALK for as long as turns
-      // kept flowing behind it — nearly two minutes at a busy corner.
-      if (span && connectorId === lane?.id && v.s - v.archetype.length > span.along + CLEAR_PAST) continue;
-      if (span && connectorId !== lane?.id && connectorId !== v.admittedConnector) {
-        const token = v.clearingConnectors.find((t) => t.connector === connectorId);
-        if (token && connector.length + token.distanceBeyondExit - v.archetype.length > span.along + CLEAR_PAST) continue;
-      }
-      return true;
-    }
+    const connector = w.connector(connectorId);
+    if (!connector || connector.node !== node) continue;
+    const span = w.crossingSpans.span(connector.id, `${node}:${segment}`);
+    if (reservationCoversCrossing(w, v, connector, segment, span)) return true;
   }
   return false;
 }

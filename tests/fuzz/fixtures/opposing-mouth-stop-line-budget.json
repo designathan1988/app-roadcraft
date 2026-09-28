@@ -1,0 +1,11 @@
+{
+ "name": "opposing-mouth-stop-line-budget",
+ "category": "trimOrder",
+ "detail": "A crossing at one end consumed the storage needed behind the opposite junction mouth",
+ "sim": null,
+ "ops": [
+  { "op": "draw", "a": [667.11, -100.49], "b": [224.87, -71.7], "type": 2, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [316.96, -146.33], "b": [531.99, 6], "type": 3, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [592.88, -77.92], "b": [451.44, -77.92], "type": 0, "curve": { "t": 0.64, "h": -21.21 }, "structure": "ground" }
+ ]
+}

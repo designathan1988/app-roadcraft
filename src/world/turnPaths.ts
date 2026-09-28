@@ -216,9 +216,17 @@ function sweep(surface: JunctionSurface, inCentre: Polyline, path: Polyline, out
  * `surface` null (a node with no drawn plate, such as a tunnel) keeps the
  * conservative handle.
  */
+export interface TurnPathResult {
+  readonly path: Polyline;
+  /** Largest physical body whose swept corners fit; -1 if even a small body cannot. */
+  readonly maxBodyClass: BodyClass | -1;
+}
+
 export function turnPath(inCentre: Polyline, outCentre: Polyline, surface: JunctionSurface | null,
-  waiting: readonly WaitingLane[] = []): Polyline {
-  if (!surface || surface.empty) return bezierTurn(inCentre, outCentre, FALLBACK_HANDLE);
+  waiting: readonly WaitingLane[] = []): TurnPathResult {
+  if (!surface || surface.empty) return {
+    path: bezierTurn(inCentre, outCentre, FALLBACK_HANDLE), maxBodyClass: HEAVY,
+  };
   // Every rebuild re-derives every movement of every junction, and nearly all
   // of them are unchanged by an edit elsewhere. The chosen handle depends only
   // on the geometry the sweep reads - the approach and exit near the junction,
@@ -227,11 +235,16 @@ export function turnPath(inCentre: Polyline, outCentre: Polyline, surface: Junct
   const key = `${laneEndKey(inCentre, true)}|${laneEndKey(outCentre, false)}|${surface.key}|` +
     waiting.map((lane) => laneEndKey(lane.centre, true, QUEUE_REACH)).join(',');
   const known = memo.get(key);
-  if (known !== undefined) return makeChoice(inCentre, outCentre, known);
+  if (known !== undefined) return {
+    path: makeChoice(inCentre, outCentre, known.choice), maxBodyClass: known.maxBodyClass,
+  };
   if (memo.size > MEMO_LIMIT) memo.clear();
   const choice = chooseTurn(inCentre, outCentre, surface, waiting);
-  memo.set(key, choice);
-  return makeChoice(inCentre, outCentre, choice);
+  const path = makeChoice(inCentre, outCentre, choice);
+  const maxBodyClass = ([HEAVY, 1, 0] as const).find((body) =>
+    turnFits(inCentre, path, outCentre, surface, body)) ?? -1;
+  memo.set(key, { choice, maxBodyClass });
+  return { path, maxBodyClass };
 }
 
 /** Whether the selected movement contains a body of this size on its drawn surface. */
@@ -241,7 +254,7 @@ export function turnFits(inCentre: Polyline, path: Polyline, outCentre: Polyline
 }
 
 type TurnChoice = number | { x: number; y: number; share: number };
-const memo = new Map<string, TurnChoice>();
+const memo = new Map<string, { choice: TurnChoice; maxBodyClass: BodyClass | -1 }>();
 const MEMO_LIMIT = 50_000;
 const makeChoice = (a: Polyline, b: Polyline, choice: TurnChoice): Polyline =>
   typeof choice === 'number' ? bezierTurn(a, b, choice) :

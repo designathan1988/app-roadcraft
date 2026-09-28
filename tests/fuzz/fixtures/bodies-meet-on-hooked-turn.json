@@ -1,5 +1,5 @@
 {
- "name": "open-bodies-meet-on-hooked-turn",
+ "name": "bodies-meet-on-hooked-turn",
  "category": "bodyOverlap",
  "detail": "veh 1/7 t=22.6 shared-path 11:11>14:1 / 8:8>11:3->11:11>14:1",
  "sim": {
@@ -240,6 +240,5 @@
    "pick": 0.17,
    "direction": "bToA"
   }
- ],
- "open": "A sharp right turn between acute legs hooks back on itself (connector 8:8>11:3->11:11>14:1 turns more than 180 degrees); car following measures the leader along the arc, so bodies meet side-on across the fold. A straight nose-to-rear gap on hooked paths was tried and did not help (bodies touch side-on). Same root cause as open-bus-leaves-kerb-on-acute-turn."
+ ]
 }

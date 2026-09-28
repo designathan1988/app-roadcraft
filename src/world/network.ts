@@ -19,9 +19,11 @@ import { type Junction, buildJunction, surfaceMode } from './junction/build';
 import { clampSegmentTrims } from './junction/trim';
 import { TRANSITION_BEND } from './junction/transition';
 import { impossibleNodes } from './legAngles';
+import { WalkableSurface } from './walkable';
 import {
   CROSSWALK_CAP,
   CROSSWALK_DEPTH,
+  MIN_LINK_LENGTH,
   STOP_BAR_SETBACK,
   STOP_LINE_CAP,
   crosswalkDistance as crosswalkAt,
@@ -62,6 +64,8 @@ export interface SegmentRibbon {
  * and 3.3). Nothing in this class is reachable from a draw call.
  */
 export class Network {
+  private crossingWalkable: WalkableSurface | null = null;
+  private readonly crossingDistances = new Map<string, number>();
   readonly junctions = new Map<NodeId, Map<SurfaceLevel, Junction>>();
   readonly ribbons = new Map<SegmentId, SegmentRibbon>();
 
@@ -111,6 +115,8 @@ export class Network {
    * where the second pass did not fully converge.
    */
   rebuild(): void {
+    this.crossingWalkable = null;
+    this.crossingDistances.clear();
     this.polylines.clear();
     this.junctions.clear();
     this.ribbons.clear();
@@ -504,6 +510,9 @@ export class Network {
    * than is ideal; it may never end up inside the road.
    */
   crosswalkDistanceAt(seg: SegmentId, node: NodeId): number {
+    const cacheKey = `${seg}:${node}`;
+    const cached = this.crossingDistances.get(cacheKey);
+    if (cached !== undefined) return cached;
     if (this.doc.node(node)?.incident.some((id) => {
       const kind = this.doc.segment(id)?.type;
       return kind !== undefined &&
@@ -525,10 +534,35 @@ export class Network {
     // rescaling them, and rescaling is what used to pull the bar inside the
     // zebra on a 16-unit link between two junctions.
     const halfBudget = Math.max(0, (length - MIN_RIBBON) / 2);
-    const orderingCap = halfBudget - CROSSWALK_DEPTH / 2 - STOP_BAR_SETBACK;
+    const segment = this.doc.segment(seg);
+    if (!segment) return 0;
+    const other = segmentStartsAt(segment, node) ? segment.b : segment.a;
+    const oppositeMouth = this.mouthDistance(seg, other);
+    const storageCap = length - oppositeMouth - MIN_LINK_LENGTH - CROSSWALK_DEPTH / 2 - STOP_BAR_SETBACK;
+    const orderingCap = Math.min(halfBudget - CROSSWALK_DEPTH / 2 - STOP_BAR_SETBACK, storageCap);
     if (orderingCap < clear) return 0;
 
-    return Math.min(Math.max(crosswalkAt(mouth), clear), length * CROSSWALK_CAP, orderingCap);
+    const proposed = Math.min(Math.max(crosswalkAt(mouth), clear), length * CROSSWALK_CAP, orderingCap);
+    const limit = Math.min(length * CROSSWALK_CAP, orderingCap);
+    const profile = roadProfile(segment.type, segment.lanes, segment.direction);
+    const lateral = profile.width / 2 + profile.sidewalk / 2;
+    const line = this.polylines.get(this.doc, seg);
+    const walkable = this.crossingWalkable ??= new WalkableSurface(this);
+    const fits = (distance: number): boolean => {
+      const frame = line.sampleAt(segment.a === node ? distance : length - distance);
+      const nx = -frame.t.y, ny = frame.t.x;
+      return walkable.footway(frame.p.x + nx * lateral, frame.p.y + ny * lateral) &&
+        walkable.footway(frame.p.x - nx * lateral, frame.p.y - ny * lateral);
+    };
+    for (let distance = proposed; distance <= limit; distance += 0.5) {
+      if (fits(distance)) {
+        this.crossingDistances.set(cacheKey, distance);
+        return distance;
+      }
+    }
+    const result = fits(limit) ? limit : 0;
+    this.crossingDistances.set(cacheKey, result);
+    return result;
   }
 }
 

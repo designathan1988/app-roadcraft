@@ -10,6 +10,7 @@ import { orientedPolyline } from './geometry';
 import { type ApproachGroup, computeApproachGroups } from './approachGroups';
 import { TUNNELS_DRAWN } from './structures';
 import { JunctionSurface, turnPath } from './turnPaths';
+import type { BodyClass } from './conflictPoints';
 
 /**
  * How far along a leg to look when deciding which approaches share an axis.
@@ -81,6 +82,7 @@ export interface Connector {
   readonly carried: boolean;
   readonly group: number;
   readonly length: number;
+  readonly maxBodyClass: BodyClass | -1;
 }
 
 export interface JunctionTopology {
@@ -290,7 +292,8 @@ export class LaneletGraph {
         const waiting = inbound
           .map((id) => this.lanelets.get(id))
           .filter((l): l is Lanelet => !!l && l.id !== inId);
-        const path = turnPath(inLane.centre, outLane.centre, surfaceOf(), waiting);
+        const turnResult = turnPath(inLane.centre, outLane.centre, surfaceOf(), waiting);
+        const path = turnResult.path;
         const lanelet: Lanelet = {
           id: cid,
           kind: 'connector',
@@ -317,6 +320,7 @@ export class LaneletGraph {
           carried,
           group: lanelet.group ?? 0,
           length: path.length,
+          maxBodyClass: turnResult.maxBodyClass,
         });
         push(this.exits, inId, cid);
         connectorIds.push(cid);

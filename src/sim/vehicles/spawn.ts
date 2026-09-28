@@ -6,7 +6,7 @@ import {
   TRAFFIC_DENSITY,
 } from '../params';
 import type { SimWorld } from '../world';
-import { ARCHETYPES, type Archetype, archetypeWeights } from './archetypes';
+import { ARCHETYPES, type Archetype, archetypeWeights, bodyClassOfArchetype } from './archetypes';
 import { makeDriver } from './driver';
 import { createVehicle, snapshot } from './state';
 import { planFrom } from '../routing/router';
@@ -135,6 +135,11 @@ function spawnAt(w: SimWorld, id: string): boolean {
   const lane = w.lanelet(id);
   if (!lane) return false;
   const arch = w.rng.spawnVehicles.weighted(archetypeWeights()) as Archetype;
+  // Do not materialise a bus on an entry whose junction has no movement its
+  // body can physically take. A later weighted draw may choose a smaller car.
+  if (lane.to !== undefined && w.doc.degree(lane.to) > 1 &&
+      w.graph.exitsOf(id).every((exit) =>
+        (w.connector(exit)?.maxBodyClass ?? -1) < bodyClassOfArchetype(arch))) return false;
   // The tail includes a body still sliding out of this lane.
   let tailRear = Infinity;
   for (const body of w.bodiesIn(id)) tailRear = Math.min(tailRear, body.s - body.vehicle.archetype.length);
@@ -169,7 +174,7 @@ function spawnAt(w: SimWorld, id: string): boolean {
 
   w.vehicles.set(vehicle.id, vehicle);
   w.enterLanelet(vehicle, id);
-  vehicle.destination = chooseVehicleDestination(w, id);
+  vehicle.destination = chooseVehicleDestination(w, id, bodyClassOfArchetype(vehicle.archetype));
   planFrom(w, vehicle);
   return true;
 }
@@ -187,7 +192,9 @@ export function stepDespawn(w: SimWorld): void {
     // allow for that — otherwise cars park just short of a map edge forever and
     // slowly plug the exit stub.
     const atEnd = lane.length - v.s < v.driver.s0 + 2;
-    const nowhereToGo = w.graph.exitsOf(v.lanelet).length === 0;
+    const body = bodyClassOfArchetype(v.archetype);
+    const nowhereToGo = w.graph.exitsOf(v.lanelet).every((id) =>
+      (w.connector(id)?.maxBodyClass ?? -1) < body);
     if (lane.kind === 'link' && atEnd && nowhereToGo) {
       if (v.destination === lane.id) w.completedTrips++;
       w.removeVehicle(v);

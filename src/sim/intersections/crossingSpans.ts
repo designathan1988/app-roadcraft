@@ -1,11 +1,14 @@
 import type { Polyline } from '@core/polyline';
 import { BODY_ENVELOPE, HEAVY } from '@world/conflictPoints';
 import type { ConnectorId } from '@world/lanelets';
+import type { Connector } from '@world/lanelets';
 import { m } from '@world/units';
 import { CROSSWALK_DEPTH } from '@world/approach';
 import type { CrossingId } from '../signals/plan';
 import type { SimWorld } from '../world';
 import type { Ped } from '../peds/state';
+import type { Vehicle } from '../vehicles/state';
+import { canStopComfortably } from '../vehicles/idm';
 import type { SidewalkEdge } from '../peds/sidewalk';
 
 /** Arc interval of a crossing, measured from its `from` kerb. */
@@ -60,7 +63,7 @@ export class CrossingSpans {
     for (const connector of w.graph.connectors.values()) {
       const path = w.lanelet(connector.lanelet)?.centre;
       if (!path) continue;
-      for (const segment of [connector.inSegment, connector.outSegment]) {
+      for (const segment of w.doc.node(connector.node)?.incident ?? []) {
         const crossing = `${connector.node}:${segment}`;
         const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(crossing) ?? '');
         if (!edge) continue;
@@ -154,6 +157,26 @@ export const PED_MIN_PACE = 2;
 export const PED_REACH_TIME = 4;
 /** Reserve the near half of a zebra before stopping a car for a pedestrian. */
 export const PED_CROSSING_STOP_BUFFER = CROSSWALK_DEPTH / 2 + 0.5;
+const CLEAR_PAST = 6;
+
+/** Whether this vehicle's current reservation still protects a zebra span. */
+export function reservationCoversCrossing(w: SimWorld, v: Vehicle, connector: Connector,
+  segment: number, span: CrossingSpan | null | undefined): boolean {
+  if (span === null) return false;
+  if (span === undefined) return true;
+  const lane = w.lanelet(v.lanelet);
+  if (lane?.kind === 'link' && connector.id === v.admittedConnector &&
+      connector.inSegment === segment && connector.outSegment !== segment) {
+    const distance = Math.max(0, lane.length - v.s) + span.along;
+    if (distance > m(2) && canStopComfortably(v.driver, v.v, distance)) return false;
+  }
+  if (connector.id === lane?.id && v.s - v.archetype.length > span.along + CLEAR_PAST) return false;
+  if (connector.id !== lane?.id && connector.id !== v.admittedConnector) {
+    const token = v.clearingConnectors.find((t) => t.connector === connector.id);
+    if (token && connector.length + token.distanceBeyondExit - v.archetype.length > span.along + CLEAR_PAST) return false;
+  }
+  return true;
+}
 
 /** Whether this pedestrian occupies or will soon reach this movement's part of a zebra. */
 export function pedestrianAffectsSpan(p: Ped, edge: SidewalkEdge, span: CrossingSpan): boolean {

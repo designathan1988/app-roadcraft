@@ -1,6 +1,7 @@
 import type { LaneletId } from '@world/lanelets';
 import type { SimWorld } from '../world';
 import type { Vehicle } from '../vehicles/state';
+import { bodyClassOfArchetype } from '../vehicles/archetypes';
 import { routeToDestination } from './destination';
 
 /** Horizon for a vehicle with no reachable boundary destination. */
@@ -25,8 +26,9 @@ const LOOKAHEAD = 5;
  * key left a vehicle pinned on a green with no recovery path (defect 2.1).
  */
 export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
+  const body = bodyClassOfArchetype(v.archetype);
   if (v.destination) {
-    const trip = routeToDestination(w, v.lanelet, v.destination);
+    const trip = routeToDestination(w, v.lanelet, v.destination, body);
     const first = trip && trip.length >= 3 ? w.connector(trip[1]!) : undefined;
     if (trip && first) {
       v.route = trip;
@@ -38,7 +40,7 @@ export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
     // moving on legal roads until a reachable trip can be assigned again.
     if (!trip) v.destination = null;
   }
-  const own = w.graph.exitsOf(v.lanelet);
+  const own = w.graph.exitsOf(v.lanelet).filter((id) => (w.connector(id)?.maxBodyClass ?? -1) >= body);
 
   // Lane discipline makes each turn legal from exactly one lane, so the choice
   // of MOVEMENT has to be made over the whole carriageway and the choice of
@@ -52,13 +54,15 @@ export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
   const siblings = w.graph.siblingLanes(v.lanelet);
   const union = siblings.length
     ? [...own, ...siblings.flatMap((id: LaneletId) => w.graph.exitsOf(id))]
+      .filter((id) => (w.connector(id)?.maxBodyClass ?? -1) >= body)
     : own;
 
   const existingIntent = v.movementIntent ? w.connector(v.movementIntent) : undefined;
   const wanted = existingIntent &&
+      existingIntent.maxBodyClass >= body &&
       (existingIntent.fromLane === v.lanelet || siblings.includes(existingIntent.fromLane))
     ? existingIntent.id
-    : union.length ? chooseExit(w, union, new Set([v.lanelet])) : null;
+    : union.length ? chooseExit(w, union, body, new Set([v.lanelet])) : null;
   const wantedConnector = wanted === null ? null : w.connector(wanted);
   v.movementIntent = wantedConnector?.id ?? null;
   if (wantedConnector && wantedConnector.fromLane !== v.lanelet) {
@@ -72,7 +76,7 @@ export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
   // movement then; if it never lands, this fallback is what the vehicle drives.
   if (!own.length) return null;
   const best = wantedConnector?.fromLane === v.lanelet
-    ? wantedConnector.id : chooseExit(w, own, new Set([v.lanelet]));
+    ? wantedConnector.id : chooseExit(w, own, body, new Set([v.lanelet]));
   if (!best) return null;
 
   const conn = w.connector(best);
@@ -85,10 +89,11 @@ export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
 
 /** Grows a route forward until it reaches the horizon or a dead end. */
 export function extend(w: SimWorld, v: Vehicle): void {
+  const body = bodyClassOfArchetype(v.archetype);
   if (v.destination) {
     const tail = v.route[v.route.length - 1];
     if (tail === v.destination) return;
-    const suffix = tail ? routeToDestination(w, tail, v.destination) : null;
+    const suffix = tail ? routeToDestination(w, tail, v.destination, body) : null;
     if (suffix) { v.route.push(...suffix.slice(1)); return; }
     v.destination = null;
   }
@@ -102,7 +107,7 @@ export function extend(w: SimWorld, v: Vehicle): void {
     const exits = w.graph.exitsOf(tail);
     if (!exits.length) break;
 
-    const pick = chooseExit(w, exits);
+    const pick = chooseExit(w, exits, body);
     if (!pick) break;
     const conn = w.connector(pick);
     if (!conn) break;
@@ -117,16 +122,17 @@ export function extend(w: SimWorld, v: Vehicle): void {
 function chooseExit(
   w: SimWorld,
   exits: readonly string[],
+  body: ReturnType<typeof bodyClassOfArchetype>,
   visited = new Set<LaneletId>(),
 ): string | null {
   const scored: { id: string; cost: number }[] = [];
 
   for (const cid of exits) {
     const conn = w.connector(cid);
-    if (!conn) continue;
+    if (!conn || conn.maxBodyClass < body) continue;
     const out = w.lanelet(conn.toLane);
     if (!out || w.rt(conn.toLane).ghost || visited.has(out.id)) continue;
-    const cost = routeCost(w, cid, visited, LOOKAHEAD);
+    const cost = routeCost(w, cid, body, visited, LOOKAHEAD);
     if (Number.isFinite(cost)) scored.push({ id: cid, cost });
   }
 
@@ -152,11 +158,12 @@ function chooseExit(
 function routeCost(
   w: SimWorld,
   connectorId: LaneletId,
+  body: ReturnType<typeof bodyClassOfArchetype>,
   visited: ReadonlySet<LaneletId>,
   remaining: number,
 ): number {
   const connector = w.connector(connectorId);
-  if (!connector) return Infinity;
+  if (!connector || connector.maxBodyClass < body) return Infinity;
   const out = w.lanelet(connector.toLane);
   if (!out || out.kind !== 'link' || visited.has(out.id) || w.rt(out.id).ghost) return Infinity;
 
@@ -177,7 +184,7 @@ function routeCost(
   for (const nextConnector of next) {
     continuation = Math.min(
       continuation,
-      routeCost(w, nextConnector, nextVisited, remaining - 1),
+      routeCost(w, nextConnector, body, nextVisited, remaining - 1),
     );
   }
   // Keep the immediate choice meaningful even when a far-away branch is a
@@ -223,6 +230,7 @@ export function reconsiderRoute(w: SimWorld, v: Vehicle): void {
 
 /** Repairs a route whose lanelets no longer exist, after a live edit. */
 export function repairRoute(w: SimWorld, v: Vehicle): void {
+  const body = bodyClassOfArchetype(v.archetype);
   const current = w.lanelet(v.lanelet);
   if (!current) {
     v.route = [v.lanelet];
@@ -245,7 +253,7 @@ export function repairRoute(w: SimWorld, v: Vehicle): void {
   for (const id of v.route) {
     const lane = w.lanelet(id);
     if (!lane) break;
-    if (previous !== undefined && !isLegalTransition(w, previous, id)) break;
+    if (previous !== undefined && !isLegalTransition(w, previous, id, body)) break;
     valid.push(id);
     previous = id;
   }
@@ -266,13 +274,14 @@ export function repairRoute(w: SimWorld, v: Vehicle): void {
   extend(w, v);
 }
 
-function isLegalTransition(w: SimWorld, fromId: LaneletId, toId: LaneletId): boolean {
+function isLegalTransition(w: SimWorld, fromId: LaneletId, toId: LaneletId,
+  body: ReturnType<typeof bodyClassOfArchetype>): boolean {
   const from = w.lanelet(fromId);
   const to = w.lanelet(toId);
   if (!from || !to) return false;
   if (from.kind === 'link') {
     const connector = w.connector(toId);
-    return !!connector && connector.fromLane === fromId;
+    return !!connector && connector.maxBodyClass >= body && connector.fromLane === fromId;
   }
   const connector = w.connector(fromId);
   return !!connector && connector.toLane === toId;

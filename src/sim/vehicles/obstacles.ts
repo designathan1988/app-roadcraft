@@ -26,7 +26,7 @@ function pedestrianAhead(w: SimWorld, v: Vehicle): Obstacle | null {
   const conn = w.connector(connectorId);
   if (!conn) return null;
   let best: Obstacle | null = null;
-  for (const segment of [conn.inSegment, conn.outSegment]) {
+  for (const segment of w.doc.node(conn.node)?.incident ?? []) {
     const span = pedestrianInSpan(w, conn.id, `${conn.node}:${segment}`);
     if (!span) continue;
     // While still on a link, keep the whole vehicle behind the near edge of

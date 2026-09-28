@@ -1,5 +1,5 @@
 {
- "name": "open-wide-legs-overlap-on-short-acute-link",
+ "name": "wide-legs-overlap-on-short-acute-link",
  "category": "bodyOverlap",
  "detail": "veh 1/17 t=10.4 shared-path 18:18>7:1 / 20:17>18:1",
  "sim": {
@@ -257,6 +257,5 @@
    "op": "removeNode",
    "pick": 0.51
   }
- ],
- "open": "Two 46-unit avenues meet at 57 degrees on links of 57 and 67 units; Network.reconcile shares the short links' length between both ends and pulls the mouths in to 4.3 and 12.9 units, so the carriageways overlap outside the plate and a car on one leg touches a car on the other. The editor accepts link lengths (MIN_LINK_LENGTH 36) that cannot hold wide legs at acute angles."
+ ]
 }

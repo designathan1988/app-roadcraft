@@ -285,6 +285,7 @@ const byPriority = (a: Request, b: Request): number =>
   a.v.id - b.v.id;
 
 function evaluate(w: SimWorld, r: Request): Verdict {
+  if (r.conn.maxBodyClass < bodyClassOfArchetype(r.v.archetype)) return { ok: false, reason: 'conflict' };
   const alreadyDeclared = r.v.reservedConnectors[0] === r.conn.id;
   const chain = alreadyDeclared
     ? r.v.reservedConnectors.map((id) => w.connector(id)).filter((c): c is Connector => !!c)
@@ -484,6 +485,8 @@ export function compactReservationChain(
   v: Vehicle,
   first: Connector,
 ): Connector[] | null {
+  const body = bodyClassOfArchetype(v.archetype);
+  if (first.maxBodyClass < body) return null;
   const chain: Connector[] = [first];
   const seen = new Set([first.id]);
   let routeIndex = v.route.indexOf(first.id);
@@ -496,13 +499,13 @@ export function compactReservationChain(
     const stoppingBuffer = Math.max(JAM_GAP, v.driver.s0);
     if (out.length + COARSE_EPS >= v.archetype.length + stoppingBuffer) return chain;
 
-    const exits = w.graph.exitsOf(out.id);
+    const exits = w.graph.exitsOf(out.id).filter((id) => (w.connector(id)?.maxBodyClass ?? -1) >= body);
     const nextId = v.route[routeIndex + 2];
     if (nextId === undefined) {
       return exits.length === 0 ? chain : null;
     }
     const next = w.connector(nextId);
-    if (!next || next.fromLane !== out.id || seen.has(next.id)) return null;
+    if (!next || next.maxBodyClass < body || next.fromLane !== out.id || seen.has(next.id)) return null;
 
     chain.push(next);
     seen.add(next.id);
@@ -1088,7 +1091,7 @@ function movementIsActive(w: SimWorld, other: Connector): boolean {
  * crossing, or who has already passed the vehicle's path, is no reason to wait.
  */
 export function crossingBusy(w: SimWorld, conn: Connector): boolean {
-  for (const segment of [conn.inSegment, conn.outSegment]) {
+  for (const segment of w.doc.node(conn.node)?.incident ?? []) {
     if (pedestrianInSpan(w, conn.id, `${conn.node}:${segment}`)) return true;
   }
   return false;
@@ -1132,7 +1135,7 @@ function crossingReachedFirst(w: SimWorld, r: Request): boolean {
   const lane = w.lanelet(r.conn.lanelet);
   if (!lane) return false;
   let top = 0;
-  for (const segment of [r.conn.inSegment, r.conn.outSegment]) {
+  for (const segment of w.doc.node(r.conn.node)?.incident ?? []) {
     const crossing = `${r.conn.node}:${segment}`;
     const occupants = w.pedOccupancy.get(crossing);
     if (!occupants?.length) continue;
@@ -1180,7 +1183,7 @@ function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
   if (!canStopComfortably(r.v.driver, r.v.v, r.d)) return false;
   const controller = w.controller(r.conn.node);
   const signalised = !!controller && !!w.graph.junctions.get(r.conn.node)?.signalised;
-  for (const segment of [r.conn.inSegment, r.conn.outSegment]) {
+  for (const segment of w.doc.node(r.conn.node)?.incident ?? []) {
     const id = `${r.conn.node}:${segment}`;
     const waiting = w.pedWaiting.get(id);
     if (!waiting) continue;
@@ -1216,7 +1219,7 @@ export function nextConnector(w: SimWorld, v: Vehicle): Connector | undefined {
   const next = v.route[1];
   if (next) {
     const c = w.connector(next);
-    if (c && c.fromLane === v.lanelet) return c;
+    if (c && c.maxBodyClass >= bodyClassOfArchetype(v.archetype) && c.fromLane === v.lanelet) return c;
   }
   return undefined;
 }

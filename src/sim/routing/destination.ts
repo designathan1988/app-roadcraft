@@ -1,4 +1,5 @@
 import type { LaneletId } from '@world/lanelets';
+import type { BodyClass } from '@world/conflictPoints';
 import type { SimWorld } from '../world';
 
 interface RouteStep {
@@ -56,13 +57,14 @@ function boundaryExit(w: SimWorld, id: LaneletId): boolean {
 }
 
 /** Stable reachability per entry and topology revision; traffic cost stays live. */
-function reachableExits(w: SimWorld, start: LaneletId): readonly LaneletId[] {
+function reachableExits(w: SimWorld, start: LaneletId, body: BodyClass): readonly LaneletId[] {
   let cache = reachable.get(w);
   if (!cache || cache.revision !== w.net.trafficRevision) {
     cache = { revision: w.net.trafficRevision, exits: new Map() };
     reachable.set(w, cache);
   }
-  const known = cache.exits.get(start);
+  const cacheKey = `${start}|${body}`;
+  const known = cache.exits.get(cacheKey);
   if (known) return known;
   const seen = new Set<LaneletId>([start]);
   const queue: LaneletId[] = [start];
@@ -72,6 +74,7 @@ function reachableExits(w: SimWorld, start: LaneletId): readonly LaneletId[] {
     if (lane !== start && boundaryExit(w, lane)) exits.push(lane);
     for (const id of w.graph.exitsOf(lane)) {
       const connector = w.connector(id);
+      if (!connector || connector.maxBodyClass < body) continue;
       const next = connector?.toLane;
       if (!next || seen.has(next) || w.rt(next).ghost) continue;
       seen.add(next);
@@ -79,19 +82,19 @@ function reachableExits(w: SimWorld, start: LaneletId): readonly LaneletId[] {
     }
   }
   exits.sort();
-  cache.exits.set(start, exits);
+  cache.exits.set(cacheKey, exits);
   return exits;
 }
 
 /** Chooses one reachable trip endpoint, once, when a vehicle enters the city. */
-export function chooseVehicleDestination(w: SimWorld, start: LaneletId): LaneletId | null {
-  const exits = reachableExits(w, start);
+export function chooseVehicleDestination(w: SimWorld, start: LaneletId, body: BodyClass): LaneletId | null {
+  const exits = reachableExits(w, start, body);
   if (exits.length === 0) return null;
   return exits[Math.floor(w.rng.route.float() * exits.length)] ?? exits[0] ?? null;
 }
 
 /** Least-time lanelet route to a fixed endpoint, with congestion priced at planning time. */
-export function routeToDestination(w: SimWorld, start: LaneletId, goal: LaneletId): LaneletId[] | null {
+export function routeToDestination(w: SimWorld, start: LaneletId, goal: LaneletId, body: BodyClass): LaneletId[] | null {
   if (start === goal) return [start];
   if (!w.lanelet(start) || !w.lanelet(goal) || w.rt(goal).ghost) return null;
   const best = new Map<LaneletId, number>([[start, 0]]);
@@ -116,7 +119,7 @@ export function routeToDestination(w: SimWorld, start: LaneletId, goal: LaneletI
     for (const id of w.graph.exitsOf(current.lane)) {
       const connector = w.connector(id);
       const out = connector && w.lanelet(connector.toLane);
-      if (!connector || !out || out.kind !== 'link' || w.rt(out.id).ghost) continue;
+      if (!connector || connector.maxBodyClass < body || !out || out.kind !== 'link' || w.rt(out.id).ghost) continue;
       const density = w.rt(out.id).order.length / Math.max(1, out.length / 12);
       const travel = out.length / Math.max(0.5, out.speedLimit) * (1 + density * 2.6);
       const turn = connector.turn === 'uturn' ? 4 : connector.turn === 'through' ? 0 : 0.35;

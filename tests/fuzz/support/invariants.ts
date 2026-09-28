@@ -11,6 +11,7 @@ import { Level, halfWidth, roadProfile } from '@world/roadTypes';
 import { carriesPedestrians } from '@world/pedestrianAccess';
 import { levelPolygons } from '@world/surfaces';
 import { ARCHETYPES } from '@sim/vehicles/archetypes';
+import { BODY_ENVELOPE } from '@world/conflictPoints';
 import { SidewalkGraph } from '@sim/peds/sidewalk';
 
 /**
@@ -239,7 +240,12 @@ export function checkWorld(doc: RoadDoc, net: Network): Defect[] {
     const crossing = graph.lanelets.get(connector.lanelet);
     const outbound = graph.lanelets.get(connector.toLane);
     if (!inbound || !crossing || !outbound) continue;
-    const off = worstOffSurface(inbound, crossing, outbound, largest.length, largest.width, asphalt, kerb);
+    if (connector.maxBodyClass < 0) {
+      out.push(defect('turnOffSurface', connector.id, 'no physical body class fits this movement'));
+      continue;
+    }
+    const size = BODY_ENVELOPE[connector.maxBodyClass] ?? largest;
+    const off = worstOffSurface(inbound, crossing, outbound, size.length, size.width, asphalt, kerb);
     if (off && off.by > TURN_TOLERANCE) {
       out.push(defect('turnOffSurface', connector.id,
         `${connector.turn} ${off.by.toFixed(2)} outside at (${off.p.x.toFixed(1)}, ${off.p.y.toFixed(1)})`));
