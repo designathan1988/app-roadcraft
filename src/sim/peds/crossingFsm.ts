@@ -19,6 +19,7 @@ import { pedestrianSignalState, remainingProtectedTime } from '../signals/query'
 import { makeCrossingId } from '../signals/plan';
 import { PedestrianClearance, STUCK_RELEASE } from './clearance';
 import { canStopComfortably } from '../vehicles/idm';
+import { vehiclePose } from '../pose';
 import { nextTowardGoal } from './route';
 import {
   activityAnchor,
@@ -140,7 +141,9 @@ export function stepPedestrians(w: SimWorld): void {
           // this person may be here; how they get across, round the people
           // coming the other way, is the agent's choice.
           const want = Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge));
-          stepAgent(w, p, edge, { along: want, lat: lateralTarget(w, p, edge) }, space);
+          const line = space.clearLine(w, p, edge, lateralTarget(w, p, edge),
+            Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin));
+          stepAgent(w, p, edge, { along: want, lat: line }, space);
         } else {
           const want = followSpeed(Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge)));
           p.v = eased(p.v, Math.min(want, approachSpeed(w, p, edge, space, want)));
@@ -253,6 +256,13 @@ function walkAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, spa
     const reach = Math.max(PED_PROBE_MIN, (p.v * p.v) / (2 * PED_COMFORT) + p.v);
     if (toEnd <= reach && mustStopAtEndOf(w, p, edge, space)) along = Math.min(along, stopWithin(toEnd));
     line = plannedLine(w, p, edge, line, space);
+    // The velocity solver avoids an immediate collision, but it cannot
+    // choose a route around a person standing in its preferred file: every
+    // forward sample looks costly, so stopping wins indefinitely. Choose a
+    // clear line through the visible people before solving the velocity.
+    // The same corridor planner is used for furniture and predicts where a
+    // moving neighbour will be when this walker reaches them.
+    line = space.clearLine(w, p, edge, line, Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin));
     along = Math.min(along, PLAN_CAP.speed);
   }
   stepAgent(w, p, edge, { along, lat: line }, space);
@@ -635,6 +645,11 @@ export function mayEnterCrossing(w: SimWorld, p: Ped, crossing: SidewalkEdge): b
   const segment = crossing.segment;
   if (node === undefined || segment === undefined) return true;
 
+  // A signal or accepted gap cannot make an occupied piece of road empty.
+  // Check the actual vehicle bodies before either admission path: a car may
+  // have stopped partly on the zebra without holding a connector token.
+  if (vehicleBodyOnCrossing(w, crossing)) return false;
+
   const need = crossing.length / PED.designSpeed + PED.startLag;
   const controller = w.controller(node);
   const junction = w.graph.junctions.get(node);
@@ -752,17 +767,56 @@ export function pedGapAccepted(w: SimWorld, p: Ped, crossing: SidewalkEdge): boo
     const head = w.laneHead(laneId);
     if (!head) continue;
     // A vehicle standing at its line is not arriving. It has no admission
-    // (`crossingReservedByVehicle` already refused this crossing if it had),
+    // (`vehicleBodyOnCrossing` and `crossingReservedByVehicle` already refused
+    // this crossing if it physically occupied or reserved it),
     // and admission will not grant it one while somebody is on the zebra.
     // Treating it as arriving at walking pace — distance over 0.5 u/s — kept
     // pedestrians at uncontrolled kerbs for over three minutes behind queues
     // that could not move until they had crossed.
-    if (head.v < 0.5 && !head.admittedConnector) continue;
+    if (head.v < 0.5 && !head.admittedConnector) {
+      continue;
+    }
     const distance = lane.length - head.s;
     const arrival = distance / Math.max(head.v, 0.5);
     if (arrival < critical || !canStopComfortably(head.driver, head.v, distance)) return false;
   }
   return true;
+}
+
+/** An approach vehicle's body can reach a zebra even without an admission token. */
+function vehicleBodyOnCrossing(w: SimWorld, crossing: SidewalkEdge): boolean {
+  for (const laneId of crossing.lanes ?? []) {
+    const lane = w.lanelet(laneId);
+    if (!lane || lane.to !== crossing.node) continue;
+    for (const body of w.bodiesIn(laneId)) {
+      if (vehicleBodyIntersectsCrossing(w, body.vehicle, crossing)) return true;
+    }
+  }
+  return false;
+}
+
+function vehicleBodyIntersectsCrossing(w: SimWorld, vehicle: Vehicle, crossing: SidewalkEdge): boolean {
+  const pose = vehiclePose(w, vehicle, 1);
+  if (!pose) return false;
+  const first = crossing.path.point(0);
+  const last = crossing.path.point(crossing.path.n - 1);
+  const ux = Math.cos(pose.angle), uy = Math.sin(pose.angle);
+  const toBody = (x: number, y: number): { along: number; across: number } => {
+    const dx = x - pose.p.x, dy = y - pose.p.y;
+    return { along: dx * ux + dy * uy, across: -dx * uy + dy * ux };
+  };
+  const a = toBody(first.x, first.y), b = toBody(last.x, last.y);
+  let lo = 0, hi = 1;
+  const clip = (start: number, end: number, extent: number): boolean => {
+    const delta = end - start;
+    if (Math.abs(delta) < 1e-9) return Math.abs(start) <= extent;
+    const t0 = (-extent - start) / delta, t1 = (extent - start) / delta;
+    lo = Math.max(lo, Math.min(t0, t1));
+    hi = Math.min(hi, Math.max(t0, t1));
+    return lo <= hi;
+  };
+  return clip(a.along, b.along, vehicle.archetype.length / 2 + m(0.3)) &&
+    clip(a.across, b.across, vehicle.archetype.width / 2 + m(0.3));
 }
 
 // ---------------------------------------------------------------- neighbours
@@ -1450,7 +1504,7 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   // Standing on the footway, not placed by an activity: turns are made in
   // decisive steps rather than tracked by the degree (`steerHeading`).
   let standing = !anchor && p.v <= FACE_MIN_SPEED;
-  const talk = anchor ? null : talkFacing(p);
+  const talk = anchor ? null : talkFacing(w, p);
   if (anchor) {
     face = anchor.face;
     if (p.activity?.move) rate = TURN_RATE;

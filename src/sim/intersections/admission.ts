@@ -13,7 +13,7 @@ import { bodyClassOfArchetype } from '../vehicles/archetypes';
 import { slowestBend } from '../vehicles/curvature';
 import { type Claim, type HolderState, zoneShareable } from './claims';
 import type { ConflictPoint } from '@world/conflictPoints';
-import { PED_BODY, PED_MIN_PACE, PED_REACH_TIME, pedestrianInSpan } from './crossingSpans';
+import { PED_BODY, PED_CROSSING_STOP_BUFFER, PED_MIN_PACE, PED_REACH_TIME, pedestrianInSpan } from './crossingSpans';
 
 export type RowClass = 'signalGreen' | 'priority' | 'stop' | 'yield' | 'none';
 
@@ -209,7 +209,10 @@ function admit(w: SimWorld): void {
       w.lastAdmission.set(r.conn.node, w.clock.tick);
     } else {
       r.v.constraints.obstacles.push({
-        gap: Math.max(0, r.d),
+        // Denial for a person on a zebra must hold the entire vehicle before
+        // its near edge. Holding only at the connector's stop line could put
+        // the body beside that person and leave neither able to proceed.
+        gap: Math.max(0, r.d - (verdict.reason === 'pedestrian' ? PED_CROSSING_STOP_BUFFER : 0)),
         speed: 0,
         kind: verdict.reason ?? 'signal',
       });

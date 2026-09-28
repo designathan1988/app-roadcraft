@@ -246,7 +246,7 @@ export function checkWorld(doc: RoadDoc, net: Network): Defect[] {
   sidewalks.build(doc, net, graph);
   for (const [nodeId, node] of doc.nodes) {
     if (node.incident.length < 2) continue;
-    const split = footwaySplit(sidewalks, nodeId);
+    const split = footwaySplit(sidewalks, net, nodeId);
     if (split) out.push(defect('sidewalkSplit', `node ${nodeId}`, split));
   }
 
@@ -294,23 +294,19 @@ function worstOffSurface(
   return worst;
 }
 
-/** Null when every kerb node of the junction reaches every other by corners and zebras. */
-function footwaySplit(graph: SidewalkGraph, node: NodeId): string | null {
-  const kerbs = [...graph.nodes.values()].filter((k) => k.node === node).map((k) => k.id);
-  if (kerbs.length < 2) return null;
-  const seen = new Set<string>([kerbs[0] as string]);
-  const queue = [kerbs[0] as string];
-  while (queue.length) {
-    const at = queue.pop() as string;
-    for (const edgeId of graph.edgesAt(at)) {
-      const edge = graph.edges.get(edgeId);
-      if (!edge || edge.kind === 'walk') continue;
-      const next = graph.other(edge, at);
-      if (!seen.has(next)) { seen.add(next); queue.push(next); }
+/** Every kerb must connect to its neighbouring footway, and only to a painted crossing. */
+function footwaySplit(graph: SidewalkGraph, net: Network, node: NodeId): string | null {
+  for (const kerb of graph.nodes.values()) {
+    if (kerb.node !== node) continue;
+    const edges = graph.edgesAt(kerb.id).map((id) => graph.edges.get(id));
+    const corners = edges.filter((edge) => edge?.kind === 'corner');
+    const crossings = edges.filter((edge) => edge?.kind === 'crossing');
+    const painted = net.crosswalkDistanceAt(kerb.segment, node) > 0;
+    if (corners.length !== 1 || crossings.length !== Number(painted)) {
+      return `${kerb.id}: ${corners.length} corner links, ${crossings.length} crossings, painted=${painted}`;
     }
   }
-  const missing = kerbs.filter((k) => !seen.has(k));
-  return missing.length ? `${missing.length}/${kerbs.length} kerbs unreachable: ${missing.slice(0, 3).join(', ')}` : null;
+  return null;
 }
 
 export type { SegmentId };

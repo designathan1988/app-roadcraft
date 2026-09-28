@@ -100,8 +100,14 @@ const TVY: number[] = [];
 const TR: number[] = [];
 const TW: number[] = [];
 const TONCOMING: boolean[] = [];
+/** Oriented boxes for vehicles and benches; their real footprint, not covering circles. */
+const BX: number[] = [], BY: number[] = [];
+const BUX: number[] = [], BUY: number[] = [];
+const BHL: number[] = [], BHW: number[] = [];
 
 const WALLS = { lo: 0, hi: 0 };
+const PLAN_FRAME = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
+const AGENT_FRAME = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
 
 /** How far ahead the line is planned round street furniture. */
 const PLAN_AHEAD = m(10);
@@ -126,28 +132,27 @@ export const PLAN_CAP = { speed: Infinity };
  * having to stop. The side that keeps the walker nearest the line they want
  * is taken, and it is kept for every obstacle further on that it also clears.
  */
-export function plannedLine(w: SimWorld, p: Ped, edge: SidewalkEdge, wanted: number,
+export function plannedLine(_w: SimWorld, p: Ped, edge: SidewalkEdge, wanted: number,
   space: PedestrianClearance): number {
-  const path = w.sidewalks.orientedPath(edge, p.entry);
-  const frame = path.sampleAt(p.s);
+  const frame = edge.corridor.frame(p.s, p.entry !== edge.from, PLAN_FRAME);
   const rev = p.entry !== edge.from;
   PLANNED.length = 0;
-  space.around(frame.p.x, frame.p.y, PLAN_AHEAD, (other) => {
+  space.around(frame.x, frame.y, PLAN_AHEAD, (other) => {
     if (other.id > FURNITURE_IDS) return;
-    const dx = other.x - frame.p.x, dy = other.y - frame.p.y;
-    const along = dx * frame.t.x + dy * frame.t.y;
+    const dx = other.x - frame.x, dy = other.y - frame.y;
+    const along = dx * frame.tx + dy * frame.ty;
     if (along < -m(0.5) || along > PLAN_AHEAD) return;
-    const lat = dx * frame.n.x + dy * frame.n.y;
+    const lat = dx * frame.nx + dy * frame.ny;
     let across = other.radius;
     if (other.forward && other.halfLength !== undefined && other.halfWidth !== undefined) {
-      const c = Math.abs(other.forward.x * frame.t.x + other.forward.y * frame.t.y);
-      const sn = Math.abs(other.forward.x * frame.n.x + other.forward.y * frame.n.y);
+      const c = Math.abs(other.forward.x * frame.tx + other.forward.y * frame.ty);
+      const sn = Math.abs(other.forward.x * frame.nx + other.forward.y * frame.ny);
       across = sn * other.halfLength + c * other.halfWidth;
     }
     let reachAlong = other.radius;
     if (other.forward && other.halfLength !== undefined && other.halfWidth !== undefined) {
-      const c = Math.abs(other.forward.x * frame.t.x + other.forward.y * frame.t.y);
-      const sn = Math.abs(other.forward.x * frame.n.x + other.forward.y * frame.n.y);
+      const c = Math.abs(other.forward.x * frame.tx + other.forward.y * frame.ty);
+      const sn = Math.abs(other.forward.x * frame.nx + other.forward.y * frame.ny);
       reachAlong = c * other.halfLength + sn * other.halfWidth;
     }
     PLANNED.push({ along, lat, half: across + PERSON + PLAN_GAP, reach: reachAlong + PERSON });
@@ -237,10 +242,9 @@ const LAT_STEP_PLAN = PED_BEHAVIOUR.lateralRate;
  */
 export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: AgentIntent,
   space: PedestrianClearance): void {
-  const path = w.sidewalks.orientedPath(edge, p.entry);
-  const frame = path.sampleAt(p.s);
-  const tx = frame.t.x, ty = frame.t.y, nx = frame.n.x, ny = frame.n.y;
-  const hx = frame.p.x + nx * p.lat, hy = frame.p.y + ny * p.lat;
+  const frame = edge.corridor.place(p.s, p.lat, p.entry !== edge.from, AGENT_FRAME);
+  const tx = frame.tx, ty = frame.ty, nx = frame.nx, ny = frame.ny;
+  const hx = frame.x, hy = frame.y;
   const rev = p.entry !== edge.from;
 
   // Held up past `ESCALATE_AFTER`: shoulder to shoulder with strangers is
@@ -249,7 +253,7 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   const escalated = p.stuck > ESCALATE_AFTER;
   const strangerGap = escalated ? 0 : PERSON_GAP;
   // ---- 1. perceive
-  let n = 0;
+  let n = 0, boxes = 0;
   space.around(hx, hy, SEE, (other) => {
     if (other.id === p.id) return;
     const dx = other.x - hx, dy = other.y - hy;
@@ -260,8 +264,8 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     };
     if (other.id > 0) {
       const q = w.peds.get(other.id);
-      const vx = q ? (q.x - q.prev.x) / DT : 0;
-      const vy = q ? (q.y - q.prev.y) / DT : 0;
+      const vx = other.vx ?? 0;
+      const vy = other.vy ?? 0;
       const friend = q !== undefined && q.party === p.party;
       const oncoming = vx * tx + vy * ty < -m(0.2);
       const released = p.stuck >= STUCK_RELEASE;
@@ -269,14 +273,19 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
         friend || released ? 0.35 : 1, oncoming);
       return;
     }
-    // Furniture, or a stopped vehicle: a long one as a row of circles.
-    if (other.forward && other.halfLength !== undefined && other.halfWidth !== undefined && other.halfLength > other.halfWidth) {
-      const count = Math.ceil(other.halfLength / other.halfWidth);
-      for (let i = 0; i <= count; i++) {
-        const along = -other.halfLength + (2 * other.halfLength * i) / count;
-        push(dx + other.forward.x * along, dy + other.forward.y * along, 0, 0,
-          PERSON + other.halfWidth + FURNITURE_GAP, 1.2, false);
-      }
+    // The hard clearance uses oriented boxes. Sampling them as overlapping
+    // circles here made corners of a parked car look several metres wider
+    // than they are and left a walker frozen near the far kerb of a zebra.
+    if (other.forward && other.halfLength !== undefined && other.halfWidth !== undefined) {
+      BX[boxes] = dx; BY[boxes] = dy;
+      BUX[boxes] = other.forward.x; BUY[boxes] = other.forward.y;
+      // A stopped vehicle beside a narrow zebra may leave exactly body-width
+      // room. The physical guard uses PERSON; adding a furniture comfort gap
+      // here declared that real opening impassable and stopped walkers early.
+      const gap = other.id > FURNITURE_IDS ? 0 : FURNITURE_GAP;
+      BHL[boxes] = other.halfLength + PERSON + gap;
+      BHW[boxes] = other.halfWidth + PERSON + gap;
+      boxes++;
       return;
     }
     push(dx, dy, 0, 0, PERSON + other.radius + FURNITURE_GAP, 1.2, false);
@@ -285,12 +294,34 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   // ---- 2. choose
   const want = Math.max(0, intent.along);
   const prefA = want;
-  const prefL = Math.max(-LAT_MAX, Math.min(LAT_MAX, (intent.lat - p.lat) / LAT_RELAX));
+  let obstacleAhead = false;
+  let closestRisk = Infinity;
+  let riskyBox = -1;
+  for (let i = 0; i < boxes; i++) {
+    const along = BX[i]! * tx + BY[i]! * ty;
+    if (along > -m(0.5)) obstacleAhead = true;
+    const tau = boxContactTime(BX[i]!, BY[i]!, tx * want, ty * want,
+      BUX[i]!, BUY[i]!, BHL[i]!, BHW[i]!, HORIZON);
+    if (tau < closestRisk) { closestRisk = tau; riskyBox = i; }
+  }
+  if (!obstacleAhead) p.passSide = 0;
+  if (p.passSide === 0 && riskyBox >= 0 && closestRisk < HORIZON) {
+    const boxLat = BX[riskyBox]! * nx + BY[riskyBox]! * ny + p.lat;
+    p.passSide = p.lat >= boxLat ? 1 : -1;
+  }
+  edge.corridor.bounds(p.s, rev, WALLS);
+  const committed = p.passSide > 0
+    ? Math.max(intent.lat, Math.min(WALLS.hi, Math.max(p.lat, m(0.35))))
+    : p.passSide < 0
+      ? Math.min(intent.lat, Math.max(WALLS.lo, Math.min(p.lat, -m(0.35))))
+      : intent.lat;
+  const prefL = Math.max(-LAT_MAX, Math.min(LAT_MAX, (committed - p.lat) / LAT_RELAX));
   const scale = Math.max(want, m(0.6));
   let bestA = 0, bestL = 0, bestCost = Infinity;
   const consider = (ca: number, cl: number): void => {
     // A body steps sideways, it does not slide: no faster than a side-step.
     if (Math.abs(cl) > LAT_STEP + 1e-9) cl = Math.sign(cl) * LAT_STEP;
+    if (p.passSide !== 0 && cl * p.passSide < -1e-9) return;
     let cost = W_PREF * Math.hypot(ca - prefA, (cl - prefL) * W_LATERAL) / scale +
       W_CHANGE * Math.hypot(ca - p.v, cl - p.latV) / scale;
     // Impatience: standing still where one wants to walk grows costlier the
@@ -302,6 +333,7 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     const out = Math.max(0, lat1 - WALLS.hi, WALLS.lo - lat1);
     if (out > 0) cost += W_WALL * out / PERSON;
     const vx = tx * ca + nx * cl, vy = ty * ca + ny * cl;
+    const horizon = ca > 0 ? Math.min(HORIZON, (edge.length - p.s) / ca + DT) : HORIZON;
     for (let i = 0; i < n; i++) {
       const rx = vx - TVX[i]!, ry = vy - TVY[i]!;
       const dx = TX[i]!, dy = TY[i]!;
@@ -318,10 +350,20 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
       const disc = b * b - a * c;
       if (disc <= 0 || a < 1e-9) continue;
       const tau = (b - Math.sqrt(disc)) / a;
-      if (tau > HORIZON) continue;
+      // This candidate stops at the edge's end. Predicting its straight
+      // velocity beyond that point makes a person finishing a crossing brake
+      // for people already on the far footway, although the route turns there.
+      // The transfer gate handles actual occupancy at the shared kerb.
+      if (tau > horizon) continue;
       cost += TW[i]! * K_COLLIDE * Math.exp(-tau / TAU0) / (tau * tau + 0.04);
       // Meeting somebody head on: pass them keeping to one's right, as they will.
       if (TONCOMING[i] && tau < 2.5 && cl > 0) cost += W_SIDE * cl / scale;
+    }
+    for (let i = 0; i < boxes; i++) {
+      const tau = boxContactTime(BX[i]!, BY[i]!, vx, vy,
+        BUX[i]!, BUY[i]!, BHL[i]!, BHW[i]!, horizon);
+      if (tau === Infinity) continue;
+      cost += 1.2 * K_COLLIDE * Math.exp(-tau / TAU0) / (tau * tau + 0.04);
     }
     if (cost < bestCost) { bestCost = cost; bestA = ca; bestL = cl; }
   };
@@ -350,4 +392,29 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   else if (admissible(p, edge, s0, lat1, space)) { p.lat = lat1; }
   p.v = (p.s - s0) / DT;
   p.latV = (p.lat - lat0) / DT;
+}
+
+/** First contact of a moving point with an expanded oriented obstacle box. */
+function boxContactTime(dx: number, dy: number, vx: number, vy: number,
+  ux: number, uy: number, halfLength: number, halfWidth: number, horizon: number): number {
+  const along = -dx * ux - dy * uy;
+  const across = dx * uy - dy * ux;
+  const alongV = vx * ux + vy * uy;
+  const acrossV = -vx * uy + vy * ux;
+  let enter = 0, leave = horizon;
+  if (Math.abs(alongV) < 1e-9) {
+    if (Math.abs(along) > halfLength) return Infinity;
+  } else {
+    const a = (-halfLength - along) / alongV, b = (halfLength - along) / alongV;
+    enter = Math.max(enter, Math.min(a, b));
+    leave = Math.min(leave, Math.max(a, b));
+  }
+  if (Math.abs(acrossV) < 1e-9) {
+    if (Math.abs(across) > halfWidth) return Infinity;
+  } else {
+    const a = (-halfWidth - across) / acrossV, b = (halfWidth - across) / acrossV;
+    enter = Math.max(enter, Math.min(a, b));
+    leave = Math.min(leave, Math.max(a, b));
+  }
+  return enter <= leave ? enter : Infinity;
 }

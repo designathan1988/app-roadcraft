@@ -1,8 +1,10 @@
 import type { Vec2 } from '@core/vec2';
-import { Level } from './roadTypes';
+import { Level, roadProfile } from './roadTypes';
 import type { Network } from './network';
 import type { SegmentId } from './ids';
 import { m } from './units';
+import { orientedPolyline } from './geometry';
+import { CROSSWALK_DEPTH } from './approach';
 
 /**
  * Where every piece of street furniture stands.
@@ -191,7 +193,29 @@ export function streetFurniture(net: Network): FurnitureItem[] {
       }
     }
   }
-  return items;
+  // Reserve the whole crossing approach, including its landing on each
+  // footway. Furniture from a nearby leg can otherwise land directly in a
+  // zebra's exit: neither walking through it nor staying in the road is a
+  // valid avoidance decision. This shared layout controls rendering too.
+  const accesses: { x: number; y: number; tx: number; ty: number; across: number; structure: string }[] = [];
+  for (const [nodeId, node] of net.doc.nodes) {
+    if (node.incident.length < 2) continue;
+    for (const segmentId of node.incident) {
+      const crossing = net.crosswalkDistanceAt(segmentId, nodeId);
+      if (crossing <= 0) continue;
+      const segment = net.doc.requireSegment(segmentId);
+      const road = roadProfile(segment.type, segment.lanes, segment.direction);
+      const frame = orientedPolyline(net.doc, segment, nodeId).sampleAt(crossing);
+      accesses.push({ x: frame.p.x, y: frame.p.y, tx: frame.t.x, ty: frame.t.y,
+        across: road.width / 2 + road.sidewalk + m(0.3), structure: segment.structure });
+    }
+  }
+  return items.filter((item) => !accesses.some((access) => {
+    if (net.doc.requireSegment(item.segment).structure !== access.structure) return false;
+    const dx = item.x - access.x, dy = item.y - access.y;
+    return Math.abs(dx * access.tx + dy * access.ty) < CROSSWALK_DEPTH / 2 + m(0.3) + item.radius &&
+      Math.abs(-dx * access.ty + dy * access.tx) < access.across + item.radius;
+  }));
 }
 
 /** The items a person on the footway has to walk around. */

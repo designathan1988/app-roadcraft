@@ -572,11 +572,23 @@ function companionThere(w: SimWorld, p: Ped): boolean {
  * The heading of the centre of this person's conversation, once they are at
  * their place in it; null while they are still walking to it.
  */
-export function talkFacing(p: Ped): number | null {
+export function talkFacing(w: SimWorld, p: Ped): number | null {
   const a = p.activity;
   if (a?.kind !== 'talk' || a.slot < 0) return null;
   if (a.phase !== 'hold' && !(a.slotS - p.s < ARRIVE && p.v < m(0.25))) return null;
-  const dx = a.faceX - p.x, dy = a.faceY - p.y;
+  // Once the others have reached the circle, look at where they actually
+  // stand. Local avoidance can leave them a little off their planned slots;
+  // facing the ideal centre then visibly looks past a companion.
+  let x = 0, y = 0, count = 0;
+  for (let k = 0; k < p.party.size; k++) {
+    const q = w.peds.get(p.party.id + k);
+    if (!q || q === p || q.party !== p.party || q.activity?.kind !== 'talk' || q.activity.phase !== 'hold') continue;
+    x += q.x;
+    y += q.y;
+    count++;
+  }
+  const dx = (count ? x / count : a.faceX) - p.x;
+  const dy = (count ? y / count : a.faceY) - p.y;
   if (Math.hypot(dx, dy) < m(0.15)) return null;
   return Math.atan2(dy, dx);
 }

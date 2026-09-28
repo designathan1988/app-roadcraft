@@ -1,7 +1,7 @@
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
 import type { ConstraintSet, Obstacle } from './idm';
-import { pedestrianInSpan } from '../intersections/crossingSpans';
+import { PED_CROSSING_STOP_BUFFER, pedestrianInSpan } from '../intersections/crossingSpans';
 import { divergeObstacle, findLeader, shadowLeaderObstacle } from './leaderIndex';
 import { signalStateFor } from '../signals/query';
 import { mustStopAtSignal } from '../signals/permission';
@@ -29,7 +29,14 @@ function pedestrianAhead(w: SimWorld, v: Vehicle): Obstacle | null {
   for (const segment of [conn.inSegment, conn.outSegment]) {
     const span = pedestrianInSpan(w, conn.id, `${conn.node}:${segment}`);
     if (!span) continue;
-    const gap = offset + span.along - PED_STOP_MARGIN;
+    // While still on a link, keep the whole vehicle behind the near edge of
+    // any zebra on the planned turn. The connector span begins later, inside
+    // the junction; stopping at that distance left a car beside the walker
+    // and made both wait for each other inside the crossing. Once the car is
+    // on the connector, its measured span governs the stop instead.
+    const gap = lane.kind === 'link'
+      ? Math.max(0, offset - PED_CROSSING_STOP_BUFFER)
+      : offset + span.along - PED_STOP_MARGIN;
     // Already over the span: stopping there would park on the zebra. Carry on
     // through; the walker's own clearance keeps them out of a moving body.
     if (gap < 0) continue;

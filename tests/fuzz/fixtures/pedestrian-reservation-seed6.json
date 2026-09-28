@@ -1,0 +1,10 @@
+{
+  "name": "pedestrian-reservation-seed6",
+  "category": "pedSignalContradiction",
+  "detail": "The audit reported a reserved connector even though its swept span was clear of the pedestrian",
+  "sim": { "seconds": 45, "seed": 24301, "intensity": 1.5 },
+  "ops": [
+    { "op": "draw", "a": [503.21, 509.93], "b": [421.56, 700], "curve": { "h": 29.67, "t": 0.58 }, "structure": "ground", "type": 2 },
+    { "op": "draw", "a": [569.54, 621.85], "b": [337.35, 518.27], "curve": null, "structure": "ground", "type": 3 }
+  ]
+}

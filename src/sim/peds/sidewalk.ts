@@ -153,6 +153,7 @@ export class SidewalkGraph {
     for (const [nodeId, node] of doc.nodes) {
       if (node.incident.length < 2) continue;
       for (const segId of node.incident) {
+        if (net.crosswalkDistanceAt(segId, nodeId) <= 0) continue;
         const right = this.nodes.get(kerbId(nodeId, segId, -1));
         const left = this.nodes.get(kerbId(nodeId, segId, 1));
         if (!right || !left) continue;
@@ -201,7 +202,6 @@ export class SidewalkGraph {
       for (let i = 0; i < legs.length; i++) {
         const a = legs[i] as { segId: SegmentId; footway: number };
         const b = legs[(i + 1) % legs.length] as { segId: SegmentId; footway: number };
-        if (legs.length === 2 && i === 1) break;
         // Leg `a`'s left kerb joins leg `b`'s right kerb, matching the
         // counter-clockwise corner convention used by the junction builder.
         const from = this.nodes.get(kerbId(nodeId, a.segId, 1));
@@ -670,7 +670,31 @@ function cornerPath(walkable: WalkableSurface, a: Vec2, b: Vec2, centre: Vec2): 
 
 function dedupeClose(points: readonly Vec2[]): Vec2[] {
   const out: Vec2[] = [];
-  for (const p of points) if (!out.length || dist(out[out.length - 1]!, p) > 0.05) out.push(p);
+  // The radial footway samples can briefly step backwards by a few
+  // centimetres at a polygon seam. A tiny reversed segment flips the
+  // corridor's normal, moving an offset walker across the path in one tick
+  // and leaving them unable to advance through that apparent wall.
+  const minStep = m(0.1);
+  for (const p of points) if (!out.length || dist(out[out.length - 1]!, p) > minStep) out.push(p);
+  // Keep the kerb endpoint even when it falls within the final sample's
+  // spacing; every adjoining edge uses that exact graph node.
+  const end = points[points.length - 1]!;
+  if (out.length > 1 && dist(out[out.length - 1]!, end) > 1e-9) {
+    if (dist(out[out.length - 1]!, end) <= minStep) out[out.length - 1] = end;
+    else out.push(end);
+  }
+  // A short outward spike can survive spacing alone and make the tangent
+  // reverse at the kerb. Remove its turning vertex before the corridor is
+  // built; otherwise the normal flips and a lateral offset jumps across it.
+  for (let i = 1; i < out.length - 1; i++) {
+    const a = out[i - 1]!, b = out[i]!, c = out[i + 1]!;
+    const ax = b.x - a.x, ay = b.y - a.y;
+    const bx = c.x - b.x, by = c.y - b.y;
+    const first = Math.hypot(ax, ay), second = Math.hypot(bx, by);
+    if (Math.min(first, second) > m(0.5) || ax * bx + ay * by >= -0.5 * first * second) continue;
+    out.splice(i, 1);
+    i = Math.max(0, i - 2);
+  }
   if (out.length === 1) out.push({ x: out[0]!.x + 0.1, y: out[0]!.y });
   return out;
 }
