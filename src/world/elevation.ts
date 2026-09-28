@@ -466,8 +466,10 @@ export function buildRoadElevation(
     // plate. Nothing crosses it, so nothing needs it level: holding its whole
     // length flat put a 150-unit shelf in a road climbing a hill. The two
     // profiles simply meet at the node, as two spans of one road do.
-    const reachOf = (node: NodeId, trim: number | undefined): number =>
-      (net.transitions.has(node) ? 0 : (trim ?? 0)) + PLATE_MARGIN;
+    const reachOf = (node: NodeId, trim: number | undefined): number => {
+      if (net.doc.node(node)?.smooth && !net.junctions.has(node)) return 0;
+      return (net.transitions.has(node) ? 0 : (trim ?? 0)) + PLATE_MARGIN;
+    };
     const plateA = Math.min(length * 0.45, reachOf(segment.a, trims?.a[Level.Casing]));
     const plateB = Math.min(length * 0.45, reachOf(segment.b, trims?.b[Level.Casing]));
 

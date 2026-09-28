@@ -25,6 +25,7 @@ export interface InspectorActions {
   readonly onSetNodeHeight?: (id: NodeId, metres: number) => void;
   readonly onReverseDirection?: (id: SegmentId) => void;
   readonly onSplit?: (id: SegmentId) => void;
+  readonly onAddHeightPoint?: (id: SegmentId) => void;
   readonly onDuplicate?: (id: SegmentId) => void;
   readonly onSetControl?: (id: NodeId, control: JunctionControl) => void;
   readonly onSetMovementBlocked?: (node: NodeId, from: SegmentId, to: SegmentId, blocked: boolean) => void;
@@ -219,6 +220,7 @@ function renderSegment(
     (oneWay ? `<button type="button" id="inspectReverse">${t('inspector.reverse')}</button>` : '') +
     `<button type="button" id="inspectDuplicate" title="${t('inspector.duplicateHint')}">${t('inspector.duplicate')}</button>` +
     `<button type="button" id="inspectSplit">${t('inspector.splitMiddle')}</button>` +
+    `<button type="button" id="inspectAddHeightPoint">${t('inspector.addHeightPoint')}</button>` +
     `<button type="button" id="inspectDelete" class="danger">${t('inspector.demolish')}</button>` +
     `</div>`;
 
@@ -232,6 +234,7 @@ function renderSegment(
   const reverse = document.getElementById('inspectReverse') as HTMLButtonElement | null;
   const duplicate = document.getElementById('inspectDuplicate') as HTMLButtonElement | null;
   const split = document.getElementById('inspectSplit') as HTMLButtonElement | null;
+  const heightPoint = document.getElementById('inspectAddHeightPoint') as HTMLButtonElement | null;
   const curve = document.getElementById('inspectCurve') as HTMLInputElement | null;
   const curveValueOutput = document.getElementById('inspectCurveValue') as HTMLOutputElement | null;
   const curvePositionInput = document.getElementById('inspectCurvePosition') as HTMLInputElement | null;
@@ -245,6 +248,7 @@ function renderSegment(
   if (reverse) reverse.onclick = () => actions.onReverseDirection?.(id);
   if (duplicate) duplicate.onclick = () => actions.onDuplicate?.(id);
   if (split) split.onclick = () => actions.onSplit?.(id);
+  if (heightPoint) heightPoint.onclick = () => actions.onAddHeightPoint?.(id);
   if (curve) {
     curve.oninput = () => {
       if (curveValueOutput) curveValueOutput.value = curveText(Number(curve.value));
@@ -342,7 +346,16 @@ function renderNode(
     closeInspector();
     return;
   }
-  setTitle(node.incident.length >= 3 ? t('inspector.junction') : t('inspector.node'));
+  setTitle(node.smooth ? t('inspector.heightPoint')
+    : node.incident.length >= 3 ? t('inspector.junction') : t('inspector.node'));
+  if (node.smooth) {
+    body.innerHTML =
+      `<label class="inspect-select">${t('inspector.heightNode')} <input id="inspectHeightNode" type="number" step="0.1" value="${(node.heightOffset / UNITS_PER_METER).toFixed(1)}" /></label>` +
+      `<p class="inspect-note">${t('inspector.heightPointHelp')}</p>`;
+    const heightNode = document.getElementById('inspectHeightNode') as HTMLInputElement;
+    heightNode.onchange = () => actionsForNode().onSetNodeHeight?.(id, Number(heightNode.value));
+    return;
+  }
   const junction = sim.graph.junctions.get(id);
 
   const mouths = node.incident
@@ -366,10 +379,11 @@ function renderNode(
 
   body.innerHTML = `<div id="inspectStats">${stats}</div>` +
     `<label class="inspect-select">${t('inspector.heightNode')} <input id="inspectHeightNode" type="number" step="0.1" value="${(node.heightOffset / UNITS_PER_METER).toFixed(1)}" /></label>` +
-    `<label class="inspect-select">${t('inspector.controlSelect')} <select id="inspectControl">${controlOptions(node.control)}</select></label>` +
+    (node.smooth ? `<p class="inspect-note">${t('inspector.heightPointHelp')}</p>`
+      : `<label class="inspect-select">${t('inspector.controlSelect')} <select id="inspectControl">${controlOptions(node.control)}</select></label>`) +
     joinOffer +
-    movementControls(doc, junction, node.blockedMovements) +
-    `<p class="inspect-note">${t('inspector.mouths')}: ${mouths || '—'}</p>`;
+    (node.smooth ? '' : movementControls(doc, junction, node.blockedMovements) +
+      `<p class="inspect-note">${t('inspector.mouths')}: ${mouths || '—'}</p>`);
 
   const policy = document.getElementById('inspectControl') as HTMLSelectElement | null;
   const heightNode = document.getElementById('inspectHeightNode') as HTMLInputElement | null;

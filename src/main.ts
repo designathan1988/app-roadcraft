@@ -263,6 +263,7 @@ let poleDraft: PoleDraft | null = null;
 let poleChain: Vec2 | null = null;
 let hoverAnchor: Anchor | null = null;
 let selectedSegment: SegmentId | null = null;
+let selectedSegmentS: number | null = null;
 let selectedNode: NodeId | null = null;
 
 /**
@@ -892,6 +893,7 @@ canvas.addEventListener('pointerdown', (e) => {
 
     case 'inspect':
       selectedSegment = anchor.kind === 'segment' ? (anchor.segment ?? null) : null;
+      selectedSegmentS = anchor.kind === 'segment' ? (anchor.s ?? null) : null;
       selectedNode = anchor.kind === 'node' ? (anchor.node ?? null) : null;
       showInspector();
       break;
@@ -1173,6 +1175,14 @@ window.addEventListener('keydown', (e) => {
   if (!meta && tool === 'road' && (e.key === 'PageUp' || e.key === 'PageDown')) {
     e.preventDefault();
     stepRoadHeight(e.key === 'PageUp' ? 1 : -1);
+    return;
+  }
+
+  if (!meta && tool === 'inspect' && selectedNode !== null &&
+    doc.node(selectedNode)?.smooth && (e.key === 'PageUp' || e.key === 'PageDown')) {
+    e.preventDefault();
+    const current = doc.requireNode(selectedNode).heightOffset / UNITS_PER_METER;
+    setNodeHeightMetres(selectedNode, current + (e.key === 'PageUp' ? 1 : -1));
     return;
   }
 
@@ -2445,6 +2455,33 @@ function piecesForDraft(value: RoadDraft, endHeightOffset = value.heightOffset):
   return [{ start, end, curve: alignment === 'curve' ? curveFromGesture(value) : null }];
 }
 
+function setNodeHeightMetres(id: NodeId, metres: number): void {
+  const node = doc.node(id);
+  if (!node || !Number.isFinite(metres) || node.heightOffset === metres * UNITS_PER_METER) return;
+  let lower = -Infinity;
+  let upper = Infinity;
+  for (const segmentId of node.incident) {
+    const segment = doc.segment(segmentId);
+    if (!segment) continue;
+    const other = doc.node(segment.a === id ? segment.b : segment.a);
+    if (!other) continue;
+    const rise = net.polylines.get(doc, segmentId).length * MAX_AUTHORED_GRADE;
+    lower = Math.max(lower, other.heightOffset - rise);
+    upper = Math.min(upper, other.heightOffset + rise);
+  }
+  const requested = metres * UNITS_PER_METER;
+  const height = lower <= upper ? clamp(requested, lower, upper) : node.heightOffset;
+  if (height === node.heightOffset) {
+    if (Math.abs(height - requested) > 1e-6) flashHint('hint.road.gradeLimited');
+    return;
+  }
+  mutate(() => {
+    doc.setNodeHeightOffset(id, height);
+    return true;
+  });
+  if (Math.abs(height - requested) > 1e-6) flashHint('hint.road.gradeLimited');
+}
+
 function showInspector(): void {
   openInspector(
     doc,
@@ -2482,32 +2519,7 @@ function showInspector(): void {
           return true;
         });
       },
-      onSetNodeHeight: (id, metres) => {
-        const node = doc.node(id);
-        if (!node || !Number.isFinite(metres) || node.heightOffset === metres * UNITS_PER_METER) return;
-        let lower = -Infinity;
-        let upper = Infinity;
-        for (const segmentId of node.incident) {
-          const segment = doc.segment(segmentId);
-          if (!segment) continue;
-          const other = doc.node(segment.a === id ? segment.b : segment.a);
-          if (!other) continue;
-          const rise = net.polylines.get(doc, segmentId).length * MAX_AUTHORED_GRADE;
-          lower = Math.max(lower, other.heightOffset - rise);
-          upper = Math.min(upper, other.heightOffset + rise);
-        }
-        const requested = metres * UNITS_PER_METER;
-        const height = lower <= upper ? clamp(requested, lower, upper) : node.heightOffset;
-        if (height === node.heightOffset) {
-          if (Math.abs(height - requested) > 1e-6) flashHint('hint.road.gradeLimited');
-          return;
-        }
-        mutate(() => {
-          doc.setNodeHeightOffset(id, height);
-          return true;
-        });
-        if (Math.abs(height - requested) > 1e-6) flashHint('hint.road.gradeLimited');
-      },
+      onSetNodeHeight: setNodeHeightMetres,
       onReverseDirection: (id) => {
         const seg = doc.segment(id);
         if (!seg) return;
@@ -2523,6 +2535,28 @@ function showInspector(): void {
         const polyline = net.polylines.get(doc, id);
         const at = polyline.sampleAt(polyline.length / 2).p;
         mutate(() => splitSegment(doc, net, id, polyline.length / 2, at) !== null);
+      },
+      onAddHeightPoint: (id) => {
+        if (!doc.segment(id)) return;
+        const polyline = net.polylines.get(doc, id);
+        if (polyline.length < 20) { flashHint('hint.road.invalid'); return; }
+        const chosen = selectedSegment === id && selectedSegmentS !== null
+          ? selectedSegmentS : polyline.length / 2;
+        const s = chosen < 5 || chosen > polyline.length - 5
+          ? polyline.length / 2 : chosen;
+        let node: NodeId | null = null;
+        mutate(() => {
+          node = splitSegment(doc, net, id, s, polyline.sampleAt(s).p);
+          if (node === null) return false;
+          doc.requireNode(node).smooth = true;
+          return true;
+        });
+        if (node !== null) {
+          selectedSegment = null;
+          selectedSegmentS = null;
+          selectedNode = node;
+          showInspector();
+        }
       },
       onDuplicate: (id) => {
         duplicateSelectedSegment(id);

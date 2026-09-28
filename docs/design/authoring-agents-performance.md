@@ -2,6 +2,21 @@
 
 This decision record follows an interactive browser pass on the integrated game. A player could draw a raised road and a polygon building, but the building controls competed with the map, the road height tool did not explain when a cut becomes a tunnel, and vehicles had no destination beyond a short route horizon. The design below is the target for follow-on implementation, not a claim that every capability is already present.
 
+## Reproducible integration baseline
+
+The integrated preview runs at `http://127.0.0.1:5190/` from the `codex/roadcraft-integrated` worktree. Browser checks used a 1280 × 800 desktop viewport and a 390 × 844 mobile viewport. The legacy `grid-and-bends.json` map loaded with 38 roads, 16 vehicles, and 41 visible people and no page errors. Building checks drew four- and six-corner footprints on the terrain, edited floors, facade, and roof, then confirmed undo, redo, save, and load. Road checks placed a raised span at +8 m and a tunnel at −8 m; the renderer contained pier and portal geometry respectively. Page Up changed the uncommitted endpoint preview by 1 m, and placement released the drawing tool. A separately inserted road height point stayed editable and survived save/load.
+
+| Defect or risk | Reproduction and cause | Correction / remaining gate |
+|---|---|---|
+| Citizen clothes change during car pickup | The long `partyCoherence` seed 121 picked up a known pedestrian, then generated other occupants from the car's default dress code. | `CastingRegistry` adopts the picked-up person's code and invalidates incompatible generated occupants. Targeted long case and casting tests pass. Full suite remains a final gate. |
+| Height-only road edit stalls the simulation | A pure grade edit changed the document revision and `main.ts` explicitly rebuilt vehicle and pedestrian topology even though connectivity was unchanged. | A separate traffic revision and a conditional main-loop rebuild now reuse the same lanelet graph. Browser profiling observed zero `graph.build` calls and ~143–150 ms render rebuild for the height edit. |
+| Two-leg 54° bend leaves a surface gap | The smooth bend classifier stopped at 45°, making a junction plate where a continuous ribbon was needed. | Smooth transition reaches 55°. A shrunk fuzz fixture guards the case; a 90° corner remains a junction. |
+| Pedestrian waits in the road at a crossing | Waiting side was chosen along crossing direction, and an activity could begin before reaching the edge. | Waiting side is opposite the direction and activity begins at the edge. Targeted pedestrian tests and small fuzz hunt pass. |
+| Open-ground navigation | Pedestrian goals and links still come from the sidewalk graph, so a building entrance across an open plaza may be unreachable. | Keep this as an open functional gap until a legal walkable-ground graph, entrances, and browser trip check are complete. A temporary `navcat` spike generated a 100 × 100 obstacle navmesh in 56 ms and routed around it in 1.8 ms; this proves API feasibility only. |
+| Full simulation rebuild after a topology edit | A fixed 182-segment map measured ~325 ms vehicle topology and ~373 ms pedestrian topology rebuild. | Regional invalidation and same-map before/after benchmark are pending. |
+
+Visual verification passed 16 scenes with no page errors, non-finite vertices, or buried road surface outside tunnels. A small fuzz hunt (6 seeds × 24 operations) reports only known open `turnOffSurface` and `bodyOverlap` categories. The required 80 × 40 hunt, complete `npm run check`, and final combined browser flow remain gates.
+
 ## Reference study and decisions
 
 | Need | Reference behavior | Roadcraft decision |

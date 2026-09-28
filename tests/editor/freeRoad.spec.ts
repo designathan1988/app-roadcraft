@@ -6,7 +6,7 @@ import { buildRoadElevation } from '@world/elevation';
 import { Level } from '@world/roadTypes';
 import { surfaceMode } from '@world/junction/build';
 import { Network } from '@world/network';
-import { commitRoadPath } from '@editor/commit';
+import { commitRoadPath, splitSegment } from '@editor/commit';
 import { restoreInto } from '@editor/history';
 import { roadPathFromGesture, type RoadPathPoint } from '@editor/roadPath';
 
@@ -144,5 +144,32 @@ describe('free road gesture', () => {
         elevation.onSegment(first.id, x, 0)) / 5;
       expect(grade).toBeLessThan(0.17);
     }
+  });
+
+  it('keeps an inserted height point editable and continuous after save and load', () => {
+    const { doc, net } = empty();
+    const west = doc.addNode({ x: -400, y: 0 });
+    const east = doc.addNode({ x: 400, y: 0 });
+    const segment = doc.addSegment(west.id, east.id, 1)!;
+    net.rebuild();
+    const middle = splitSegment(doc, net, segment.id, 400, { x: 0, y: 0 });
+    expect(middle).not.toBeNull();
+    doc.requireNode(middle!).smooth = true;
+    doc.setNodeHeightOffset(middle!, 25);
+    net.rebuild();
+
+    const elevation = buildRoadElevation(net, () => 0);
+    const left = [...doc.segments.values()].find((piece) => piece.b === middle);
+    const right = [...doc.segments.values()].find((piece) => piece.a === middle);
+    expect(left).toBeDefined();
+    expect(right).toBeDefined();
+    expect(elevation.onSegment(left!.id, 0, 0)).toBeCloseTo(elevation.onSegment(right!.id, 0, 0), 5);
+    expect(elevation.onSegment(left!.id, 0, 0)).toBeGreaterThan(elevation.onSegment(left!.id, -100, 0));
+    expect(elevation.onSegment(right!.id, 0, 0)).toBeGreaterThan(elevation.onSegment(right!.id, 100, 0));
+
+    const restored = RoadDoc.fromJSON(doc.toJSON());
+    expect(restored.node(middle!)?.smooth).toBe(true);
+    expect(restored.node(middle!)?.heightOffset).toBe(25);
+    expect(restored.segments.size).toBe(2);
   });
 });
