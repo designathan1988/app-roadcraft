@@ -69,7 +69,7 @@ import {
   replaceBuilding,
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
-import { type PlanShape, type UpperMassPlacement, shapeBody, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass } from './buildingPlans';
+import { type PlanShape, type UpperMassPlacement, shapeBody, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
 import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
 import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
 import { splitVolumeAtFloor, reshapeTier as reshapeTierPlan } from './buildingProfile';
@@ -159,6 +159,7 @@ type Drag =
   | { kind: 'vertex'; origin: Building; volume: number; vertex: number; z: number }
   | { kind: 'storeys'; origin: Building; volume: number; start: Vec2; pixelsPerStorey: number; count: number }
   | { kind: 'side'; origin: Building; volume: number; side: FaceId; start: Vec2; z: number; dir: Vec2; wing: boolean }
+  | { kind: 'offset'; origin: Building; volume: number; start: Vec2; z: number; dir: Vec2 }
   | { kind: 'move'; origin: Building; start: Vec2; z: number }
   | { kind: 'rotate'; origin: Building; centre: Vec2; z: number; startAngle: number }
   | { kind: 'relief'; origin: Building; volume: number; region: FaceRegion; start: Vec2; z: number; dir: Vec2; depth: number }
@@ -1065,15 +1066,15 @@ export class BuildingTool {
         break;
       }
       case 'side':
-        this.drag = {
-          kind: 'side',
-          origin,
-          volume: volumeId,
-          side: handle.side ?? 1,
-          start: this.view.planeAt(screen, handle.z),
-          z: handle.z,
+        if (this.activeModelTool === 'offset') this.drag = {
+          kind: 'offset', origin, volume: volumeId,
+          start: this.view.planeAt(screen, handle.z), z: handle.z,
           dir: { x: handle.dx, y: handle.dy },
-          wing: shift,
+        };
+        else this.drag = {
+          kind: 'side', origin, volume: volumeId, side: handle.side ?? 1, wing: shift,
+          start: this.view.planeAt(screen, handle.z), z: handle.z,
+          dir: { x: handle.dx, y: handle.dy },
         };
         break;
       case 'move':
@@ -1165,6 +1166,15 @@ export class BuildingTool {
         }
         const v = volumeById(draft, drag.volume);
         if (v) this.measure = { kind: 'length', value: drag.side === 1 || drag.side === 3 ? v.w : v.d, x: p.x, y: p.y, z: drag.z };
+        break;
+      }
+      case 'offset': {
+        const p = this.view.planeAt(screen, drag.z);
+        const along = (p.x - drag.start.x) * drag.dir.x + (p.y - drag.start.y) * drag.dir.y;
+        const volume = volumeById(draft, drag.volume);
+        if (volume && offsetPlan(volume, along, !this.free)) {
+          this.measure = { kind: 'length', value: along, x: p.x, y: p.y, z: drag.z };
+        }
         break;
       }
       case 'move': {

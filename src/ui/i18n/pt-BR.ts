@@ -423,6 +423,7 @@ export const PT_BR: Dictionary = {
   'creator.moreOptions': 'Mais opções',
   'creator.model.draw': 'Desenhar',
   'creator.model.extrude': 'Extrudar',
+  'creator.model.offset': 'Deslocar contorno',
   'creator.dock.draw': 'Desenhar',
   'creator.dock.rectangle': 'Retângulo',
   'creator.dock.wing': 'Ala',

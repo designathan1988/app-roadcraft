@@ -1,5 +1,6 @@
 import type { Vec2 } from '@core/vec2';
 import { signedArea } from '@core/polygon';
+import { inflatePaths, JoinType, EndType } from 'clipper2-ts';
 import { generateBlock, type BlueprintBody } from '@world/buildings/blueprints';
 import { GRID, MIN_SIZE } from '@world/buildings/geometry';
 import { localFootprint, edgeFrame, validOutline, cutOutline, overlapArea, roofDetailRing, supportedBy } from '@world/buildings/footprints';
@@ -76,6 +77,35 @@ export function movePlanEdge(v: Volume, side: number, delta: number, snap = true
   }
   if (signedArea(ring) <= 0) return false;
   return setVolumePlan(v, ring);
+}
+
+/** Offsets the selected volume's whole plan; preserves edge identities. */
+export function offsetPlan(v: Volume, distance: number, snap = true): boolean {
+  if (!Number.isFinite(distance)) return false;
+  const amount = snap ? Math.round(distance / GRID) * GRID : distance;
+  if (Math.abs(amount) < 1e-6) return true;
+  if (!v.outline) {
+    if (v.w + 2 * amount < MIN_SIZE || v.d + 2 * amount < MIN_SIZE) return false;
+    v.x -= amount; v.y -= amount; v.w += 2 * amount; v.d += 2 * amount;
+    return true;
+  }
+  const source = localFootprint(v);
+  const scale = 10_000;
+  const paths = inflatePaths([source.map((p) => ({ x: Math.round(p.x * scale), y: Math.round(p.y * scale) }))],
+    amount * scale, JoinType.Miter, EndType.Polygon);
+  // A split, vanished contour, or new corner needs a topology edit that can
+  // remap facade sides. Reject it here rather than silently moving materials.
+  if (paths.length !== 1 || paths[0]?.length !== source.length) return false;
+  let points = paths[0]!.map((p) => ({ x: p.x / scale, y: p.y / scale }));
+  if (signedArea(points) < 0) points = points.reverse();
+  let start = 0;
+  let nearest = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    const d = Math.hypot(points[i]!.x - source[0]!.x, points[i]!.y - source[0]!.y);
+    if (d < nearest) { nearest = d; start = i; }
+  }
+  points = [...points.slice(start), ...points.slice(0, start)];
+  return setVolumePlan(v, points);
 }
 
 /** Inserting/deleting a vertex invalidates edge-specific decorations. */

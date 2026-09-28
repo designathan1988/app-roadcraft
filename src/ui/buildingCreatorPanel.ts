@@ -6,7 +6,7 @@ import type { FacadeGeometry } from '@world/buildings/types';
 import { FINISHES, type Finish, type MaterialSpec } from '@world/buildings/materials';
 /** Presentation commands are mapped to editor commands by buildingsWiring. */
 type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
-type ModelTool = 'draw' | 'extrude';
+type ModelTool = 'draw' | 'extrude' | 'offset';
 type DrawAction = 'new' | 'ground' | 'top' | 'cut';
 type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered';
 type FacadeScope = 'building' | 'volume' | 'face' | 'floor';
@@ -343,6 +343,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   for (const [kind, path] of [
     ['draw', 'M4 20l5-.8L20 8l-4-4L5 15z'],
     ['extrude', 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'],
+    ['offset', 'M3 3h22v22H3zM8 8h12v12H8z'],
   ] as const) {
     const button = makeButton(`creator.model.${kind}`, () => actions.modelTool(kind));
     button.prepend(icon(path));
@@ -473,7 +474,8 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
         button.dataset['label'] = label;
         button.title = label;
         button.textContent = label;
-        button.prepend(icon(kind === 'draw' ? 'M4 20l5-.8L20 8l-4-4L5 15z' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
+        button.prepend(icon(kind === 'draw' ? 'M4 20l5-.8L20 8l-4-4L5 15z' :
+          kind === 'offset' ? 'M3 3h22v22H3zM8 8h12v12H8z' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
       }
     }
     root.hidden = !next.selected || next.drawing !== null;

@@ -436,6 +436,7 @@ export const EN: Dictionary = {
   'creator.moreOptions': 'More options',
   'creator.model.draw': 'Draw',
   'creator.model.extrude': 'Extrude',
+  'creator.model.offset': 'Offset',
   'creator.dock.draw': 'Draw',
   'creator.dock.rectangle': 'Rectangle',
   'creator.dock.wing': 'Wing',

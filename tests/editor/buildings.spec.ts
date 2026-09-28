@@ -42,6 +42,9 @@ import { footprintSize, snapPlacement } from '@editor/buildingSnap';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
 import { History, restoreInto } from '@editor/history';
 import { commitDraft } from '@editor/commit';
+import { offsetPlan, shapeBody } from '@editor/buildingPlans';
+import { localFootprint } from '@world/buildings/footprints';
+import { signedArea } from '@core/polygon';
 
 /** `n` default modules, world units. */
 const bays = (n: number): number => n * DEFAULT_MODULE;
@@ -74,6 +77,21 @@ function place(ctx: BuildingContext, key = 'house', at = { x: 0, y: 60 }, rotati
 }
 
 describe('building operations', () => {
+  it('offsets a selected rectangle or concave plan while keeping its edge count', () => {
+    const rectangle = structuredClone(blueprintByKey('house')!.body.volumes[0]!);
+    const width = rectangle.w, depth = rectangle.d;
+    expect(offsetPlan(rectangle, 1, false)).toBe(true);
+    expect(rectangle.w).toBeCloseTo(width + 2);
+    expect(rectangle.d).toBeCloseTo(depth + 2);
+    expect(offsetPlan(rectangle, -(Math.min(width, depth) + 1), false)).toBe(false);
+
+    const concave = shapeBody('l', 30, 20, 2).volumes[0]!;
+    const count = localFootprint(concave).length;
+    const before = signedArea(localFootprint(concave));
+    expect(offsetPlan(concave, 1, false)).toBe(true);
+    expect(localFootprint(concave)).toHaveLength(count);
+    expect(signedArea(localFootprint(concave))).toBeGreaterThan(before);
+  });
   it('pulls storeys up and down, carrying the tower that stands on the podium', () => {
     const tower = { ...blueprintByKey('tower')!.body, id: 1, x: 0, y: 0, rotation: 0 } as unknown as Building;
     const podium = tower.volumes[0]!;
