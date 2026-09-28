@@ -59,11 +59,18 @@
 .creator-advanced > summary { font-size: 11px; }
 .creator-dock-secondary select { min-width: 112px; border: 1px solid #426b55; border-radius: 8px; background: #143127; color: #e9f4ed; padding: 5px; font: inherit; font-size: 11px; }
 .creator-dock-finish[data-finish="brick"] { background: #814f3e; }
+.creator-dock-finish[data-finish="plaster"] { background: #d9d3c7; }
+.creator-dock-finish[data-finish="ceramic"] { background: #b6c8c2; }
 .creator-dock-finish[data-finish="stone"] { background: #858a84; }
 .creator-dock-finish[data-finish="concrete"] { background: #737b75; }
 .creator-dock-finish[data-finish="wood"] { background: #866b47; }
 .creator-dock-finish[data-finish="metal"] { background: #536b73; }
 .creator-dock-finish[data-finish="glass"] { background: #47768b; }
+.creator-dock-finish[data-finish="tile"] { background: #858d96; }
+.creator-dock-finish[data-finish="roofing"] { background: #474b50; }
+.creator-paint-swatch { width: 43px; min-width: 43px !important; position: relative; }
+.creator-paint-swatch::after { content: ''; position: absolute; inset: 6px; border: 1px solid #ffffff80; border-radius: 3px; background: repeating-linear-gradient(0deg, transparent 0 8px, #00000022 8px 9px); }
+.creator-paint-swatch[aria-pressed="true"] { outline: 2px solid #79e3bf; outline-offset: -4px; }
 #creatorShape > .creator-buttons, #creatorShape > .creator-label:first-of-type { display: none; }
 .building-creator .creator-heading p, .building-creator .creator-hint, .building-creator .creator-note:not(.creator-error) { display: none; }
 #app:has(#game[data-tool="building"]) .hint { display: none; }

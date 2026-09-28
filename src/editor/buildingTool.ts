@@ -196,6 +196,7 @@ export class BuildingTool {
   component: BayComponent | null = null;
   scope: FacadeScope = 'bay';
   materialScope: MaterialScope = 'building';
+  paintBrush: Partial<MaterialSpec> = { finish: 'brick' };
   /** Alt held: drags follow the pointer freely, without snapping to the grid. */
   free = false;
   /**
@@ -778,6 +779,12 @@ export class BuildingTool {
     });
   }
 
+  /** Sets the swatch carried by the canvas paint tool; the edit happens on a face click. */
+  setPaintBrush(patch: Partial<MaterialSpec>): void {
+    this.paintBrush = { ...this.paintBrush, ...patch };
+    this.host.changed();
+  }
+
   // ------------------------------------------------------------ free elements
 
   /** Arms (or with the same kind again, disarms) a free element to place on the selected building. */
@@ -1295,7 +1302,7 @@ export class BuildingTool {
       return;
     }
     // Shift on another bay of the picked face: the region grows to it.
-    if (hit && shift && this.mode === 'edit' && s?.bay && hit.face !== 'top' &&
+    if (hit && shift && this.activeModelTool !== 'paint' && this.mode === 'edit' && s?.bay && hit.face !== 'top' &&
       hit.building === s.building && hit.volume === s.volume && hit.face === s.bay.side) {
       this.selection = { ...s, bayEnd: { storey: hit.storey, side: hit.face, index: hit.index } };
       this.host.changed();
@@ -1314,6 +1321,10 @@ export class BuildingTool {
         if (building) this.host.focus?.(building);
       }
       if (this.component && bay) this.applyToSelectedBay(this.component);
+      if (this.activeModelTool === 'paint') {
+        this.materialScope = hit.face === 'top' ? 'roof' : shift ? 'volume' : 'face';
+        this.paint(this.paintBrush);
+      }
       this.host.changed();
       return;
     }

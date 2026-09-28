@@ -6,7 +6,7 @@ import type { FacadeGeometry } from '@world/buildings/types';
 import { FINISHES, type Finish, type MaterialSpec } from '@world/buildings/materials';
 /** Presentation commands are mapped to editor commands by buildingsWiring. */
 type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
-type ModelTool = 'draw' | 'extrude' | 'offset';
+type ModelTool = 'draw' | 'extrude' | 'offset' | 'paint';
 type DrawAction = 'new' | 'ground' | 'top' | 'cut';
 type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered';
 type FacadeScope = 'building' | 'volume' | 'face' | 'floor';
@@ -14,6 +14,7 @@ type OpeningScope = 'bay' | 'storey' | 'side' | 'volume';
 
 export interface CreatorActions {
   modelTool(value: ModelTool): void;
+  paintBrush(patch: Partial<MaterialSpec>): void;
   tool(value: CreatorTool): void;
   frame(): void;
   draw(action: DrawAction): void;
@@ -65,6 +66,7 @@ export interface CreatorActions {
 
 export interface CreatorState {
   modelTool: ModelTool | null;
+  paintBrush: Partial<MaterialSpec>;
   tool: CreatorTool;
   drawing: number | null;
   action: DrawAction;
@@ -258,7 +260,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     latest = state;
     const key = JSON.stringify([state.tool, state.selected, state.drawing, state.problem,
       state.current, state.selectedFace, state.facadePattern, state.roof, state.component,
-      state.openingScope, state.material, dockSubmode]);
+      state.openingScope, state.material, state.modelTool, state.paintBrush, dockSubmode]);
     if (key === dockKey) return;
     dockKey = key;
     rail.hidden = !state.selected || state.drawing !== null;
@@ -267,7 +269,25 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     const add = (key: string, path: string, run: () => void, pressed = false): void => {
       dockSecondary.append(dockButton(key, path, run, pressed));
     };
-    if (state.drawing !== null) {
+    if (state.modelTool === 'paint' && state.drawing === null) {
+      for (const finishName of FINISHES) {
+        const button = el('button', 'creator-dock-finish creator-paint-swatch');
+        button.type = 'button';
+        button.dataset['finish'] = finishName;
+        button.title = t(`building.finish.${finishName}`);
+        button.setAttribute('aria-label', button.title);
+        button.setAttribute('aria-pressed', String(state.paintBrush.finish === finishName));
+        button.onclick = () => actions.paintBrush({ finish: finishName });
+        dockSecondary.append(button);
+      }
+      const colour = el('input');
+      colour.type = 'color';
+      colour.title = t('creator.color');
+      colour.setAttribute('aria-label', colour.title);
+      colour.value = `#${(state.paintBrush.colour ?? 0xffffff).toString(16).padStart(6, '0')}`;
+      colour.onchange = () => actions.paintBrush({ colour: Number.parseInt(colour.value.slice(1), 16) });
+      dockSecondary.append(colour);
+    } else if (state.drawing !== null) {
       add('creator.finish', 'M5 12l5 5L20 6', actions.finishPlan);
       add('creator.back', 'M9 7 4 12l5 5M5 12h14', actions.backPoint);
       add('creator.cancel', 'M5 5l14 14M19 5 5 19', actions.cancelPlan);
@@ -344,6 +364,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     ['draw', 'M4 20l5-.8L20 8l-4-4L5 15z'],
     ['extrude', 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'],
     ['offset', 'M3 3h22v22H3zM8 8h12v12H8z'],
+    ['paint', 'M4 21h19M6 17l8-12 9 12M10 16h9'],
   ] as const) {
     const button = makeButton(`creator.model.${kind}`, () => actions.modelTool(kind));
     button.prepend(icon(path));
@@ -465,7 +486,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   const update = (next: CreatorState): void => {
     root.hidden = !next.selected || next.drawing !== null;
     rail.hidden = true;
-    dockSecondary.hidden = next.drawing === null;
+    dockSecondary.hidden = next.drawing === null && next.modelTool !== 'paint';
     dockPopover.hidden = true;
     for (const [kind, button] of modelButtons) {
       button.setAttribute('aria-pressed', String(kind === next.modelTool));
@@ -475,7 +496,8 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
         button.title = label;
         button.textContent = label;
         button.prepend(icon(kind === 'draw' ? 'M4 20l5-.8L20 8l-4-4L5 15z' :
-          kind === 'offset' ? 'M3 3h22v22H3zM8 8h12v12H8z' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
+          kind === 'offset' ? 'M3 3h22v22H3zM8 8h12v12H8z' :
+            kind === 'paint' ? 'M4 21h19M6 17l8-12 9 12M10 16h9' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
       }
     }
     root.hidden = !next.selected || next.drawing !== null;
@@ -628,7 +650,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     }
     renderDock(next);
     rail.hidden = true;
-    dockSecondary.hidden = next.drawing === null;
+    dockSecondary.hidden = next.drawing === null && next.modelTool !== 'paint';
     dockPopover.hidden = true;
   };
   return { refresh: update };

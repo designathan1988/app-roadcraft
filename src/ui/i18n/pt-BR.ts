@@ -424,6 +424,7 @@ export const PT_BR: Dictionary = {
   'creator.model.draw': 'Desenhar',
   'creator.model.extrude': 'Extrudar',
   'creator.model.offset': 'Deslocar contorno',
+  'creator.model.paint': 'Pintar',
   'creator.dock.draw': 'Desenhar',
   'creator.dock.rectangle': 'Retângulo',
   'creator.dock.wing': 'Ala',

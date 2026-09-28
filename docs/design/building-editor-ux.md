@@ -39,6 +39,8 @@ The first isolated spike used `manifold-3d` 3.5.4 in the OS temp directory, with
 
 The visible game now supports an initial true Offset gesture on a selected volume plan: drag an edge handle to expand or contract its complete outline. Rectangles retain their legacy facade side identities; simple polygon outlines use Clipper2 miter offset and reject a split or changed edge count until facade remapping exists. The operation previews on the model and commits one undo step. A browser pass drew a building, selected it, armed Offset, expanded its plan from roughly 26.5 m to 34.4 m, then undid and redid that gesture. The exact-measure inspector is collapsed by default. This does not fulfill the wider requirement for wall-face inset, 3D bevel, arbitrary cuts, per-bay paint, or general solids; those remain the kernel and editor work above.
 
+The bottom palette also has a Paint tool with visual material swatches and a colour picker. Its brush remains armed while clicks change the selected wall face or roof; Shift-click targets the selected volume's walls. In the visible browser pass, a wood swatch and a red tint changed one facade, and a subsequent roof click changed that roof without reopening the inspector. The 33 focused building tests and `verify:buildings` passed. Per-bay and free-painted regions are still absent from the document schema.
+
 The first working operator is Extrude on a selected roof or wall sketch, positive and negative. Offset and Bevel then reuse the same profile/face representation. Chamfering a plan corner remains separate from beveling a face. Validation must reject self-intersecting offsets and an unsupported cut before a document mutation; it must explain the failure on the geometry being edited.
 
 ## Implementation and gates
