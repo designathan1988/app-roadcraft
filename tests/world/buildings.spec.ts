@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { pointInPolygon } from '@core/polygon';
 
 import { DEFAULT_MODULE } from '@world/buildings/types';
 
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
-import { BLUEPRINTS, generateBody } from '@world/buildings/blueprints';
+import { BLUEPRINTS, blueprintByKey, generateBody } from '@world/buildings/blueprints';
 import { MAX_PLINTH, PLINTH_MIN, floorHeight, flightRun, foundationOf } from '@world/buildings/foundation';
 import {
   buildingHeight,
@@ -240,6 +241,17 @@ describe('validation', () => {
       const b = { ...bp.body, id: asBuildingId(1), x: 0, y: 0, rotation: 0.4 } as Building;
       expect(validateBuilding({ doc, net: null, groundAt: flat }, b), bp.key).toBeNull();
     }
+  });
+
+  it('keeps the courtyard open while its four wings remain separately editable', () => {
+    const body = blueprintByKey('courtyard')!.body;
+    expect(body.volumes).toHaveLength(4);
+    const centre = { x: 4 * body.module, y: 4 * body.module };
+    expect(body.volumes.every((volume) => {
+      const ring = footprintRects({ ...body, id: 1, x: 0, y: 0, rotation: 0,
+        volumes: [volume] } as Building)[0]!;
+      return !pointInPolygon(centre, ring);
+    })).toBe(true);
   });
 });
 

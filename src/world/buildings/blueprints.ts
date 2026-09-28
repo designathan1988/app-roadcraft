@@ -256,6 +256,25 @@ function mixedBlock(): BlueprintBody {
   return body;
 }
 
+/** Four individually editable wings around an open, ground-level courtyard. */
+function courtyard(): BlueprintBody {
+  const body = generateBlock(bays(8), bays(2), 3, { roof: 'flat', palette: 4 });
+  body.use = 'residential';
+  const front = body.volumes[0]!;
+  const wing = (id: number, x: number, y: number, w: number, d: number): Volume => ({
+    ...structuredClone(front), id, x, y, w, d,
+    storeys: front.storeys.map((storey, level) => level === 0
+      ? { facade: { fill: 'window' } } : structuredClone(storey)),
+  });
+  body.volumes.push(
+    wing(2, 0, bays(2), bays(2), bays(4)),
+    wing(3, bays(6), bays(2), bays(2), bays(4)),
+    wing(4, 0, bays(6), bays(8), bays(2)),
+  );
+  body.nextVolumeId = 5;
+  return body;
+}
+
 function warehouse(): BlueprintBody {
   return generateBody('industrial', bays(8), bays(6), 1, { palette: 7, roof: 'sawtooth', groundHeight: m(7) });
 }
@@ -289,6 +308,7 @@ export const BLUEPRINTS: readonly Blueprint[] = [
   { key: 'shop', nameKey: 'building.preset.shop', body: shop() },
   { key: 'office', nameKey: 'building.preset.office', body: office() },
   { key: 'mixed', nameKey: 'building.preset.mixed', body: mixedBlock() },
+  { key: 'courtyard', nameKey: 'building.preset.courtyard', body: courtyard() },
   { key: 'warehouse', nameKey: 'building.preset.warehouse', body: warehouse() },
   { key: 'factory', nameKey: 'building.preset.factory', body: factory() },
 ];

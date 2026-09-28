@@ -82,7 +82,7 @@
 .creator-shapes svg { width: 23px; height: 23px; }
 .creator-starters, .creator-buttons, .creator-openings, .creator-roofs,
 .creator-details, .creator-patterns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 8px; }
-.creator-starters { grid-template-columns: repeat(3, 1fr); }
+.creator-starters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .creator-buttons button[data-creator-action="draw-new"] { grid-column: 1 / -1; }
 .creator-openings, .creator-roofs, .creator-details { grid-template-columns: repeat(3, 1fr); }
 .creator-patterns button[aria-pressed="true"], .creator-roofs button[aria-pressed="true"], .creator-shapes button[aria-pressed="true"],

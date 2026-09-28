@@ -16,7 +16,7 @@ export interface CreatorActions {
   draw(action: DrawAction): void;
   shape(value: PlanShape): void;
   tierShape(value: PlanShape): void;
-  starter(key: 'house' | 'apartments' | 'factory'): void;
+  starter(key: 'house' | 'apartments' | 'tower' | 'courtyard' | 'factory'): void;
   saveBlueprint(name: string): void;
   useBlueprint(key: string): void;
   deleteBlueprint(key: string): void;
@@ -216,7 +216,11 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     tier.prepend(icon(SHAPE_PATHS[value]));
     get('creatorTierShapes').append(tier);
   }
-  for (const [key, label] of [['house', 'creator.start.house'], ['apartments', 'creator.start.apartments'], ['factory', 'creator.start.factory']] as const) {
+  for (const [key, label] of [
+    ['house', 'creator.start.house'], ['apartments', 'creator.start.apartments'],
+    ['tower', 'creator.start.tower'], ['courtyard', 'creator.start.courtyard'],
+    ['factory', 'creator.start.factory'],
+  ] as const) {
     get('creatorStarters').append(makeButton(label, () => actions.starter(key), key));
   }
   root.querySelectorAll<HTMLButtonElement>('[data-creator-action]').forEach((button) => {
