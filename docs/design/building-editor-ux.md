@@ -1,37 +1,48 @@
-# Building editor interaction plan
+# Building editor: persistent selection and direct modeling
 
-## Evidence and decision
+This document supersedes the earlier bottom-dock workflow proposal. The current `693a449` dock is a checkpoint, not an accepted building-editor design. An experimental patch that made Select, Move, Rotate and Scale mutually exclusive was removed from the worktree and preserved outside it; none of its interactions should be treated as complete.
 
-The current 1280 × 800 browser pass shows a 338 px right panel with a four-step rail, a large paragraph, and many text buttons. The building remains editable in the scene, but the controls needed to edit a selected face or roof sit in a long scrolling panel. The result hides the connection between the selected geometry and the command that changes it. The mobile layout has even less scene area.
+## The interaction model
 
-The replacement is a **stable contextual dock at the bottom**, direct handles on the building, and a small optional properties inspector. The left rail remains the global game-mode switch. The dock changes with the current selection; it never repeats every building command at once. A toolbar floating over the building was considered and rejected because it would cover the geometry and move as the camera pans.
+Selection is persistent state, independent of the active modeling tool. Clicking a building, mass, roof, wall face, bay, edge or vertex updates the selected subobject; it does not disarm Extrude, Offset, Bevel, Cut, Draw, Paint or Openings. Hover previews the candidate subobject. The player can change the selection and immediately repeat the armed operation. Esc cancels a draft first; it never silently clears the selection. Undo records one completed gesture.
 
-This combines selection-adaptive commands and gizmos from [Shapr3D](https://support.shapr3d.com/hc/en-us/articles/7873882619548-Adaptive-user-interface), drawing/extruding directly with exact values from [SketchUp](https://help.sketchup.com/en/sketchup/drawing-basic-shapes) and [its Measurements box](https://help.sketchup.com/cs/using-measurements-box), and the separation of a bottom tool bar, canvas, and right properties panel documented by [Figma](https://help.figma.com/hc/en-us/articles/360039832014). Tiny Glade's [shape-derived detail](https://store.steampowered.com/app/2198150/Tiny_Glade/) supports generating a useful facade and roof before manual edits. Because icons alone are hard to learn, the primary dock uses **one visible word per tool**, not paragraphs or text-button grids, following [NN/g's icon usability guidance](https://www.nngroup.com/articles/icon-usability/).
+A selected object gets a compact, in-scene transform gizmo: drag its centre to move, its ring to rotate and its edge/corner/height grips to scale. These are not exclusive palette modes. An exact value may be typed while dragging, or edited in a small optional inspector. The modeling palette is always available and contains only operations: Draw, Extrude, Offset, Bevel, Cut, Paint, Openings and Objects/Surfaces. Selecting a modeling tool does not change what is selected. This matches the separation of subobject selection and subsequent modification in [3ds Max](https://help.autodesk.com/cloudhelp/2016/ENU/3DSMax/files/GUID-86AF500F-4A42-46E6-9409-0184E9DBA238.htm), the direct transform gizmos described by [Autodesk](https://help.autodesk.com/cloudhelp/2023/ENU/3DSMax-Basics/files/GUID-D97C423B-1AD4-46EA-892B-3A807823892C.htm), and selection-adaptive tools in [Shapr3D](https://support.shapr3d.com/hc/en-us/articles/7873882619548-Adaptive-user-interface). This is an interaction principle, not a copy of those interfaces.
 
-## Interaction contract
+| Active modeling tool | Input on the construction | Authored result |
+|---|---|---|
+| Draw | Sketch rectangle, polygon, circle or other precise profile on terrain, roof or wall; drag handles or type dimensions at the cursor | Editable profile with stable local plane, dimensions and constraints |
+| Extrude | Drag the selected profile or face along its normal, in either direction | Additive or subtractive feature, with editable depth |
+| Offset | Drag the contour of the selected face/profile inward or outward in its own plane | Contour offset with topology validation |
+| Bevel | Drag height, then outline on the selected face; chamfer on an edge/vertex is a separate target | Bevel feature with height and outline parameters |
+| Cut | Sketch directly on a face or roof and drag through a solid | A true opening/void, including enclosed courtyards and side openings |
+| Paint | Brush a selected face/bay/region; choose a visual swatch and continue painting | Material override at building, mass, face, floor, bay or painted-region scope |
+| Openings | Click or brush a bay, floor, face or mass | Window, door, storefront, balcony or wall replacement at that scope |
+| Objects/Surfaces | Place/paint an object, pavement or area on its actual supporting surface | Authored element or surface polygon, with obstacle/navigation effects where relevant |
 
-| Scene selection | Bottom dock: primary tools | Context row | In-scene gesture | Optional inspector |
-|---|---|---|---|---|
-| Nothing | Draw, quick shapes, saved model | Visual thumbnails for house, block, tower, courtyard | Click/drag on terrain to place or trace; Enter finishes a polygon | Hidden |
-| Whole building or mass | Plan, Volume, Facade, Roof, Paint | Only the active tool's 3–5 relevant choices | Drag corner/edge/roof handles to reshape, extend, or raise; move from the centre handle | Exact width, depth, storeys; advanced folded |
-| Wall face or bay | Facade and Paint become primary | Visual facade patterns, opening types or material swatches, with selection shown | Click the face/bay, then one swatch; drag face handles for depth or opening rhythm | Selected face/floor and exact bay dimensions |
-| Roof | Roof and Paint become primary | Visual roof forms and a short detail strip | Drag roof handle for height/pitch; click roof to place the armed detail | Exact pitch/height; advanced folded |
-| Active polygon drawing | Finish, Back, Cancel | Point count and current dimensions | Click terrain or roof for the next point; double-click/Enter finishes | Hidden |
+The inspector is optional and only shows exact numbers and properties of the current selection. It never contains the only way to perform an operation. Primary affordances are the selected geometry, gizmos, on-canvas measurements, and the modeling-tool palette. The left rail continues to switch global game modes. A bottom palette may hold the modeling tools, but no numbered stages or compulsory steps remain.
 
-The dock stays at the same screen position, above the status bar. It shows one primary row and at most one secondary row. Options that do not apply to the selected geometry are absent rather than disabled. The player can always pick another part of the building without returning to the panel. Desktop shortcuts and touch targets remain available; every icon has an accessible name and a visible short label in the primary row.
+## What the current engine can and cannot do
 
-## Implementation sequence
+- `BuildingTool` currently conflates placement/edit mode, four creator stages and selection. `BuildingSelection` identifies a building, one volume, a bay or vertex, but has no persistent edge/face/roof profile identity. `buildingHandles` are filtered by stage. These need one selection owner and independent gesture/tool state.
+- Schema 2 stores volumes as rectangles or **one simple polygon each**, stacked by level. `cutOutline` in `world/buildings/footprints.ts` explicitly rejects an enclosed hole; separate masses can surround a courtyard, but a player cannot cut one through a mass. `Relief` moves rectangular runs of whole bays/storeys by a limited depth. It cannot implement arbitrary face cut-through or a general solid extrusion.
+- `addShapedUpperMass` can create an upper mass and accepts exact dimensions, but the current interface makes this a form command rather than a roof sketch and gesture. The path must be drawn on the selected roof; dimensions remain editable afterwards.
+- Materials resolve at building, mass, side and floor. Bay components can vary individually. There is no stored per-bay or free-painted material region in the committed schema. The renderer emits facade bays one by one, which makes per-bay paint feasible without rebuilding the road network.
+- Building edits correctly use `doc.buildings.revision`, and the renderer caches each building chunk. The new feature pipeline must preserve this separation, legacy JSON migration, and one-gesture undo.
 
-1. Extract a single selection-to-command model from `BuildingTool` (`none`, `mass`, `face`, `bay`, `roof`, `drawing`). Reuse the current editor commands and undo history. Stage changes and panel clicks must call the same command path.
-2. Add a `buildingCommandDock` UI module and a bottom dock in `index.html`. The left game rail stays intact. Drive dock content from selection, current tool, preview validity and locale. Keep its location stable while camera and building move.
-3. Extend `buildingOverlay` with clear hover/selected states and handles for mass, face and roof. Place a small measurement chip beside the active handle, and show invalid geometry at the attempted edit with a short reason.
-4. Reduce `buildingCreatorPanel` to exact measurements and one collapsed advanced section for the selected object. Move facade patterns, materials, opening choices and roof choices into the dock's visual context row. Keep all existing advanced operations reachable.
-5. Verify the same operations through mouse and touch: quick house; irregular multi-tier tower; closed courtyard; facade and roof style/color; move and rotate; save, load, undo and redo. Test at 1280 × 800 and 390 × 844; the dock must not cover selected handles or make the game horizontally scroll. Capture before/after screens and page errors.
+## Geometry decision before the full feature work
 
-## Acceptance gates
+The document will store **sketches and ordered modeling features**, not triangle meshes. Every sketch has a stable ID, local support plane, closed contours including holes, geometric primitive and exact dimensions. Features reference stable sketch/subobject IDs and store operation parameters. The mesh, facade openings, roof, footprint and collision polygons are derived. Legacy volumes migrate to initial sketch-plus-extrusion features; old maps still load and round-trip.
 
-- A new player can place a house, pull its height, click a face, change its facade, click the roof, and change its form without opening advanced options.
-- Selection visibly changes the dock within the next frame; the primary row does not jump in position. The canvas remains the focus.
-- A selected handle reveals its dimension; dragging previews the result and commits one undo step. Invalid edits show why at the attempted geometry.
-- All existing building operations remain reachable, including polygon editing, connected wings, distinct upper tiers, facade bays, roof details, materials, and legacy saves.
-- Desktop and mobile browser passes show no clipping, hidden primary actions, accidental map edits behind the dock, or page errors. `npm run check` and `npm run verify:visual` remain final gates for the integrated release.
+A bounded implementation spike tests three cases: a closed courtyard cut, a through-cut on a wall face, and a bevel on a concave upper mass. It must preserve selectable face IDs, materials and openings; emit finite watertight geometry; and record build time and WASM memory on the same machine. [Manifold's JS/WASM bindings](https://github.com/elalish/manifold) are a candidate for solid booleans because they provide manifold output and face provenance. [Three.js ExtrudeGeometry](https://threejs.org/docs/pages/ExtrudeGeometry.html) can build a profile with bevel parameters but is not by itself a general boolean or semantic facade model. If Manifold cannot preserve Roadcraft's face/material identity and edit latency in those fixtures, use a deterministic planar-profile/sliced-solid kernel for architectural features; do not install a CSG dependency merely because a demo renders.
+
+The first working operator is Extrude on a selected roof or wall sketch, positive and negative. Offset and Bevel then reuse the same profile/face representation. Chamfering a plan corner remains separate from beveling a face. Validation must reject self-intersecting offsets and an unsupported cut before a document mutation; it must explain the failure on the geometry being edited.
+
+## Implementation and gates
+
+1. **Selection contract.** Replace the stage-dependent handle filter. Click and hover select building/mass/face/bay/edge/vertex while any modeling tool remains armed; Shift adds a region. The transform gizmo follows selection and supports move/rotate/scale directly. Browser test: select a face, arm Offset, select another face, offset it; repeat for Extrude without rearming either tool.
+2. **Sketches and geometry kernel.** Define stable IDs, profile plane, holes, feature order and migration. Run the three-case kernel spike once, benchmark it, record the choice, then implement one geometry source of truth. Existing facades, roofs, materials, foundations and collision tests must read derived geometry from that source.
+3. **Modeling tools.** Implement Draw, Extrude, Offset, Bevel and Cut as pointer gestures with live preview, snapping and on-canvas numeric entry. Each operation commits one undo step and remains selected for the next target. Test a house, irregular tower with exact upper tiers, enclosed courtyard, wall through-cut and concave bevel in the actual game.
+4. **Finishes and components.** Add per-bay and painted-region material storage, visual swatches, scoped opening replacement, more finish textures and placed elements/pavement areas. Verify repainting one bay leaves neighbours intact, whole-face replacement clears narrower overrides, and save/load reproduces the result.
+5. **Release validation.** Test desktop and touch layouts by performing the gestures in the visible preview, with screenshots and no page errors. Load a schema-1 and schema-2 map, edit, undo/redo and save/reload. Run focused specs, fuzz before/after changes to `world`/`sim`, then one-worker `npm run check` and `npm run verify:visual` sequentially while monitoring CPU. Do not call the feature complete if an operator is still a panel-only command or a known regression remains.
+
+The earlier Roadcraft goals for roads, agents and performance remain in the integrated branch. This plan corrects the building editor without claiming those broader goals have passed their final gates.
