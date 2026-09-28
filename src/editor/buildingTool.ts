@@ -114,6 +114,7 @@ export interface ToolHost {
 export type BuildingToolMode = 'place' | 'edit';
 export type PlanAction = 'new' | 'ground' | 'top' | 'cut';
 export type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
+export type BuildingModelTool = 'draw' | 'extrude' | 'offset' | 'bevel' | 'cut' | 'paint' | 'openings';
 
 /** What a material pick paints: the whole building, the selected volume, one face of it, or its roof. */
 export type MaterialScope = 'building' | 'volume' | 'face' | 'floor' | 'roof';
@@ -173,6 +174,7 @@ const ROTATE_STEP = Math.PI / 12;
 export class BuildingTool {
   mode: BuildingToolMode = 'place';
   stage: CreatorTool = 'sketch';
+  activeModelTool: BuildingModelTool | null = null;
   planPoints: Vec2[] | null = null;
   planCursor: Vec2 | null = null;
   planAction: PlanAction = 'new';
@@ -262,15 +264,17 @@ export class BuildingTool {
         .map((p, i) => ({ i, y: this.view.project(p.x, p.y, floor).y }))
         .sort((a, b) => b.y - a.y)
         .map((c) => c.i);
-    const all = buildingHandles(shown, this.selection.volume, floor, nearest, this.stage === 'facade' ? this.faceRegion() : null);
+    const region = this.faceRegion();
+    const all = buildingHandles(shown, this.selection.volume, floor, nearest,
+      this.activeModelTool === 'extrude' ? region : null);
     const volume = volumeById(shown, this.selection.volume);
     const detailed = (volume?.outline?.length ?? 4) <= 12;
     const selectedSide = this.selection.bay?.side;
-    return all.filter((h) => (this.stage === 'shape' && (h.kind === 'move' || h.kind === 'rotate' || h.kind === 'storeys')) ||
-      (this.stage === 'shape' && h.kind === 'side' && ((volume?.outline?.length ?? 4) <= 8 || this.selection?.bay?.side === h.side)) ||
-      (this.stage === 'shape' && h.kind === 'vertex' &&
+    return all.filter((h) => h.kind === 'move' || h.kind === 'rotate' || h.kind === 'storeys' ||
+      (!region && h.kind === 'side' && ((volume?.outline?.length ?? 4) <= 8 || this.selection?.bay?.side === h.side)) ||
+      (!region && h.kind === 'vertex' &&
         (detailed || (h.vertex ?? 0) % 3 === 0 || h.vertex === this.selection?.vertex || h.vertex === selectedSide || h.vertex === (selectedSide ?? -2) + 1)) ||
-      (this.stage === 'facade' && h.kind === 'relief'));
+      (this.activeModelTool === 'extrude' && h.kind === 'relief'));
   }
 
   /** The tool is put away: no ghost, no gesture, no hover. The selection stays. */
@@ -310,6 +314,12 @@ export class BuildingTool {
     if (stage !== 'roof') this.roofDetailKind = null;
     if (stage !== 'shape') this.armed = null;
     if (stage !== 'facade') this.component = null;
+    this.problem = null;
+    this.host.changed();
+  }
+
+  armModelTool(tool: BuildingModelTool | null): void {
+    this.activeModelTool = tool;
     this.problem = null;
     this.host.changed();
   }
@@ -988,7 +998,10 @@ export class BuildingTool {
     for (const h of this.handles()) {
       const p = this.view.project(h.x, h.y, h.z);
       const d = Math.hypot(p.x - screen.x, p.y - screen.y);
-      if (d <= bestDistance) {
+      const reach = h.kind === 'vertex' ? Math.min(5, this.view.pickPixels)
+        : h.kind === 'side' ? Math.min(6, this.view.pickPixels)
+          : this.view.pickPixels;
+      if (d <= Math.min(bestDistance, reach)) {
         bestDistance = d;
         best = h;
       }
@@ -1000,6 +1013,17 @@ export class BuildingTool {
   pointerDown(screen: Vec2, world: Vec2, shift: boolean): boolean {
     this.lastScreen = screen;
     this.lastWorld = world;
+    if (!this.planPoints && this.activeModelTool === 'draw') {
+      const hit = this.pick(screen);
+      if (hit) {
+        this.selection = { building: hit.building, volume: hit.volume, bay: null };
+        this.mode = 'edit';
+      }
+      this.startPlan(hit ? hit.face === 'top' ? 'top' : 'ground' : 'new');
+      this.planCursor = this.pointOnPlan(screen, world, shift || this.free);
+      this.drag = { kind: 'click', hit: null, start: screen, moved: false, shift, at: now() };
+      return true;
+    }
     if (this.planPoints) this.planCursor = this.pointOnPlan(screen, world, shift || this.free);
     const selected = this.selected();
     if (this.mode === 'edit' && selected && this.selection) {
@@ -1097,7 +1121,8 @@ export class BuildingTool {
       if (this.mode === 'place') {
         this.hover = this.pick(screen);
         if (this.hover) this.setPreview(null);
-        else this.hoverPlace(world);
+        else if (!this.activeModelTool || this.activeModelTool === 'draw') this.hoverPlace(world);
+        else this.setPreview(null);
       } else if (this.armed && this.selected()) {
         this.hover = null;
         this.hoverElement(screen, world);
@@ -1283,6 +1308,7 @@ export class BuildingTool {
       return;
     }
     if (this.mode === 'place') {
+      if (this.activeModelTool) return;
       this.placeHere();
       return;
     }
@@ -1379,9 +1405,7 @@ export class BuildingTool {
         this.selectedRoofDetail = null;
       } else if (this.mode === 'place') {
         this.setMode('edit');
-      } else {
-        this.selection = null;
-      }
+      } else if (this.activeModelTool) this.activeModelTool = null;
       this.host.changed();
       return true;
     }

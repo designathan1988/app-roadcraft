@@ -17,6 +17,11 @@
 }
 .building-creator.hidden, .building-creator[hidden], .inspector-open .building-creator { display: none; }
 .creator-dock[hidden], .creator-rail.hidden, .inspector-open .creator-rail { display: none; }
+.creator-dock [hidden] { display: none !important; }
+.creator-model-palette { display: flex; justify-content: center; gap: 6px; }
+.creator-model-palette button { min-width: 78px; min-height: 52px; padding: 5px 9px; border: 1px solid #385749; border-radius: 9px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; }
+.creator-model-palette button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.creator-model-palette button[aria-pressed="true"] { border-color: #79e3bf; color: #79e3bf; background: #204637; }
 .creator-dock {
   position: absolute;
   z-index: 14;

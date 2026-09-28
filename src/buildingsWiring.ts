@@ -142,6 +142,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   window.addEventListener('blur', () => setFree(false));
 
   const panel = initBuildingCreatorPanel({
+    modelTool: (kind) => tool.armModelTool(tool.activeModelTool === kind ? null : kind),
     tool: (stage) => tool.setStage(stage),
     frame: () => tool.focusSelected(),
     draw: (action) => tool.startPlan(action),
@@ -224,6 +225,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     const building = tool.mode === 'edit' || (tool.planPoints && tool.planAction !== 'new') ? tool.selected() : null;
     const volume = building && tool.selection ? volumeById(building, tool.selection.volume) : undefined;
     panel.refresh({
+      modelTool: tool.activeModelTool === 'draw' || tool.activeModelTool === 'extrude' ? tool.activeModelTool : null,
       tool: tool.stage,
       drawing: tool.planPoints?.length ?? null,
       action: tool.planAction,

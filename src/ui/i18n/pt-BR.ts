@@ -421,6 +421,8 @@ export const PT_BR: Dictionary = {
   'creator.tool.facade': 'Fachada',
   'creator.tool.roof': 'Telhado',
   'creator.moreOptions': 'Mais opções',
+  'creator.model.draw': 'Desenhar',
+  'creator.model.extrude': 'Extrudar',
   'creator.dock.draw': 'Desenhar',
   'creator.dock.rectangle': 'Retângulo',
   'creator.dock.wing': 'Ala',

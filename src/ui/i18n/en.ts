@@ -434,6 +434,8 @@ export const EN: Dictionary = {
   'creator.tool.facade': 'Facade',
   'creator.tool.roof': 'Roof',
   'creator.moreOptions': 'More options',
+  'creator.model.draw': 'Draw',
+  'creator.model.extrude': 'Extrude',
   'creator.dock.draw': 'Draw',
   'creator.dock.rectangle': 'Rectangle',
   'creator.dock.wing': 'Wing',

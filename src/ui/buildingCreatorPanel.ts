@@ -6,12 +6,14 @@ import type { FacadeGeometry } from '@world/buildings/types';
 import { FINISHES, type Finish, type MaterialSpec } from '@world/buildings/materials';
 /** Presentation commands are mapped to editor commands by buildingsWiring. */
 type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
+type ModelTool = 'draw' | 'extrude';
 type DrawAction = 'new' | 'ground' | 'top' | 'cut';
 type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered';
 type FacadeScope = 'building' | 'volume' | 'face' | 'floor';
 type OpeningScope = 'bay' | 'storey' | 'side' | 'volume';
 
 export interface CreatorActions {
+  modelTool(value: ModelTool): void;
   tool(value: CreatorTool): void;
   frame(): void;
   draw(action: DrawAction): void;
@@ -62,6 +64,7 @@ export interface CreatorActions {
 }
 
 export interface CreatorState {
+  modelTool: ModelTool | null;
   tool: CreatorTool;
   drawing: number | null;
   action: DrawAction;
@@ -130,6 +133,8 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   const dockSecondary = document.getElementById('creatorDockSecondary')!;
   const dockPopover = document.getElementById('creatorDockPopover')!;
   dock.prepend(rail);
+  const modelPalette = el('div', 'creator-model-palette');
+  dock.prepend(modelPalette);
   const get = (id: string): HTMLElement => document.getElementById(id)!;
   const title = get('creatorTitle'), description = get('creatorDescription');
   const frameButton = get('creatorFrame');
@@ -334,6 +339,16 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     button.prepend(icon(TOOL_PATHS[value]));
     button.onclick = () => { dockSubmode = 'patterns'; actions.tool(value); };
   });
+  const modelButtons = new Map<ModelTool, HTMLButtonElement>();
+  for (const [kind, path] of [
+    ['draw', 'M4 20l5-.8L20 8l-4-4L5 15z'],
+    ['extrude', 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'],
+  ] as const) {
+    const button = makeButton(`creator.model.${kind}`, () => actions.modelTool(kind));
+    button.prepend(icon(path));
+    modelButtons.set(kind, button);
+    modelPalette.append(button);
+  }
   get('creatorDraw').onclick = () => actions.draw('new');
   frameButton.onclick = actions.frame;
   get('creatorSaveBlueprint').onclick = () => {
@@ -447,6 +462,20 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   };
 
   const update = (next: CreatorState): void => {
+    root.hidden = !next.selected || next.drawing !== null;
+    rail.hidden = true;
+    dockSecondary.hidden = next.drawing === null;
+    dockPopover.hidden = true;
+    for (const [kind, button] of modelButtons) {
+      button.setAttribute('aria-pressed', String(kind === next.modelTool));
+      const label = t(`creator.model.${kind}`);
+      if (button.dataset['label'] !== label) {
+        button.dataset['label'] = label;
+        button.title = label;
+        button.textContent = label;
+        button.prepend(icon(kind === 'draw' ? 'M4 20l5-.8L20 8l-4-4L5 15z' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
+      }
+    }
     root.hidden = !next.selected || next.drawing !== null;
     root.dataset['creatorTool'] = next.tool;
     rail.querySelectorAll<HTMLButtonElement>('[data-creator-tool]').forEach((button) => {
@@ -596,6 +625,9 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
       }
     }
     renderDock(next);
+    rail.hidden = true;
+    dockSecondary.hidden = next.drawing === null;
+    dockPopover.hidden = true;
   };
   return { refresh: update };
 }

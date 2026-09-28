@@ -354,6 +354,57 @@ describe('the tool', () => {
     expect(componentAt(after.volumes[0]!.storeys[3]!.facade, 0, 2)).toBe('balcony');
   });
 
+  it('keeps selection and transform gizmos while switching modeling tools', () => {
+    const { t } = tool();
+    t.chooseBlueprint('house');
+    t.pointerMove({ x: 0, y: 0 }, { x: 0, y: 0 }, false);
+    t.pointerDown({ x: 0, y: 0 }, { x: 0, y: 0 }, false);
+    t.pointerUp(false);
+    const selected = t.selection!.building;
+    t.armModelTool('extrude');
+    t.setStage('roof');
+    expect(t.selection?.building).toBe(selected);
+    expect(t.handles().some((h) => h.kind === 'move')).toBe(true);
+    expect(t.handles().some((h) => h.kind === 'rotate')).toBe(true);
+    const b = t.selected()!;
+    const bay = facadeBays(b).find((x) => x.side === 0 && x.level === 1 && x.index === 2)!;
+    const screen = view.project(bay.x, bay.y - 0.01, bay.z + bay.height / 2 + t.floorOf(b));
+    t.pointerDown(screen, { x: 0, y: 0 }, false);
+    t.pointerUp(false);
+    expect(t.selection?.bay?.index).toBe(2);
+    expect(t.activeModelTool).toBe('extrude');
+    expect(t.handles().some((h) => h.kind === 'relief')).toBe(true);
+    t.armModelTool('paint');
+    expect(t.selection?.bay?.index).toBe(2);
+    expect(t.handles().some((h) => h.kind === 'move')).toBe(true);
+    expect(t.key('Escape', false, false)).toBe(true);
+    expect(t.activeModelTool).toBeNull();
+    expect(t.selection?.building).toBe(selected);
+  });
+
+  it('draws on a selected roof without clearing the selection or transform gizmo', () => {
+    const { t } = tool();
+    t.chooseBlueprint('block');
+    t.pointerMove({ x: 0, y: 0 }, { x: 0, y: 0 }, false);
+    t.pointerDown({ x: 0, y: 0 }, { x: 0, y: 0 }, false);
+    t.pointerUp(false);
+    const b = t.selected()!, v = b.volumes[0]!;
+    const x = b.x + v.x + v.w / 2, y = b.y + v.y + v.d / 2;
+    const z = t.floorOf(b) + volumeHeight(b, v);
+    const at = view.project(x, y, z);
+    expect(t.pickAt(at)?.face).toBe('top');
+    t.armModelTool('draw');
+    t.pointerDown(at, { x, y }, false);
+    t.pointerUp(false);
+    expect(t.planAction).toBe('top');
+    expect(t.planPoints).toHaveLength(1);
+    expect(t.selection?.building).toBe(b.id);
+    expect(t.activeModelTool).toBe('draw');
+    expect(t.key('Escape', false, false)).toBe(true);
+    expect(t.selection?.building).toBe(b.id);
+    expect(t.activeModelTool).toBe('draw');
+  });
+
   it('copies, pastes, rotates and deletes with the keyboard', () => {
     const { t, doc } = tool();
     t.chooseBlueprint('shop');
