@@ -139,11 +139,13 @@ pointer / key
                    └─ buildScenery()            lamps, vegetation
 ```
 
-**Two revision counters gate everything**: `doc.revision` (the network changed)
-and `doc.terrainRevision` (the land changed). A road is laid *on* the terrain, so
-a terrain edit invalidates the roads as well — that is why `rebuildWorld` watches
-both. If you add a new derived structure, gate it on the same two numbers and
-build it inside `rebuildWorld`, never inside `draw`.
+**Three road and land revisions gate rebuilds**: `doc.revision` changes road
+geometry, `doc.trafficRevision` changes the road plan read by vehicle and
+pedestrian topology, and `doc.terrainRevision` changes the land. A height edit
+always moves `doc.revision`; it moves `trafficRevision` only if it changes the
+tunnel junction mode. A road is laid *on* the terrain, so a terrain edit also
+invalidates road meshes. Build derived render geometry inside `rebuildWorld`,
+never inside `draw`.
 
 ---
 
@@ -290,9 +292,10 @@ dev servers and browsers as soon as a check is done.
    They agree by construction only; a new body style must keep both.
 4. **Population ceilings**: `FLEET_CEILING` and `PED_CEILING` (`sim/params.ts`)
    also size the renderer's instance buffers (`render/agents.ts`).
-5. **Revisions**: `doc.revision` (roads) gates `Network`, the lanelets, the
-   simulation topology, the road meshes and the minimap; `terrainRevision`
-   the terrain and the roads on it; `buildings.revision` the buildings;
+5. **Revisions**: `doc.revision` (all road geometry) gates `Network`, road meshes
+   and the minimap; `doc.trafficRevision` gates lanelets, crossings and the
+   simulation topology; `terrainRevision` gates terrain and the roads on it;
+   `buildings.revision` gates buildings;
    `utilityRevision` the poles, wires and the pedestrians' obstacles. An edit
    that moves the wrong one either rebuilds everything or nothing.
 6. **`commitDraft` adopts its work network**, rebuilt after the draft's

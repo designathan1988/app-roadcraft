@@ -60,6 +60,14 @@ failing number rather than a slow frame.
 
 ### Editing: only what an edit reaches is rebuilt
 
+An authored height adjustment still rebuilds the road meshes, but it no longer
+rebuilds lanelets, pedestrian corridors or conflict points when the road plan
+is unchanged. `doc.trafficRevision` is separate from `doc.revision`; crossing
+the tunnel junction threshold invalidates both. On a 182-segment benchmark,
+the two simulation topology halves took about 325 ms and 373 ms after a road
+edit. A height-only edit now skips those halves, while the browser test keeps
+the same lanelet objects and redraws the elevated road.
+
 A road edit used to merge, cut and triangulate every band of the whole network.
 The surfaces are now built a tile at a time (`TILE`, 192 units, in
 `render/roadSurfaces.ts`): each tile merges, bands and clips only the rings

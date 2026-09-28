@@ -449,7 +449,7 @@ function mutateBuilt(fn: () => boolean): boolean {
   buildings.afterRoadEdit();
   // The simulation catches up in the frame AFTER the one that draws the edit
   // (see `topologyAfterDraw`), so the player sees the road first.
-  topologyAfterDraw = true;
+  topologyAfterDraw = topologyAfterDraw || sim.topologyRevision !== net.trafficRevision;
   persistence.saveSessionSoon(doc, sessionSettings);
   updateHistoryButtons();
   refreshInspector();
@@ -1906,7 +1906,7 @@ function frame(now: number): void {
     if (!moving || now - lastMovePreviewRebuild >= movePreviewInterval()) {
       net.rebuild();
       if (moving) lastMovePreviewRebuild = now;
-      else rebuildSimulationTopology();
+      else if (sim.topologyRevision !== net.trafficRevision) rebuildSimulationTopology();
     }
   }
   buildings.beforeDraw(tool === 'building');

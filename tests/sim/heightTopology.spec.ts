@@ -10,7 +10,7 @@ describe('height-only edits', () => {
     const doc = new RoadDoc();
     const a = doc.addNode({ x: 0, y: 0 });
     const b = doc.addNode({ x: 180, y: 0 });
-    const segment = doc.addSegment(a.id, b.id, 1);
+    const segment = doc.addSegment(a.id, b.id, 1)!;
     const net = new Network(doc);
     net.rebuild();
     const sim = new SimWorld(doc, net, 19);
