@@ -14,7 +14,7 @@ import {
 import type { UtilityPole, UtilitySpan } from './utilities';
 // Runtime imports, and safe: `geometry` and `legAngles` take `RoadDoc` as a
 // TYPE only, so nothing here is part of a runtime cycle.
-import { type RoadStructure, migrateStructure } from './structures';
+import { TUNNEL_HEADROOM, type RoadStructure, migrateStructure } from './structures';
 import { MAX_TERRAIN_STAMPS, type TerrainStamp } from './terrain';
 import { clampToMap } from './bounds';
 import { casingHalf, roadProfile } from './roadTypes';
@@ -121,6 +121,8 @@ export class RoadDoc {
 
   /** Bumped on every structural change; consumers use it to invalidate caches. */
   revision = 0;
+  /** Horizontal road and junction topology read by vehicles and pedestrians. */
+  trafficRevision = 0;
   terrainRevision = 0;
   /**
    * Bumped by pole and wire edits, which do NOT move `revision`: a pole is
@@ -276,6 +278,7 @@ export class RoadDoc {
     this.nodes.delete(id);
     this.dirtyNodes.add(id);
     this.revision++;
+    this.trafficRevision++;
   }
 
   /**
@@ -402,8 +405,10 @@ export class RoadDoc {
   setNodeHeightOffset(id: NodeId, heightOffset: number): void {
     const node = this.nodes.get(id);
     if (!node || !Number.isFinite(heightOffset) || node.heightOffset === heightOffset) return;
+    const junctionModeChanged = (node.heightOffset < -TUNNEL_HEADROOM) !==
+      (heightOffset < -TUNNEL_HEADROOM);
     node.heightOffset = heightOffset;
-    this.markNode(id);
+    this.markNode(id, junctionModeChanged);
   }
 
   addTerrainStamp(value: Omit<TerrainStamp, 'id'>): TerrainStamp {
@@ -448,7 +453,7 @@ export class RoadDoc {
         removed++;
       }
     }
-    if (removed) this.revision++;
+    if (removed) { this.revision++; this.trafficRevision++; }
     return removed;
   }
 
@@ -478,12 +483,13 @@ export class RoadDoc {
    * `markNode`/`markSegment` call on the grounds that "nothing reads it" — the
    * revision bump is what keeps every cache in the engine honest.
    */
-  markNode(id: NodeId): void {
+  markNode(id: NodeId, traffic = true): void {
     // A node may already be dirty when it is edited again before a rebuild.
     // The dirty set is an invalidation *set*, while revision is a mutation
     // clock: every real edit must advance it even when the same id is present.
     this.dirtyNodes.add(id);
     this.revision++;
+    if (traffic) this.trafficRevision++;
     const n = this.nodes.get(id);
     if (!n) return;
     for (const sid of n.incident) {
@@ -501,6 +507,7 @@ export class RoadDoc {
   markSegment(id: SegmentId): void {
     this.dirtySegments.add(id);
     this.revision++;
+    this.trafficRevision++;
     const s = this.segments.get(id);
     if (!s) return;
     this.dirtyNodes.add(s.a);
@@ -527,6 +534,7 @@ export class RoadDoc {
     copy.spanIds = new IdAllocator(this.spanIds.peek);
     copy.nextTerrainId = this.nextTerrainId;
     copy.revision = this.revision;
+    copy.trafficRevision = this.trafficRevision;
     copy.terrainRevision = this.terrainRevision;
     copy.utilityRevision = this.utilityRevision;
     copy.clearDirty();
@@ -593,6 +601,7 @@ export class RoadDoc {
     for (const id of this.nodes.keys()) this.dirtyNodes.add(id);
     for (const id of this.segments.keys()) this.dirtySegments.add(id);
     this.revision = nextRevision;
+    this.trafficRevision++;
   }
 
   // ------------------------------------------------------------ serialization
@@ -714,6 +723,7 @@ export class RoadDoc {
     for (const id of doc.nodes.keys()) doc.dirtyNodes.add(id);
     for (const id of doc.segments.keys()) doc.dirtySegments.add(id);
     doc.revision = 1;
+    doc.trafficRevision = 1;
     doc.terrainRevision = data.terrain?.length ? 1 : 0;
     return doc;
   }

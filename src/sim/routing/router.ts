@@ -1,14 +1,18 @@
 import type { LaneletId } from '@world/lanelets';
 import type { SimWorld } from '../world';
 import type { Vehicle } from '../vehicles/state';
+import { routeToDestination } from './destination';
 
-/** How far ahead a route is planned, in lanelet hops. */
+/** Horizon for a vehicle with no reachable boundary destination. */
 const HORIZON = 24;
 /** Bounded network lookahead used when comparing alternate turns. */
 const LOOKAHEAD = 5;
 
 /**
- * Route planning over the lanelet graph.
+ * Route planning over the lanelet graph. Spawned vehicles normally follow a
+ * reachable boundary destination (`destination.ts`); the local planner below
+ * is the fallback for a disconnected map or a destination invalidated by an
+ * edit.
  *
  * Routes are stored as a LANELET sequence that already contains the connectors,
  * so lookahead across a junction needs no special case anywhere else in the
@@ -21,6 +25,19 @@ const LOOKAHEAD = 5;
  * key left a vehicle pinned on a green with no recovery path (defect 2.1).
  */
 export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
+  if (v.destination) {
+    const trip = routeToDestination(w, v.lanelet, v.destination);
+    const first = trip && trip.length >= 3 ? w.connector(trip[1]!) : undefined;
+    if (trip && first) {
+      v.route = trip;
+      v.movementIntent = first.id;
+      v.desiredLane = null;
+      return first.id;
+    }
+    // A live edit may disconnect the original destination. Keep the vehicle
+    // moving on legal roads until a reachable trip can be assigned again.
+    if (!trip) v.destination = null;
+  }
   const own = w.graph.exitsOf(v.lanelet);
 
   // Lane discipline makes each turn legal from exactly one lane, so the choice
@@ -68,6 +85,13 @@ export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
 
 /** Grows a route forward until it reaches the horizon or a dead end. */
 export function extend(w: SimWorld, v: Vehicle): void {
+  if (v.destination) {
+    const tail = v.route[v.route.length - 1];
+    if (tail === v.destination) return;
+    const suffix = tail ? routeToDestination(w, tail, v.destination) : null;
+    if (suffix) { v.route.push(...suffix.slice(1)); return; }
+    v.destination = null;
+  }
   let guard = 0;
   while (v.route.length < HORIZON && guard++ < HORIZON) {
     const tail = v.route[v.route.length - 1];
@@ -122,11 +146,8 @@ function chooseExit(
 }
 
 /**
- * A small bounded search gives every decision a view beyond its immediate
- * downstream lane.  It is deliberately not a global pathfinder: vehicles have
- * no fixed destination, and doing a full graph search for every spawn would
- * make large sandboxes slower precisely when they are busy.  Five hops is
- * enough to see a blocked block or a faster parallel avenue.
+ * A small bounded search keeps the fallback moving without inventing a goal
+ * it cannot reach. Normal trips use the global shortest route instead.
  */
 function routeCost(
   w: SimWorld,

@@ -75,8 +75,8 @@ const FURNITURE_REACH = m(2);
 
 function index(w: SimWorld): Index {
   const cached = INDEX.get(w);
-  if (cached && cached.net === w.net.revision && cached.doc === w.doc.revision) return cached;
-  const built: Index = { net: w.net.revision, doc: w.doc.revision, benches: new Map(), road: new Map(),
+  if (cached && cached.net === w.net.trafficRevision && cached.doc === w.doc.trafficRevision) return cached;
+  const built: Index = { net: w.net.trafficRevision, doc: w.doc.trafficRevision, benches: new Map(), road: new Map(),
     taken: new Map(), furniture: new Map() };
   const edgesOf = new Map<number, SidewalkEdge[]>();
   for (const edge of w.sidewalks.edges.values()) {

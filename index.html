@@ -95,7 +95,7 @@
       <button class="tool" data-tool="inspect" data-key="I" aria-keyshortcuts="I" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></span><span data-i18n="tool.inspect">Inspect</span></button>
     </section>
 
-    <section class="simulation-controls glass" data-panel="sim" data-collapsed-narrow data-i18n-label="sim.label" aria-label="Simulation controls">
+    <section class="simulation-controls glass" data-panel="sim" data-collapsed-default data-collapsed-narrow data-i18n-label="sim.label" aria-label="Simulation controls">
       <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="simBody"><span data-i18n="sim.title">SIMULATION</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>
       <div class="panel-body" id="simBody">
         <div class="speed-controls" role="group" data-i18n-label="sim.speed" aria-label="Simulation speed">
@@ -109,19 +109,24 @@
     </section>
 
     <section class="road-palette glass" data-panel="palette" data-i18n-label="palette.label" aria-label="Road classes">
-      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="paletteBody"><span data-i18n="palette.title">ROAD CLASS</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><kbd>1–6</kbd></div>
+      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="paletteBody"><span data-i18n="palette.title">BUILD ROAD</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><kbd>1–6</kbd></div>
       <div class="panel-body" id="paletteBody">
+      <div class="road-step-label" data-i18n="palette.step.class">1 · Choose a road</div>
+      <div id="roadTypes" class="road-types" role="group" data-i18n-label="palette.classes" aria-label="Road classes"></div>
+      <div class="road-step-label" data-i18n="palette.step.alignment">2 · Choose a path</div>
       <div class="alignment-modes" role="group" data-i18n-label="palette.alignment" aria-label="Road alignment">
         <button type="button" class="alignment-mode active" data-alignment="straight" aria-pressed="true" data-i18n="palette.alignment.straight">Straight</button>
         <button type="button" class="alignment-mode" data-alignment="curve" aria-pressed="false" data-i18n="palette.alignment.curve">Curve</button>
         <button type="button" class="alignment-mode" data-alignment="free" aria-pressed="false" data-i18n="palette.alignment.free">Free</button>
       </div>
+      <div class="road-step-label" data-i18n="palette.step.height">3 · Set the next point's height</div>
       <div class="road-height" role="group" data-i18n-label="palette.height" aria-label="Road height">
         <button type="button" class="road-height-step" data-height-step="-1" aria-keyshortcuts="PageDown" data-i18n-title="palette.height.lower" title="Lower road by one metre">−</button>
         <span id="roadHeightValue" aria-live="polite">0 m</span>
         <button type="button" class="road-height-step" data-height-step="1" aria-keyshortcuts="PageUp" data-i18n-title="palette.height.raise" title="Raise road by one metre">+</button>
       </div>
-      <div id="roadTypes" class="road-types" role="group" data-i18n-label="palette.classes" aria-label="Road classes"></div>
+      <p id="roadHeightContext" class="road-height-context" data-i18n="palette.height.ground">At terrain level</p>
+      <p class="road-palette-help" data-i18n="palette.buildHelp">Click the start, aim, adjust height, then click to build. Each road ends after placement.</p>
       </div>
     </section>
 
@@ -140,15 +145,15 @@
       </div>
     </section>
 
-      <div id="creatorRail" class="creator-rail hidden" role="group" data-i18n-label="creator.tools" aria-label="Building tools">
-        <button type="button" data-creator-tool="sketch" data-i18n="creator.tool.sketch">Sketch</button>
-        <button type="button" data-creator-tool="shape" data-i18n="creator.tool.shape">Shape</button>
-        <button type="button" data-creator-tool="facade" data-i18n="creator.tool.facade">Facade</button>
-        <button type="button" data-creator-tool="roof" data-i18n="creator.tool.roof">Roof</button>
-      </div>
     <section id="buildingPalette" class="building-creator glass hidden" data-panel="building" data-i18n-label="building.label" aria-label="Buildings" aria-hidden="true">
       <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="buildingBody"><span data-i18n="creator.title">BUILD</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><kbd>H</kbd></div>
       <div class="panel-body" id="buildingBody">
+        <div id="creatorRail" class="creator-rail hidden" role="group" data-i18n-label="creator.tools" aria-label="Building steps">
+          <button type="button" data-creator-tool="sketch" data-i18n="creator.tool.sketch">1 Plan</button>
+          <button type="button" data-creator-tool="shape" data-i18n="creator.tool.shape">2 Volume</button>
+          <button type="button" data-creator-tool="facade" data-i18n="creator.tool.facade">3 Facade</button>
+          <button type="button" data-creator-tool="roof" data-i18n="creator.tool.roof">4 Roof</button>
+        </div>
         <div class="creator-heading"><h2 id="creatorTitle"></h2><p id="creatorDescription"></p><button type="button" id="creatorFrame" class="creator-frame" data-i18n="creator.frame">Frame entire building</button></div>
         <div id="creatorStart" class="creator-section">
           <button type="button" id="creatorDraw" class="creator-primary" data-i18n="creator.draw">Draw freely on terrain</button>
@@ -237,7 +242,7 @@
     <div id="hint" class="hint glass" data-i18n="hint.road">Drag to build · Wheel: zoom · Right button: camera</div>
     <div id="mobileHint" class="mobile-hint glass" data-i18n="hint.mobile.road">1 finger: build · 2 fingers: camera</div>
 
-    <section id="minimapPanel" class="minimap-panel glass" data-panel="minimap" data-collapsed-narrow data-i18n-label="minimap.label" aria-label="Minimap">
+    <section id="minimapPanel" class="minimap-panel glass" data-panel="minimap" data-collapsed-default data-collapsed-narrow data-i18n-label="minimap.label" aria-label="Minimap">
       <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="minimapBody"><span data-i18n="minimap.title">MAP</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><span id="coordReadout" class="coord-readout">X 0 · Y 0</span></div>
       <div class="panel-body" id="minimapBody">
         <div class="minimap-wrap"><canvas id="minimap" tabindex="0" role="button" data-i18n-label="minimap.move" data-i18n-title="minimap.note" aria-label="Move the camera from the minimap" title="Tap, drag or use the arrow keys to move the camera"></canvas></div>

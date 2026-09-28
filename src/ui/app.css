@@ -264,6 +264,11 @@ body { user-select: none; -webkit-user-select: none; }
 .toggle-row.active { color: var(--text); }
 .toggle-row.active .switch { background: rgba(101, 229, 195, 0.45); }
 .toggle-row.active .switch::after { transform: translateX(11px); background: var(--accent); }
+.road-step-label { margin: 12px 0 7px; color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .025em; }
+.road-step-label:first-child { margin-top: 0; }
+.road-types { margin-bottom: 5px; }
+.road-height-context { margin: -3px 0 11px; color: var(--text); font-size: 10px; line-height: 1.4; }
+.road-palette-help { border-top: 1px solid var(--ui-border); margin: 11px 0 0; padding-top: 11px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .alignment-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px; }
 .alignment-mode { padding: 7px 4px; border-radius: 8px; border: 1px solid var(--ui-border); background: rgba(5, 16, 18, 0.34); color: var(--muted); font: inherit; font-size: 10px; cursor: pointer; }
 .alignment-mode.active { color: var(--accent); border-color: var(--accent); background: rgba(101, 229, 195, 0.1); }

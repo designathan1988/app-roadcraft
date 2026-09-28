@@ -116,6 +116,8 @@ export class SimWorld {
   readonly entryDemand = new Map<LaneletId, { next: number; waiting: number[] }>();
   /** Arrivals turned away because an entry's outside queue was full. */
   entryDemandLost = 0;
+  /** Vehicles that reached the boundary exit chosen for their trip. */
+  completedTrips = 0;
   /** User-facing density multipliers; topology and physics remain unchanged. */
   trafficIntensity = 1;
   pedestrianIntensity = 1;
@@ -228,7 +230,7 @@ export class SimWorld {
     for (const segment of [...this.segmentVolume.keys()]) {
       if (!this.doc.segment(segment as SegmentId)) this.segmentVolume.delete(segment);
     }
-    this.vehicleTopologyRevision = this.net.revision;
+    this.vehicleTopologyRevision = this.net.trafficRevision;
   }
 
   /**
@@ -237,11 +239,11 @@ export class SimWorld {
    * topology for `topologyRevision`.
    */
   rebuildWalkTopology(): void {
-    if (this.vehicleTopologyRevision !== this.net.revision) this.rebuildVehicleTopology();
+    if (this.vehicleTopologyRevision !== this.net.trafficRevision) this.rebuildVehicleTopology();
     this.sidewalks.build(this.doc, this.net, this.graph);
     this.crossingSpans.build(this);
     this.syncControllers();
-    this.topologyRevision = this.net.revision;
+    this.topologyRevision = this.net.trafficRevision;
   }
 
   /** Crossing ids at a node, one per incident segment. */

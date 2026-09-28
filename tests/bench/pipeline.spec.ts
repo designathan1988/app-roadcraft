@@ -7,7 +7,7 @@ import { buildRoadElevation } from '@world/elevation';
 import { sampleTerrainHeight } from '@world/terrain';
 import { BLUEPRINTS } from '@world/buildings/blueprints';
 import { SimWorld } from '@sim/world';
-import { rebindAgents, step } from '@sim/pipeline';
+import { rebindAgents, rebindPeds, rebindVehicles, step } from '@sim/pipeline';
 import { DT } from '@sim/params';
 import { commitDraft } from '@editor/commit';
 import { instantiate } from '@editor/buildings';
@@ -125,12 +125,17 @@ describe('benchmark', () => {
       edits[kind] = Object.fromEntries(Object.entries(parts).map(([k, xs]) => [k, +median(xs).toFixed(2)]));
     };
     {
-      const parts = { commitDraft: [] as number[], networkRebuild: [] as number[], simTopology: [] as number[] };
+      const parts = { commitDraft: [] as number[], networkRebuild: [] as number[],
+        vehicleTopology: [] as number[], walkTopology: [] as number[], simTopology: [] as number[] };
       for (let i = 0; i < EDIT_REPEATS; i++) {
         const y = -520 + 75 + i * 150;
         parts.commitDraft.push(time(() => commitDraft(doc, net, { kind: 'free', at: { x: -700, y } }, { kind: 'free', at: { x: 700, y } }, 1)));
         parts.networkRebuild.push(time(() => net.rebuild()));
-        parts.simTopology.push(time(() => { sim.rebuildTopology(); rebindAgents(sim); }));
+        const vehicle = time(() => { sim.rebuildVehicleTopology(); rebindVehicles(sim); });
+        const walk = time(() => { sim.rebuildWalkTopology(); rebindPeds(sim); });
+        parts.vehicleTopology.push(vehicle);
+        parts.walkTopology.push(walk);
+        parts.simTopology.push(vehicle + walk);
       }
       record('road', parts);
     }

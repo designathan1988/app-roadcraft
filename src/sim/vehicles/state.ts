@@ -63,6 +63,8 @@ export interface Vehicle {
 
   /** Planned lanelet sequence ahead, current lanelet first. */
   route: LaneletId[];
+  /** Stable trip endpoint; congestion may change the route, not the goal. */
+  destination: LaneletId | null;
   /** Lanelets still occupied by the body after its front has crossed a boundary. */
   rearPath: LaneletId[];
 
@@ -249,6 +251,7 @@ export function createVehicle(
     lateralSlope: 0,
     v0,
     route: [lanelet],
+    destination: null,
     rearPath: [],
     claims: [],
     admittedConnector: null,

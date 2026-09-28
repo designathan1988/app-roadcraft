@@ -1329,10 +1329,17 @@ document.querySelectorAll<HTMLButtonElement>('.alignment-mode').forEach((button)
 
 function updateRoadHeightValue(): void {
   const value = document.getElementById('roadHeightValue');
+  const context = document.getElementById('roadHeightContext');
+  const stateKey = roadHeightOffset > 1e-6 ? 'palette.height.above'
+    : roadHeightOffset < -1e-6 ? 'palette.height.below' : 'palette.height.ground';
   if (value) {
     const metres = roadHeightOffset / UNITS_PER_METER;
     value.textContent = `${Math.abs(metres - Math.round(metres)) < 1e-6
       ? Math.round(metres) : metres.toFixed(1)} m`;
+  }
+  if (context) {
+    context.dataset['i18n'] = stateKey;
+    context.textContent = t(stateKey);
   }
 }
 
@@ -1874,11 +1881,11 @@ function frame(now: number): void {
   // gesture finishes so agents never rebuild against every intermediate shape.
   // The frame that first draws an edit is held the same way.
   let holdSim = moving || topologyAfterDraw;
-  if (!holdSim && sim.topologyRevision !== net.revision) {
+  if (!holdSim && sim.topologyRevision !== net.trafficRevision) {
     // In two frames, vehicles then footways, each drawn in between: the two
     // together were one stall of up to 240 ms after every edit. The world is
     // held until both are done.
-    if (sim.vehicleTopologyRevision !== net.revision) {
+    if (sim.vehicleTopologyRevision !== net.trafficRevision) {
       sim.rebuildVehicleTopology();
       rebindVehicles(sim);
       holdSim = true;

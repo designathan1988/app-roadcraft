@@ -66,7 +66,7 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
     : (): void => {};
 
   // 0. topology: the only place derived structure may change
-  if (w.topologyRevision !== w.net.revision) {
+  if (w.topologyRevision !== w.net.trafficRevision) {
     w.rebuildTopology();
     rebindAgents(w);
   }

@@ -86,6 +86,8 @@ export class Network {
 
   /** Matches `RoadDoc.revision` at the time of the last rebuild. */
   revision = -1;
+  /** Road plan revision; vertical-only edits leave it unchanged. */
+  trafficRevision = -1;
 
   constructor(readonly doc: RoadDoc) {}
 
@@ -187,6 +189,7 @@ export class Network {
     }
 
     this.revision = this.doc.revision;
+    this.trafficRevision = this.doc.trafficRevision;
     // A full rebuild has consumed every authoring invalidation.  Leaving ids
     // in these sets made subsequent edits to the same node look unchanged.
     this.doc.clearDirty();
@@ -222,6 +225,7 @@ export class Network {
     for (const [node, gap] of other.impossible) this.impossible.set(node, gap);
     this.polylines.adopt(other.polylines);
     this.revision = this.doc.revision;
+    this.trafficRevision = this.doc.trafficRevision;
     this.doc.clearDirty();
   }
 

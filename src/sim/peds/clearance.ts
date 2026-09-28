@@ -118,11 +118,11 @@ export class PedestrianClearance {
   private builtUtilityRevision = -1;
 
   begin(w: SimWorld): void {
-    if (this.builtRevision !== w.net.revision || this.builtDocumentRevision !== w.doc.revision ||
+    if (this.builtRevision !== w.net.trafficRevision || this.builtDocumentRevision !== w.doc.trafficRevision ||
       this.builtUtilityRevision !== w.doc.utilityRevision) {
       this.buildScenery(w);
-      this.builtRevision = w.net.revision;
-      this.builtDocumentRevision = w.doc.revision;
+      this.builtRevision = w.net.trafficRevision;
+      this.builtDocumentRevision = w.doc.trafficRevision;
       this.builtUtilityRevision = w.doc.utilityRevision;
     }
     this.grid.clear();

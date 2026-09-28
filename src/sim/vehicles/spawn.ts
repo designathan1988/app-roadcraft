@@ -10,6 +10,7 @@ import { ARCHETYPES, type Archetype, archetypeWeights } from './archetypes';
 import { makeDriver } from './driver';
 import { createVehicle, snapshot } from './state';
 import { planFrom } from '../routing/router';
+import { chooseVehicleDestination } from '../routing/destination';
 import { assignOccupancy } from './kerbStops';
 
 /**
@@ -168,6 +169,7 @@ function spawnAt(w: SimWorld, id: string): boolean {
 
   w.vehicles.set(vehicle.id, vehicle);
   w.enterLanelet(vehicle, id);
+  vehicle.destination = chooseVehicleDestination(w, id);
   planFrom(w, vehicle);
   return true;
 }
@@ -187,6 +189,7 @@ export function stepDespawn(w: SimWorld): void {
     const atEnd = lane.length - v.s < v.driver.s0 + 2;
     const nowhereToGo = w.graph.exitsOf(v.lanelet).length === 0;
     if (lane.kind === 'link' && atEnd && nowhereToGo) {
+      if (v.destination === lane.id) w.completedTrips++;
       w.removeVehicle(v);
     }
   }

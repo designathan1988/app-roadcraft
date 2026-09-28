@@ -53,7 +53,8 @@ function initPanels(onLayout: () => void): void {
       panel.classList.toggle('collapsed', collapsed);
       toggle.setAttribute('aria-expanded', String(!collapsed));
     };
-    apply(state[id] ?? (narrow && panel.hasAttribute('data-collapsed-narrow')));
+    apply(state[id] ?? (panel.hasAttribute('data-collapsed-default') ||
+      (narrow && panel.hasAttribute('data-collapsed-narrow'))));
     toggle.addEventListener('click', () => {
       const collapsed = !panel.classList.contains('collapsed');
       apply(collapsed);

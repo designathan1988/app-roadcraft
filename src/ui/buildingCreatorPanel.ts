@@ -169,6 +169,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   let blueprintsKey = '';
   let detailsKey = '';
   let profileKey = '';
+  let lastStage = '';
 
   const makeButton = (key: string, onClick: () => void, value?: string): HTMLButtonElement => {
     const button = el('button');
@@ -309,9 +310,13 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
 
   const update = (next: CreatorState): void => {
     root.dataset['creatorTool'] = next.tool;
-    rail.querySelectorAll<HTMLButtonElement>('[data-creator-tool]').forEach((button) =>
-      button.setAttribute('aria-pressed', String(button.dataset['creatorTool'] === next.tool)));
+    rail.querySelectorAll<HTMLButtonElement>('[data-creator-tool]').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset['creatorTool'] === next.tool));
+      button.disabled = (button.dataset['creatorTool'] !== 'sketch' && !next.selected) ||
+        (next.drawing !== null && button.dataset['creatorTool'] !== 'sketch');
+    });
     const active = next.drawing !== null ? 'drawing' : next.selected ? next.tool : 'start';
+    if (active !== lastStage) { root.scrollTop = 0; lastStage = active; }
     title.textContent = t(`creator.guide.${active}.title`);
     description.textContent = t(`creator.guide.${active}.body`);
     frameButton.hidden = !next.selected || next.drawing !== null;
