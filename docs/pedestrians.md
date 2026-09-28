@@ -72,3 +72,6 @@ Ground-floor doors become route goals when a short, clear path reaches a ground-
 `src/sim/peds/clearance.ts` checks personal space against pedestrians,
 street furniture, user poles and vehicles in world coordinates. A blocked
 crossing exit retains its crossing occupancy until the footway clears.
+# Adjacent crossing clearance
+
+An incoming heavy vehicle can physically reach the zebra on an acute neighbouring leg while stopped at its own red light. `CrossingSpans` measures those approach-to-crossing overlaps once per topology build and caches the earliest safe front stop. Signal constraints use that stop while red, before a pedestrian has reached the far kerb. The `pedestrian-crossing-seed3` regression reproduces the previously blocked walker and now passes. The same-session 186-segment benchmark found no material change in per-tick time; the edit-time measurement remains noisy and regional topology rebuilding is still pending.

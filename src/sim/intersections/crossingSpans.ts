@@ -39,6 +39,8 @@ const PERSON_CLEAR = m(0.6);
  */
 export class CrossingSpans {
   private readonly spans = new Map<string, CrossingSpan | null>();
+  /** Earliest safe front stop on an incoming lane near another leg's zebra. */
+  private readonly approachStops = new Map<string, number>();
   /**
    * Every span of the previous build, with the two paths it was measured on.
    *
@@ -52,6 +54,7 @@ export class CrossingSpans {
 
   build(w: SimWorld): void {
     this.spans.clear();
+    this.approachStops.clear();
     const previous = this.measured;
     this.measured = new Map();
     for (const connector of w.graph.connectors.values()) {
@@ -71,6 +74,36 @@ export class CrossingSpans {
         this.spans.set(id, span);
       }
     }
+    // A long body stopped at a red signal can project across the zebra of an
+    // adjacent acute leg even though its own stop line is correctly placed.
+    // Measure those physical overlaps once per topology, before any pedestrian
+    // enters, so the red-light obstacle holds the front before that zebra.
+    for (const junction of w.graph.junctions.values()) {
+      const incident = w.doc.node(junction.node)?.incident ?? [];
+      for (const laneId of junction.inbound) {
+        const lane = w.lanelet(laneId);
+        if (!lane || lane.kind !== 'link') continue;
+        let stop = lane.length;
+        for (const segment of incident) {
+          if (segment === lane.segment) continue;
+          const crossing = `${junction.node}:${segment}`;
+          const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(crossing) ?? '');
+          if (!edge) continue;
+          const id = `approach:${key(laneId, crossing)}`;
+          const known = previous.get(id);
+          const span = known && known.length === edge.length && sameFloats(known.path, lane.centre.xy)
+            && sameFloats(known.edge, edge.path.xy)
+            ? known.span : measure(lane.centre, edge.path, edge.length);
+          this.measured.set(id, { path: lane.centre.xy, edge: edge.path.xy, length: edge.length, span });
+          if (span) stop = Math.min(stop, span.along);
+        }
+        if (stop < lane.length) this.approachStops.set(laneId, stop);
+      }
+    }
+  }
+
+  approachStop(lane: string): number | undefined {
+    return this.approachStops.get(lane);
   }
 
   /** Undefined: never measured (treat conservatively). Null: never crossed. */

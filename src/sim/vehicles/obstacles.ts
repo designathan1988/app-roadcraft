@@ -153,6 +153,9 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
 
       if (conn && controller && junction?.signalised) {
         const state = signalStateFor(controller, conn.group);
+        const adjacentStop = w.crossingSpans.approachStop(lane.id);
+        const signalGap = adjacentStop === undefined ? dStop :
+          Math.min(dStop, Math.max(0, adjacentStop - v.s));
         // THE DRIVER, not the archetype.
         //
         // `permission.ts` exists so that braking and admission reach the same
@@ -169,10 +172,10 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
           v.rorCredit,
           v.driver,
           v.v,
-          dStop,
+          signalGap,
         );
         if (mustStop) {
-          constraints.obstacles.push({ gap: dStop, speed: 0, kind: 'signal' });
+          constraints.obstacles.push({ gap: signalGap, speed: 0, kind: 'signal' });
         }
       }
     }
