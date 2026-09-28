@@ -2,6 +2,7 @@ import type { RoadDoc } from '@world/doc';
 import type { NodeId, SegmentId } from '@world/ids';
 import type { Network } from '@world/network';
 import { casingHalf, roadProfile } from '@world/roadTypes';
+import { roadStructure } from '@world/structures';
 import { splitSegment } from './commit';
 
 interface Candidate {
@@ -51,7 +52,14 @@ function nearestCandidate(doc: RoadDoc, net: Network, rejected: ReadonlySet<stri
       if (targetId === sourceId || target.a === node.id || target.b === node.id) continue;
       if (target.structure !== source.structure) continue;
       if (rejected.has(`${node.id}:${targetId}`)) continue;
-      const hit = net.polylines.get(doc, targetId).closestPoint({ x: node.x, y: node.y });
+      const line = net.polylines.get(doc, targetId);
+      const hit = line.closestPoint({ x: node.x, y: node.y });
+      const t = hit.s / Math.max(1e-6, line.length);
+      const targetOffset = (doc.node(target.a)?.heightOffset ?? 0) * (1 - t) +
+        (doc.node(target.b)?.heightOffset ?? 0) * t +
+        roadStructure(target.structure).clearance;
+      const sourceOffset = node.heightOffset + roadStructure(source.structure).clearance;
+      if (Math.abs(sourceOffset - targetOffset) > 0.75) continue;
       const reach = casingHalf(roadProfile(target.type, target.lanes, target.direction));
       if (hit.distance > reach || (best && hit.distance >= best.distance)) continue;
       best = { node: node.id, segment: targetId, s: hit.s, at: hit.point, distance: hit.distance };

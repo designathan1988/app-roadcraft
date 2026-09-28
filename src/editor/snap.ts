@@ -6,6 +6,7 @@ import type { Network } from '@world/network';
 import { orientedPolyline } from '@world/geometry';
 import { casingHalf, roadProfile } from '@world/roadTypes';
 import { segSeg } from '@core/intersect';
+import { roadStructure } from '@world/structures';
 
 export type AnchorKind = 'node' | 'segment' | 'free';
 
@@ -46,6 +47,7 @@ export function findAnchor(
   p: Vec2,
   zoom: number,
   exclude?: ReadonlySet<NodeId>,
+  targetHeightOffset?: number,
 ): Anchor {
   const nodeRadius = 30 / zoom;
   let best: Anchor = { kind: 'free', at: p };
@@ -53,6 +55,8 @@ export function findAnchor(
 
   for (const node of doc.nodes.values()) {
     if (exclude?.has(node.id)) continue;
+    if (targetHeightOffset !== undefined &&
+      Math.abs(node.heightOffset - targetHeightOffset) > 0.75) continue;
     const d = dist(p, { x: node.x, y: node.y });
     if (d > nodeRadius) continue;
     if (d < bestScore) {
@@ -95,6 +99,13 @@ export function findAnchor(
     }
     const hit = pl.closestPoint(p);
     if (hit.distance > segRadius) continue;
+    if (targetHeightOffset !== undefined) {
+      const fraction = hit.s / Math.max(1e-6, pl.length);
+      const a = doc.node(seg.a)?.heightOffset ?? 0;
+      const b = doc.node(seg.b)?.heightOffset ?? 0;
+      const height = a + (b - a) * fraction + roadStructure(seg.structure).clearance;
+      if (Math.abs(height - targetHeightOffset) > 0.75) continue;
+    }
     if (hit.distance < bestScore) {
       bestScore = hit.distance;
       best = { kind: 'segment', at: hit.point, segment: id, s: hit.s };
@@ -103,6 +114,21 @@ export function findAnchor(
   }
 
   return best;
+}
+
+/** Free road drawing follows the pointer exactly, snapping only to compatible networks. */
+export function snapRoadEndpoint(
+  doc: RoadDoc, net: Network, start: Anchor, raw: Vec2, zoom: number, heightOffset: number,
+): SnapResult {
+  const anchor = findAnchor(doc, net, raw, zoom, undefined, heightOffset);
+  const at = anchor.at;
+  const v = sub(at, start.at);
+  return {
+    at,
+    guide: anchor.kind === 'free' ? null : 'network',
+    angleDeg: (angleOf(v) * 180) / Math.PI,
+    length: dist(start.at, at),
+  };
 }
 
 /**

@@ -12,13 +12,14 @@ import {
 
 import { angleOf } from '@core/vec2';
 import type { Frame, Polyline } from '@core/polyline';
-import type { Network } from '@world/network';
+import type { Network, SegmentRibbon } from '@world/network';
 import type { SegmentId } from '@world/ids';
 import type { RoadElevation } from '@world/elevation';
 import { Level, casingHalf, roadProfile, sidewalkHalf } from '@world/roadTypes';
 import {
   TUNNELS_DRAWN,
   TUNNEL_ARCH,
+  TUNNEL_BORE,
   TUNNEL_HEADROOM,
   TUNNEL_PORTAL_COVER,
   isRaised,
@@ -368,11 +369,22 @@ export function buildStructureDetails(
   const group = new Group();
   group.name = 'road-structure-details';
 
+  const samples = (ribbon: SegmentRibbon,
+    predicate: (cover: number) => boolean): boolean => {
+    for (let s = 0; s <= ribbon.full.length; s += Math.max(4, ribbon.full.length / 32)) {
+      const p = ribbon.full.sampleAt(s).p;
+      const cover = elevation.onSegment(ribbon.id, p.x, p.y) - terrainAt(p.x, p.y);
+      if (predicate(cover)) return true;
+    }
+    return false;
+  };
   const raised = [...net.ribbons.values()].filter((ribbon) =>
-    isRaised(net.doc.segment(ribbon.id)?.structure ?? 'ground'),
+    isRaised(net.doc.segment(ribbon.id)?.structure ?? 'ground') || samples(ribbon, (lift) => lift > 5),
   );
   const tunnels = TUNNELS_DRAWN
-    ? [...net.ribbons.values()].filter((ribbon) => net.doc.segment(ribbon.id)?.structure === 'tunnel')
+    ? [...net.ribbons.values()].filter((ribbon) =>
+      ribbon.full.length > 0 &&
+      (net.doc.segment(ribbon.id)?.structure === 'tunnel' || samples(ribbon, (lift) => lift < -TUNNEL_BORE)))
     : [];
 
   const piers: Placement[] = [];
@@ -384,9 +396,8 @@ export function buildStructureDetails(
   for (const ribbon of raised) {
     const segment = net.doc.requireSegment(ribbon.id);
     const structure = segment.structure as RoadStructure;
-    const only: ReadonlySet<RoadStructure> = new Set([structure]);
-    const deckAt = (x: number, y: number): number => elevation.at(x, y, only);
-    const spec = roadStructure(structure);
+    const deckAt = (x: number, y: number): number => elevation.onSegment(segment.id, x, y);
+    const spec = roadStructure(isRaised(structure) ? structure : 'elevated');
     const spacing = structure === 'bridge' ? 96 : 74;
     const radius = structure === 'bridge' ? 3.2 : 2.6;
     const length = ribbon.full.length;
@@ -541,6 +552,10 @@ export function buildStructureDetails(
       };
 
       let previous = coverAt(0);
+      const buriedJoin = (nodeId: typeof segment.a): boolean => {
+        const node = net.doc.node(nodeId);
+        return !!node && node.incident.length > 1 && node.heightOffset < -TUNNEL_HEADROOM;
+      };
       for (let s = step; s <= length; s += step) {
         const cover = coverAt(s);
         const crossed =
@@ -548,6 +563,12 @@ export function buildStructureDetails(
           (previous >= TUNNEL_PORTAL_COVER && cover < TUNNEL_PORTAL_COVER);
         previous = cover;
         if (!crossed) continue;
+        // A portal belongs to the alignment that actually reaches daylight.
+        // At a buried turn, the adjacent segment can reshape the shared ground
+        // enough to make the old leg appear to cross the cover threshold at its
+        // endpoint. A wall there slices across the turning road.
+        if ((s < 40 && buriedJoin(segment.a)) ||
+          (length - s < 40 && buriedJoin(segment.b))) continue;
 
         // Linear interpolation is enough: the cover changes by at most a few
         // tenths of a unit over one step.

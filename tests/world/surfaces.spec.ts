@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { bands, surfaces } from '@world/surfaces';
-import { Level, ROAD_TYPES, casingHalf, halfWidth, roadProfile, travelLanes } from '@world/roadTypes';
+import { LAST_UPGRADE_CLASS, Level, ROAD_TYPES, casingHalf, halfWidth, roadProfile, travelLanes } from '@world/roadTypes';
 import { ROAD_STRUCTURES, isRaised, isRoadStructure, migrateStructure, roadStructure } from '@world/structures';
 import type { MultiPoly } from '@core/clipper';
 import { isSerializedDoc } from '@editor/persistence';
@@ -49,8 +49,8 @@ describe('road classes', () => {
     }
   });
 
-  it('grow monotonically with the class index', () => {
-    for (let i = 1; i < ROAD_TYPES.length; i++) {
+  it('grows monotonically along the street upgrade ladder', () => {
+    for (let i = 1; i <= LAST_UPGRADE_CLASS; i++) {
       expect(casingHalf(ROAD_TYPES[i]!)).toBeGreaterThan(casingHalf(ROAD_TYPES[i - 1]!));
     }
   });

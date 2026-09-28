@@ -13,6 +13,7 @@ import {
   type SurfaceLevel,
   halfWidth,
   roadProfile,
+  roadType,
 } from './roadTypes';
 import { type Junction, buildJunction, surfaceMode } from './junction/build';
 import { clampSegmentTrims } from './junction/trim';
@@ -417,9 +418,10 @@ export class Network {
     const record = this.doc.node(node);
     if (!record || record.incident.length !== 2) return false;
     if (record.control !== 'auto' && record.control !== 'none') return false;
-    // A CORNER is still crossed on foot: the sidewalk graph routes people over
-    // both of its legs, so it keeps its zebras. Only a road running on - within
-    // `TRANSITION_BEND` of straight - has none.
+    if (this.junctions.get(node)?.get(Level.Asphalt)?.transition) return true;
+    // A continuous two-leg bend has no approach or zebra; the footway follows
+    // its outer edge. Width-changing corners and curved alignments use the
+    // transition sweep rather than a crossroads plate.
     const legs = this.junctions.get(node)?.get(Level.Asphalt)?.legs;
     if (!legs || legs.length !== 2) return true;
     return dot((legs[0] as { dir: Vec2 }).dir, (legs[1] as { dir: Vec2 }).dir) < -Math.cos(TRANSITION_BEND);
@@ -498,6 +500,11 @@ export class Network {
    * than is ideal; it may never end up inside the road.
    */
   crosswalkDistanceAt(seg: SegmentId, node: NodeId): number {
+    if (this.doc.node(node)?.incident.some((id) => {
+      const kind = this.doc.segment(id)?.type;
+      return kind !== undefined &&
+        (roadType(kind).id === 'highway' || roadType(kind).id === 'ramp');
+    })) return 0;
     const mouth = this.mouthDistance(seg, node);
     if (mouth <= 0 && !this.isJunction(node)) return 0;
     if (this.continues(node)) return 0;

@@ -14,7 +14,6 @@ import {
 import type { UtilityPole, UtilitySpan } from './utilities';
 // Runtime imports, and safe: `geometry` and `legAngles` take `RoadDoc` as a
 // TYPE only, so nothing here is part of a runtime cycle.
-import { impossibleAmong, worsensAnyNode } from './legAngles';
 import { type RoadStructure, migrateStructure } from './structures';
 import { MAX_TERRAIN_STAMPS, type TerrainStamp } from './terrain';
 import { clampToMap } from './bounds';
@@ -43,6 +42,10 @@ export interface RoadNode {
   readonly id: NodeId;
   x: number;
   y: number;
+  /** Authored height above or below the designed ground, in world units. */
+  heightOffset: number;
+  /** An internal control point of one continuous road gesture. */
+  smooth: boolean;
   /**
    * Materialized incidence list.
    *
@@ -221,10 +224,11 @@ export class RoadDoc {
    * so a node past the rim takes all of them with it — a road hanging over the
    * void, which is what "nothing may leave the map" was reported against.
    */
-  addNode(p: Vec2): RoadNode {
+  addNode(p: Vec2, heightOffset = 0, smooth = false): RoadNode {
     const at = clampToMap(p);
     const id = asNodeId(this.nodeIds.take());
-    const n: RoadNode = { id, x: at.x, y: at.y, incident: [], control: 'auto', blockedMovements: [] };
+    const n: RoadNode = { id, x: at.x, y: at.y, heightOffset, smooth,
+      incident: [], control: 'auto', blockedMovements: [] };
     this.nodes.set(id, n);
     this.markNode(id);
     return n;
@@ -284,6 +288,7 @@ export class RoadDoc {
     const keep = this.nodes.get(target);
     const remove = this.nodes.get(source);
     if (!keep || !remove) return false;
+    if (Math.abs(keep.heightOffset - remove.heightOffset) > 0.75) return false;
 
     if (keep.control === 'auto' && remove.control !== 'auto') keep.control = remove.control;
     for (const movement of remove.blockedMovements) {
@@ -310,23 +315,7 @@ export class RoadDoc {
     return true;
   }
 
-  /**
-   * Moves a node, and REFUSES a move that closes a junction below the minimum.
-   *
-   * Returns whether the move was kept. D-020 recorded that this had no guard at
-   * all: drawing a road was checked against `MIN_LEG_ANGLE` and then the move
-   * tool let the user drag the very same node into a 7-degree hairpin, which is
-   * how a map ends up with a shape no drag could have drawn.
-   *
-   * Both ends matter. Moving a node changes the angles at that node AND at the
-   * far end of every road leaving it, because a leg's direction is a property
-   * of the pair. Checking only the node under the cursor lets the drag wreck the
-   * junction at the other end of the street.
-   *
-   * The move is applied and then rolled back on refusal rather than being
-   * predicted: the angles come from the flattened polyline, and a curve's
-   * tangent is not a closed form of the endpoint.
-   */
+  /** Moves a node freely; junction geometry adapts to the resulting angle. */
   moveNode(id: NodeId, to: Vec2): boolean {
     const n = this.nodes.get(id);
     if (!n) return false;
@@ -335,33 +324,9 @@ export class RoadDoc {
     const p = clampToMap(to);
     if (n.x === p.x && n.y === p.y) return true;
 
-    const touched: NodeId[] = [id];
-    for (const segId of n.incident) {
-      const seg = this.segments.get(segId);
-      if (seg) touched.push(seg.a === id ? seg.b : seg.a);
-    }
-
-    // What these nodes were BEFORE the drag, so the verdict can be about the
-    // drag. Refusing on the absolute state instead is a trap that shuts in both
-    // directions: a node that is already a hairpin fails the absolute test no
-    // matter where it is dragged, so the one gesture that could repair it — pull
-    // the legs apart — is the one gesture refused. Measured: a 7-degree node
-    // could not be dragged anywhere at all, not even straight into a clean
-    // right angle.
-    const before = impossibleAmong(this, touched);
-
-    const wasX = n.x;
-    const wasY = n.y;
     n.x = p.x;
     n.y = p.y;
     this.markNode(id);
-
-    if (worsensAnyNode(before, impossibleAmong(this, touched))) {
-      n.x = wasX;
-      n.y = wasY;
-      this.markNode(id);
-      return false;
-    }
     for (const segId of n.incident) {
       const seg = this.segments.get(segId);
       if (seg) this.fitCurve(seg);
@@ -432,6 +397,13 @@ export class RoadDoc {
     if (!segment || segment.structure === structure) return;
     segment.structure = structure;
     this.markSegment(id);
+  }
+
+  setNodeHeightOffset(id: NodeId, heightOffset: number): void {
+    const node = this.nodes.get(id);
+    if (!node || !Number.isFinite(heightOffset) || node.heightOffset === heightOffset) return;
+    node.heightOffset = heightOffset;
+    this.markNode(id);
   }
 
   addTerrainStamp(value: Omit<TerrainStamp, 'id'>): TerrainStamp {
@@ -587,7 +559,8 @@ export class RoadDoc {
     this.segments.clear();
     for (const [id, node] of source.nodes) {
       this.nodes.set(id, {
-        id, x: node.x, y: node.y, incident: [...node.incident], control: node.control,
+        id, x: node.x, y: node.y, heightOffset: node.heightOffset, smooth: node.smooth,
+        incident: [...node.incident], control: node.control,
         blockedMovements: [...node.blockedMovements],
       });
     }
@@ -634,7 +607,8 @@ export class RoadDoc {
         // snapshot recorded as the pre-block state already contained the block,
         // and one undo restored it unchanged. `History` promises snapshots hold
         // the document as it was; an alias cannot.
-        id: n.id, x: n.x, y: n.y, control: n.control, blockedMovements: [...n.blockedMovements],
+        id: n.id, x: n.x, y: n.y, heightOffset: n.heightOffset, smooth: n.smooth,
+        control: n.control, blockedMovements: [...n.blockedMovements],
       })),
       segments: [...this.segments.values()].map((s) => ({
         id: s.id,
@@ -668,7 +642,8 @@ export class RoadDoc {
       // this state; repair it at the serialization boundary where legacy maps
       // enter the model.
       doc.nodeIds.reserve(n.id);
-      const key = coordinateKey(n.x, n.y);
+      const heightOffset = Number.isFinite(n.heightOffset) ? (n.heightOffset as number) : 0;
+      const key = `${coordinateKey(n.x, n.y)}\u0000${heightOffset}`;
       const existing = nodeAt.get(key);
       if (existing) {
         canonicalNode.set(n.id, existing.id);
@@ -682,7 +657,8 @@ export class RoadDoc {
       }
       const id = asNodeId(n.id);
       const node: RoadNode = {
-        id, x: n.x, y: n.y, incident: [], control: n.control ?? 'auto',
+        id, x: n.x, y: n.y, heightOffset, smooth: n.smooth ?? false,
+        incident: [], control: n.control ?? 'auto',
         blockedMovements: n.blockedMovements ? [...n.blockedMovements] : [],
       };
       doc.nodes.set(id, node);
@@ -753,7 +729,8 @@ function coordinateKey(x: number, y: number): string {
 export interface SerializedDoc {
   readonly version: 1;
   readonly nodes: readonly {
-    id: number; x: number; y: number; control?: JunctionControl; blockedMovements?: readonly string[];
+    id: number; x: number; y: number; heightOffset?: number; smooth?: boolean;
+    control?: JunctionControl; blockedMovements?: readonly string[];
   }[];
   readonly segments: readonly {
     id: number;

@@ -5,6 +5,7 @@ import type { NodeId, SegmentId } from '@world/ids';
 import type { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { Level, roadProfile } from '@world/roadTypes';
+import { carriesPedestrians } from '@world/pedestrianAccess';
 import { CROSSWALK_DEPTH } from '@world/approach';
 import { m } from '@world/units';
 import { orientedPolyline } from '@world/geometry';
@@ -123,6 +124,7 @@ export class SidewalkGraph {
         const seg = doc.segment(segId);
         if (!seg) continue;
         const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+        if (!carriesPedestrians(rt)) continue;
         const pl = orientedPolyline(doc, seg, nodeId);
         if (pl.length < 1) continue;
 
@@ -227,6 +229,7 @@ export class SidewalkGraph {
     // ---- sidewalk edges along each segment --------------------------------
     for (const [segId, seg] of doc.segments) {
       const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+      if (!carriesPedestrians(rt)) continue;
       const pl = orientedPolyline(doc, seg, seg.a);
       if (pl.length < 1) continue;
       const lateral = rt.width / 2 + rt.sidewalk * 0.5;

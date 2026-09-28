@@ -107,6 +107,11 @@ describe('junction geometry', () => {
             failures.push(`bearing ${bearing} level ${level}: no junction built`);
             continue;
           }
+          if (junction.rings.length === 0) {
+            // Shallow merges are covered by the union of their road ribbons.
+            expect(junction.ring.isEmpty).toBe(true);
+            continue;
+          }
           const flat = junction.ring.flatten();
           if (flat.length < 3) {
             failures.push(`bearing ${bearing} level ${level}: degenerate ring`);

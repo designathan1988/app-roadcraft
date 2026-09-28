@@ -7,10 +7,12 @@ step, a hole or an overlapping plate, start here.
 
 ## The constraint that dictates the design
 
-A road is not drawn as one strip per segment. The whole network is clipped into
-four band polygons (`world/surfaces.ts`) and each band becomes a single mesh. A
-mesh vertex therefore knows only its own `(x, y)` — it has no idea which segment
-it came from, or whether it is in the middle of a junction.
+A connected road level is clipped into four band polygons
+(`world/surfaces.ts`). A mesh vertex in those shared polygons knows only its
+`(x, y)`, so its height must come from a continuous field. Height-authored
+segments are separate render passes: two roads can occupy the same `(x, y)` at
+different elevations without being unioned into one 2D polygon. Their vertices
+read `onSegment`, while shared junction plates still use one node height.
 
 So the elevation has to be **a function of position**, and that function has to
 be **continuous**. Every defect the old renderer had was a violation of one of
@@ -29,10 +31,10 @@ those two words:
 returns four queries:
 
 ```ts
-at(x, y, structures?)      // deck height at a point, optionally one level only
+at(x, y, structures?)      // continuous shared deck field
 onSegment(segment, x, y)   // the deck a specific agent is riding
 nodeHeight(node)           // the one height a node has
-frameAt(x, y, structures?) // road-local coordinates, for texture flow
+surfaceFrameAt(...)        // road-local coordinates, optionally one segment
 ```
 
 `terrainAt` must be the height the terrain is **drawn** at
@@ -76,10 +78,12 @@ same number.
 
 ### 4. Node heights, solved globally
 
-```
-gradeHeight[node] = max( terrain over the junction disc,
-                         every leg's ceiling over its plate ) + clearance
-```
+The designed grade at a node is derived from the incident ground roads at their
+plate edges. `RoadNode.heightOffset` then raises or lowers that target by the
+player-authored amount. Every road sharing the node reads the same solved
+height. A road whose endpoints carry offsets uses `solveVariable`: it eases the
+offset between plates over a grade-limited profile, so ground, elevated and
+buried parts can occur in one connected road.
 
 A node is **aloft** when every road meeting it is raised — the chain runs over
 the junction. A node with even one road at grade is a **landing**: everything

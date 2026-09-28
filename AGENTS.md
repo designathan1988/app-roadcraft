@@ -177,16 +177,17 @@ Break one of these and the symptom appears somewhere else entirely.
 
 ### A new road class
 `src/world/roadTypes.ts` → add to `ROAD_TYPES` with a `nameKey`/`subKey`; add
-those two keys to **both** dictionaries in `src/ui/i18n/`. Nothing else: widths,
-junctions, markings, lanelets and meshes are all derived.
+those two keys to **both** dictionaries in `src/ui/i18n/`. Widths, junctions,
+markings, lanelets and meshes are derived. Classes with one-way defaults also
+need the direction rule in `src/editor/commit.ts`; limited-access classes must
+be excluded from pedestrian paths in `src/sim/peds/sidewalk.ts`.
 
-### A new structural level (say, a causeway)
-`src/world/structures.ts` → add a spec with its `clearance` and `deck`. Then
-`src/world/elevation.ts` decides whether it is `isRaised` (a deck on piers,
-solved by `solveRaised`), `isSunken` (a bore under the ground, solved by
-`solveSunken`) or neither (at grade, `solveGround`). The renderer loops
-`ROAD_STRUCTURES`, so a new level gets its bands for free; give it a material in
-`src/render/materials.ts` if it should not look like the others.
+### A road that rises or falls
+Road height is authored as `RoadNode.heightOffset`, relative to designed ground.
+`src/world/elevation.ts` solves the vertical profile continuously, while
+`src/render/roadSurfaces.ts` keeps authored decks separate at grade crossings
+and `src/render/structures.ts` derives supports and portals from terrain cover.
+`ROAD_STRUCTURES` remains for loading legacy maps, not for new tool modes.
 
 ### A new editing tool
 `src/main.ts`: add it to the `Tool` union, add a `case` in the `pointerdown`

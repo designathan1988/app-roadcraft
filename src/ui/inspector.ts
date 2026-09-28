@@ -3,13 +3,12 @@ import { movementKey, type JunctionControl, type RoadDoc, type SegmentDirection 
 import type { Network } from '@world/network';
 import type { JunctionTopology } from '@world/lanelets';
 import type { CurveShape } from '@core/bezier';
-import { ROAD_TYPES, roadProfile, roadType, travelLanes } from '@world/roadTypes';
-import { METERS_PER_UNIT } from '@world/units';
+import { LAST_UPGRADE_CLASS, ROAD_TYPES, roadProfile, roadType, travelLanes } from '@world/roadTypes';
+import { METERS_PER_UNIT, UNITS_PER_METER } from '@world/units';
 import type { SimWorld } from '@sim/world';
 import { signalStateFor } from '@sim/signals/query';
-import { ROAD_STRUCTURES, type RoadStructure } from '@world/structures';
 import { language, plural, t } from './i18n';
-import { roadTypeName, structureName } from './labels';
+import { roadTypeName } from './labels';
 import { surfaceMode } from '@world/junction/build';
 
 export interface InspectorSelection {
@@ -23,7 +22,7 @@ export interface InspectorActions {
   readonly onSetLanes?: (id: SegmentId, lanes: number | null) => void;
   readonly onDelete: (id: SegmentId) => void;
   readonly onSetDirection?: (id: SegmentId, direction: SegmentDirection) => void;
-  readonly onSetStructure?: (id: SegmentId, structure: RoadStructure) => void;
+  readonly onSetNodeHeight?: (id: NodeId, metres: number) => void;
   readonly onReverseDirection?: (id: SegmentId) => void;
   readonly onSplit?: (id: SegmentId) => void;
   readonly onDuplicate?: (id: SegmentId) => void;
@@ -210,12 +209,13 @@ function renderSegment(
     `<div id="inspectStats">${stats}</div>` +
     `<label class="inspect-select">${t('inspector.roadClass')} <select id="inspectClass">${ROAD_TYPES.map((type, index) => `<option value="${index}"${index === seg.type ? ' selected' : ''}>${roadTypeName(type)}</option>`).join('')}</select></label>` +
     `<label class="inspect-select">${t('inspector.direction')} <select id="inspectDirection">${directionOptions(seg.direction)}</select></label>` +
-    `<label class="inspect-select">${t('inspector.structure')} <select id="inspectStructure">${ROAD_STRUCTURES.map((structure) => `<option value="${structure.id}"${structure.id === seg.structure ? ' selected' : ''}>${structureName(structure.id)}</option>`).join('')}</select></label>` +
+    `<label class="inspect-select">${t('inspector.heightStart')} <input id="inspectHeightStart" type="number" step="0.1" value="${((doc.node(seg.a)?.heightOffset ?? 0) / UNITS_PER_METER).toFixed(1)}" /></label>` +
+    `<label class="inspect-select">${t('inspector.heightEnd')} <input id="inspectHeightEnd" type="number" step="0.1" value="${((doc.node(seg.b)?.heightOffset ?? 0) / UNITS_PER_METER).toFixed(1)}" /></label>` +
     `<label class="inspect-select">${t('inspector.laneCount')} <select id="inspectLanes">${laneOptions(seg.direction, seg.lanes, rt.lanes)}</select></label>` +
     `<label class="inspect-range"><span>${t('inspector.curvature')}</span><output id="inspectCurveValue">${curveText(curveValue)}</output><input id="inspectCurve" type="range" min="${-maxCurve}" max="${maxCurve}" step="1" value="${Math.max(-maxCurve, Math.min(maxCurve, curveValue))}" /></label>` +
     `<label class="inspect-range"${seg.curve ? '' : ' data-disabled'}><span>${t('inspector.curvePosition')}</span><output id="inspectCurvePositionValue">${percent(curvePosition)}</output><input id="inspectCurvePosition" type="range" min="0.15" max="0.85" step="0.01" value="${curvePosition}"${seg.curve ? '' : ' disabled'} /></label>` +
     `<div class="inspect-actions">` +
-    `<button type="button" id="inspectUpgrade"${seg.type >= ROAD_TYPES.length - 1 ? ' disabled' : ''}>${t('inspector.upgrade')}</button>` +
+    `<button type="button" id="inspectUpgrade"${seg.type >= LAST_UPGRADE_CLASS ? ' disabled' : ''}>${t('inspector.upgrade')}</button>` +
     (oneWay ? `<button type="button" id="inspectReverse">${t('inspector.reverse')}</button>` : '') +
     `<button type="button" id="inspectDuplicate" title="${t('inspector.duplicateHint')}">${t('inspector.duplicate')}</button>` +
     `<button type="button" id="inspectSplit">${t('inspector.splitMiddle')}</button>` +
@@ -226,7 +226,8 @@ function renderSegment(
   const remove = document.getElementById('inspectDelete') as HTMLButtonElement | null;
   const type = document.getElementById('inspectClass') as HTMLSelectElement | null;
   const direction = document.getElementById('inspectDirection') as HTMLSelectElement | null;
-  const structure = document.getElementById('inspectStructure') as HTMLSelectElement | null;
+  const heightStart = document.getElementById('inspectHeightStart') as HTMLInputElement | null;
+  const heightEnd = document.getElementById('inspectHeightEnd') as HTMLInputElement | null;
   const lanes = document.getElementById('inspectLanes') as HTMLSelectElement | null;
   const reverse = document.getElementById('inspectReverse') as HTMLButtonElement | null;
   const duplicate = document.getElementById('inspectDuplicate') as HTMLButtonElement | null;
@@ -238,7 +239,8 @@ function renderSegment(
   if (upgrade) upgrade.onclick = () => actions.onUpgrade(id);
   if (type) type.onchange = () => actions.onSetType(id, Number(type.value));
   if (direction) direction.onchange = () => actions.onSetDirection?.(id, direction.value as SegmentDirection);
-  if (structure) structure.onchange = () => actions.onSetStructure?.(id, structure.value as RoadStructure);
+  if (heightStart) heightStart.onchange = () => actions.onSetNodeHeight?.(seg.a, Number(heightStart.value));
+  if (heightEnd) heightEnd.onchange = () => actions.onSetNodeHeight?.(seg.b, Number(heightEnd.value));
   if (lanes) lanes.onchange = () => actions.onSetLanes?.(id, lanes.value === 'default' ? null : Number(lanes.value));
   if (reverse) reverse.onclick = () => actions.onReverseDirection?.(id);
   if (duplicate) duplicate.onclick = () => actions.onDuplicate?.(id);
@@ -347,22 +349,6 @@ function renderNode(
     .map((seg) => `${meters(net.mouthDistance(seg, id))} m`)
     .join(' · ');
 
-  // A node the editor would refuse to create. The map was loaded whole anyway —
-  // refusing to load destroys the user's work — so the offer is made here, with
-  // the measured gap, rather than silently.
-  const gap = net.impossible.get(id);
-  const impossible =
-    gap === undefined
-      ? ''
-      : `<div class="inspect-card bad">` +
-        `<span>${t('inspector.impossible')}</span>` +
-        `<strong>${t('inspector.impossibleGap', { angle: ((gap * 180) / Math.PI).toFixed(1) })}</strong>` +
-        `<span>${t('inspector.impossibleBody')}</span>` +
-        `<div class="inspect-actions">` +
-        (node.incident.length === 2 ? `<button type="button" id="inspectFixJoin">${t('inspector.joinLegs')}</button>` : '') +
-        `<button type="button" id="inspectFixRemove">${t('inspector.removeNode')}</button>` +
-        `</div></div>`;
-
   // The offer is a promise that the two legs read as ONE road, so it is gated on
   // the model's own answer to that question rather than on degree alone.
   // `surfaceMode` is the junction builder's classifier, and it answers 'none'
@@ -373,23 +359,21 @@ function renderNode(
   // with a 444-unit straight chord: a corner cut, under a label promising
   // alignment.
   const alignedLegs =
-    node.incident.length === 2 && surfaceMode(doc, net.polylines, id) === 'none';
+    !node.smooth && node.incident.length === 2 && surfaceMode(doc, net.polylines, id) === 'none';
   const joinOffer = alignedLegs
     ? `<div class="inspect-actions"><button type="button" id="inspectJoin">${t('inspector.joinAligned')}</button></div>`
     : '';
 
-  body.innerHTML = `<div id="inspectStats">${stats}</div>` + impossible +
+  body.innerHTML = `<div id="inspectStats">${stats}</div>` +
+    `<label class="inspect-select">${t('inspector.heightNode')} <input id="inspectHeightNode" type="number" step="0.1" value="${(node.heightOffset / UNITS_PER_METER).toFixed(1)}" /></label>` +
     `<label class="inspect-select">${t('inspector.controlSelect')} <select id="inspectControl">${controlOptions(node.control)}</select></label>` +
     joinOffer +
     movementControls(doc, junction, node.blockedMovements) +
     `<p class="inspect-note">${t('inspector.mouths')}: ${mouths || '—'}</p>`;
 
-  const fixJoin = document.getElementById('inspectFixJoin') as HTMLButtonElement | null;
-  if (fixJoin) fixJoin.onclick = () => actionsForNode().onJoin?.(id);
-  const fixRemove = document.getElementById('inspectFixRemove') as HTMLButtonElement | null;
-  if (fixRemove) fixRemove.onclick = () => actionsForNode().onRemoveNode?.(id);
-
   const policy = document.getElementById('inspectControl') as HTMLSelectElement | null;
+  const heightNode = document.getElementById('inspectHeightNode') as HTMLInputElement | null;
+  if (heightNode) heightNode.onchange = () => actionsForNode().onSetNodeHeight?.(id, Number(heightNode.value));
   if (policy) policy.onchange = () => actionsForNode().onSetControl?.(id, policy.value as JunctionControl);
   const join = document.getElementById('inspectJoin') as HTMLButtonElement | null;
   if (join) join.onclick = () => actionsForNode().onJoin?.(id);

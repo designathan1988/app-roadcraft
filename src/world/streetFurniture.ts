@@ -3,6 +3,7 @@ import { Level } from './roadTypes';
 import type { Network } from './network';
 import type { SegmentId } from './ids';
 import { m } from './units';
+import { carriesPedestrians } from './pedestrianAccess';
 
 /**
  * Where every piece of street furniture stands.
@@ -94,6 +95,7 @@ export function streetFurniture(net: Network): FurnitureItem[] {
   let column = 0;
 
   for (const ribbon of net.ribbons.values()) {
+    if (!carriesPedestrians(ribbon.road)) continue;
     const length = ribbon.full.length;
     const start = Math.min(36, length * 0.24);
     const road = ribbon.road;
@@ -101,7 +103,12 @@ export function streetFurniture(net: Network): FurnitureItem[] {
     // for a tree pit, and nobody sets a bench, a post box or a hydrant on a
     // viaduct. Trees on elevated decks were photographed growing out of the
     // footway fifteen units over the grass.
-    const built = (net.doc.segment(ribbon.id)?.structure ?? 'ground') !== 'ground';
+    const segment = net.doc.segment(ribbon.id);
+    const authoredLift = segment ? Math.max(
+      Math.abs(net.doc.node(segment.a)?.heightOffset ?? 0),
+      Math.abs(net.doc.node(segment.b)?.heightOffset ?? 0),
+    ) : 0;
+    const built = (segment?.structure ?? 'ground') !== 'ground' || authoredLift > m(1.5);
 
     for (let s = start; s < length - start; s += LAMP_SPACING) {
       const frame = ribbon.full.sampleAt(s);

@@ -242,6 +242,7 @@ export function junctionDetail(net: Network, view?: Aabb): { stops: Bar[]; zebra
   for (const [node, byLevel] of net.junctions) {
     const junction = byLevel.get(Level.Asphalt);
     if (!junction) continue;
+    if (junction.legs.some((leg) => leg.road.id === 'highway' || leg.road.id === 'ramp')) continue;
 
     // Cull against where the bars are actually painted, not where the leg
     // starts.
@@ -256,10 +257,9 @@ export function junctionDetail(net: Network, view?: Aabb): { stops: Bar[]; zebra
     if (view && !junctionDetailReachesView(junction, view)) continue;
 
     // A stop line exists because movements conflict, which needs three legs.
-    // A crossing exists because a pedestrian has to get to the other side,
-    // which needs only two — and `SidewalkGraph` builds routable crossing edges
-    // from two legs upward. Gating both on three legs left a corner node with
-    // pedestrians walking over a carriageway that had no zebra painted on it.
+    // A crossing exists on two-leg junctions that are not through transitions:
+    // the footway may need to cross there. A swept bend has no approach zone,
+    // and `crosswalkDistanceAt` returns zero for it.
     const movementsConflict = junction.legs.length >= 3;
 
     junction.legs.forEach((leg, i) => {

@@ -261,6 +261,8 @@ export function isSerializedDoc(value: unknown): value is SerializedDoc {
     if (!isRecord(node)) return false;
     if (!isId(node.id) || nodeIds.has(node.id)) return false;
     if (!isFiniteNumber(node.x) || !isFiniteNumber(node.y)) return false;
+    if (node.heightOffset !== undefined && !isFiniteNumber(node.heightOffset)) return false;
+    if (node.smooth !== undefined && typeof node.smooth !== 'boolean') return false;
     if (node.control !== undefined && !isJunctionControl(node.control)) return false;
     if (node.blockedMovements !== undefined && (!Array.isArray(node.blockedMovements) ||
       node.blockedMovements.some((movement) => typeof movement !== 'string'))) return false;

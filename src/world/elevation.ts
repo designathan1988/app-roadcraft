@@ -148,6 +148,8 @@ const LIFT_OFF = 7;
  * a distinct piece of road at each end and the deck between is level.
  */
 const RAMP_GRADE = 0.16;
+/** Maximum authored height change per unit of alignment before a ramp needs more run. */
+export const MAX_AUTHORED_GRADE = 0.12;
 /**
  * Length of the vertical curve at the foot of a ramp, where the grade builds up
  * from level, in world units (8 m). The crest at the top is rounded by
@@ -214,6 +216,8 @@ const PROFILE_FADE = 110;
 interface Profile {
   readonly id: SegmentId;
   readonly structure: RoadStructure;
+  /** A player-authored vertical alignment, independent of legacy structure modes. */
+  readonly manualVertical: boolean;
   /** The class index the road was drawn with, for per-class surface tinting. */
   readonly type: number;
   /** Half the casing width — how far this road's surface reaches sideways. */
@@ -258,7 +262,7 @@ export interface RoadElevation {
    * render pass wants: the ground pass must not read the elevated deck that
    * flies over it. With no filter every road is considered.
    */
-  at(x: number, y: number, structures?: ReadonlySet<RoadStructure>): number;
+  at(x: number, y: number, structures?: ReadonlySet<RoadStructure>, includeManual?: boolean): number;
   /** Deck height on one specific segment — what an agent riding it stands on. */
   onSegment(segment: SegmentId, x: number, y: number): number;
   /** The solved height of a node, shared by every road that meets there. */
@@ -275,7 +279,7 @@ export interface RoadElevation {
    * asphalt mesh carry a residential street's grey and an avenue's near-black
    * in the same draw call.
    */
-  roadAt(x: number, y: number, structures?: ReadonlySet<RoadStructure>): RoadSample;
+  roadAt(x: number, y: number, structures?: ReadonlySet<RoadStructure>, includeManual?: boolean): RoadSample;
   /**
    * Texture coordinates of (x, y) in the frame of the road nearest to
    * (pickX, pickY), continued in a straight line past the road's ends.
@@ -294,6 +298,8 @@ export interface RoadElevation {
     structures: ReadonlySet<RoadStructure> | undefined,
     pickX: number,
     pickY: number,
+    includeManual?: boolean,
+    segment?: SegmentId,
   ): { along: number; across: number };
   /**
    * How far the ground should be pulled towards the road at a point, and to
@@ -466,6 +472,8 @@ export function buildRoadElevation(
     const profile: Profile = {
       id,
       structure: segment.structure,
+      manualVertical: Math.abs(net.doc.node(segment.a)?.heightOffset ?? 0) > 1e-6 ||
+        Math.abs(net.doc.node(segment.b)?.heightOffset ?? 0) > 1e-6,
       type: segment.type,
       half,
       median: ribbon.road.median,
@@ -551,7 +559,9 @@ export function buildRoadElevation(
       sum += profile.base[stationIndex(profile, edge)] as number;
       count++;
     }
-    gradeHeight.set(node, count > 0 ? sum / count : (balancedAtNode.get(node) ?? 0));
+    gradeHeight.set(node,
+      (count > 0 ? sum / count : (balancedAtNode.get(node) ?? 0)) +
+      (net.doc.node(node)?.heightOffset ?? 0));
   }
 
   // A node every one of whose roads is raised stays UP: the chain runs over the
@@ -652,6 +662,7 @@ export function buildRoadElevation(
   const solve = (profile: Profile): void => {
     if (isRaised(profile.structure)) solveRaised(profile, nodeHeight, aloft);
     else if (isSunken(profile.structure)) solveSunken(profile, nodeHeight, wanted);
+    else if (profile.manualVertical) solveVariable(profile, nodeHeight);
     else solveGround(profile, nodeHeight);
   };
   let dirty: Iterable<Profile> = profiles;
@@ -718,19 +729,22 @@ export function buildRoadElevation(
     x: NaN,
     y: NaN,
     structures: undefined as ReadonlySet<RoadStructure> | undefined,
+    includeManual: true,
     road: null as Profile | null,
     s: 0,
     distance: Infinity,
     /** NaN until the height itself has been asked for at this point. */
     height: NaN,
   };
-  const remembers = (x: number, y: number, structures?: ReadonlySet<RoadStructure>): boolean =>
-    last.x === x && last.y === y && last.structures === structures;
+  const remembers = (x: number, y: number, structures: ReadonlySet<RoadStructure> | undefined,
+    includeManual: boolean): boolean =>
+    last.x === x && last.y === y && last.structures === structures && last.includeManual === includeManual;
   const remember = (x: number, y: number, structures: ReadonlySet<RoadStructure> | undefined,
-    road: Profile | null, s: number, distance: number, height: number): void => {
+    includeManual: boolean, road: Profile | null, s: number, distance: number, height: number): void => {
     last.x = x;
     last.y = y;
     last.structures = structures;
+    last.includeManual = includeManual;
     last.road = road;
     last.s = s;
     last.distance = distance;
@@ -742,13 +756,15 @@ export function buildRoadElevation(
     x: number,
     y: number,
     structures?: ReadonlySet<RoadStructure>,
+    includeManual = true,
   ): Profile | null => {
-    if (remembers(x, y, structures)) return last.road;
+    if (remembers(x, y, structures, includeManual)) return last.road;
     let best: Profile | null = null;
     let bestDistance = Infinity;
     let bestS = 0;
     for (const profile of index.near(x, y)) {
       if (structures && !structures.has(profile.structure)) continue;
+      if (!includeManual && profile.manualVertical) continue;
       profile.line.closestInto(x, y, hit);
       if (hit.distance < bestDistance) {
         bestDistance = hit.distance;
@@ -756,12 +772,12 @@ export function buildRoadElevation(
         bestS = hit.s;
       }
     }
-    remember(x, y, structures, best, bestS, bestDistance, NaN);
+    remember(x, y, structures, includeManual, best, bestS, bestDistance, NaN);
     return best;
   };
 
-  const query = (x: number, y: number, structures?: ReadonlySet<RoadStructure>): number => {
-    if (remembers(x, y, structures) && !Number.isNaN(last.height)) return last.height;
+  const query = (x: number, y: number, structures?: ReadonlySet<RoadStructure>, includeManual = true): number => {
+    if (remembers(x, y, structures, includeManual) && !Number.isNaN(last.height)) return last.height;
     const candidates = index.near(x, y);
     let best = Infinity;
     let road: Profile | null = null;
@@ -769,6 +785,7 @@ export function buildRoadElevation(
     let found = 0;
     for (const profile of candidates) {
       if (structures && !structures.has(profile.structure)) continue;
+      if (!includeManual && profile.manualVertical) continue;
       profile.line.closestInto(x, y, hit);
       distances[found] = hit.distance;
       arcs[found] = hit.s;
@@ -781,7 +798,7 @@ export function buildRoadElevation(
       }
     }
     const height = blend(x, y, best, found);
-    remember(x, y, structures, road, roadS, best, height);
+    remember(x, y, structures, includeManual, road, roadS, best, height);
     return height;
   };
 
@@ -817,8 +834,8 @@ export function buildRoadElevation(
     nodeHeight(node) {
       return nodeHeight.get(node) ?? terrainAt(net.doc.node(node)?.x ?? 0, net.doc.node(node)?.y ?? 0) + ROAD_GROUND_CLEARANCE;
     },
-    roadAt(x, y, structures) {
-      const best = nearest(x, y, structures);
+    roadAt(x, y, structures, includeManual = true) {
+      const best = nearest(x, y, structures, includeManual);
       if (!best) return { along: y, across: x, type: -1, half: 0, median: 0 };
       const { s, distance } = last;
       // Signed offset, so the two halves of a carriageway do not mirror the
@@ -833,10 +850,16 @@ export function buildRoadElevation(
         median: best.median,
       };
     },
-    surfaceFrameAt(x, y, structures, pickX, pickY) {
-      const best = nearest(pickX, pickY, structures);
+    surfaceFrameAt(x, y, structures, pickX, pickY, includeManual = true, segment) {
+      const best = segment === undefined
+        ? nearest(pickX, pickY, structures, includeManual)
+        : byId.get(segment);
       if (!best) return { along: y, across: x };
-      let s = last.s;
+      let s = segment === undefined ? last.s : 0;
+      if (segment !== undefined) {
+        best.line.closestInto(pickX, pickY, hit);
+        s = hit.s;
+      }
       if (pickX !== x || pickY !== y) {
         best.line.closestInto(x, y, hit);
         s = hit.s;
@@ -875,7 +898,8 @@ export function buildRoadElevation(
         // Cheap bound first: rejecting on the widest batter any road could ask
         // for keeps a dense network from paying for every road in its cell.
         if (distance >= inner + SHAPE_SHOULDER_MAX) continue;
-        const sunken = isSunken(profile.structure);
+        const sunken = isSunken(profile.structure) ||
+          (profile.manualVertical && naturalGround - heightAtArc(profile, hit.s) > 0);
         const surface = heightAtArc(profile, hit.s);
         const height = surface - SHAPE_DROP;
         // The batter is sized from the earthwork it has to carry away, so a
@@ -885,7 +909,8 @@ export function buildRoadElevation(
           : Math.min(SHAPE_SHOULDER_MAX, Math.max(SHAPE_SHOULDER, Math.abs(naturalGround - height) * BATTER));
         if (distance >= inner + shoulder) continue;
         let weight = 1 - smoothstep(inner, inner + shoulder, distance);
-        if (isRaised(profile.structure)) {
+        if (isRaised(profile.structure) ||
+          (profile.manualVertical && surface > naturalGround)) {
           // Lifted clear of the ground: the structure stands on piers and the
           // landscape passes under it untouched.
           weight *= 1 - smoothstep(LIFT_ON, LIFT_OFF, surface - naturalGround);
@@ -917,6 +942,31 @@ export function buildRoadElevation(
 }
 
 // ---------------------------------------------------------------- solvers
+
+/** A continuous authored vertical alignment, including ground, bridge and bore. */
+function solveVariable(profile: Profile, nodeHeight: Map<NodeId, number>): void {
+  const { h, base, step, length } = profile;
+  const hA = nodeHeight.get(profile.a) ?? 0;
+  const hB = nodeHeight.get(profile.b) ?? 0;
+  const edgeA = profile.plateA;
+  const edgeB = length - profile.plateB;
+  const liftA = hA - (base[stationIndex(profile, edgeA)] as number);
+  const liftB = hB - (base[stationIndex(profile, edgeB)] as number);
+  const run = Math.max(1e-6, edgeB - edgeA);
+  for (let i = 0; i < h.length; i++) {
+    const s = i * step;
+    if (s <= edgeA) h[i] = hA;
+    else if (s >= edgeB) h[i] = hB;
+    else {
+      const u = (s - edgeA) / run;
+      const eased = u * u * (3 - 2 * u);
+      h[i] = (base[i] as number) + liftA * (1 - eased) + liftB * eased;
+    }
+  }
+  slopeLimit(h, step, RAMP_GRADE);
+  roundGradeBreaks(profile, 'both');
+  pinPlates(profile, hA, hB);
+}
 
 /**
  * A road at grade: it follows the ground, flat over its junction plates.

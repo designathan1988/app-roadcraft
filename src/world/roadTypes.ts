@@ -181,7 +181,46 @@ export const ROAD_TYPES: readonly RoadType[] = [
     curb: '#d4cfc7',
     line: '#eee8d8',
   },
+  {
+    id: 'highway',
+    nameKey: 'road.highway',
+    subKey: 'road.sub.highway',
+    subLanes: null,
+    subOneWay: false,
+    width: 40,
+    lanes: 4,
+    sidewalk: 1.2,
+    median: 4,
+    speedLimit: kmh(100),
+    priorityRank: 4,
+    markings: 'lanes',
+    color: '#343638',
+    edge: '#aaa7a0',
+    curb: '#c9c7c2',
+    line: '#eee8d8',
+  },
+  {
+    id: 'ramp',
+    nameKey: 'road.ramp',
+    subKey: 'road.sub.ramp',
+    subLanes: null,
+    subOneWay: true,
+    width: 11,
+    lanes: 1,
+    sidewalk: 1.2,
+    median: 0,
+    speedLimit: kmh(60),
+    priorityRank: 3,
+    markings: 'none',
+    color: '#3b3d3f',
+    edge: '#aaa7a0',
+    curb: '#c9c7c2',
+    line: '#eee8d8',
+  },
 ];
+
+/** Street classes form the upgrade ladder; highway and access ramps are separate choices. */
+export const LAST_UPGRADE_CLASS = 3;
 
 export const roadType = (i: number): RoadType =>
   ROAD_TYPES[Math.max(0, Math.min(ROAD_TYPES.length - 1, i))] as RoadType;
@@ -203,9 +242,10 @@ export function roadProfile(
   direction: SegmentDirection = 'both',
 ): RoadType {
   const base = roadType(typeIndex);
-  if ((configuredLanes === undefined || configuredLanes === null) && direction === 'both') return base;
+  if ((configuredLanes === undefined || configuredLanes === null) &&
+    direction === 'both' && base.lanes >= 2) return base;
   const lanes = configuredLanes === undefined || configuredLanes === null
-    ? base.lanes
+    ? direction === 'both' ? Math.max(2, base.lanes) : base.lanes
     : Math.max(MIN_TRAVEL_LANES, Math.min(MAX_TRAVEL_LANES, Math.round(configuredLanes)));
   const median = direction === 'both' && lanes >= 2 ? base.median : 0;
   if (lanes === base.lanes && median === base.median) return base;

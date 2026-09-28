@@ -104,7 +104,7 @@ export const MEDIAN_PLANTING = 0.62;
  */
 export interface SurfaceReuse {
   /** The tiles of the last build, per structural level. */
-  readonly tiles: Map<RoadStructure, Map<number, TileBundle>>;
+  readonly tiles: Map<string, Map<number, TileBundle>>;
   /**
    * A digest of everything the height field and the texture frames read in a
    * rectangle: the solved roads near it and the ground under it, both as
@@ -230,30 +230,61 @@ export function buildRoadSurfaces(
     return material;
   };
 
-  for (const structure of ROAD_STRUCTURES) {
+  const manual = (id: SegmentId): boolean => {
+    const segment = net.doc.segment(id);
+    return !!segment && (Math.abs(net.doc.node(segment.a)?.heightOffset ?? 0) > 1e-6 ||
+      Math.abs(net.doc.node(segment.b)?.heightOffset ?? 0) > 1e-6);
+  };
+  const passes: { readonly id: string; readonly structure: RoadStructure; readonly segment?: SegmentId }[] = [
+    ...ROAD_STRUCTURES.map((structure) => ({ id: structure.id, structure: structure.id })),
+    ...[...net.doc.segments.keys()].filter(manual).map((segment) =>
+      ({ id: `alignment-${segment}`, structure: 'ground' as const, segment })),
+  ];
+  if (reuse) {
+    const current = new Set(passes.map((pass) => pass.id));
+    for (const id of reuse.tiles.keys()) if (!current.has(id)) reuse.tiles.delete(id);
+  }
+  for (const pass of passes) {
+    const structure = roadStructure(pass.structure);
     const present = [...net.doc.segments.values()].some(
-      (segment) => segment.structure === structure.id,
+      (segment) => pass.segment !== undefined
+        ? segment.id === pass.segment
+        : segment.structure === structure.id && !manual(segment.id),
     );
     if (!present) {
-      reuse?.tiles.delete(structure.id);
+      reuse?.tiles.delete(pass.id);
       continue;
     }
 
     const only: ReadonlySet<RoadStructure> = new Set([structure.id]);
-    const include = (id: SegmentId): boolean =>
-      (net.doc.segment(id)?.structure ?? 'ground') === structure.id;
-    const raised = isRaised(structure.id);
+    const include = (id: SegmentId): boolean => pass.segment !== undefined
+      ? id === pass.segment
+      : !manual(id) && (net.doc.segment(id)?.structure ?? 'ground') === structure.id;
+    const raised = pass.segment !== undefined
+      ? (() => {
+        const line = net.ribbons.get(pass.segment)?.full;
+        if (!line) return false;
+        for (let s = 0; s <= line.length; s += Math.max(4, line.length / 24)) {
+          const p = line.sampleAt(s).p;
+          if (elevation.onSegment(pass.segment, p.x, p.y) - terrainAt(p.x, p.y) > 5) return true;
+        }
+        return false;
+      })()
+      : isRaised(structure.id);
     const maxEdge = raised ? RAISED_MAX_EDGE : GROUND_MAX_EDGE;
 
     /** The single deck height every band of this structure is measured from. */
-    const deck: HeightFn = (x, y) => elevation.at(x, y, only);
+    const deck: HeightFn = pass.segment !== undefined
+      ? (x, y) => elevation.onSegment(pass.segment!, x, y)
+      : (x, y) => elevation.at(x, y, only, false);
     /** Underside of the whole structure — the soffit of a deck, or the ground. */
     const soffit: HeightFn = raised
-      ? (x, y) => deck(x, y) - roadStructure(structure.id).deck - FOOTWAY_RISE
+      ? (x, y) => deck(x, y) - roadStructure(pass.segment === undefined ? structure.id : 'elevated').deck - FOOTWAY_RISE
       : (x, y) => Math.min(deck(x, y) - VERGE_SKIRT, terrainAt(x, y) - 0.2);
 
     const frameFor = (tile: number): UvFrameFn => (x, y, pickX, pickY, out) => {
-      const frame = elevation.surfaceFrameAt(x, y, only, pickX, pickY);
+      const frame = elevation.surfaceFrameAt(x, y, only, pickX, pickY,
+        pass.segment !== undefined, pass.segment);
       out[0] = frame.across / tile;
       out[1] = frame.along / tile;
     };
@@ -270,14 +301,16 @@ export function buildRoadSurfaces(
      * it rather than being multiplied twice.
      */
     const asphaltTint: TintFn = (x, y, out) => {
-      const road = elevation.roadAt(x, y, only);
-      const tint = CLASS_TINT[road.type] ?? TINT_REFERENCE;
+      const type = pass.segment === undefined
+        ? elevation.roadAt(x, y, only, false).type
+        : net.doc.segment(pass.segment)?.type ?? 0;
+      const tint = CLASS_TINT[type] ?? TINT_REFERENCE;
       out[0] = tint.r / TINT_REFERENCE.r;
       out[1] = tint.g / TINT_REFERENCE.g;
       out[2] = tint.b / TINT_REFERENCE.b;
     };
 
-    const suffix = structure.id === 'ground' ? '' : `-${structure.id}`;
+    const suffix = pass.id === 'ground' ? '' : `-${pass.id}`;
 
     // Outermost first, so a nearer band's skirt lands on the one outside it.
     const specs: SurfaceSpec[] = [
@@ -465,14 +498,14 @@ export function buildRoadSurfaces(
 
     // Everything a tile's build reads besides its rings and its surroundings:
     // the constants of every surface, so a change to one is a change to all.
-    const salt = new Digest().addText(structure.id);
+    const salt = new Digest().addText(pass.id);
     for (const spec of specs) {
       salt.addText(spec.options.name).add(spec.options.maxEdge).add(spec.options.uvWorld ?? 0)
         .add(spec.options.skirtUvScale ?? 0).add(spec.options.bottom ? 1 : 0).add(spec.options.tint ? 1 : 0);
     }
     const saltValue = salt.value();
 
-    const previous = reuse?.tiles.get(structure.id);
+    const previous = reuse?.tiles.get(pass.id);
     const kept = new Map<number, TileBundle>();
     const parts = new Map<string, Tile[]>();
     for (const spec of specs) parts.set(spec.options.name, []);
@@ -511,7 +544,7 @@ export function buildRoadSurfaces(
       kept.set(value, bundle);
       for (const [name, tile] of bundle) parts.get(name)?.push(tile);
     }
-    reuse?.tiles.set(structure.id, kept);
+    reuse?.tiles.set(pass.id, kept);
 
     for (const spec of specs) {
       const mesh = mergeTiles(parts.get(spec.options.name) ?? [], spec.options);

@@ -6,7 +6,8 @@ import type { NodeId, SegmentId } from '@world/ids';
 import { CROSSWALK_DEPTH } from '@world/approach';
 import { buildRoadElevation } from '@world/elevation';
 import { LaneletGraph, type Lanelet } from '@world/lanelets';
-import { Level, halfWidth } from '@world/roadTypes';
+import { Level, halfWidth, roadProfile } from '@world/roadTypes';
+import { carriesPedestrians } from '@world/pedestrianAccess';
 import { levelPolygons } from '@world/surfaces';
 import { ARCHETYPES } from '@sim/vehicles/archetypes';
 import { SidewalkGraph } from '@sim/peds/sidewalk';
@@ -246,6 +247,13 @@ export function checkWorld(doc: RoadDoc, net: Network): Defect[] {
   sidewalks.build(doc, net, graph);
   for (const [nodeId, node] of doc.nodes) {
     if (node.incident.length < 2) continue;
+    // Limited-access shoulders are not public footways. A junction containing
+    // one is intentionally absent from the pedestrian graph, so connectivity
+    // across that road is not a sidewalk invariant.
+    if (node.incident.some((id) => {
+      const segment = doc.segment(id);
+      return segment && !carriesPedestrians(roadProfile(segment.type, segment.lanes, segment.direction));
+    })) continue;
     const split = footwaySplit(sidewalks, nodeId);
     if (split) out.push(defect('sidewalkSplit', `node ${nodeId}`, split));
   }

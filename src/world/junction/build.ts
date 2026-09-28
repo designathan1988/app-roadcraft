@@ -1,5 +1,5 @@
 import { dot } from '@core/vec2';
-import type { Ring } from '@core/ring';
+import { Ring } from '@core/ring';
 import type { RoadDoc } from '../doc';
 import type { NodeId, SegmentId } from '../ids';
 import type { PolylineCache } from '../geometry';
@@ -13,9 +13,10 @@ import {
 import { type Leg, buildLegs } from './legs';
 import { type Corner, computeCorners } from './corners';
 import { computeTrims } from './trim';
-import { isTransition, transitionRing, transitionRun } from './transition';
+import { isTransition, transitionRing, transitionRun, widthStep } from './transition';
 import { buildJunctionRing, findSlabViolations } from './polygon';
 import { COARSE_EPS, FINE_EPS } from '@core/scalar';
+import { TUNNEL_HEADROOM } from '../structures';
 
 /** How a node behaves geometrically. */
 export type SurfaceMode = 'none' | 'junction';
@@ -96,6 +97,12 @@ export function surfaceMode(doc: RoadDoc, cache: PolylineCache, nodeId: NodeId):
     if (Math.abs(halfWidth(wp, level) - halfWidth(wq, level)) >= COARSE_EPS) return 'junction';
   }
 
+  // A bend deep inside a bore is concealed by terrain. Sweeping an open-air
+  // junction ring across it makes a crescent of pavement emerge beside the
+  // portal when one leg climbs back to daylight.
+  if (node.heightOffset < -TUNNEL_HEADROOM) return 'none';
+
+
   const legs = buildLegs(doc, cache, nodeId, Level.Asphalt);
   if (legs.length < 2) return 'none';
   // Directions point away from the node, so a straight-through node has them
@@ -166,9 +173,46 @@ export function buildJunction(
     return out;
   };
 
-  // A road carrying on at another width is a taper, not a junction.
-  if (isTransition(legs)) {
-    const run = transitionRun((legs[0] as Leg).road, (legs[1] as Leg).road);
+  if (legs.length >= 3) {
+    const angles = legs.map((leg) => Math.atan2(leg.dir.y, leg.dir.x)).sort((a, b) => a - b);
+    let gap = Infinity;
+    for (let i = 0; i < angles.length; i++) {
+      const next = i + 1 === angles.length ? angles[0]! + Math.PI * 2 : angles[i + 1]!;
+      gap = Math.min(gap, next - angles[i]!);
+    }
+    const highwayMerge = legs.length === 3 &&
+      legs.some((leg) => leg.road.id === 'highway') &&
+      legs.some((leg) => leg.road.id === 'ramp');
+    if (gap < (25 * Math.PI) / 180 || highwayMerge) {
+      // A shallow merge has no central crossroads slab. The ribbons overlap
+      // over a long, narrow gore; unioning them directly keeps asphalt within
+      // the actual road outlines instead of filling a giant triangular plate.
+      const ring = new Ring({ x: node.x, y: node.y }, []);
+      return { nodeId, level, legs, corners: [], trims: legs.map(() => 0),
+        ring, tongues: [], rings: [], usedHullFallback: false, transition: false };
+    }
+  }
+
+  // A continuous bend or width change is one road, with one swept cross-section.
+  // Treating it as a normal junction closes both ribbons across their mouths,
+  // leaving a dead-end bulb or a gap where the player expected a through road.
+  const bendAngle = legs.length === 2
+    ? Math.PI - Math.acos(Math.max(-1, Math.min(1,
+      dot((legs[0] as Leg).dir, (legs[1] as Leg).dir))))
+    : 0;
+  const throughBend = legs.length === 2 && bendAngle > 1e-5 &&
+    bendAngle < (150 * Math.PI) / 180;
+  if (isTransition(legs) || throughBend) {
+    const a = legs[0] as Leg;
+    const b = legs[1] as Leg;
+    const turn = Math.PI - Math.acos(Math.max(-1, Math.min(1, dot(a.dir, b.dir))));
+    const radius = Math.max(a.hw, b.hw) * 2;
+    const bendRun = Math.min(radius * 10,
+      radius * Math.tan(Math.min(turn, (170 * Math.PI) / 180) / 2));
+    const taperRun = widthStep(a.road, b.road) >= COARSE_EPS
+      ? transitionRun(a.road, b.road)
+      : 0;
+    const run = Math.max(taperRun, bendRun);
     let trims = capTrims(legs.map(() => run), legs);
     for (let pass = 0; pass < passes; pass++) {
       legs = buildLegs(doc, cache, nodeId, level, { trims: bySegment(trims, legs) });

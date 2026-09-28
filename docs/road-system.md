@@ -13,10 +13,42 @@
 | 1 | `urban` | 22 u | 2 | 5 u | — | 50 km/h | centre line |
 | 2 | `avenue` | 34 u | 4 | 6 u | — | 60 km/h | lane lines |
 | 3 | `boulevard` | 46 u | 4 | 7 u | 6 u | 60 km/h | lane lines |
+| 4 | `highway` | 40 u | 4 | 1.2 u shoulder | 4 u | 100 km/h | lane lines |
+| 5 | `ramp` | 11 u | 1, one-way | 1.2 u shoulder | — | 60 km/h | none |
 
 A class carries a `nameKey` and a `subKey`, never a sentence: the model states
 what the text is *about*, and `src/ui/labels.ts` renders it in whatever language
 is showing.
+
+The four street classes (0–3) remain the upgrade ladder. Highway and ramp are
+separate selections, so upgrading a boulevard cannot silently narrow it into a
+ramp. The narrow outer band on limited-access roads is a shoulder, not a
+pedestrian destination.
+
+## Road construction
+
+The Road tool starts in **Straight** mode. Click the start and then the end;
+placement ends there. To continue from that road, click its endpoint or any
+point along it as the next start. Escape or right-click cancels a pending
+placement. **Curve** uses a third click for the bend control point; **Free**
+follows a held pointer gesture and stores it as a chain of quadratic pieces.
+
+Page Up and Page Down, or the palette buttons, change the target height by one
+metre (2.5 world units) per press. `RoadNode.heightOffset` is the authored
+height relative to the designed ground. The start of the next segment retains
+the prior node's height while the new endpoint takes the target height. The
+vertical solver eases the difference along the segment; an infeasible request
+is limited by grade, and the UI reports it. The live preview shows the projected
+deck, the relation to the terrain, endpoint height and grade before placement.
+Connected segments can run at grade, on a deck, through a cutting and below
+terrain without changing tools.
+
+Automatic crossings compare the two alignments' authored heights. Roads with
+enough vertical clearance remain separate graphs even when their plan lines
+cross. Near-height crossings split both roads and create a junction. A shallow
+merge unions the road ribbons directly instead of creating a large junction
+plate. A two-leg bend uses a swept transition, keeping kerb and footway bands
+continuous.
 
 `roadProfile(type, lanes, direction)` derives an overridden profile when the
 player changes the lane count. A two-way road splits its lanes across directions
@@ -115,7 +147,17 @@ diagram; thermoplastic road paint is a rough, slightly raised surface, so it tak
 the same light as the asphalt around it and darkens when a viaduct passes
 overhead.
 
-## Structures
+## Legacy structures and derived construction
+
+The editor no longer exposes separate structural modes. New roads use one
+height-driven alignment. The renderer derives supports where the solved road is
+clear of terrain and tunnel portals where the terrain closes over a lowered
+road. Height-authored segments are meshed separately at grade crossings, because
+a single 2D polygon union cannot distinguish two decks at the same `(x, y)`.
+
+The table below describes legacy `structure` values retained for old saved
+maps; loading them still uses their existing solvers. `viaduct` remains only a
+legacy input alias for `elevated`.
 
 | id | clearance above the ground it spans | deck thickness | piers | solver |
 |---|---|---|---|---|

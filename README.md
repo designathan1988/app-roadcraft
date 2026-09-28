@@ -28,13 +28,12 @@ Requires Node 22 or newer and a browser with WebGL 2.
 
 | | |
 |---|---|
-| **Draw a road** | Pick a class (`1`–`4`), then drag on the map. Roads snap to existing nodes and split any road they cross at the same level. |
+| **Draw a road** | Pick a class (`1`–`6`). Straight is the default: click a start and an end. The tool resets after placement; click an existing road or node to begin another connected segment. Curve takes a third click for its bend; Free follows a drag. Escape or right-click cancels a pending placement. |
 | **Sculpt the land** | `Terrain` (`t`): raise, lower, level or carve a river. The wheel sizes the brush and shift-wheel sets its strength; `1`–`4` pick the operation. Hold the button to keep working one spot. *Level* takes its target height from where the stroke starts, so a drag across a slope brings the whole swept area to that height. Roads already built conform to the new ground immediately. |
-| **Build up** | Choose *Elevated* or *Bridge* before drawing. A raised road ramps down to meet anything at grade and passes over anything it merely crosses. |
-| **Build under** | Choose *Tunnel* and drag right through a hill. The road dives, the ground closes over it, and a portal appears at each end. Draw it long enough for the ramps to reach depth — too short and you get the open cutting you actually asked for. |
+| **Build up or down** | Click the road point to build from, aim the next endpoint, then press Page Up/Page Down or the palette `+`/`−` buttons for 1 m steps. The live preview shows the resulting height and grade before the endpoint click. Repeat from an existing point to create ramps, elevated spans, cuttings and tunnels. |
 | **Control a junction** | `Control` (`c`): click a junction to cycle automatic → signal → priority → stop → give way → uncontrolled. Shift-click goes back. While the tool is up, every junction shows its current mode. |
 | **Adjust** | `Upgrade` (`u`) raises a road's class · `Move` (`m`) drags a node · `Split` (`x`) cuts a road · `Bulldoze` (`b`) removes one · `Inspect` (`i`) opens the panel. |
-| **Camera** | Wheel to zoom, right button to pan, `Q`/`E` to rotate in quarter turns, arrow keys to pan. |
+| **Camera** | Wheel to zoom, middle button to pan while placing a road, `Q`/`E` to rotate in quarter turns, arrow keys to pan. Right-click cancels a pending road; otherwise it pans. |
 | **Traffic** | Pause, 1×, 2×, 4×. Sliders set vehicle and pedestrian density; *Demand* sets the overall level. |
 
 Everything is saved to the browser automatically. **Save map** / **Open map**

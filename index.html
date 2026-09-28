@@ -108,17 +108,17 @@
     </section>
 
     <section class="road-palette glass" data-panel="palette" data-i18n-label="palette.label" aria-label="Road classes">
-      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="paletteBody"><span data-i18n="palette.title">ROAD CLASS</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><kbd>1–4</kbd></div>
+      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="paletteBody"><span data-i18n="palette.title">ROAD CLASS</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><kbd>1–6</kbd></div>
       <div class="panel-body" id="paletteBody">
-      <div class="alignment-modes" role="group" data-i18n-label="palette.alignment" aria-label="Alignment">
+      <div class="alignment-modes" role="group" data-i18n-label="palette.alignment" aria-label="Road alignment">
         <button type="button" class="alignment-mode active" data-alignment="straight" aria-pressed="true" data-i18n="palette.alignment.straight">Straight</button>
         <button type="button" class="alignment-mode" data-alignment="curve" aria-pressed="false" data-i18n="palette.alignment.curve">Curve</button>
+        <button type="button" class="alignment-mode" data-alignment="free" aria-pressed="false" data-i18n="palette.alignment.free">Free</button>
       </div>
-      <div class="structure-modes" role="group" data-i18n-label="palette.structure" aria-label="Road structure">
-        <button type="button" class="structure-mode active" data-structure="ground" aria-pressed="true" data-i18n="structure.ground">At grade</button>
-        <button type="button" class="structure-mode" data-structure="elevated" aria-pressed="false" data-i18n="structure.elevated">Elevated</button>
-        <button type="button" class="structure-mode" data-structure="bridge" aria-pressed="false" data-i18n="structure.bridge">Bridge</button>
-        <button type="button" class="structure-mode" data-structure="tunnel" aria-pressed="false" data-i18n="structure.tunnel" data-i18n-title="structure.tunnel.help" title="Drive a road under a hill: draw it long enough for the ramps to reach depth">Tunnel</button>
+      <div class="road-height" role="group" data-i18n-label="palette.height" aria-label="Road height">
+        <button type="button" class="road-height-step" data-height-step="-1" aria-keyshortcuts="PageDown" data-i18n-title="palette.height.lower" title="Lower road by one metre">−</button>
+        <span id="roadHeightValue" aria-live="polite">0 m</span>
+        <button type="button" class="road-height-step" data-height-step="1" aria-keyshortcuts="PageUp" data-i18n-title="palette.height.raise" title="Raise road by one metre">+</button>
       </div>
       <div id="roadTypes" class="road-types" role="group" data-i18n-label="palette.classes" aria-label="Road classes"></div>
       </div>

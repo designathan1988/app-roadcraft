@@ -264,20 +264,12 @@ body { user-select: none; -webkit-user-select: none; }
 .toggle-row.active { color: var(--text); }
 .toggle-row.active .switch { background: rgba(101, 229, 195, 0.45); }
 .toggle-row.active .switch::after { transform: translateX(11px); background: var(--accent); }
-.alignment-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
-.alignment-mode {
-  padding: 7px;
-  border-radius: 9px;
-  border: 1px solid var(--ui-border);
-  background: transparent;
-  color: var(--muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-.alignment-mode.active { color: var(--accent); border-color: var(--accent); }
-
-.structure-modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 0 0 10px; }
-.structure-mode, .terrain-mode, .terrain-clear {
+.alignment-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px; }
+.alignment-mode { padding: 7px 4px; border-radius: 8px; border: 1px solid var(--ui-border); background: rgba(5, 16, 18, 0.34); color: var(--muted); font: inherit; font-size: 10px; cursor: pointer; }
+.alignment-mode.active { color: var(--accent); border-color: var(--accent); background: rgba(101, 229, 195, 0.1); }
+.road-height { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; gap: 6px; margin-bottom: 10px; }
+.road-height span { color: var(--text); font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
+.road-height-step, .terrain-mode, .terrain-clear {
   padding: 6px 4px;
   border-radius: 8px;
   border: 1px solid var(--ui-border);
@@ -287,7 +279,8 @@ body { user-select: none; -webkit-user-select: none; }
   font-size: 9px;
   cursor: pointer;
 }
-.structure-mode.active, .terrain-mode.active { color: var(--accent); border-color: var(--accent); background: rgba(101, 229, 195, 0.1); }
+.road-height-step { color: var(--accent); font-size: 16px; line-height: 1; padding: 6px; }
+.road-height-step:hover, .terrain-mode.active { color: var(--accent); border-color: var(--accent); background: rgba(101, 229, 195, 0.1); }
 .terrain-mode.water.active { color: #73cfe7; border-color: #73cfe7; background: rgba(71, 158, 184, 0.14); }
 .terrain-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .terrain-mode { padding: 9px 5px; font-size: 10px; }
@@ -522,7 +515,6 @@ body { user-select: none; -webkit-user-select: none; }
   .road-type { grid-template-columns: 34px 1fr; gap: 7px; padding: 6px; }
   .road-type small, .road-type .shortcut { display: none; }
   .road-swatch { height: 16px; }
-  .structure-modes { grid-template-columns: 1fr 1fr; }
   .collapsed.glass { padding-top: 8px; padding-bottom: 8px; }
   .inspector {
     left: 10px;

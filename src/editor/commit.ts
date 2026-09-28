@@ -12,20 +12,82 @@ import { type RoadDoc, fitRoadCurve } from '@world/doc';
 import { Network } from '@world/network';
 import type { NodeId, SegmentId } from '@world/ids';
 import { MIN_LINK_LENGTH } from '@world/approach';
-import { changedNodes, impossibleAmong, worsensAnyNode } from '@world/legAngles';
+import { MAX_AUTHORED_GRADE } from '@world/elevation';
 import { ROAD_TYPES } from '@world/roadTypes';
-import type { RoadStructure } from '@world/structures';
+import { roadStructure, type RoadStructure } from '@world/structures';
 import type { Anchor } from './snap';
+import type { RoadPathPiece } from './roadPath';
 import { COARSE_EPS, EPS } from '@core/scalar';
 
 /** Shortest road the editor will create. */
 const MIN_DRAFT_LENGTH = 24;
 /** Two nodes closer than this are the same node. */
 const MERGE_EPS = 2.6;
+/** Distinct decks at the same map point remain separate networks. */
+const HEIGHT_JOIN_EPS = 0.75;
+/** Vertical room required before two crossing carriageways can pass independently. */
+const CROSSING_CLEARANCE = roadStructure('elevated').clearance;
 
 export interface DraftResult {
   readonly committed: boolean;
   readonly reason?: 'tooShort' | 'duplicate' | 'degenerate' | 'tooSharp';
+  readonly heightLimited?: boolean;
+  readonly finalHeightOffset?: number;
+}
+
+/**
+ * Commits one freehand gesture as one undoable, atomic road. The gesture may
+ * contain many tangent-continuous quadratics and vertical control points.
+ */
+export function commitRoadPath(
+  doc: RoadDoc,
+  net: Network,
+  start: Anchor,
+  end: Anchor,
+  type: number,
+  pieces: readonly RoadPathPiece[],
+): DraftResult {
+  if (!pieces.length || !Number.isInteger(type) || type < 0 || type >= ROAD_TYPES.length) {
+    return { committed: false, reason: 'degenerate' };
+  }
+  const work = doc.clone();
+  const workNet = new Network(work);
+  workNet.rebuild();
+  let committed = false;
+  let heightLimited = false;
+  let currentHeight = pieces[0]?.start.heightOffset ?? 0;
+  for (let i = 0; i < pieces.length; i++) {
+    const piece = pieces[i] as RoadPathPiece;
+    if (!validPoint(piece.start.at) || !validPoint(piece.end.at) ||
+      !Number.isFinite(piece.start.heightOffset) || !Number.isFinite(piece.end.heightOffset)) {
+      return { committed: false, reason: 'degenerate' };
+    }
+    const from: Anchor = i === 0 ? start : { kind: 'free', at: piece.start.at };
+    const to: Anchor = i === pieces.length - 1 ? end : { kind: 'free', at: piece.end.at };
+    const shape = fitRoadCurve(piece.start.at, piece.end.at, piece.curve, type);
+    const length = Polyline.fromPoints(flattenSegment(piece.start.at, piece.end.at, shape)).length;
+    const rise = length * MAX_AUTHORED_GRADE;
+    const nextHeight = Math.max(currentHeight - rise,
+      Math.min(currentHeight + rise, piece.end.heightOffset));
+    const limited = Math.abs(nextHeight - piece.end.heightOffset) > 1e-6;
+    heightLimited ||= limited;
+    if (i === pieces.length - 1 && end.kind !== 'free' && limited) {
+      return { committed: false, reason: 'tooShort' };
+    }
+    const result = commitDraftInPlace(
+      work, workNet, from, to, type, shape, 'ground',
+      { start: currentHeight, end: nextHeight,
+        smoothEnd: i < pieces.length - 1 },
+    );
+    if (!result.committed && result.reason !== 'duplicate') return result;
+    committed ||= result.committed;
+    currentHeight = nextHeight;
+    workNet.rebuild();
+  }
+  if (!committed) return { committed: false, reason: 'duplicate' };
+  doc.replaceWith(work);
+  net.adopt(workNet);
+  return { committed: true, heightLimited, finalHeightOffset: currentHeight };
 }
 
 interface DraftStop {
@@ -91,27 +153,6 @@ export function commitDraft(
   const result = commitDraftInPlace(work, workNet, start, end, type, shape, structure);
   if (!result.committed) return result;
 
-  // The RESULT is checked, not the drag. A drag that is itself well clear of
-  // everything can still split a road and leave the two halves meeting the new
-  // one at a sliver, and the sliver is where the junction fails. Checking the
-  // clone catches that, and rejecting here leaves the live map untouched by the
-  // same atomicity that already covers a duplicate or a degenerate anchor.
-  //
-  // DIFFERENTIAL, never absolute. `allNodesBuildable(work)` stood here and made
-  // the editor unusable: one pre-existing 7-degree node — invisible, possibly
-  // thousands of units away — rejected every road drawn anywhere on the map
-  // with `tooSharp`, forever, because the whole-document question can only be
-  // answered `false` once such a node exists. What this edit must be judged on
-  // is what this edit did.
-  // Only the nodes this draft changed are re-measured, and each is compared
-  // against WHAT IT WAS. Sweeping every node instead cost real time on a real
-  // map — two full re-flattenings of every bezier in the document per road
-  // drawn — for an answer that cannot differ anywhere the draft did not reach.
-  const touched = changedNodes(doc, work);
-  if (worsensAnyNode(impossibleAmong(doc, touched), impossibleAmong(work, touched))) {
-    return { committed: false, reason: 'tooSharp' };
-  }
-
   doc.replaceWith(work);
   // `workNet` was last built BEFORE the draft's segments were added
   // (`commitDraftInPlace` rebuilds after materialising the endpoints, then only
@@ -133,16 +174,18 @@ function commitDraftInPlace(
   type: number,
   curve: CurveShape | null,
   structure: RoadStructure,
+  heights?: { readonly start: number; readonly end: number; readonly smoothEnd?: boolean },
 ): DraftResult {
-  const endpoints = materializeEndpoints(doc, net, start, end);
+  const endpoints = materializeEndpoints(doc, net, start, end, heights);
   if (!endpoints || endpoints[0] === endpoints[1]) {
     return { committed: false, reason: 'degenerate' };
   }
   const [startNode, endNode] = endpoints;
 
-  // Endpoint splitting changed the graph. Rebuild before scanning so every
-  // crossing test sees current polylines and segment ids.
-  net.rebuild();
+  // Splitting an endpoint changes existing segment ids. Free or node anchors
+  // only add nodes, so the cached polylines remain current and a full rebuild
+  // per quadratic would make a long freehand gesture needlessly expensive.
+  if (start.kind === 'segment' || end.kind === 'segment') net.rebuild();
 
   const a = start.at;
   const b = end.at;
@@ -151,7 +194,7 @@ function commitDraftInPlace(
   const draftCuts: DraftStop[] = [];
 
   for (const [id, seg] of [...doc.segments]) {
-    if (seg.structure !== structure) continue;
+    if (!heights && seg.structure !== structure) continue;
     const existing = net.polylines.get(doc, id);
 
     for (let di = 0; di + 1 < draft.n; di++) {
@@ -169,6 +212,14 @@ function commitDraftInPlace(
           (existing.cum[ei + 1] as number) - (existing.cum[ei] as number);
         const draftS = (draft.cum[di] as number) + hit.t * draftPiece;
         const existingS = (existing.cum[ei] as number) + hit.u * existingPiece;
+
+        if (heights) {
+          const drafted = heights.start +
+            (heights.end - heights.start) * (draftS / Math.max(1e-6, draft.length));
+          if (Math.abs(drafted - segmentOffsetAt(doc, seg, existingS, existing.length)) > CROSSING_CLEARANCE) {
+            continue;
+          }
+        }
 
         // The start and end anchors already materialize these contacts.
         if (draftS <= MERGE_EPS || draftS >= draft.length - MERGE_EPS) continue;
@@ -248,7 +299,8 @@ function commitDraftInPlace(
 
     const pieceCurve = curveShapeForRange(a, b, curve, fromPoint, toPoint, from.q, to.q);
     if (alreadyJoined(doc, from.node, to.node, pieceCurve, structure)) continue;
-    if (doc.addSegment(from.node, to.node, type, pieceCurve, from.s, 'both', null, structure)) made++;
+    const direction = ROAD_TYPES[type]?.lanes === 1 ? 'aToB' : 'both';
+    if (doc.addSegment(from.node, to.node, type, pieceCurve, from.s, direction, null, structure)) made++;
   }
 
   if (!made) return { committed: false, reason: 'duplicate' };
@@ -304,6 +356,7 @@ function materializeEndpoints(
   net: Network,
   start: Anchor,
   end: Anchor,
+  heights?: { readonly start: number; readonly end: number; readonly smoothEnd?: boolean },
 ): [NodeId, NodeId] | null {
   type Tag = 'start' | 'end';
   const resolved = new Map<Tag, NodeId>();
@@ -331,7 +384,8 @@ function materializeEndpoints(
       return true;
     }
 
-    resolved.set(tag, materializeFree(doc, anchor.at));
+    resolved.set(tag, materializeFree(doc, anchor.at, heights?.[tag] ?? 0,
+      tag === 'end' && heights?.smoothEnd === true));
     return true;
   };
 
@@ -358,11 +412,19 @@ function materializeEndpoints(
  * difference at the meeting point is the deck's problem, not the document's —
  * the raised span ramps down to the adjoining surface.
  */
-function materializeFree(doc: RoadDoc, at: Vec2): NodeId {
+function materializeFree(doc: RoadDoc, at: Vec2, heightOffset = 0, smooth = false): NodeId {
   for (const node of doc.nodes.values()) {
-    if (dist({ x: node.x, y: node.y }, at) < MERGE_EPS) return node.id;
+    if (dist({ x: node.x, y: node.y }, at) < MERGE_EPS &&
+      Math.abs((node.heightOffset ?? 0) - heightOffset) <= HEIGHT_JOIN_EPS) return node.id;
   }
-  return doc.addNode(at).id;
+  return doc.addNode(at, heightOffset, smooth).id;
+}
+
+function segmentOffsetAt(doc: RoadDoc, segment: NonNullable<ReturnType<RoadDoc['segment']>>, s: number, length: number): number {
+  const t = Math.max(0, Math.min(1, s / Math.max(1e-6, length)));
+  const a = doc.node(segment.a)?.heightOffset ?? 0;
+  const b = doc.node(segment.b)?.heightOffset ?? 0;
+  return a + (b - a) * t + roadStructure(segment.structure).clearance;
 }
 
 /** Splits a segment at an arc position, returning the new or endpoint node. */
@@ -421,8 +483,8 @@ export function duplicateSegment(doc: RoadDoc, net: Network, id: SegmentId): Seg
   const offset = Math.max(22, sourceWidth + 12);
   const nx = (-dy / length) * offset;
   const ny = (dx / length) * offset;
-  const copyA = doc.addNode({ x: a.x + nx, y: a.y + ny });
-  const copyB = doc.addNode({ x: b.x + nx, y: b.y + ny });
+  const copyA = doc.addNode({ x: a.x + nx, y: a.y + ny }, a.heightOffset);
+  const copyB = doc.addNode({ x: b.x + nx, y: b.y + ny }, b.heightOffset);
   const copy = doc.addSegment(
     copyA.id,
     copyB.id,
@@ -500,7 +562,10 @@ function splitSegmentAtCuts<Tag>(
 
   if (!interior.length) return result;
 
-  const nodes = interior.map((cut) => doc.addNode(cut.at));
+  const nodes = interior.map((cut) =>
+    doc.addNode(cut.at, (originalA.heightOffset ?? 0) +
+      ((originalB.heightOffset ?? 0) - (originalA.heightOffset ?? 0)) *
+      (cut.s / Math.max(1e-6, pl.length))));
   for (let i = 0; i < interior.length; i++) {
     const cut = interior[i] as InteriorCut;
     const node = nodes[i] as { id: NodeId };
