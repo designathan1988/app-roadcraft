@@ -1,0 +1,17 @@
+{
+ "name": "clipper-sweep-exception-seed29",
+ "category": "exception",
+ "detail": "Multiway road surface union exhausted the Martinez sweep; Clipper2 recovers the edit",
+ "sim": null,
+ "ops": [
+  { "op": "draw", "a": [542.18, -26.17], "b": [453.16, 160.77], "type": 0, "curve": null, "structure": "elevated" },
+  { "op": "draw", "a": [419.62, 7.33], "b": [552.77, 134.27], "type": 5, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [446.89, 34.6], "b": [604.06, -122.57], "type": 2, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [404.73, 23.68], "b": [425.18, 44.12], "type": 1, "curve": { "t": 0.48, "h": -8.07 }, "structure": "ground" },
+  { "op": "draw", "a": [433.4, 8.63], "b": [450.43, 25.66], "type": 1, "curve": null, "structure": "bridge" },
+  { "op": "move", "pick": 0.57, "dx": 56.6, "dy": 42.23 },
+  { "op": "draw", "a": [-372.73, 234.17], "b": [-28.04, 488.33], "type": 4, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [446.89, 34.6], "b": [335.81, -66.15], "type": 2, "curve": null, "structure": "ground" },
+  { "op": "move", "pick": 0.46, "dx": 16.13, "dy": -58.23 }
+ ]
+}

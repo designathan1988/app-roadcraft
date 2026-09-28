@@ -221,19 +221,25 @@ export function buildJunction(
       legs = buildLegs(doc, cache, nodeId, level, { trims: bySegment(trims, legs) });
       trims = capTrims(legs.map(() => run), legs);
     }
-    const ring = transitionRing(legs, trims);
-    return {
-      nodeId,
-      level,
-      legs,
-      corners: computeCorners(legs, legs.map(scaleOf)),
-      trims,
-      ring,
-      tongues: [],
-      rings: [ring],
-      usedHullFallback: false,
-      transition: true,
-    };
+    // A narrow link may cap both mouths so severely that the intended taper
+    // has no run left. On a 45-degree, 6-unit width change, an 8-unit total
+    // axis cut a full metre into the wide carriageway. A corner plate is the
+    // honest shape when there is no space to make the transition.
+    if (trims.every((trim) => trim >= run * 0.75)) {
+      const ring = transitionRing(legs, trims);
+      return {
+        nodeId,
+        level,
+        legs,
+        corners: computeCorners(legs, legs.map(scaleOf)),
+        trims,
+        ring,
+        tongues: [],
+        rings: [ring],
+        usedHullFallback: false,
+        transition: true,
+      };
+    }
   }
 
   /** The trims the current legs were framed at, by segment. */

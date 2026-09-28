@@ -153,7 +153,10 @@ export function checkWorld(doc: RoadDoc, net: Network): Defect[] {
       const f = line.sampleAt(s);
       for (const across of [-1, 0, 1]) {
         const p = { x: f.p.x + f.n.x * hw * across, y: f.p.y + f.n.y * hw * across };
-        if (!asphalt.contains(p)) {
+        // The integer clip grid and the point-in-polygon probe can disagree
+        // by micrometres exactly on a mouth boundary. Such a point is on the
+        // road; a visible opening has measurable distance from every edge.
+        if (!asphalt.contains(p) && asphalt.edgeDistance(p) > 0.005) {
           first = `s=${s.toFixed(1)}/${line.length.toFixed(1)} across=${across} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)})`;
           break;
         }

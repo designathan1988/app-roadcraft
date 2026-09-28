@@ -1,0 +1,19 @@
+{
+ "name": "short-transition-mouth-gap",
+ "category": "surfaceGap",
+ "detail": "A width transition shortened below its designed run left a gap beside the wide approach",
+ "sim": null,
+ "ops": [
+  { "op": "draw", "a": [-185.81, -285.21], "b": [-258.63, -212.39], "type": 4, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [-181.62, -281.02], "b": [-43.91, -418.73], "type": 5, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [-150.18, -364.06], "b": [-290.5, -364.06], "type": 0, "curve": { "t": 0.5, "h": -36.95 }, "structure": "ground" },
+  { "op": "delete", "pick": 0.26 },
+  { "op": "draw", "a": [-192.63, -338.23], "b": [-189.37, -438.51], "type": 4, "curve": null, "structure": "ground" },
+  { "op": "split", "pick": 0.44, "at": 0.6 },
+  { "op": "type", "pick": 0.7, "type": 3 },
+  { "op": "draw", "a": [-258.41, -335.18], "b": [-283.29, -360.34], "type": 5, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [-173.92, -513.76], "b": [-149.33, -166.99], "type": 1, "curve": null, "structure": "ground" },
+  { "op": "removeNode", "pick": 0.11 },
+  { "op": "upgrade", "pick": 0.04 }
+ ]
+}

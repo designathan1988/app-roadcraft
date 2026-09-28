@@ -4,6 +4,7 @@ import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { buildRoadElevation, type RoadElevation } from '@world/elevation';
 import { Level } from '@world/roadTypes';
+import { applyOp, freshState, type FuzzOp } from '../fuzz/support/ops';
 import {
   ROAD_GROUND_CLEARANCE,
   TUNNEL_BORE,
@@ -76,6 +77,30 @@ function continuityRatio(field: RoadElevation, radius: number): number {
   const fine = worstStep(field, radius, 0.5);
   return fine / Math.max(1e-9, coarse);
 }
+
+it('keeps an elevated ramp within grade after a short-span split', () => {
+  const state = freshState();
+  const ops = [
+    { op: 'draw', a: [539.89, -698.3], b: [685.21, -608.5], type: 0, curve: null, structure: 'ground' },
+    { op: 'draw', a: [563.79, -674.76], b: [656.27, -700], type: 3, curve: { t: 0.39, h: -31.07 }, structure: 'ground' },
+    { op: 'removeNode', pick: 0.34 },
+    { op: 'structure', pick: 0.67, structure: 'elevated' },
+    { op: 'removeNode', pick: 0.08 },
+    { op: 'split', pick: 0.1, at: 0.65 },
+  ] as FuzzOp[];
+  for (const op of ops) applyOp(state, op);
+  const elevation = buildRoadElevation(state.net, flatGround());
+  for (const [id, ribbon] of state.net.ribbons) {
+    if (state.doc.segment(id)?.structure !== 'elevated') continue;
+    let previous: number | null = null;
+    for (let s = 0; s <= ribbon.full.length; s += 0.25) {
+      const p = ribbon.full.sampleAt(s).p;
+      const height = elevation.onSegment(id, p.x, p.y);
+      if (previous !== null) expect(Math.abs(height - previous)).toBeLessThan(0.05);
+      previous = height;
+    }
+  }
+});
 
 describe('road elevation on flat ground', () => {
   let field: RoadElevation;

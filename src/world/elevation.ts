@@ -620,6 +620,7 @@ export function buildRoadElevation(
   }
 
   const nodeHeight = new Map<NodeId, number>();
+  const upperReach = new Map<NodeId, number>();
   for (const [node] of incident) {
     if (!aloft.has(node)) {
       nodeHeight.set(node, gradeHeight.get(node) ?? 0);
@@ -646,6 +647,7 @@ export function buildRoadElevation(
       const run = Math.max(0, profile.length - plateHere - plateThere);
       reachable = Math.min(reachable, (gradeHeight.get(other) ?? 0) + rampRise(run));
     }
+    if (Number.isFinite(reachable)) upperReach.set(node, Math.max(gradeHeight.get(node) ?? 0, reachable));
     if (reachable < height) height = Math.max(gradeHeight.get(node) ?? 0, reachable);
     nodeHeight.set(node, height);
   }
@@ -666,7 +668,7 @@ export function buildRoadElevation(
   // does; and the plates are pinned to the node at the end whatever happened,
   // so a leg and its junction agree exactly even if the cap is ever reached.
   const solve = (profile: Profile): void => {
-    if (isRaised(profile.structure)) solveRaised(profile, nodeHeight, aloft);
+    if (isRaised(profile.structure)) solveRaised(profile, nodeHeight, aloft, upperReach);
     else if (isSunken(profile.structure)) solveSunken(profile, nodeHeight, wanted);
     else if (profile.manualVertical) solveVariable(profile, nodeHeight);
     else solveGround(profile, nodeHeight);
@@ -676,17 +678,18 @@ export function buildRoadElevation(
     for (const profile of dirty) solve(profile);
     const next = new Set<Profile>();
     for (const [node, list] of incident) {
-      let height = nodeHeight.get(node) ?? 0;
-      let moved = false;
+      const previous = nodeHeight.get(node) ?? 0;
+      let height = previous;
       for (const profile of list) {
         const end = profile.a === node ? (profile.h[0] as number) : (profile.h[profile.h.length - 1] as number);
         if (end > height + 1e-6) {
           height = end;
-          moved = true;
         }
       }
+      const cap = upperReach.get(node);
+      if (cap !== undefined) height = Math.min(height, cap);
       nodeHeight.set(node, height);
-      if (moved) for (const profile of list) next.add(profile);
+      if (height > previous + 1e-6) for (const profile of list) next.add(profile);
     }
     dirty = next;
     if (next.size === 0) break;
@@ -1125,6 +1128,7 @@ function solveRaised(
   profile: Profile,
   nodeHeight: Map<NodeId, number>,
   aloft: ReadonlySet<NodeId>,
+  upperReach: ReadonlyMap<NodeId, number>,
 ): void {
   const { h, ceil, step, length } = profile;
   const spec = roadStructure(profile.structure);
@@ -1132,6 +1136,7 @@ function solveRaised(
   const hB = nodeHeight.get(profile.b) ?? 0;
   const landA = !aloft.has(profile.a);
   const landB = !aloft.has(profile.b);
+  const nearLanding = upperReach.has(profile.a) || upperReach.has(profile.b);
   const edgeB = length - profile.plateB;
   const run = Math.max(1e-3, edgeB - profile.plateA);
 
@@ -1148,14 +1153,14 @@ function solveRaised(
   }
   // A rise that pushed into the deck lifts it, and the lift is eased out along
   // the deck rather than left as a bump.
-  gradeEnvelope(h, step, DECK_GRADE);
+  gradeEnvelope(h, step, nearLanding ? RAMP_GRADE : DECK_GRADE);
   if (!landA || !landB) {
     for (let i = 0; i < h.length; i++) {
       const s = step * i;
       if (!landA && s <= profile.plateA) h[i] = Math.max(h[i] as number, hA);
       if (!landB && s >= edgeB) h[i] = Math.max(h[i] as number, hB);
     }
-    gradeEnvelope(h, step, DECK_TIE);
+    gradeEnvelope(h, step, nearLanding ? RAMP_GRADE : DECK_TIE);
   }
 
   for (let i = 0; i < h.length; i++) {
@@ -1191,6 +1196,17 @@ function solveRaised(
   }
   gradeEnvelope(h, step, RAMP_GRADE);
   roundGradeBreaks(profile, 'raise');
+  // A raised junction next to a short landing can be lower than the span's
+  // free deck. The raise-only envelopes above cannot pull that deck DOWN, and
+  // pinning the low node afterward made the last station a near-vertical drop.
+  // Shape the approach from that fixed node before the plate is pinned.
+  if (nearLanding) {
+    for (let i = 0; i < h.length; i++) {
+      const s = step * i;
+      if (upperReach.has(profile.a)) h[i] = Math.min(h[i] as number, hA + rampRise(s - profile.plateA));
+      if (upperReach.has(profile.b)) h[i] = Math.min(h[i] as number, hB + rampRise(edgeB - s));
+    }
+  }
   flattenPlates(profile, hA, hB);
 }
 
