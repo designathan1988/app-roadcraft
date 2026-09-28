@@ -1,5 +1,5 @@
 import { type MultiPoly, difference, union } from '@core/clipper';
-import { Level, type SurfaceLevel } from './roadTypes';
+import { Level, halfWidth, type SurfaceLevel } from './roadTypes';
 import type { Network } from './network';
 import type { NodeId, SegmentId } from './ids';
 import { roadStructure } from './structures';
@@ -98,6 +98,32 @@ export function levelRings(net: Network, level: SurfaceLevel, include?: SurfaceS
     if (include && !include(ribbon.id)) continue;
     const ring = ribbon.rings[level];
     if (ring && !ring.isEmpty) out.push([ring.flatten().map((p) => [p.x, p.y])]);
+    const segment = net.doc.segment(ribbon.id);
+    const trims = net.trims.get(ribbon.id);
+    if (!segment?.curve || !trims) continue;
+    // A curved leg's offset edge is not the straight mouth chord used by the
+    // junction plate. Give the two polygons a short, exact-width overlap at
+    // that mouth, derived from the same full centreline as the ribbon. Without
+    // it, a tight two-leg corner left a visible triangular asphalt gap.
+    const width = halfWidth(ribbon.road, level);
+    const length = ribbon.full.length;
+    for (const [node, mouth, trim] of [
+      [segment.a, trims.a[level] ?? 0, trims.a[level] ?? 0],
+      [segment.b, length - (trims.b[level] ?? 0), trims.b[level] ?? 0],
+    ] as const) {
+      if (net.doc.degree(node) < 2 || trim <= 0) continue;
+      const from = Math.max(0, mouth - 2);
+      const to = Math.min(length, mouth + 2);
+      if (to - from < 0.25) continue;
+      const left: number[][] = [], right: number[][] = [];
+      const count = Math.max(2, Math.ceil((to - from) / 0.5));
+      for (let i = 0; i <= count; i++) {
+        const frame = ribbon.full.sampleAt(from + (to - from) * i / count);
+        left.push([frame.p.x + frame.n.x * width, frame.p.y + frame.n.y * width]);
+        right.push([frame.p.x - frame.n.x * width, frame.p.y - frame.n.y * width]);
+      }
+      out.push([[...left, ...right.reverse()]]);
+    }
   }
 
   for (const [nodeId, byLevel] of net.junctions) {

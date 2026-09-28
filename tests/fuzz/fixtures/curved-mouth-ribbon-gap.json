@@ -1,0 +1,16 @@
+{
+ "name": "curved-mouth-ribbon-gap",
+ "category": "surfaceGap",
+ "detail": "Curved ribbon and a two-leg junction plate lacked a short overlap at the mouth",
+ "sim": null,
+ "ops": [
+  { "op": "draw", "a": [575.01, -598.8], "b": [700, -481.51], "type": 4, "curve": null, "structure": "ground" },
+  { "op": "draw", "a": [510.27, -525.48], "b": [700, -572.37], "type": 5, "curve": { "t": 0.56, "h": 61.09 }, "structure": "ground" },
+  { "op": "removeNode", "pick": 0.19 },
+  { "op": "removeNode", "pick": 0.51 },
+  { "op": "draw", "a": [433.25, -420.87], "b": [653.89, -617.37], "type": 1, "curve": { "t": 0.41, "h": -54.1 }, "structure": "ground" },
+  { "op": "draw", "a": [695.22, -478.59], "b": [700, -184.22], "type": 4, "curve": null, "structure": "ground" },
+  { "op": "curve", "pick": 0.1, "t": 0.58, "h": 16.67 },
+  { "op": "move", "pick": 0.42, "dx": -29.81, "dy": 12.31 }
+ ]
+}

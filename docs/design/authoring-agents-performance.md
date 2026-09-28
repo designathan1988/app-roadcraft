@@ -24,6 +24,8 @@ The road geometry pass replaced an unreliable all-or-nothing Boolean call with a
 
 The `pedestrian-crossing-seed3` stall is now fixed at its physical cause. On a three-leg junction, a bus halted for a red signal with its front across the zebra of an adjacent leg. The topology build now measures that adjacent zebra against each incoming lane and caches an earlier safe signal stop. The fixture and all 20 active fuzz regressions pass; 12 focused junction/collision tests pass. An A/B headless benchmark on the same 186-segment map measured 2.908 ms/tick before and 2.911 ms/tick after. The new crossing measurement made vehicle topology about 29 ms slower in this short three-edit sample (275 to 304 ms); total topology timings varied in the opposite direction (621 to 608 ms), so a longer benchmark is needed before claiming a net edit-latency change.
 
+A curved ribbon had a further 0.36-unit hole where its offset side missed the straight chord of a two-leg junction mouth. Each curved leg now contributes a four-unit sampled overlap around its mouth, at the same half-width as its road level. The shrunk `curved-mouth-ribbon-gap` fixture passes. The post-change 80 × 40 world hunt found 0 `surfaceGap`, 0 `elevationStep`, and 0 exceptions, while `turnOffSurface` remained 5,063 in all 80 sequences. The full 16-scenario WebGL visual verifier passed again, with no page errors, non-finite mesh vertices, or asphalt below terrain outside tunnel bores. Turn trajectories remain the road release blocker.
+
 ## Reference study and decisions
 
 | Need | Reference behavior | Roadcraft decision |
