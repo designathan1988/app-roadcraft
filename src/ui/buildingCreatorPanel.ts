@@ -6,7 +6,7 @@ import type { FacadeGeometry } from '@world/buildings/types';
 import { FINISHES, type Finish, type MaterialSpec } from '@world/buildings/materials';
 /** Presentation commands are mapped to editor commands by buildingsWiring. */
 type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
-type ModelTool = 'draw' | 'extrude' | 'offset' | 'paint';
+type ModelTool = 'draw' | 'extrude' | 'offset' | 'paint' | 'openings';
 type DrawAction = 'new' | 'ground' | 'top' | 'cut';
 type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered';
 type FacadeScope = 'building' | 'volume' | 'face' | 'floor';
@@ -15,6 +15,7 @@ type OpeningScope = 'bay' | 'storey' | 'side' | 'volume';
 export interface CreatorActions {
   modelTool(value: ModelTool): void;
   paintBrush(patch: Partial<MaterialSpec>): void;
+  openingBrush(value: BayComponent): void;
   tool(value: CreatorTool): void;
   frame(): void;
   draw(action: DrawAction): void;
@@ -269,7 +270,41 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     const add = (key: string, path: string, run: () => void, pressed = false): void => {
       dockSecondary.append(dockButton(key, path, run, pressed));
     };
-    if (state.modelTool === 'paint' && state.drawing === null) {
+    if (state.modelTool === 'openings' && state.drawing === null) {
+      const scopeIcons: Record<OpeningScope, string> = {
+        bay: 'M4 5h18v16H4zM11 9h5v7h-5z',
+        storey: 'M3 5h20v16H3zM6 10h14M8 7h3m3 0h3',
+        side: 'M3 4h20v18H3zM7 8h4v5H7zm6 0h4v5h-4zM7 15h4v5H7z',
+        volume: 'M3 9l9-6 9 6v13H3zM7 13h4v4H7zm7 0h4v4h-4z',
+      };
+      for (const scope of ['bay', 'storey', 'side', 'volume'] as const) {
+        const button = el('button', 'creator-openings-scope');
+        button.type = 'button';
+        button.title = t(`creator.dock.scope.${scope}`);
+        button.setAttribute('aria-label', button.title);
+        button.setAttribute('aria-pressed', String(state.openingScope === scope));
+        button.append(icon(scopeIcons[scope]));
+        button.onclick = () => actions.openingScope(scope);
+        dockSecondary.append(button);
+      }
+      const kinds: Record<'window' | 'wideWindow' | 'balcony' | 'door' | 'wall', string> = {
+        window: 'M4 4h18v18H4zM8 8h10v10H8zM13 8v10',
+        wideWindow: 'M3 5h20v17H3zM6 9h14v9H6zM11 9v9m5-9v9',
+        balcony: 'M4 4h18v18H4zM8 8h10v9H8zM6 17h14v5H6z',
+        door: 'M4 4h18v18H4zM9 9h8v13H9zm6 7h1',
+        wall: 'M4 4h18v18H4zM7 9h12M7 15h12M12 9v6',
+      };
+      for (const kind of ['window', 'wideWindow', 'balcony', 'door', 'wall'] as const) {
+        const button = el('button', 'creator-opening-kind');
+        button.type = 'button';
+        button.title = t(`building.component.${kind}`);
+        button.setAttribute('aria-label', button.title);
+        button.setAttribute('aria-pressed', String(state.component === kind));
+        button.append(icon(kinds[kind]));
+        button.onclick = () => actions.openingBrush(kind);
+        dockSecondary.append(button);
+      }
+    } else if (state.modelTool === 'paint' && state.drawing === null) {
       for (const finishName of FINISHES) {
         const button = el('button', 'creator-dock-finish creator-paint-swatch');
         button.type = 'button';
@@ -365,6 +400,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     ['extrude', 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'],
     ['offset', 'M3 3h22v22H3zM8 8h12v12H8z'],
     ['paint', 'M4 21h19M6 17l8-12 9 12M10 16h9'],
+    ['openings', 'M3 3h22v22H3zM8 8h12v12H8zM14 8v12'],
   ] as const) {
     const button = makeButton(`creator.model.${kind}`, () => actions.modelTool(kind));
     button.prepend(icon(path));
@@ -486,7 +522,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   const update = (next: CreatorState): void => {
     root.hidden = !next.selected || next.drawing !== null;
     rail.hidden = true;
-    dockSecondary.hidden = next.drawing === null && next.modelTool !== 'paint';
+    dockSecondary.hidden = next.drawing === null && next.modelTool !== 'paint' && next.modelTool !== 'openings';
     dockPopover.hidden = true;
     for (const [kind, button] of modelButtons) {
       button.setAttribute('aria-pressed', String(kind === next.modelTool));
@@ -497,7 +533,8 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
         button.textContent = label;
         button.prepend(icon(kind === 'draw' ? 'M4 20l5-.8L20 8l-4-4L5 15z' :
           kind === 'offset' ? 'M3 3h22v22H3zM8 8h12v12H8z' :
-            kind === 'paint' ? 'M4 21h19M6 17l8-12 9 12M10 16h9' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
+            kind === 'paint' ? 'M4 21h19M6 17l8-12 9 12M10 16h9' :
+              kind === 'openings' ? 'M3 3h22v22H3zM8 8h12v12H8zM14 8v12' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
       }
     }
     root.hidden = !next.selected || next.drawing !== null;
@@ -650,7 +687,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     }
     renderDock(next);
     rail.hidden = true;
-    dockSecondary.hidden = next.drawing === null && next.modelTool !== 'paint';
+    dockSecondary.hidden = next.drawing === null && next.modelTool !== 'paint' && next.modelTool !== 'openings';
     dockPopover.hidden = true;
   };
   return { refresh: update };

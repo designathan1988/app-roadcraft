@@ -322,6 +322,7 @@ export class BuildingTool {
 
   armModelTool(tool: BuildingModelTool | null): void {
     this.activeModelTool = tool;
+    if (tool !== 'openings') this.component = null;
     this.problem = null;
     this.host.changed();
   }
@@ -1302,7 +1303,7 @@ export class BuildingTool {
       return;
     }
     // Shift on another bay of the picked face: the region grows to it.
-    if (hit && shift && this.activeModelTool !== 'paint' && this.mode === 'edit' && s?.bay && hit.face !== 'top' &&
+    if (hit && shift && this.activeModelTool !== 'paint' && this.activeModelTool !== 'openings' && this.mode === 'edit' && s?.bay && hit.face !== 'top' &&
       hit.building === s.building && hit.volume === s.volume && hit.face === s.bay.side) {
       this.selection = { ...s, bayEnd: { storey: hit.storey, side: hit.face, index: hit.index } };
       this.host.changed();

@@ -41,6 +41,8 @@ The visible game now supports an initial true Offset gesture on a selected volum
 
 The bottom palette also has a Paint tool with visual material swatches and a colour picker. Its brush remains armed while clicks change the selected wall face or roof; Shift-click targets the selected volume's walls. In the visible browser pass, a wood swatch and a red tint changed one facade, and a subsequent roof click changed that roof without reopening the inspector. The 33 focused building tests and `verify:buildings` passed. Per-bay and free-painted regions are still absent from the document schema.
 
+The Openings tool now exposes the existing bay, storey, facade-side, and volume replacement scopes as icons in the same bottom palette. Choosing a window, broad glass bay, balcony, door, or wall arms a brush; clicking an opening applies it. In the visible game, one window became broad glass, a side-scope click replaced every opening on that facade with wall, and a subsequent window click restored all of them. These edits use the authored facade overrides and undo history; no numbered panel stage is required.
+
 The first working operator is Extrude on a selected roof or wall sketch, positive and negative. Offset and Bevel then reuse the same profile/face representation. Chamfering a plan corner remains separate from beveling a face. Validation must reject self-intersecting offsets and an unsupported cut before a document mutation; it must explain the failure on the geometry being edited.
 
 ## Implementation and gates
