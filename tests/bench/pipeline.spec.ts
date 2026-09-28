@@ -156,11 +156,13 @@ describe('benchmark', () => {
       record('pole', parts);
     }
     {
-      const parts = { addBuilding: [] as number[], networkRebuildNeeded: [] as number[] };
+      const parts = { addBuilding: [] as number[], accessTopology: [] as number[],
+        networkRebuildNeeded: [] as number[] };
       const blueprint = BLUEPRINTS[0]!;
       for (let i = 0; i < EDIT_REPEATS; i++) {
         const revision = doc.revision;
         parts.addBuilding.push(time(() => doc.buildings.add(instantiate(blueprint.body, { x: -635 + i * 40, y: 640 }, 0, blueprint.key))));
+        parts.accessTopology.push(time(() => { sim.refreshBuildingAccess(); rebindPeds(sim); }));
         parts.networkRebuildNeeded.push(doc.revision !== revision ? 1 : 0);
       }
       record('building', parts);

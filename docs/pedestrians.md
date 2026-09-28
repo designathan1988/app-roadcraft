@@ -67,6 +67,7 @@ The build imports the reviewed GLBs through Vite asset URLs. Unreferenced
 legacy files under `public/` are not included in the production output.
 
 `src/sim/peds/sidewalk.ts` builds walk, corner and crossing paths.
+Ground-floor doors become route goals when a short, clear path reaches a ground-road footway. The graph splits that footway at the access point, so a walker can turn towards the door mid-block instead of reaching the street end and doubling back. Access paths reject carriageway, building footprints, poles and street furniture; the local velocity solver still avoids moving people. A building edit refreshes these links without rebuilding vehicle lanes, and walkers on replaced edges are projected to the nearest surviving path. This covers building access, not general free roaming across parks or plazas.
 `src/sim/peds/crossingFsm.ts` controls walking, queuing and signals.
 `src/sim/peds/clearance.ts` checks personal space against pedestrians,
 street furniture, user poles and vehicles in world coordinates. A blocked

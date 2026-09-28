@@ -69,6 +69,9 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
   if (w.topologyRevision !== w.net.trafficRevision) {
     w.rebuildTopology();
     rebindAgents(w);
+  } else if (w.buildingAccessRevision !== w.doc.buildings.revision ||
+    w.accessUtilityRevision !== w.doc.utilityRevision) {
+    if (w.refreshBuildingAccess()) rebindPeds(w);
   }
   lap('0 topology');
 

@@ -11,10 +11,12 @@ import type { Ped, PedId } from './peds/state';
 import { type SignalController, type SignalDeps, createController, rebuildController } from './signals/fsm';
 import { type CrossingId, makeCrossingId } from './signals/plan';
 import type { AuditIssue } from './audit';
-import { SidewalkGraph } from './peds/sidewalk';
+import { SidewalkGraph, type SidewalkEdge } from './peds/sidewalk';
 import { hasDownstreamStorage } from './intersections/spillback';
 import { CrossingSpans } from './intersections/crossingSpans';
 import { m } from '@world/units';
+import { facadeBays } from '@world/buildings/geometry';
+import { ACCESS_COMPONENTS } from '@world/buildings/foundation';
 /** The body class a signal plan is protected for: an ordinary car. */const CAR_CLASS: BodyClass = 1;
 
 /** A queue is counted this far back from the stop line. */
@@ -139,6 +141,11 @@ export class SimWorld {
   topologyRevision = -1;
   /** Revision the vehicle half was last built from (`rebuildVehicleTopology`). */
   vehicleTopologyRevision = -1;
+  /** Building revision whose walkable door links are currently attached. */
+  buildingAccessRevision = -1;
+  /** Utility revision and actual ground-access geometry of the current links. */
+  accessUtilityRevision = -1;
+  private accessSignature = '';
 
   constructor(
     readonly doc: RoadDoc,
@@ -244,6 +251,67 @@ export class SimWorld {
     this.crossingSpans.build(this);
     this.syncControllers();
     this.topologyRevision = this.net.trafficRevision;
+    this.buildingAccessRevision = this.doc.buildings.revision;
+    this.accessUtilityRevision = this.doc.utilityRevision;
+    this.accessSignature = buildingAccessSignature(this.doc);
+  }
+
+  /** A building edit changes only door links, leaving road corridors and cars intact. */
+  refreshBuildingAccess(): boolean {
+    const signature = buildingAccessSignature(this.doc);
+    if (signature === this.accessSignature) {
+      this.buildingAccessRevision = this.doc.buildings.revision;
+      this.accessUtilityRevision = this.doc.utilityRevision;
+      return false;
+    }
+    const old = new Map<PedId, { edge: SidewalkEdge; x: number; y: number; tx: number; ty: number }>();
+    const frame = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
+    for (const ped of this.peds.values()) {
+      const edge = this.sidewalks.edges.get(ped.edge);
+      if (!edge) continue;
+      edge.corridor.place(ped.s, ped.lat, ped.entry !== edge.from, frame);
+      old.set(ped.id, { edge, x: frame.x, y: frame.y, tx: frame.tx, ty: frame.ty });
+    }
+    this.sidewalks.refreshBuildingAccess(this.doc);
+    const bySegment = new Map<SegmentId, SidewalkEdge[]>();
+    for (const edge of this.sidewalks.edges.values()) {
+      if (edge.segment === undefined || (edge.kind !== 'walk' && edge.kind !== 'access')) continue;
+      const list = bySegment.get(edge.segment) ?? [];
+      list.push(edge);
+      bySegment.set(edge.segment, list);
+    }
+    const bounds = { lo: 0, hi: 0 }, place = { s: 0, lat: 0 };
+    for (const ped of this.peds.values()) {
+      const previous = old.get(ped.id);
+      if (!previous || this.sidewalks.edges.get(previous.edge.id) === previous.edge) continue;
+      const candidates = previous.edge.segment === undefined ? [] : bySegment.get(previous.edge.segment) ?? [];
+      let nearest: SidewalkEdge | null = null;
+      let arc = 0, distance = Infinity;
+      for (const edge of candidates) {
+        const hit = edge.path.closestPoint({ x: previous.x, y: previous.y });
+        if (hit.distance < distance) { nearest = edge; arc = hit.s; distance = hit.distance; }
+      }
+      if (!nearest) continue;
+      const tangent = nearest.path.sampleAt(arc).t;
+      const reverse = tangent.x * previous.tx + tangent.y * previous.ty < 0;
+      const hint = reverse ? nearest.length - arc : arc;
+      nearest.corridor.locate(previous.x, previous.y, reverse, hint, place);
+      ped.edge = nearest.id;
+      ped.entry = reverse ? nearest.to : nearest.from;
+      ped.s = Math.max(0, Math.min(nearest.length, place.s));
+      nearest.corridor.bounds(ped.s, reverse, bounds);
+      ped.lat = Math.max(bounds.lo, Math.min(bounds.hi, place.lat));
+      ped.route = [];
+      ped.state = 'Walking';
+      ped.occupying = null;
+      nearest.corridor.place(ped.s, ped.lat, reverse, frame);
+      ped.x = frame.x;
+      ped.y = frame.y;
+    }
+    this.buildingAccessRevision = this.doc.buildings.revision;
+    this.accessUtilityRevision = this.doc.utilityRevision;
+    this.accessSignature = signature;
+    return true;
   }
 
   /** Crossing ids at a node, one per incident segment. */
@@ -524,4 +592,20 @@ export class SimWorld {
     this.issues.push(issue);
     if (this.issues.length > 512) this.issues.shift();
   }
+}
+
+/** Only ground footprints, doors and poles can change a building's walking links. */
+function buildingAccessSignature(doc: RoadDoc): string {
+  if (doc.buildings.size === 0) return '';
+  const parts = [String(doc.utilityRevision)];
+  for (const building of doc.buildings.all()) {
+    parts.push(`${building.id}:${building.x}:${building.y}:${building.rotation}`);
+    for (const volume of building.volumes) if (volume.base === 0)
+      parts.push(`${volume.id}:${volume.x}:${volume.y}:${volume.w}:${volume.d}:${JSON.stringify(volume.outline ?? null)}`);
+    for (const bay of facadeBays(building)) {
+      if (bay.level !== 0 || !ACCESS_COMPONENTS.has(bay.component)) continue;
+      parts.push(`D:${bay.volume}:${bay.side}:${bay.index}:${bay.component}:${bay.x}:${bay.y}:${bay.nx}:${bay.ny}`);
+    }
+  }
+  return parts.join('|');
 }

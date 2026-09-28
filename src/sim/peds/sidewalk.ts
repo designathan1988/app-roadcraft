@@ -15,6 +15,10 @@ import { COARSE_EPS } from '@core/scalar';
 import { WalkableSurface } from '@world/walkable';
 import { Corridor, type CorridorFrame } from './corridor';
 import { PED_BEHAVIOUR } from './behaviour';
+import { facadeBays, footprintRects } from '@world/buildings/geometry';
+import { ACCESS_COMPONENTS } from '@world/buildings/foundation';
+import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
+import { SIGNAL_POST_RADIUS, signalPosts } from '@world/signalPosts';
 
 export type SidewalkNodeId = string;
 export type SidewalkEdgeId = string;
@@ -28,7 +32,7 @@ export interface SidewalkNode {
   readonly side: Side;
 }
 
-export type SidewalkEdgeKind = 'walk' | 'corner' | 'crossing';
+export type SidewalkEdgeKind = 'walk' | 'corner' | 'crossing' | 'access';
 
 
 export interface SidewalkEdge {
@@ -96,6 +100,10 @@ export class SidewalkGraph {
    * of every node each time is a per-pedestrian allocation on a hot path.
    */
   readonly goalNodes: SidewalkNodeId[] = [];
+  readonly buildingGoalNodes: SidewalkNodeId[] = [];
+  private readonly components = new Map<SidewalkNodeId, number>();
+  private readonly goalsByComponent = new Map<number, SidewalkNodeId[]>();
+  private readonly buildingsByComponent = new Map<number, SidewalkNodeId[]>();
 
   /** Who is on which edge, rebuilt once a tick by the pedestrian step. */
   readonly occupancy = new PedEdgeIndex();
@@ -106,6 +114,12 @@ export class SidewalkGraph {
   unfitted = 0;
 
   private readonly reversedPaths = new Map<SidewalkEdgeId, Polyline>();
+  private readonly baseWalkEdges = new Map<SidewalkEdgeId, SidewalkEdge>();
+  private readonly accessNodes = new Set<SidewalkNodeId>();
+  private readonly accessEdges = new Set<SidewalkEdgeId>();
+  private net: Network | null = null;
+  private vehicleGraph: LaneletGraph | null = null;
+  private accessFootprints: Vec2[][] = [];
 
   build(doc: RoadDoc, net: Network, graph: LaneletGraph): void {
     this.nodes.clear();
@@ -113,10 +127,20 @@ export class SidewalkGraph {
     this.adjacency.clear();
     this.crossings.clear();
     this.goalNodes.length = 0;
+    this.buildingGoalNodes.length = 0;
+    this.components.clear();
+    this.goalsByComponent.clear();
+    this.buildingsByComponent.clear();
     this.occupancy.reset();
     this.reversedPaths.clear();
+    this.baseWalkEdges.clear();
+    this.accessNodes.clear();
+    this.accessEdges.clear();
     const walkable = new WalkableSurface(net);
     this.walkable = walkable;
+    this.net = net;
+    this.vehicleGraph = graph;
+    this.accessFootprints = [];
 
     // ---- kerb nodes, two per (junction node, leg) -------------------------
     for (const [nodeId, node] of doc.nodes) {
@@ -280,16 +304,182 @@ export class SidewalkGraph {
     }
 
     this.fitCorridors(walkable);
+    for (const edge of this.edges.values()) if (edge.kind === 'walk') this.baseWalkEdges.set(edge.id, edge);
+    this.refreshBuildingAccess(doc);
+  }
 
-    // Destinations are drawn from this pool, so it has to be ordered by
-    // something other than insertion: map order depends on which legs the
-    // editor happened to build first, and a seeded run may not.
-    this.goalNodes.push(...[...this.nodes.keys()].sort());
+  /** Refreshes door links without rebuilding the road's expensive footway corridors. */
+  refreshBuildingAccess(doc: RoadDoc): void {
+    for (const id of this.accessEdges) this.removeEdge(id);
+    for (const id of this.accessNodes) {
+      this.nodes.delete(id);
+      this.adjacency.delete(id);
+    }
+    this.accessEdges.clear();
+    this.accessNodes.clear();
+    this.occupancy.reset();
+    for (const edge of this.baseWalkEdges.values()) if (!this.edges.has(edge.id)) {
+      this.edges.set(edge.id, edge);
+      pushAdj(this.adjacency, edge.from, edge.id);
+      pushAdj(this.adjacency, edge.to, edge.id);
+    }
+
+    const walkable = this.walkable;
+    this.accessFootprints = [...doc.buildings.all()].flatMap((building) => footprintRects(building));
+    const walks = [...this.baseWalkEdges.values()].filter((edge) =>
+      edge.segment !== undefined && doc.segment(edge.segment)?.structure === 'ground');
+    if (walkable && walks.length) {
+      const footprints = this.accessFootprints;
+      const obstacles = this.net && this.vehicleGraph
+        ? [
+          ...streetFurniture(this.net).filter(blocksPedestrians).map((item) =>
+            ({ x: item.x, y: item.y, radius: item.radius })),
+          ...signalPosts(this.net, this.vehicleGraph).map((post) =>
+            ({ x: post.x, y: post.y, radius: SIGNAL_POST_RADIUS })),
+          ...[...doc.poles.values()].map((pole) => ({ x: pole.x, y: pole.y, radius: m(0.18) })),
+        ] : [];
+      const spurs = new Map<SidewalkEdgeId, { s: number; id: SidewalkNodeId }[]>();
+      for (const building of doc.buildings.all()) {
+        for (const bay of facadeBays(building)) {
+          if (bay.level !== 0 || !ACCESS_COMPONENTS.has(bay.component)) continue;
+          const door = { x: bay.x + bay.nx * m(0.75), y: bay.y + bay.ny * m(0.75) };
+          const candidates = walks.flatMap((edge) => {
+            const closest = edge.path.closestPoint(door);
+            if (closest.distance > m(30)) return [];
+            return [0, 2, -2, 4, -4, 7, -7, 10, -10].map((metres) => {
+              const s = Math.max(0, Math.min(edge.length, closest.s + m(metres)));
+              const point = edge.path.sampleAt(s).p;
+              return { edge, nearest: { s, point, distance: dist(door, point) } };
+            }).filter(({ nearest }) => nearest.distance <= m(30));
+          }).sort((a, b) => a.nearest.distance - b.nearest.distance ||
+            a.edge.id.localeCompare(b.edge.id) || a.nearest.s - b.nearest.s);
+          const chosen = candidates.find(({ nearest }) =>
+            accessLineClear(door, nearest.point, walkable, footprints, obstacles));
+          if (!chosen) continue;
+          const { edge, nearest } = chosen;
+          const id = `B:${building.id}:${bay.volume}:${bay.side}:${bay.index}`;
+          let spur = edge.from;
+          if (nearest.s > m(0.7) && nearest.s < edge.length - m(0.7)) {
+            const list = spurs.get(edge.id) ?? [];
+            const shared = list.find((item) => Math.abs(item.s - nearest.s) < m(0.25));
+            if (shared) spur = shared.id;
+            else {
+              spur = `S:${id}`;
+              this.nodes.set(spur, { ...this.nodes.get(edge.from)!, id: spur, at: nearest.point });
+              this.accessNodes.add(spur);
+              list.push({ s: nearest.s, id: spur });
+              spurs.set(edge.id, list);
+            }
+          } else if (nearest.s >= edge.length - m(0.7)) {
+            spur = edge.to;
+          }
+          this.nodes.set(id, { ...this.nodes.get(spur)!, id, at: door });
+          this.accessNodes.add(id);
+          const path = Polyline.fromPoints([this.nodes.get(spur)!.at, door]);
+          const link = `A:${id}`;
+          this.addEdge({ id: link, kind: 'access', from: spur, to: id,
+            path, length: path.length, halfWidth: Math.min(m(0.7), bay.width / 2), segment: edge.segment! });
+          this.accessEdges.add(link);
+        }
+      }
+      for (const [edgeId, list] of spurs) {
+        const edge = this.baseWalkEdges.get(edgeId)!;
+        this.removeEdge(edgeId);
+        const stations = [{ s: 0, id: edge.from }, ...list.sort((a, b) => a.s - b.s),
+          { s: edge.length, id: edge.to }];
+        for (let i = 1; i < stations.length; i++) {
+          const from = stations[i - 1]!, to = stations[i]!;
+          if (to.s - from.s < COARSE_EPS) continue;
+          const path = edge.path.sub(from.s, to.s);
+          const id = `${edgeId}:part:${i}`;
+          this.addEdge({ id, kind: 'walk', from: from.id, to: to.id,
+            path, length: path.length, halfWidth: edge.halfWidth, segment: edge.segment! });
+          const piece = this.edges.get(id)!;
+          const bounds = { lo: 0, hi: 0 };
+          for (let k = 0; k < piece.corridor.stations; k++) {
+            edge.corridor.bounds(from.s + piece.corridor.stationS(k), false, bounds);
+            piece.corridor.lo[k] = bounds.lo;
+            piece.corridor.hi[k] = bounds.hi;
+          }
+          this.accessEdges.add(id);
+        }
+      }
+    }
+    // Stable ordering keeps seeded destination choices independent of edits.
+    this.goalNodes.length = 0;
+    this.buildingGoalNodes.length = 0;
+    this.components.clear();
+    this.goalsByComponent.clear();
+    this.buildingsByComponent.clear();
+    const ordered = [...this.nodes.keys()].sort();
+    this.goalNodes.push(...ordered.filter((id) => !id.startsWith('S:')));
+    this.buildingGoalNodes.push(...ordered.filter((id) => id.startsWith('B:')));
+    let component = 0;
+    for (const origin of ordered) {
+      if (this.components.has(origin)) continue;
+      const queue = [origin];
+      this.components.set(origin, component);
+      for (let i = 0; i < queue.length; i++) {
+        const node = queue[i]!;
+        for (const edgeId of this.edgesAt(node)) {
+          const edge = this.edges.get(edgeId);
+          if (!edge) continue;
+          const other = this.other(edge, node);
+          if (this.components.has(other)) continue;
+          this.components.set(other, component);
+          queue.push(other);
+        }
+      }
+      component++;
+    }
+    for (const id of this.goalNodes) {
+      const c = this.components.get(id)!;
+      const goals = this.goalsByComponent.get(c) ?? [];
+      goals.push(id);
+      this.goalsByComponent.set(c, goals);
+      if (id.startsWith('B:')) {
+        const buildings = this.buildingsByComponent.get(c) ?? [];
+        buildings.push(id);
+        this.buildingsByComponent.set(c, buildings);
+      }
+    }
+  }
+
+  goalsFrom(node: SidewalkNodeId): readonly SidewalkNodeId[] {
+    const component = this.components.get(node);
+    return component === undefined ? [] : this.goalsByComponent.get(component) ?? [];
+  }
+
+  buildingsFrom(node: SidewalkNodeId): readonly SidewalkNodeId[] {
+    const component = this.components.get(node);
+    return component === undefined ? [] : this.buildingsByComponent.get(component) ?? [];
+  }
+
+  /** Open land beside an entrance is walkable unless it is road or a building. */
+  openGround(x: number, y: number): boolean {
+    return !this.walkable?.carriageway(x, y) &&
+      !this.accessFootprints.some((ring) => pointInPolygon({ x, y }, ring));
+  }
+
+  private removeEdge(id: SidewalkEdgeId): void {
+    const edge = this.edges.get(id);
+    if (!edge) return;
+    for (const node of [edge.from, edge.to]) {
+      const adjacent = this.adjacency.get(node);
+      if (adjacent) this.adjacency.set(node, adjacent.filter((value) => value !== id));
+    }
+    this.edges.delete(id);
+    this.reversedPaths.delete(id);
   }
 
   private addEdge(spec: EdgeSpec): void {
     if (spec.length < COARSE_EPS) return;
     const edge: SidewalkEdge = { ...spec, corridor: new Corridor(spec.path) };
+    if (spec.kind === 'access') {
+      const usable = Math.max(0, spec.halfWidth - PED_BEHAVIOUR.lateralMargin);
+      edge.corridor.lo.fill(-usable);
+      edge.corridor.hi.fill(usable);
+    }
     this.edges.set(edge.id, edge);
     pushAdj(this.adjacency, edge.from, edge.id);
     pushAdj(this.adjacency, edge.to, edge.id);
@@ -319,7 +509,7 @@ export class SidewalkGraph {
       for (let k = 0; k < c.stations; k++) {
         c.lo[k] = -usable;
         c.hi[k] = usable;
-        if (edge.kind === 'crossing') continue;
+        if (edge.kind === 'crossing' || edge.kind === 'access') continue;
         c.frame(c.stationS(k), false, frame);
         const reach = edge.halfWidth + m(2.5);
         let found = walkable.footwaySpan(frame.x, frame.y, frame.nx, frame.ny, reach, span);
@@ -345,7 +535,7 @@ export class SidewalkGraph {
       }
       // A station with no footway across it takes the walls of the nearest
       // one that has: the edge's own width there could reach into the road.
-      if (edge.kind === 'crossing' || !fitted.includes(1)) continue;
+      if (edge.kind === 'crossing' || edge.kind === 'access' || !fitted.includes(1)) continue;
       for (let k = 0; k < c.stations; k++) {
         if (fitted[k]) continue;
         let near = -1;
@@ -393,6 +583,26 @@ export class SidewalkGraph {
     const nb = this.nodes.get(b);
     return !!na && !!nb && na.segment === nb.segment && na.side !== nb.side;
   }
+}
+
+/** A door link may cross open land, but never a carriageway or another mass. */
+function accessLineClear(a: Vec2, b: Vec2, walkable: WalkableSurface,
+  footprints: readonly (readonly Vec2[])[],
+  obstacles: readonly { x: number; y: number; radius: number }[]): boolean {
+  const length = dist(a, b);
+  const steps = Math.max(1, Math.ceil(length / m(0.4)));
+  const margin = m(0.4);
+  const near = obstacles.filter((item) => item.x >= Math.min(a.x, b.x) - item.radius - margin &&
+    item.x <= Math.max(a.x, b.x) + item.radius + margin &&
+    item.y >= Math.min(a.y, b.y) - item.radius - margin &&
+    item.y <= Math.max(a.y, b.y) + item.radius + margin);
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+    if (walkable.carriageway(x, y) || footprints.some((ring) => pointInPolygon({ x, y }, ring)) ||
+      near.some((item) => Math.hypot(x - item.x, y - item.y) < item.radius + margin)) return false;
+  }
+  return true;
 }
 
 /**
@@ -624,17 +834,26 @@ function cornerPath(walkable: WalkableSurface, a: Vec2, b: Vec2, centre: Vec2): 
     const guess = fromRadius + (toRadius - fromRadius) * t;
     let best = NaN;
     let bestCost = Infinity;
-    for (let r = 0.25; r <= reach; r += 0.5) {
-      const x = centre.x + dx * r, y = centre.y + dy * r;
-      // Measured along the ray only a few units either way: a ray running
-      // nearly parallel to a footway stays inside it for a long way, and the
-      // middle of all of that is nowhere near the corner.
-      if (!walkable.footwaySpan(x, y, dx, dy, 3, span)) continue;
-      const mid = r + (span.lo + span.hi) / 2;
-      const cost = Math.abs(mid - prev) + 0.25 * Math.abs(mid - guess);
-      if (cost < bestCost) { bestCost = cost; best = mid; }
-      r += Math.max(0, span.hi);
-    }
+    const scan = (from: number, to: number): void => {
+      for (let r = from; r <= to; r += 0.5) {
+        const x = centre.x + dx * r, y = centre.y + dy * r;
+        // A ray almost parallel to a footway may stay inside it for a long
+        // stretch. Sample each stretch once, at its midpoint.
+        if (!walkable.footwaySpan(x, y, dx, dy, 3, span)) continue;
+        const mid = r + (span.lo + span.hi) / 2;
+        const cost = Math.abs(mid - prev) + 0.25 * Math.abs(mid - guess);
+        if (cost < bestCost) { bestCost = cost; best = mid; }
+        r += Math.max(0, span.hi);
+      }
+    };
+    // Adjacent rays are less than a unit apart. Search near the previous
+    // answer and the interpolated kerb radius first; use the full ray only
+    // when a corner has no paving there. This avoids testing empty ground
+    // from the junction centre outward at every one of hundreds of stations.
+    const band = m(4);
+    scan(Math.max(0.25, Math.min(prev, guess) - band),
+      Math.min(reach, Math.max(prev, guess) + band));
+    if (Number.isNaN(best)) scan(0.25, reach);
     const radius = Number.isNaN(best) ? guess : best;
     prev = radius;
     points.push({ x: centre.x + dx * radius, y: centre.y + dy * radius });

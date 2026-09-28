@@ -258,7 +258,8 @@ export function createSceneRenderer(
     return across > footway - rt.sidewalk ? deck + FOOTWAY_RISE : deck;
   };
 
-  const agents: AgentMeshes = createAgentMeshes(deckHeight, onAssetsReady);
+  const agents: AgentMeshes = createAgentMeshes(deckHeight, onAssetsReady,
+    (x, y) => terrain.renderedHeightAt(x, y));
   const crowdFrustum = new Frustum();
   const crowdProjection = new Matrix4();
   const crowdBounds = new Sphere(new Vector3(), 8);

@@ -48,6 +48,14 @@ export function hasDownstreamStorage(w: SimWorld, v: Vehicle, conn: Connector): 
 
   const out = w.lanelet(conn.toLane);
 
+  // A sub-vehicle-length link is a shared part of its two junctions, not a
+  // storage lane. Even on an unsignalised ring, a second admitted body cannot
+  // fit behind the one already travelling into it. Letting both through leaves
+  // the follower stopped inside the first junction if the leader pauses at the
+  // second, retaining claims that block unrelated movements.
+  if (out && out.length < v.archetype.length + Math.max(JAM_GAP, v.driver.s0) &&
+      (rt.order.length > 0 || committed.length > 0)) return false;
+
   // A physically empty lane with nobody on the way into it always accepts.
   // This remains unconditional so pathological short links cannot become
   // permanently impassable.

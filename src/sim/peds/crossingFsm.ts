@@ -568,7 +568,10 @@ function pickNext(w: SimWorld, p: Ped): SidewalkEdge | undefined {
  * otherwise hold them circling it forever.
  */
 function chooseGoal(w: SimWorld, p: Ped, here: SidewalkNode | undefined): SidewalkNode | undefined {
-  const pool = w.sidewalks.goalNodes;
+  // Keep traffic and crowd choices on maps without buildings bit-for-bit as
+  // before. A different kerb goal can change signal demand and vehicle claims.
+  const hasPlaces = w.sidewalks.buildingGoalNodes.length > 0;
+  const pool = hasPlaces && here ? w.sidewalks.goalsFrom(here.id) : w.sidewalks.goalNodes;
   if (!pool.length) return undefined;
 
   // A party goes where the party goes: the destination and the count of
@@ -588,7 +591,11 @@ function chooseGoal(w: SimWorld, p: Ped, here: SidewalkNode | undefined): Sidewa
   if (shared) p.trip = party.trip;
   if (arrived) arrivalActivity(w, p, arrivalPause(p));
   if (!goal) {
-    goal = nextGoal(w, p, here, pool);
+    const buildings = (here ? w.sidewalks.buildingsFrom(here.id) : w.sidewalks.buildingGoalNodes)
+      .filter((id) => id !== here?.id);
+    const visit = buildings.length > 0 && goalPick(p.party.id ^ 0x45d9f3b, p.trip, 4) < 2;
+    goal = visit ? nextGoal(w, p, here, buildings) ?? nextGoal(w, p, here, pool)
+      : nextGoal(w, p, here, pool);
     if (shared) party.goal = goal ? goal.id : null;
   }
   p.goal = goal ? goal.id : null;
@@ -1645,6 +1652,7 @@ function nearestStandable(w: SimWorld, edge: SidewalkEdge, rev: boolean, s: numb
 function standable(w: SimWorld, edge: SidewalkEdge, x: number, y: number): boolean {
   const walkable = w.sidewalks.walkable;
   if (!walkable || walkable.footway(x, y)) return true;
+  if (edge.kind === 'access') return w.sidewalks.openGround(x, y);
   // On a zebra, the zebra's own strip is the other place to stand.
   return edge.kind === 'crossing';
 }
