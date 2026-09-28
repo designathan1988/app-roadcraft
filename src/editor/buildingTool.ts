@@ -666,7 +666,7 @@ export class BuildingTool {
     this.onSelected((draft) => opSetLevelHeight(draft, level, height));
   }
 
-  addUpperShape(shape: PlanShape, inset: number, storeys: number, placement: UpperMassPlacement = {}): void {
+  addUpperShape(shape: PlanShape | 'match', inset: number, storeys: number, placement: UpperMassPlacement = {}): void {
     const s = this.selection;
     if (!s) return;
     let created: number | null = null;

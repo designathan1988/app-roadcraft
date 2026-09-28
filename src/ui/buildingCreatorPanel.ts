@@ -9,6 +9,7 @@ type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
 type DrawAction = 'new' | 'ground' | 'top' | 'cut';
 type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered';
 type FacadeScope = 'building' | 'volume' | 'face' | 'floor';
+type OpeningScope = 'bay' | 'storey' | 'side' | 'volume';
 
 export interface CreatorActions {
   tool(value: CreatorTool): void;
@@ -40,6 +41,7 @@ export interface CreatorActions {
   pattern(value: FacadePattern, scope: FacadeScope): void;
   target(scope: FacadeScope): void;
   opening(value: BayComponent): void;
+  openingScope(value: OpeningScope): void;
   finish(value: Finish): void;
   color(value: number): void;
   roof(value: RoofKind): void;
@@ -72,6 +74,9 @@ export interface CreatorState {
   reliefDepth: number;
   geometry: Required<FacadeGeometry> | null;
   scope: FacadeScope;
+  openingScope: OpeningScope;
+  width: number;
+  depth: number;
   selectedVertex: boolean;
   armedElement: ElementKind | null;
   element: { kind: ElementKind; w: number; d: number; h: number } | null;
@@ -121,6 +126,10 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = ''): HTML
 export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(state: CreatorState): void } {
   const root = document.getElementById('buildingPalette')!;
   const rail = document.getElementById('creatorRail')!;
+  const dock = document.getElementById('creatorDock')!;
+  const dockSecondary = document.getElementById('creatorDockSecondary')!;
+  const dockPopover = document.getElementById('creatorDockPopover')!;
+  dock.prepend(rail);
   const get = (id: string): HTMLElement => document.getElementById(id)!;
   const title = get('creatorTitle'), description = get('creatorDescription');
   const frameButton = get('creatorFrame');
@@ -170,6 +179,9 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   let detailsKey = '';
   let profileKey = '';
   let lastStage = '';
+  let dockKey = '';
+  let dockSubmode: 'patterns' | 'openings' | 'materials' = 'patterns';
+  let latest: CreatorState | null = null;
 
   const makeButton = (key: string, onClick: () => void, value?: string): HTMLButtonElement => {
     const button = el('button');
@@ -195,10 +207,132 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     return image;
   };
 
+  const dockButton = (key: string, path: string, onClick: () => void, pressed = false): HTMLButtonElement => {
+    const button = el('button');
+    button.type = 'button';
+    button.title = t(key);
+    button.setAttribute('aria-label', t(key));
+    button.setAttribute('aria-pressed', String(pressed));
+    button.append(icon(path), el('span'));
+    button.lastElementChild!.textContent = t(key);
+    button.onclick = onClick;
+    return button;
+  };
+
+  const dockUpper = {
+    shape: get('dockUpperShape') as HTMLSelectElement,
+    floors: get('dockUpperFloors') as HTMLInputElement,
+    width: get('dockUpperWidth') as HTMLInputElement,
+    depth: get('dockUpperDepth') as HTMLInputElement,
+    inset: get('dockUpperInset') as HTMLInputElement,
+    x: get('dockUpperX') as HTMLInputElement,
+    y: get('dockUpperY') as HTMLInputElement,
+  };
+  let upperFor = '';
+  const showUpper = (state: CreatorState): void => {
+    const key = `${state.current}:${state.width}:${state.depth}`;
+    if (upperFor !== key) {
+      upperFor = key;
+      dockUpper.width.value = String(Math.max(2, Math.round((state.width * METERS_PER_UNIT - 2) * 10) / 10));
+      dockUpper.depth.value = String(Math.max(2, Math.round((state.depth * METERS_PER_UNIT - 2) * 10) / 10));
+    }
+    dockPopover.hidden = !dockPopover.hidden;
+  };
+  get('dockUpperApply').onclick = () => {
+    const shape = dockUpper.shape.value as PlanShape | 'match';
+    const width = Number(dockUpper.width.value), depth = Number(dockUpper.depth.value);
+    actions.setback(shape, Number(dockUpper.inset.value), Number(dockUpper.floors.value), {
+      ...(Number.isFinite(width) && width > 0 ? { width } : {}),
+      ...(Number.isFinite(depth) && depth > 0 ? { depth } : {}),
+      offsetX: Number(dockUpper.x.value), offsetY: Number(dockUpper.y.value),
+    });
+    dockPopover.hidden = true;
+  };
+
+  const renderDock = (state: CreatorState): void => {
+    latest = state;
+    const key = JSON.stringify([state.tool, state.selected, state.drawing, state.problem,
+      state.current, state.selectedFace, state.facadePattern, state.roof, state.component,
+      state.openingScope, state.material, dockSubmode]);
+    if (key === dockKey) return;
+    dockKey = key;
+    rail.hidden = !state.selected || state.drawing !== null;
+    if (state.tool !== 'shape') dockPopover.hidden = true;
+    dockSecondary.replaceChildren();
+    const add = (key: string, path: string, run: () => void, pressed = false): void => {
+      dockSecondary.append(dockButton(key, path, run, pressed));
+    };
+    if (state.drawing !== null) {
+      add('creator.finish', 'M5 12l5 5L20 6', actions.finishPlan);
+      add('creator.back', 'M9 7 4 12l5 5M5 12h14', actions.backPoint);
+      add('creator.cancel', 'M5 5l14 14M19 5 5 19', actions.cancelPlan);
+      const finish = dockSecondary.firstElementChild as HTMLButtonElement;
+      finish.disabled = state.drawing < 3 || !!state.problem;
+    } else if (!state.selected) {
+      add('creator.dock.draw', 'M4 20l5-.8L20 8l-4-4L5 15zM14 6l4 4', () => actions.draw('new'));
+      add('creator.start.house', 'M3 11l9-7 9 7v10H3zM9 21v-7h6v7', () => actions.starter('house'));
+      add('creator.start.tower', 'M5 21V8h5v13M10 21V3h9v18M13 7h3m-3 4h3m-3 4h3', () => actions.starter('tower'));
+      add('creator.start.courtyard', 'M3 3h18v18H3zM8 8h8v8H8z', () => actions.starter('courtyard'));
+      add('creator.dock.rectangle', 'M3 5h18v14H3z', () => actions.shape('rectangle'));
+    } else if (state.tool === 'sketch') {
+      add('creator.drawNew', 'M3 5h18v14H3zM12 8v8m-4-4h8', () => actions.draw('new'));
+      add('creator.attach', 'M3 4h11v16H3zM14 10h7v10h-7z', () => actions.draw('ground'));
+      add('creator.stack', 'M4 18h16M6 12h12M9 6h6', () => actions.draw('top'));
+    } else if (state.tool === 'shape') {
+      add('creator.dock.wing', 'M3 4h10v16H3zM13 11h8v9h-8z', () => actions.draw('ground'));
+      add('creator.dock.upper', 'M5 20h14v-9H5zM8 8V4h8v4m-4-5v9', () => showUpper(state));
+      add('creator.dock.cut', 'M4 4h16v16H4zM13 4v9h7M6 18l12-12', () => actions.draw('cut'));
+      add('creator.floorDown', 'M4 12h16M5 18h14', () => actions.floors(-1));
+      add('creator.floorUp', 'M4 18h16M5 12h14m-7-7v13', () => actions.floors(1));
+    } else if (state.tool === 'facade') {
+      if (dockSubmode === 'patterns') {
+        for (const pattern of ['residential', 'storefront', 'office', 'industrial'] as const) {
+          add(`creator.pattern.${pattern}`, 'M4 21V3h16v18M8 7h3v3H8zm6 0h3v3h-3zM8 14h3v3H8zm6 0h3v3h-3z',
+            () => actions.pattern(pattern, state.selectedFace ? 'face' : 'volume'), state.facadePattern === pattern);
+        }
+        add('creator.dock.openings', 'M3 21V3h18v18M8 8h8v9H8z', () => { dockSubmode = 'openings'; dockKey = ''; renderDock(latest!); });
+        add('creator.dock.paint', 'M3 17l9-12 9 12M5 18h14v3H5z', () => { dockSubmode = 'materials'; dockKey = ''; renderDock(latest!); });
+      } else if (dockSubmode === 'openings') {
+        const scope = el('select');
+        scope.setAttribute('aria-label', t('creator.dock.scope'));
+        scope.title = t('creator.dock.scope');
+        for (const value of ['bay', 'storey', 'side', 'volume'] as const) {
+          const option = el('option'); option.value = value; option.textContent = t(`creator.dock.scope.${value}`); scope.append(option);
+        }
+        scope.value = state.openingScope;
+        scope.onchange = () => actions.openingScope(scope.value as OpeningScope);
+        dockSecondary.append(scope);
+        for (const component of ['window', 'wideWindow', 'balcony', 'door', 'wall'] as const)
+          add(`building.component.${component}`, 'M4 21V3h16v18M8 8h8v9H8z', () => actions.opening(component), state.component === component);
+        add('creator.dock.back', 'M13 5 6 12l7 7', () => { dockSubmode = 'patterns'; dockKey = ''; renderDock(latest!); });
+      } else {
+        for (const finishName of FINISHES) {
+          const button = dockButton(`building.finish.${finishName}`, 'M4 5h16v14H4z', () => actions.finish(finishName), state.material?.finish === finishName);
+          button.classList.add('creator-dock-finish');
+          button.dataset['finish'] = finishName;
+          dockSecondary.append(button);
+        }
+        const swatch = el('input'); swatch.type = 'color'; swatch.title = t('creator.color'); swatch.setAttribute('aria-label', t('creator.color'));
+        swatch.value = `#${(state.material?.colour ?? 0xffffff).toString(16).padStart(6, '0')}`;
+        swatch.onchange = () => actions.color(Number.parseInt(swatch.value.slice(1), 16));
+        dockSecondary.append(swatch);
+        add('creator.dock.back', 'M13 5 6 12l7 7', () => { dockSubmode = 'patterns'; dockKey = ''; renderDock(latest!); });
+      }
+    } else if (state.tool === 'roof') {
+      for (const kind of ['flat', 'terrace', 'gable', 'hip'] as const)
+        add(`building.roof.${kind}`, 'M3 16 12 6l9 10M5 16v5h14v-5', () => actions.roof(kind), state.roof === kind);
+      add('creator.detail.solar', 'M3 7h18v11H3zM9 7l-2 11m10-11-2 11M3 12h18', () => actions.roofDetail('solar'), state.armedDetail === 'solar');
+      const swatch = el('input'); swatch.type = 'color'; swatch.title = t('creator.roofColor'); swatch.setAttribute('aria-label', t('creator.roofColor'));
+      swatch.value = `#${(state.material?.colour ?? 0x888888).toString(16).padStart(6, '0')}`;
+      swatch.onchange = () => actions.roofColor(Number.parseInt(swatch.value.slice(1), 16));
+      dockSecondary.append(swatch);
+    }
+  };
+
   rail.querySelectorAll<HTMLButtonElement>('[data-creator-tool]').forEach((button) => {
     const value = button.dataset['creatorTool'] as CreatorTool;
     button.prepend(icon(TOOL_PATHS[value]));
-    button.onclick = () => actions.tool(value);
+    button.onclick = () => { dockSubmode = 'patterns'; actions.tool(value); };
   });
   get('creatorDraw').onclick = () => actions.draw('new');
   frameButton.onclick = actions.frame;
@@ -313,6 +447,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   };
 
   const update = (next: CreatorState): void => {
+    root.hidden = !next.selected || next.drawing !== null;
     root.dataset['creatorTool'] = next.tool;
     rail.querySelectorAll<HTMLButtonElement>('[data-creator-tool]').forEach((button) => {
       button.setAttribute('aria-pressed', String(button.dataset['creatorTool'] === next.tool));
@@ -460,6 +595,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
         details.append(controls);
       }
     }
+    renderDock(next);
   };
   return { refresh: update };
 }

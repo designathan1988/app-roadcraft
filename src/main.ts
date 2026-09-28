@@ -396,7 +396,7 @@ const buildings = createBuildingWiring({
     view.zoomAt(surface.cssW / 2, surface.cssH / 2, target / view.zoom, surface.cssW, surface.cssH);
       const rise = Math.abs(view.toScreen(centre, surface.cssW, surface.cssH, top).y
         - view.toScreen(centre, surface.cssW, surface.cssH).y);
-      view.panTo(centre, (surface.cssW - paletteWidth) / 2, surface.cssH / 2 + rise / 2, surface.cssW, surface.cssH);
+      view.panTo(centre, (surface.cssW - paletteWidth) / 2, surface.cssH / 2 + rise / 2 - 68, surface.cssW, surface.cssH);
   },
   afterEdit() {
     persistence.saveSessionSoon(doc, sessionSettings);
@@ -1394,6 +1394,7 @@ const roadPalette = document.querySelector<HTMLElement>('.road-palette');
 const terrainPalette = document.getElementById('terrainPalette') as HTMLElement;
 const buildingPalette = document.getElementById('buildingPalette') as HTMLElement;
 const creatorRail = document.getElementById('creatorRail') as HTMLElement;
+const creatorDock = document.getElementById('creatorDock') as HTMLElement;
 
 function setTerrainMode(next: TerrainMode): void {
   terrainMode = next;
@@ -1482,8 +1483,10 @@ function setTool(next: Tool): void {
   const buildingActive = next === 'building';
   buildingPalette.classList.toggle('hidden', !buildingActive);
   creatorRail.classList.toggle('hidden', !buildingActive);
+  creatorDock.hidden = !buildingActive;
   buildingPalette.setAttribute('aria-hidden', String(!buildingActive));
   creatorRail.setAttribute('aria-hidden', String(!buildingActive));
+  creatorDock.setAttribute('aria-hidden', String(!buildingActive));
   if (buildingActive) buildings.activate();
   else buildings.deactivate();
   updateHint();

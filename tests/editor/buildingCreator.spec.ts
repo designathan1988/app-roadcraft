@@ -13,6 +13,18 @@ import { m, METERS_PER_UNIT } from '@world/units';
 const building = (): Building => ({ ...shapeBody('l', 50, 40, 2), id: asBuildingId(1), x: 0, y: 0, rotation: 0 });
 
 describe('complete building creation grammar', () => {
+  it('honours exact upper-mass dimensions with the matched footprint', () => {
+    const b = { ...shapeBody('rectangle', m(12), m(9), 2), id: asBuildingId(3),
+      x: 0, y: 0, rotation: 0 } as Building;
+    const id = addShapedUpperMass(b, 1, 'match', m(1), 3,
+      { width: m(5), depth: m(4), offsetX: m(1) });
+    const top = b.volumes.find((v) => v.id === id)!;
+    expect(top.w).toBeCloseTo(m(5), 6);
+    expect(top.d).toBeCloseTo(m(4), 6);
+    expect(top.storeys).toHaveLength(3);
+    expect(structuralProblem(b)).toBeNull();
+    expect(migrateBuilding(JSON.parse(JSON.stringify(b)))?.volumes.find((v) => v.id === id)?.w).toBeCloseTo(m(5), 6);
+  });
   it('assembles a 35-floor stepped landmark from editable masses, flank blocks and a glazed lookout', () => {
     const b = { ...shapeBody('rectangle', m(26), m(28), 2), id: asBuildingId(20),
       x: 0, y: 0, rotation: 0 } as Building;

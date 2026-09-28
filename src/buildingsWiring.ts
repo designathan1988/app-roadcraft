@@ -174,9 +174,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     floorHeight: (metres) => tool.setParameter('storeyHeight', metres / METERS_PER_UNIT),
     groundHeight: (metres) => tool.setGroundHeight(metres / METERS_PER_UNIT),
     split: (afterFloor) => tool.splitAtFloor(afterFloor),
-    setback: (shape, metres, floors, placement) => shape === 'match'
-      ? tool.addSetback(metres / METERS_PER_UNIT, floors)
-      : tool.addUpperShape(shape, metres / METERS_PER_UNIT, floors, {
+    setback: (shape, metres, floors, placement) => tool.addUpperShape(shape, metres / METERS_PER_UNIT, floors, {
         ...(placement.width === undefined ? {} : { width: placement.width / METERS_PER_UNIT }),
         ...(placement.depth === undefined ? {} : { depth: placement.depth / METERS_PER_UNIT }),
         offsetX: placement.offsetX / METERS_PER_UNIT, offsetY: placement.offsetY / METERS_PER_UNIT,
@@ -195,6 +193,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       tool.armComponent(component);
       if (tool.selection?.bay) tool.applyToSelectedBay(component);
     },
+    openingScope: (scope) => tool.setScope(scope),
     target(scope) {
       tool.setMaterialScope(scope === 'building' ? 'building' : scope === 'face' ? 'face' : scope === 'floor' ? 'floor' : 'volume');
     },
@@ -248,6 +247,9 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           pierEvery: authored?.pierEvery ?? 1 };
       })(),
       scope: tool.materialScope === 'face' ? 'face' : tool.materialScope === 'floor' ? 'floor' : tool.materialScope === 'building' ? 'building' : 'volume',
+      openingScope: tool.scope,
+      width: volume?.w ?? 0,
+      depth: volume?.d ?? 0,
       selectedVertex: tool.selection?.vertex !== undefined && tool.selection.vertex !== null,
       armedElement: tool.armed,
       element: (() => {

@@ -167,7 +167,7 @@ export function addPlanMass(b: Building, sourceId: number, points: readonly Vec2
 
 /** Creates an editable shaped volume on a roof. Values are world units. */
 export interface UpperMassPlacement { width?: number; depth?: number; offsetX?: number; offsetY?: number }
-export function addShapedUpperMass(b: Building, sourceId: number, shape: PlanShape, inset: number, floors: number,
+export function addShapedUpperMass(b: Building, sourceId: number, shape: PlanShape | 'match', inset: number, floors: number,
   placement: UpperMassPlacement = {}): number | null {
   const source = b.volumes.find((v) => v.id === sourceId);
   if (!source || !Number.isFinite(inset) || inset < 0) return null;
@@ -175,7 +175,7 @@ export function addShapedUpperMass(b: Building, sourceId: number, shape: PlanSha
   const shiftX = placement.offsetX ?? 0, shiftY = placement.offsetY ?? 0;
   if (![width, depth, shiftX, shiftY].every(Number.isFinite) || width < MIN_SIZE || depth < MIN_SIZE) return null;
   const cx = source.x + source.w / 2 + shiftX, cy = source.y + source.d / 2 + shiftY;
-  const normalized = shapePoints(shape);
+  const normalized = shape === 'match' ? source.outline ?? shapePoints('rectangle') : shapePoints(shape);
   const atScale = (scale: number): Vec2[] => normalized.map((p) => ({
     x: cx + (p.x - .5) * width * scale, y: cy + (p.y - .5) * depth * scale,
   }));
