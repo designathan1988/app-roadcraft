@@ -11,6 +11,10 @@ import { type BuildingChunk, assembleBuildingMeshes, emitChunk } from '@render/b
 import { PART_KINDS, createBuildingKit } from '@render/buildings/kit';
 import { FINISHES } from '@world/buildings/materials';
 import { createBuildingLayer } from '@render/buildings/layer';
+import { shapeBody } from '@editor/buildingPlans';
+import { addRoofDetail, updateRoofDetail } from '@editor/buildingRoofs';
+import { applyFacadePattern } from '@editor/buildingFacade';
+import { m } from '@world/units';
 
 /** `n` default modules, world units. */
 const bays = (n: number): number => n * DEFAULT_MODULE;
@@ -56,6 +60,39 @@ const triangleCount = (chunk: BuildingChunk): number =>
   Object.values(chunk.shells).reduce((n, part) => n + part.index.length / 3, 0);
 
 describe('building shell', () => {
+  it('renders a glazed lookout and adjustable spire with finite outward-facing triangles', () => {
+    const b = { ...shapeBody('circle', m(10), m(10), 2), id: asBuildingId(18), x: 0, y: 0, rotation: .4 } as Building;
+    const v = b.volumes[0]!;
+    expect(applyFacadePattern(b, { scope: 'volume', volume: v.id }, 'observation')).toBe(true);
+    expect(addRoofDetail(b, v.id, 'spire', { x: v.x + v.w / 2, y: v.y + v.d / 2 })).toBe(1);
+    expect(updateRoofDetail(b, v.id, 1, { flag: 'saoPaulo' })).toBe(true);
+    const chunk = emitChunk(b, () => 0);
+    expect(wrongWinding(chunk)).toBe(0);
+    expect(positions(chunk).every(Number.isFinite)).toBe(true);
+    expect(Math.max(...positions(chunk).filter((_, index) => index % 3 === 1))).toBeGreaterThan(m(15));
+  });
+  it('renders authored solar and vent parts on a shaped roof without inverted triangles', () => {
+    const b = { ...shapeBody('l', 50, 40, 2), id: asBuildingId(1), x: 0, y: 0, rotation: 0 } as Building;
+    const v = b.volumes[0]!;
+    v.roof = 'gable';
+    expect(addRoofDetail(b, v.id, 'solar', { x: 10, y: 8 })).not.toBeNull();
+    expect(addRoofDetail(b, v.id, 'vent', { x: 14, y: 12 })).not.toBeNull();
+    const chunk = emitChunk(b, () => 0);
+    expect(wrongWinding(chunk)).toBe(0);
+    expect(positions(chunk).every(Number.isFinite)).toBe(true);
+  });
+  it('builds visible finite surfaces with correct winding for concave and curved plans', () => {
+    for (const shape of ['l', 'u', 'circle', 'hexagon'] as const) {
+      for (const roof of ['flat', 'terrace', 'gable', 'hip', 'shed', 'sawtooth'] as const) {
+        const b = { ...shapeBody(shape, 40, 32, 3), id: asBuildingId(1), x: 0, y: 0, rotation: .4 } as Building;
+        b.volumes[0]!.roof = roof;
+        const chunk = emitChunk(b, () => 0);
+        expect(triangleCount(chunk), `${shape}/${roof}`).toBeGreaterThan(20);
+        expect(wrongWinding(chunk), `${shape}/${roof}`).toBe(0);
+        expect(positions(chunk).every(Number.isFinite), `${shape}/${roof}`).toBe(true);
+      }
+    }
+  });
   it('winds every triangle towards its normal, for every preset at any rotation', () => {
     for (let i = 0; i < BLUEPRINTS.length; i++) {
       for (const rotation of [0, 0.7, -2.2]) {

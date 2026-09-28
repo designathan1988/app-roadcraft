@@ -1,4 +1,5 @@
-import type { Building, RoofKind, Side, Volume } from './types';
+import type { Building, RoofKind, FaceId, Volume } from './types';
+import { volumeSides } from './footprints';
 
 /**
  * What a building is made of. See docs/buildings.md, "Materials".
@@ -16,7 +17,7 @@ import type { Building, RoofKind, Side, Volume } from './types';
  * ```
  */
 
-export const FINISHES = ['plaster', 'brick', 'stone', 'concrete', 'wood', 'metal', 'glass', 'tile', 'roofing'] as const;
+export const FINISHES = ['plaster', 'ceramic', 'brick', 'stone', 'concrete', 'wood', 'metal', 'glass', 'tile', 'roofing'] as const;
 export type Finish = (typeof FINISHES)[number];
 
 export interface MaterialSpec {
@@ -35,7 +36,7 @@ export interface VolumeMaterials {
   /** Every wall of the volume. */
   wall?: MaterialSpec;
   /** One side's walls, over `wall`. */
-  sides?: Partial<Record<Side, MaterialSpec>>;
+  sides?: Partial<Record<FaceId, MaterialSpec>>;
   roof?: MaterialSpec;
 }
 
@@ -82,8 +83,9 @@ export const paletteOf = (b: Building): PaletteMaterials =>
 
 const isPitched = (roof: RoofKind): boolean => roof !== 'flat' && roof !== 'terrace';
 
-export function wallMaterial(b: Building, v: Volume, side: Side): MaterialSpec {
-  return v.materials?.sides?.[side] ?? v.materials?.wall ?? b.materials?.wall ?? paletteOf(b).wall;
+export function wallMaterial(b: Building, v: Volume, side: FaceId, storey?: number): MaterialSpec {
+  return (storey === undefined ? undefined : v.storeys[storey]?.materials?.[side]) ??
+    v.materials?.sides?.[side] ?? v.materials?.wall ?? b.materials?.wall ?? paletteOf(b).wall;
 }
 
 export function roofMaterial(b: Building, v: Volume): MaterialSpec {
@@ -97,7 +99,8 @@ export const plinthMaterial = (b: Building): MaterialSpec => b.materials?.plinth
 export type MaterialTarget =
   | { readonly scope: 'building'; readonly slot: MaterialSlot }
   | { readonly scope: 'volume'; readonly volume: number; readonly slot: 'wall' | 'roof' }
-  | { readonly scope: 'side'; readonly volume: number; readonly side: Side };
+  | { readonly scope: 'side'; readonly volume: number; readonly side: FaceId }
+  | { readonly scope: 'floor'; readonly volume: number; readonly floor: number; readonly face: FaceId };
 
 /** The material a target currently resolves to (what the palette shows as chosen). */
 export function materialAt(b: Building, target: MaterialTarget): MaterialSpec | null {
@@ -119,6 +122,10 @@ export function materialAt(b: Building, target: MaterialTarget): MaterialSpec | 
       const v = b.volumes.find((x) => x.id === target.volume);
       return v ? wallMaterial(b, v, target.side) : null;
     }
+    case 'floor': {
+      const v = b.volumes.find((x) => x.id === target.volume);
+      return v ? wallMaterial(b, v, target.face, target.floor) : null;
+    }
   }
 }
 
@@ -128,7 +135,7 @@ export function materialAt(b: Building, target: MaterialTarget): MaterialSpec | 
  * building" does what it says. Returns whether anything changed.
  */
 export function applyMaterial(b: Building, target: MaterialTarget, value: MaterialSpec | null): boolean {
-  const before = JSON.stringify([b.materials, b.volumes.map((v) => v.materials)]);
+  const before = JSON.stringify([b.materials, b.volumes.map((v) => [v.materials, v.storeys.map((s) => s.materials)])]);
   const tidyVolume = (v: Volume): void => {
     const m = v.materials;
     if (!m) return;
@@ -144,6 +151,7 @@ export function applyMaterial(b: Building, target: MaterialTarget, value: Materi
       else delete b.materials;
       if (value && (target.slot === 'wall' || target.slot === 'roof')) {
         for (const v of b.volumes) {
+          if (target.slot === 'wall') for (const storey of v.storeys) delete storey.materials;
           if (!v.materials) continue;
           delete v.materials[target.slot];
           if (target.slot === 'wall') delete v.materials.sides;
@@ -159,6 +167,7 @@ export function applyMaterial(b: Building, target: MaterialTarget, value: Materi
       if (value) m[target.slot] = { ...value };
       else delete m[target.slot];
       if (value && target.slot === 'wall') delete m.sides;
+      if (value && target.slot === 'wall') for (const storey of v.storeys) delete storey.materials;
       v.materials = m;
       tidyVolume(v);
       break;
@@ -171,12 +180,31 @@ export function applyMaterial(b: Building, target: MaterialTarget, value: Materi
       if (value) sides[target.side] = { ...value };
       else delete sides[target.side];
       m.sides = sides;
+      if (value) for (const storey of v.storeys) {
+        if (storey.materials) {
+          delete storey.materials[target.side];
+          if (Object.keys(storey.materials).length === 0) delete storey.materials;
+        }
+      }
       v.materials = m;
       tidyVolume(v);
       break;
     }
+    case 'floor': {
+      const v = b.volumes.find((x) => x.id === target.volume);
+      const storey = v?.storeys[target.floor];
+      if (!v || !storey) return false;
+      const materials = { ...(storey.materials ?? {}) };
+      for (const face of volumeSides(v)) {
+        if (value) materials[face] = { ...value };
+        else delete materials[face];
+      }
+      if (Object.keys(materials).length > 0) storey.materials = materials;
+      else delete storey.materials;
+      break;
+    }
   }
-  return JSON.stringify([b.materials, b.volumes.map((v) => v.materials)]) !== before;
+  return JSON.stringify([b.materials, b.volumes.map((v) => [v.materials, v.storeys.map((s) => s.materials)])]) !== before;
 }
 
 /** A stored material, repaired: a valid spec, or undefined. */
@@ -203,8 +231,8 @@ export function migrateVolumeMaterials(raw: unknown): VolumeMaterials | undefine
   if (wall) out.wall = wall;
   if (roof) out.roof = roof;
   if (typeof r['sides'] === 'object' && r['sides'] !== null) {
-    const sides: Partial<Record<Side, MaterialSpec>> = {};
-    for (const side of [0, 1, 2, 3] as const) {
+    const sides: Partial<Record<FaceId, MaterialSpec>> = {};
+    for (const side of Array.from({ length: 64 }, (_, i) => i)) {
       const m = migrateMaterial((r['sides'] as Record<string, unknown>)[String(side)]);
       if (m) sides[side] = m;
     }

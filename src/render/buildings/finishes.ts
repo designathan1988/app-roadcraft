@@ -106,6 +106,27 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
       };
     },
   },
+  ceramic: {
+    size: 256,
+    worldSize: m(1),
+    relief: .7,
+    metalness: 0,
+    envMapIntensity: .9,
+    normalScale: .25,
+    shade: (size) => {
+      const grain = makeNoise(0x31c4);
+      return (x, y, out) => {
+        // Ten 100 mm porcelain tiles per metre, with fine pale grout.
+        const tile = size / 10;
+        const col = Math.floor(x / tile), row = Math.floor(y / tile);
+        const edge = Math.min(x % tile, tile - x % tile, y % tile, tile - y % tile);
+        const g = grain((x / size) * 80, (y / size) * 80, 80);
+        grey(out, edge < 1.3 ? .78 : .94 + cellHash(col, row, 0x8c) * .035 + (g - .5) * .012);
+        out.h = edge < 1.3 ? .12 : .64;
+        out.rough = edge < 1.3 ? .73 : .34;
+      };
+    },
+  },
   brick: {
     size: 512,
     worldSize: m(2.4),

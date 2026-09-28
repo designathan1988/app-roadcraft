@@ -16,7 +16,7 @@ src/editor/buildingTool.ts   the tool's state machine (no DOM, world coordinates
 src/editor/blueprintLibrary.ts  the player's own saved blueprints (localStorage)
 src/render/buildings/    the meshes: a merged shell per finish, instanced components
 src/world/buildings/materials.ts  finishes, colours and how they resolve
-src/ui/buildingPanel.ts  the palette: types, presets, parameters, component picker
+src/ui/buildingCreatorPanel.ts  the contextual creator: Sketch, Shape, Facade, Roof
 src/ui/overlay/buildingOverlay.ts  handles, outlines, the validity label
 src/buildingsWiring.ts   main.ts's building section: ToolView, ToolHost, palette, overlay
 ```
@@ -40,7 +40,8 @@ Building                      src/world/buildings/types.ts
  ├─ palette                   facade colour scheme index
  ├─ volumes: Volume[]         the massing
  │   ├─ id
- │   ├─ x, y, w, d            a rectangle of the local frame, world units, any size
+ │   ├─ x, y, w, d            bounds in the local frame, world units
+ │   ├─ outline?               a normalized simple polygon inside those bounds
  │   ├─ base                  the level this volume starts on (0 = the ground)
  │   ├─ roof                  flat | terrace | gable | hip | shed | sawtooth
  │   ├─ pitch?, ridge?, fall?  the roof's slope (degrees) and which way it runs
@@ -57,21 +58,24 @@ Building                      src/world/buildings/types.ts
 
 ### Free dimensions, rhythmic facades
 
-A volume is a rectangle of **any size** in world units (schema 2; schema 1
-measured whole cells of `module`, and `migrateBuilding` multiplies them out,
-so an old map opens unchanged). The editor snaps every length it sets to
+A volume may be a rectangle or a **simple polygon with up to 64 vertices**.
+An outline is normalized to its bounding rectangle, so resizing keeps its
+proportions. Schema 1 measured whole cells of `module`; `migrateBuilding`
+multiplies them out so an old map opens unchanged. The editor snaps every length it sets to
 `GRID` (half a metre) - pushing a face, growing a wing, a setback's inset, the
 width and depth sliders - so volumes still meet exactly and share walls.
 
 The facades keep their rhythm on any length: a side is shared evenly into
 `baysOn(b, v, side) = round(length / module)` bays (`bayWidth`), so a 16.5 m
-front with a 3 m module has six bays of 2.75 m. The structural questions are
-exact rectangle tests (`world/buildings/geometry.ts`):
+front with a 3 m module has six bays of 2.75 m. A polygon has a separate side
+and bay rhythm on each edge. The structural questions in
+`world/buildings/geometry.ts` use polygon overlap and subtraction where a
+free outline is involved, and retain the fast rectangle path for old maps:
 
 * `clashes` - two volumes overlapping in plan (touching is allowed) on a
   shared level;
 * `isSupported` - a volume above the ground is covered by the union of the
-  volumes with a storey on the level under its base (rectangle subtraction);
+  volumes with a storey on the level under its base (polygon subtraction);
 * `coveredSpans` / `exposedParts` - the stretches of a side another volume
   stands against on a level: no facade there. A bay only partly against one
   keeps its exposed piece, drawn as plain wall (`FacadeBay.start`/`width`).
@@ -341,29 +345,54 @@ point to the screen, turn a screen point into a world point on a plane at a
 given height, cast a pick ray, read the rendered ground - and a `commit`
 callback that is `mutateBuildings`.
 
-* **Place** (`H`, then the neutral **Block** - shaped by the sliders - a
-  ready-made model, or one of *My blueprints*). There are no fixed categories
-  in the palette: a model is only a starting point, and every building is
-  shaped from there. `Building.use` is still stored, for the simulation to
-  read one day, but nothing in the tool sets or depends on it. The ghost
-  follows the pointer,
-  snapped (below), green when valid, red with the reason when not; click to
-  build. `R` turns it a quarter, `Shift+R` 15 degrees. With the pointer
-  over an existing building the ghost steps aside and a click selects that
-  building instead. After a placement the tool switches to **Edit** on the new
-  building, so the first module can be shaped at once.
-* **Edit**: click a building to select it and the volume under the pointer.
-  * the **arrow on the roof** - drag up or down to add or remove storeys (live
-    preview, one storey per storey-height of screen travel);
-  * the **arrows on the four sides** - drag out or in to grow or shrink the
-    volume by modules; with **Shift** held the drag grows a new **wing**;
-  * the **centre cross** - drag to move the building (snapped);
-  * the **ring at a corner** - drag to rotate it (15 degree steps, Shift for free);
-  * click a facade bay with a component chosen in the picker to replace it
-    (scope: bay, storey, side or volume);
-  * `PageUp`/`PageDown` or `+`/`-` storeys, `Delete` removes the volume
-    (the building if it is the last one), `Ctrl+D` duplicates, `Ctrl+C` /
-    `Ctrl+V` copy and paste at the pointer, `R` rotates, `Escape` deselects.
+The contextual panel (`ui/buildingCreatorPanel.ts`) has four tools: **Sketch**,
+**Shape**, **Facade** and **Roof**. Sketch offers rectangle, L, U, circle,
+hexagon and octagon shortcuts in an optional group, plus house, apartment and
+factory starters and the player's saved blueprints.
+It draws free ground footprints, attached masses and supported upper masses
+directly in the 3D scene. The first point or Enter closes the outline,
+Backspace removes a point and Escape cancels. A translucent copy of the actual
+building rises from the third point. Shape moves vertices and edges, pulls the
+roof to change floors, and cuts side notches. Facade applies a composition to
+the whole building, a mass, face or floor; individual bays remain editable.
+Roof configures the roof and places persistent solar panels, skylights, vents,
+chimneys, tanks and spires. Every edit is validated and recorded as one undo
+step. The camera fits both footprint and height when a selected building grows.
+
+* **Sketch** (`H`, then the pencil in the creator rail): click points directly on
+  terrain for a new building, an attached ground mass or an upper mass on the
+  selected roof. Enter or the first point closes the outline; Backspace removes
+  the last point; Escape cancels. The ghost is the real mesh and names the
+  first validation problem. Grid, selected-building vertices and edges snap.
+  House, apartment block and factory are optional starters, as are six quick
+  outlines; none restrict later editing. A finished mass is selected at once.
+* **Shape**: the visible side arrows grow or shrink a selected mass; Shift-drag
+  grows a wing. Small vertex dots reshape any polygon. The roof arrow changes
+  floor count, the move and rotation handles change placement, and the `Cut`
+  button opens an exterior notch. The `Combine structures` actions start a
+  ground or upper mass without leaving the current building. The list of
+  masses selects the level or wing to edit. Direct floor counts, building floor
+  height, per-mass dimensions and local offsets make tall towers and uneven
+  sets of shoulders possible without dozens of clicks. Upper shapes are fitted
+  inside their supports before their normal drag handles take over.
+* **Facade**: clicking a face selects it and changes the material scope to that
+  face. Residential, storefront, office, industrial, arcade, gallery, Art Deco,
+  crown and observation compositions
+  can target the building, one mass, one face or one floor. A component click
+  can still replace a single bay. A selected bay or Shift-picked region can be
+  recessed or projected at a measured depth. Finish and colour use the same
+  target, with storey-specific finishes preserved in save/load.
+* **Roof**: choose a roof kind, pitch, ridge/slope direction and material,
+  then arm a solar panel, skylight, vent, chimney, tank or spire and click a roof. The part appears in a list where it
+  can be selected, moved, turned or deleted. A spire's height and flag are
+  editable. Details on a roof covered by a new
+  upper mass are removed in the same undo step.
+
+The old editing methods still provide keyboard operations: `PageUp`/`PageDown`
+(or `+`/`-`) change floors, `Ctrl+D` duplicates, `Ctrl+C`/`Ctrl+V` copy and
+paste, `R` rotates a ghost or the selected building, and `Delete` removes a
+selected roof detail or mass. The number row `1` through `4` switches the four
+building tools while the building tool is active.
 
 ### Gestures, measures and conveniences
 
@@ -375,11 +404,8 @@ callback that is `mutateBuildings`.
 * **Mirror** flips the building left to right in place (`opMirror`); twice is
   the original. **Repeat** copies the selected element in a row, corner to
   corner, never into a volume (`opRepeatElement`).
-* **Styles** (`STYLES` in `materials.ts`) dress a whole building in one click -
-  brick, modern, mediterranean, industrial, timber - and lock nothing.
-* The presets in the palette are pictures of the buildings they place,
-  rendered off screen by the game's renderer from the game camera's angle
-  (`render/buildings/thumbnails.ts`).
+* Built-in starters and the player's saved blueprints are available from the
+  Sketch tool. A blueprint keeps its masses, facades, roofs and roof details.
 * The selection is a thin line at the selected volume's base and a fainter one
   at its roof edge, never a wire box over the building.
 
@@ -453,16 +479,20 @@ building being edited) and once when it ends.
 * `tests/world/buildings.spec.ts` - geometry, exposure, occupancy, levels,
   foundations on slopes, validation (every problem), serialisation, migration
   and old maps without buildings.
-* `tests/editor/buildings.spec.ts` - every command, undo/redo through
+* `tests/editor/buildings.spec.ts` and `buildingPlans.spec.ts` - every command, undo/redo through
   `History`, road-over-building demolition, snapping, the tool's drags with a
   fake `ToolView`.
+* `tests/world/buildingPlans.spec.ts` - free outline validation, exposed bays,
+  collision, support, picking and persistence.
+* `tests/render/buildingMesh.spec.ts` - the polygon roof shapes, finite meshes
+  and correct triangle winding.
 
 ---
 
 ## 7. Adding to it
 
 * **A new facade component**: add it to `BAY_COMPONENTS` in `types.ts`, give
-  it parts in `render/buildings/kit.ts` and a case in `buildingMesh.ts`'s `openingOf` and `emitBay`, a button in the picker (`ui/buildingPanel.ts` builds them
+  it parts in `render/buildings/kit.ts` and a case in `buildingMesh.ts`'s `openingOf` and `emitBay`, a button in the picker (`ui/buildingCreatorPanel.ts` builds them
   from the list) and `building.component.<name>` in both dictionaries.
 * **A new roof**: `ROOF_KINDS` in `types.ts`, a case in `buildingMesh.ts`'s
   `emitRoof`, `building.roof.<name>` in both dictionaries.

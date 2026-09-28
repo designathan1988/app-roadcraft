@@ -1,4 +1,5 @@
 import type { Vec2 } from '@core/vec2';
+import { signedArea } from '@core/polygon';
 import {
   BLUEPRINTS,
   type BlueprintBody,
@@ -8,7 +9,10 @@ import {
   generateBlock,
 } from '@world/buildings/blueprints';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
-import { MIN_SIZE, baysOn, footprintBox, levelHeight, localDirToWorld, reliefAt, worldToLocal } from '@world/buildings/geometry';
+import { localFootprint } from '@world/buildings/footprints';
+import { GRID } from '@world/buildings/geometry';
+import { METERS_PER_UNIT } from '@world/units';
+import { MIN_SIZE, baysOn, footprintBox, levelElevation, levelHeight, localDirToWorld, localToWorld, reliefAt, worldToLocal } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
 import { type MaterialSpec, type MaterialTarget, applyMaterial, applyStyle, materialAt } from '@world/buildings/materials';
@@ -21,9 +25,14 @@ import {
   type BuildingId,
   type ElementKind,
   type RoofKind,
+  type RoofDetailKind,
+  type FacadePattern,
+  type FacadeGeometry,
+  type FaceId,
   type Side,
   DEFAULT_MODULE,
   asBuildingId,
+  isSide,
   cloneBuilding,
   volumeById,
 } from '@world/buildings/types';
@@ -47,6 +56,7 @@ import {
   opRemoveElement,
   opRepeatElement,
   opSetParameters,
+  opSetLevelHeight,
   opSetRelief,
   opUpdateElement,
   type ElementPatch,
@@ -59,6 +69,10 @@ import {
   replaceBuilding,
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
+import { type PlanShape, type UpperMassPlacement, shapeBody, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass } from './buildingPlans';
+import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
+import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
+import { splitVolumeAtFloor, reshapeTier as reshapeTierPlan } from './buildingProfile';
 
 /**
  * The building tool, as a state machine in world coordinates.
@@ -94,12 +108,15 @@ export interface ToolHost {
   changed(): void;
   /** A transient message in the hint bar (a translation key). */
   flash(key: string): void;
+  focus?(building: Building): void;
 }
 
 export type BuildingToolMode = 'place' | 'edit';
+export type PlanAction = 'new' | 'ground' | 'top' | 'cut';
+export type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
 
 /** What a material pick paints: the whole building, the selected volume, one face of it, or its roof. */
-export type MaterialScope = 'building' | 'volume' | 'face' | 'roof';
+export type MaterialScope = 'building' | 'volume' | 'face' | 'floor' | 'roof';
 
 export interface BuildingPreview {
   readonly building: Building;
@@ -113,7 +130,7 @@ export interface BuildingPreview {
 
 export interface BaySelection {
   readonly storey: number;
-  readonly side: Side;
+  readonly side: FaceId;
   readonly index: number;
 }
 
@@ -125,6 +142,7 @@ export interface BuildingSelection {
   readonly bayEnd?: BaySelection | null;
   /** A free element of the building, when one was clicked. */
   readonly element?: number | null;
+  readonly vertex?: number | null;
 }
 
 /** Parameters of the generated block (the sliders); lengths in world units. */
@@ -137,8 +155,9 @@ export interface PlaceParameters {
 }
 
 type Drag =
+  | { kind: 'vertex'; origin: Building; volume: number; vertex: number; z: number }
   | { kind: 'storeys'; origin: Building; volume: number; start: Vec2; pixelsPerStorey: number; count: number }
-  | { kind: 'side'; origin: Building; volume: number; side: Side; start: Vec2; z: number; dir: Vec2; wing: boolean }
+  | { kind: 'side'; origin: Building; volume: number; side: FaceId; start: Vec2; z: number; dir: Vec2; wing: boolean }
   | { kind: 'move'; origin: Building; start: Vec2; z: number }
   | { kind: 'rotate'; origin: Building; centre: Vec2; z: number; startAngle: number }
   | { kind: 'relief'; origin: Building; volume: number; region: FaceRegion; start: Vec2; z: number; dir: Vec2; depth: number }
@@ -153,6 +172,10 @@ const ROTATE_STEP = Math.PI / 12;
 
 export class BuildingTool {
   mode: BuildingToolMode = 'place';
+  stage: CreatorTool = 'sketch';
+  planPoints: Vec2[] | null = null;
+  planCursor: Vec2 | null = null;
+  planAction: PlanAction = 'new';
   /** What a click in place mode builds. */
   body: BlueprintBody;
   blueprintKey: string | null;
@@ -169,7 +192,7 @@ export class BuildingTool {
   /** The component the picker has armed: a click on a bay puts it there. */
   component: BayComponent | null = null;
   scope: FacadeScope = 'bay';
-  materialScope: MaterialScope = 'volume';
+  materialScope: MaterialScope = 'building';
   /** Alt held: drags follow the pointer freely, without snapping to the grid. */
   free = false;
   /**
@@ -179,8 +202,11 @@ export class BuildingTool {
   measure: { readonly kind: 'length' | 'depth' | 'floors'; readonly value: number; readonly x: number; readonly y: number; readonly z: number } | null = null;
   /** The kind of free element the palette has armed: the pointer places one. */
   armed: ElementKind | null = null;
+  roofDetailKind: RoofDetailKind | null = null;
+  selectedRoofDetail: number | null = null;
   preview: BuildingPreview | null = null;
   hover: BuildingHit | null = null;
+  hoverHandle: Handle | null = null;
   clipboard: BlueprintBody | null = null;
   /** The last problem a gesture reported, for the overlay's label. */
   problem: BuildingProblem | null = null;
@@ -236,13 +262,24 @@ export class BuildingTool {
         .map((p, i) => ({ i, y: this.view.project(p.x, p.y, floor).y }))
         .sort((a, b) => b.y - a.y)
         .map((c) => c.i);
-    return buildingHandles(shown, this.selection.volume, floor, nearest, this.faceRegion());
+    const all = buildingHandles(shown, this.selection.volume, floor, nearest, this.stage === 'facade' ? this.faceRegion() : null);
+    const volume = volumeById(shown, this.selection.volume);
+    const detailed = (volume?.outline?.length ?? 4) <= 12;
+    const selectedSide = this.selection.bay?.side;
+    return all.filter((h) => (this.stage === 'shape' && (h.kind === 'move' || h.kind === 'rotate' || h.kind === 'storeys')) ||
+      (this.stage === 'shape' && h.kind === 'side' && ((volume?.outline?.length ?? 4) <= 8 || this.selection?.bay?.side === h.side)) ||
+      (this.stage === 'shape' && h.kind === 'vertex' &&
+        (detailed || (h.vertex ?? 0) % 3 === 0 || h.vertex === this.selection?.vertex || h.vertex === selectedSide || h.vertex === (selectedSide ?? -2) + 1)) ||
+      (this.stage === 'facade' && h.kind === 'relief'));
   }
 
   /** The tool is put away: no ghost, no gesture, no hover. The selection stays. */
   deactivate(): void {
     this.drag = null;
+    this.planPoints = null;
+    this.planCursor = null;
     this.hover = null;
+    this.hoverHandle = null;
     this.setPreview(null);
   }
 
@@ -259,10 +296,259 @@ export class BuildingTool {
 
   setMode(mode: BuildingToolMode): void {
     this.mode = mode;
+    if (mode === 'edit' && this.stage === 'sketch' && !this.planPoints) this.stage = 'shape';
     this.drag = null;
     this.setPreview(null);
-    if (mode === 'place' && this.lastScreen && this.lastWorld) this.hoverPlace(this.lastWorld);
+    if (mode === 'place' && this.lastScreen && this.lastWorld && !this.planPoints) this.hoverPlace(this.lastWorld);
     this.host.changed();
+  }
+
+  setStage(stage: CreatorTool): void {
+    this.stage = stage;
+    if (stage === 'roof') this.materialScope = 'roof';
+    else if (stage === 'facade' && this.materialScope === 'roof') this.materialScope = 'volume';
+    if (stage !== 'roof') this.roofDetailKind = null;
+    if (stage !== 'shape') this.armed = null;
+    if (stage !== 'facade') this.component = null;
+    this.problem = null;
+    this.host.changed();
+  }
+
+  chooseShape(shape: PlanShape): void {
+    this.planPoints = null;
+    this.body = shapeBody(shape, this.params.width, this.params.depth, this.params.storeys);
+    this.blueprintKey = null;
+    this.stage = 'sketch';
+    this.setMode('place');
+  }
+
+  startPlan(action: PlanAction = 'new'): void {
+    if (action !== 'new' && !this.selected()) return;
+    this.planAction = action;
+    this.mode = 'place';
+    this.stage = 'sketch';
+    this.planPoints = [];
+    this.planCursor = null;
+    this.problem = null;
+    this.setPreview(null);
+    this.host.changed();
+  }
+
+  cancelPlan(): void {
+    this.planPoints = null;
+    this.planCursor = null;
+    this.problem = null;
+    this.setPreview(null);
+    if (this.planAction === 'new') {
+      if (this.lastWorld) this.hoverPlace(this.lastWorld);
+    } else this.mode = 'edit';
+    this.host.changed();
+  }
+
+  backPoint(): void {
+    if (!this.planPoints) return;
+    this.planPoints.pop();
+    this.updatePlanPreview();
+  }
+
+  /** Validates the actual building on the terrain, then commits one undo step. */
+  finishPlan(): void {
+    if (!this.planPoints || this.planPoints.length < 3) return;
+    const draft = this.planBuilding();
+    if (!draft) { this.problem = this.planAction === 'cut' ? 'cut' : 'outline'; this.host.changed(); return; }
+    const problem = validateBuilding(this.host.context(), draft, this.planAction === 'new' ? undefined : draft.id);
+    if (problem) { this.problem = problem; this.host.changed(); return; }
+    const result = this.host.commit(() => this.planAction === 'new'
+      ? addBuildingRecord(this.host.context(), stripId(draft))
+      : replaceBuilding(this.host.context(), draft));
+    if (result.ok && result.id !== undefined) {
+      const volume = this.planAction === 'ground' || this.planAction === 'top'
+        ? draft.nextVolumeId - 1 : this.planAction === 'cut' ? this.selection?.volume ?? draft.volumes[0]!.id : draft.volumes[0]!.id;
+      this.selection = { building: result.id, volume, bay: null };
+      this.mode = 'edit';
+      this.stage = 'shape';
+      this.planPoints = null;
+      this.planCursor = null;
+      this.setPreview(null);
+      this.host.flash('building.placed');
+    }
+    this.report(result);
+  }
+
+  private planBuilding(): Building | null {
+    if (!this.planPoints || this.planPoints.length < 3) return null;
+    if (this.planAction !== 'new') {
+      const existing = this.selected();
+      const s = this.selection;
+      if (!existing || !s) return null;
+      const draft = cloneBuilding(existing);
+      const points = this.planPoints.map((p) => worldToLocal(draft, p));
+      if (this.planAction === 'cut') {
+        if (!cutPlanMass(draft, s.volume, points)) return null;
+      } else {
+        const source = volumeById(draft, s.volume);
+        if (!source) return null;
+        const base = this.planAction === 'top' ? source.base + source.storeys.length : 0;
+        if (addPlanMass(draft, s.volume, points, base, this.planAction === 'top' ? 2 : 1) === null) return null;
+      }
+      return draft;
+    }
+    const body = JSON.parse(JSON.stringify(this.body)) as BlueprintBody;
+    const first = body.volumes[0];
+    if (!first) return null;
+    body.volumes = [first];
+    body.cores = [];
+    delete body.elements;
+    if (!setVolumePlan(first, this.planPoints)) return null;
+    return { ...body, id: PREVIEW_ID, x: 0, y: 0, rotation: 0 };
+  }
+
+  private updatePlanPreview(): void {
+    const draft = this.planBuilding();
+    this.problem = draft ? validateBuilding(this.host.context(), draft, this.planAction === 'new' ? undefined : draft.id)
+      : this.planPoints && this.planPoints.length >= 3 ? this.planAction === 'cut' ? 'cut' : 'outline' : null;
+    this.setPreview(draft ? { building: draft, valid: this.problem === null, problem: this.problem,
+      hides: this.planAction === 'new' ? null : draft.id, serial: 0 } : null);
+    this.host.changed();
+  }
+
+  selectVolume(id: number): void {
+    const b = this.selected();
+    if (!b || !volumeById(b, id)) return;
+    this.selection = { building: b.id, volume: id, bay: null };
+    if (this.materialScope === 'face' || this.materialScope === 'floor') this.materialScope = 'volume';
+    this.selectedRoofDetail = null;
+    this.host.changed();
+  }
+
+  focusSelected(): void {
+    const building = this.selected();
+    if (building) this.host.focus?.(building);
+  }
+
+  changeVertex(action: 'insert' | 'remove'): void {
+    const s = this.selection;
+    if (!s) return;
+    const index = action === 'insert' ? s.bay?.side : s.vertex;
+    if (index === undefined || index === null) return;
+    const result = this.onSelected((draft) => changePlanVertex(draft, s.volume, index, action === 'remove'));
+    if (result.ok) this.selection = { ...s, bay: null, vertex: action === 'insert' ? index + 1 : null };
+    this.report(result);
+  }
+
+  applyFacadeGrammar(pattern: FacadePattern, scope: FacadeTarget['scope']): void {
+    const selected = this.selection;
+    if (!selected) return;
+    if ((scope === 'face' || scope === 'floor') && !selected.bay) {
+      this.host.flash('building.material.pickFace');
+      return;
+    }
+    const target: FacadeTarget = scope === 'building' ? { scope: 'building' }
+      : scope === 'face' && selected.bay ? { scope: 'face', volume: selected.volume, face: selected.bay.side }
+      : scope === 'floor' ? { scope: 'floor', volume: selected.volume, floor: selected.bay?.storey ?? 0 }
+      : { scope: 'volume', volume: selected.volume };
+    this.report(this.onSelected((draft) => applyFacadePattern(draft, target, pattern)));
+  }
+
+  setFacadeGeometry(patch: Partial<FacadeGeometry>): void {
+    const s = this.selection, face = s?.bay?.side;
+    if (!s || face === undefined) return;
+    const result = this.onSelected((draft) => updateFacadeGeometry(draft, s.volume, face, patch));
+    if (result.ok && patch.bays !== undefined && s.bay) {
+      this.selection = { ...s, bay: { ...s.bay, index: Math.min(s.bay.index, Math.round(patch.bays) - 1) }, bayEnd: null };
+      this.host.changed();
+    }
+  }
+
+  armRoofDetail(kind: RoofDetailKind | null): void {
+    this.roofDetailKind = this.roofDetailKind === kind ? null : kind;
+    this.problem = null;
+    this.host.changed();
+  }
+
+  selectRoofDetail(id: number): void {
+    const volume = this.selected()?.volumes.find((v) => v.id === this.selection?.volume);
+    if (!volume?.roofDetails?.some((part) => part.id === id)) return;
+    this.selectedRoofDetail = id;
+    this.host.changed();
+  }
+
+  turnRoofDetail(): void {
+    const s = this.selection, id = this.selectedRoofDetail;
+    if (!s || id === null) return;
+    const part = this.selected()?.volumes.find((v) => v.id === s.volume)?.roofDetails?.find((detail) => detail.id === id);
+    if (part) this.report(this.onSelected((draft) => updateRoofDetail(draft, s.volume, id, { rotation: part.rotation + Math.PI / 2 })));
+  }
+
+  moveRoofDetail(dx: number, dy: number): void {
+    const s = this.selection, id = this.selectedRoofDetail;
+    if (!s || id === null) return;
+    const part = this.selected()?.volumes.find((v) => v.id === s.volume)?.roofDetails?.find((detail) => detail.id === id);
+    if (part) this.report(this.onSelected((draft) => updateRoofDetail(draft, s.volume, id, { x: part.x + dx, y: part.y + dy })));
+  }
+
+  deleteRoofDetail(): void {
+    const s = this.selection, id = this.selectedRoofDetail;
+    if (!s || id === null) return;
+    const result = this.onSelected((draft) => removeRoofDetail(draft, s.volume, id));
+    if (result.ok) this.selectedRoofDetail = null;
+    this.report(result);
+  }
+
+  setRoofDetailHeight(metres: number): void {
+    const s = this.selection, id = this.selectedRoofDetail;
+    if (!s || id === null || !Number.isFinite(metres)) return;
+    this.onSelected((draft) => updateRoofDetail(draft, s.volume, id, { h: metres / METERS_PER_UNIT }));
+  }
+
+  setRoofDetailFlag(flag: 'none' | 'plain' | 'saoPaulo' | 'saoPauloState'): void {
+    const s = this.selection, id = this.selectedRoofDetail;
+    if (!s || id === null) return;
+    this.onSelected((draft) => updateRoofDetail(draft, s.volume, id, { flag }));
+  }
+
+  get planArea(): number {
+    const b = this.selected();
+    if (!b) return 0;
+    return b.volumes.filter((v) => v.base === 0).reduce((area, v) => area + Math.abs(signedArea(localFootprint(v))) * METERS_PER_UNIT ** 2, 0);
+  }
+
+  get planHeight(): number | null {
+    if (this.planAction === 'new' || this.planAction === 'ground') return null;
+    const building = this.selected();
+    const volume = building && this.selection ? volumeById(building, this.selection.volume) : undefined;
+    if (!building || !volume) return null;
+    const level = this.planAction === 'top' ? volume.base + volume.storeys.length : volume.base;
+    return this.floorOf(building) + levelElevation(building, level);
+  }
+
+  private pointOnPlan(screen: Vec2, world: Vec2, free: boolean): Vec2 {
+    const height = this.planHeight;
+    const p = height === null ? world : this.view.planeAt(screen, height);
+    if (free) return p;
+    const building = this.selected();
+    let closest: Vec2 | null = null;
+    let best = this.view.pickPixels * .8;
+    if (building) for (const volume of building.volumes) {
+      const ring = localFootprint(volume).map((point) => localToWorld(building, point.x, point.y));
+      const screenAt = (point: Vec2): Vec2 => this.view.project(point.x, point.y,
+        height ?? this.view.groundAt(point.x, point.y));
+      for (const vertex of ring) {
+        const q = screenAt(vertex), distance = Math.hypot(q.x - screen.x, q.y - screen.y);
+        if (distance < best) { best = distance; closest = vertex; }
+      }
+      if (closest) continue;
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i]!, b = ring[(i + 1) % ring.length]!;
+        const dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy;
+        if (length2 < 1e-9) continue;
+        const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2));
+        const q = { x: a.x + dx * t, y: a.y + dy * t };
+        const projected = screenAt(q), distance = Math.hypot(projected.x - screen.x, projected.y - screen.y);
+        if (distance < best) { best = distance; closest = q; }
+      }
+    }
+    return closest ?? { x: Math.round(p.x / GRID) * GRID, y: Math.round(p.y / GRID) * GRID };
   }
 
   chooseBlueprint(key: string): void {
@@ -275,6 +561,7 @@ export class BuildingTool {
   useBody(body: BlueprintBody, key: string | null): void {
     this.body = JSON.parse(JSON.stringify(body)) as BlueprintBody;
     this.blueprintKey = key;
+    this.stage = 'sketch';
     this.component = null;
     this.setMode('place');
   }
@@ -323,7 +610,7 @@ export class BuildingTool {
     this.onSelected((draft) => opResize(draft, s.volume, side, delta));
   }
 
-  addWing(side: Side): void {
+  addWing(side: FaceId): void {
     const s = this.selection;
     if (!s) return;
     let created: number | null = null;
@@ -335,15 +622,61 @@ export class BuildingTool {
     this.host.changed();
   }
 
-  addSetback(): void {
+  addSetback(inset?: number, storeys?: number): void {
     const s = this.selection;
     if (!s) return;
     let created: number | null = null;
     const result = this.onSelected((draft) => {
-      created = opAddSetback(draft, s.volume);
+      created = opAddSetback(draft, s.volume, inset, storeys);
       return created !== null;
     });
     if (result.ok && created !== null) this.selection = { building: s.building, volume: created, bay: null };
+    if (!result.ok && created === null) this.problem = 'setback';
+    if (result.ok) { const building = this.selected(); if (building) this.host.focus?.(building); }
+    this.host.changed();
+  }
+
+  splitAtFloor(afterFloor: number): void {
+    const s = this.selection;
+    if (!s) return;
+    let created: number | null = null;
+    const result = this.onSelected((draft) => {
+      created = splitVolumeAtFloor(draft, s.volume, afterFloor);
+      return created !== null;
+    });
+    if (result.ok && created !== null) this.selection = { building: s.building, volume: created, bay: null };
+    if (result.ok) this.focusSelected();
+    this.host.changed();
+  }
+
+  reshapeTier(shape: PlanShape): void {
+    const s = this.selection, volume = this.selected()?.volumes.find((v) => v.id === s?.volume);
+    if (!s || !volume) return;
+    if (volume.reliefs?.length) { this.host.flash('building.reshapeRelief'); return; }
+    const result = this.onSelected((draft) => reshapeTierPlan(draft, s.volume, shape));
+    if (result.ok) this.selection = { building: s.building, volume: s.volume, bay: null };
+    this.host.changed();
+  }
+
+  setGroundHeight(height: number): void {
+    this.onSelected((draft) => opSetParameters(draft, { groundHeight: height }));
+  }
+
+  setLevelHeight(level: number, height: number | null): void {
+    this.onSelected((draft) => opSetLevelHeight(draft, level, height));
+  }
+
+  addUpperShape(shape: PlanShape, inset: number, storeys: number, placement: UpperMassPlacement = {}): void {
+    const s = this.selection;
+    if (!s) return;
+    let created: number | null = null;
+    const result = this.onSelected((draft) => {
+      created = addShapedUpperMass(draft, s.volume, shape, inset, storeys, placement);
+      return created !== null;
+    });
+    if (result.ok && created !== null) this.selection = { building: s.building, volume: created, bay: null };
+    if (!result.ok && created === null) this.problem = 'setback';
+    if (result.ok) { const building = this.selected(); if (building) this.host.focus?.(building); }
     this.host.changed();
   }
 
@@ -404,6 +737,7 @@ export class BuildingTool {
       case 'volume': return { scope: 'volume', volume: s.volume, slot: 'wall' };
       case 'roof': return { scope: 'volume', volume: s.volume, slot: 'roof' };
       case 'face': return s.bay ? { scope: 'side', volume: s.volume, side: s.bay.side } : null;
+      case 'floor': return { scope: 'floor', volume: s.volume, floor: s.bay?.storey ?? 0, face: s.bay?.side ?? 0 };
     }
   }
 
@@ -666,10 +1000,12 @@ export class BuildingTool {
   pointerDown(screen: Vec2, world: Vec2, shift: boolean): boolean {
     this.lastScreen = screen;
     this.lastWorld = world;
+    if (this.planPoints) this.planCursor = this.pointOnPlan(screen, world, shift || this.free);
     const selected = this.selected();
     if (this.mode === 'edit' && selected && this.selection) {
       const handle = this.handleAt(screen);
       if (handle) {
+        this.hoverHandle = handle;
         this.beginHandleDrag(handle, selected, screen, shift);
         return true;
       }
@@ -683,6 +1019,13 @@ export class BuildingTool {
     const volumeId = this.selection?.volume ?? (b.volumes[0]?.id ?? 1);
     const v = volumeById(origin, volumeId);
     switch (handle.kind) {
+      case 'vertex':
+        if (handle.vertex !== undefined) {
+          this.selection = { ...this.selection!, vertex: handle.vertex, bay: null };
+          this.drag = { kind: 'vertex', origin, volume: volumeId, vertex: handle.vertex, z: handle.z };
+          this.host.changed();
+        }
+        break;
       case 'storeys': {
         const top = this.view.project(handle.x, handle.y, handle.z);
         const level = v ? v.base + v.storeys.length : 1;
@@ -742,8 +1085,15 @@ export class BuildingTool {
   pointerMove(screen: Vec2, world: Vec2, shift: boolean): void {
     this.lastScreen = screen;
     this.lastWorld = world;
+    if (this.planPoints) {
+      this.hoverHandle = null;
+      this.planCursor = this.pointOnPlan(screen, world, shift || this.free);
+      this.host.changed();
+      return;
+    }
     const drag = this.drag;
     if (!drag) {
+      this.hoverHandle = this.mode === 'edit' ? this.handleAt(screen) : null;
       if (this.mode === 'place') {
         this.hover = this.pick(screen);
         if (this.hover) this.setPreview(null);
@@ -764,6 +1114,12 @@ export class BuildingTool {
     }
     const draft = cloneBuilding(drag.origin);
     switch (drag.kind) {
+      case 'vertex': {
+        const p = this.view.planeAt(screen, drag.z);
+        const local = worldToLocal(draft, p);
+        movePlanVertex(draft, drag.volume, drag.vertex, local, !this.free);
+        break;
+      }
       case 'storeys': {
         const steps = Math.round((drag.start.y - screen.y) / drag.pixelsPerStorey);
         opSetStoreys(draft, drag.volume, drag.count + steps);
@@ -779,7 +1135,8 @@ export class BuildingTool {
         if (drag.wing || shift) {
           if (along >= MIN_SIZE) opAddWing(draft, drag.volume, drag.side, along);
         } else {
-          opResize(draft, drag.volume, drag.side, along, !this.free);
+          if (volumeById(draft, drag.volume)?.outline) movePlanEdge(volumeById(draft, drag.volume)!, drag.side, along, !this.free);
+          else if (isSide(drag.side)) opResize(draft, drag.volume, drag.side, along, !this.free);
         }
         const v = volumeById(draft, drag.volume);
         if (v) this.measure = { kind: 'length', value: drag.side === 1 || drag.side === 3 ? v.w : v.d, x: p.x, y: p.y, z: drag.z };
@@ -850,6 +1207,48 @@ export class BuildingTool {
   }
 
   private click(hit: BuildingHit | null, shift = false): void {
+    if (this.planPoints) {
+      const point = this.planCursor ?? this.lastWorld;
+      if (!point) return;
+      const first = this.planPoints[0];
+      if (first && this.planPoints.length >= 3 && this.lastScreen) {
+        const screen = this.view.project(first.x, first.y, this.planHeight ?? this.view.groundAt(first.x, first.y));
+        if (Math.hypot(screen.x - this.lastScreen.x, screen.y - this.lastScreen.y) < this.view.pickPixels) {
+          this.finishPlan();
+          return;
+        }
+      }
+      this.planPoints.push(point);
+      this.updatePlanPreview();
+      return;
+    }
+    if (this.roofDetailKind && hit?.face !== 'top') {
+      this.problem = 'roofSpace';
+      this.host.changed();
+      return;
+    }
+    if (this.roofDetailKind && hit?.face === 'top') {
+      const building = this.host.context().doc.buildings.get(hit.building);
+      if (!building) return;
+      const local = worldToLocal(building, { x: hit.x, y: hit.y });
+      const kind = this.roofDetailKind;
+      let created: number | null = null;
+      const result = this.host.commit(() => editBuilding(this.host.context(), building.id, (draft) => {
+        created = addRoofDetail(draft, hit.volume, kind, local);
+        return created !== null;
+      }));
+      if (result.ok && created !== null) {
+        this.selection = { building: building.id, volume: hit.volume, bay: null };
+        this.selectedRoofDetail = created;
+        this.roofDetailKind = null;
+      }
+      this.report(result);
+      if (created === null) {
+        this.problem = 'roofSpace';
+        this.host.changed();
+      }
+      return;
+    }
     const s = this.selection;
     if (this.armed && this.mode === 'edit' && s) {
       this.placeElement();
@@ -868,9 +1267,17 @@ export class BuildingTool {
       return;
     }
     if (hit && (this.mode === 'edit' || this.hover)) {
+      const wasPlacing = this.mode === 'place';
+      const changedBuilding = this.selection?.building !== hit.building;
       const bay = hit.face === 'top' ? null : { storey: hit.storey, side: hit.face, index: hit.index };
       this.selection = { building: hit.building, volume: hit.volume, bay };
+      if (this.stage === 'facade' && bay) this.materialScope = 'face';
+      else if (!bay && (this.materialScope === 'face' || this.materialScope === 'floor')) this.materialScope = 'volume';
       if (this.mode === 'place') this.setMode('edit');
+      if (wasPlacing || changedBuilding) {
+        const building = this.selected();
+        if (building) this.host.focus?.(building);
+      }
       if (this.component && bay) this.applyToSelectedBay(this.component);
       this.host.changed();
       return;
@@ -880,6 +1287,7 @@ export class BuildingTool {
       return;
     }
     this.selection = null;
+    if (this.materialScope === 'face' || this.materialScope === 'floor') this.materialScope = 'volume';
     this.host.changed();
   }
 
@@ -896,6 +1304,7 @@ export class BuildingTool {
       this.selection = { building: result.id, volume: record.volumes[0]?.id ?? 1, bay: null };
       this.setPreview(null);
       this.mode = 'edit';
+      this.stage = 'shape';
       this.host.flash('building.placed');
     }
     this.report(result);
@@ -903,6 +1312,7 @@ export class BuildingTool {
 
   /** Recomputes the placement ghost for the pointer at `world`. */
   hoverPlace(world: Vec2): void {
+    if (this.planPoints) return;
     const ctx = this.host.context();
     const size = footprintSize(this.body);
     const snap = snapPlacement(ctx.doc, ctx.net, size, world, this.rotation);
@@ -923,6 +1333,12 @@ export class BuildingTool {
   /** Returns true when the tool used the key. */
   key(key: string, ctrl: boolean, shift: boolean): boolean {
     const lower = key.toLowerCase();
+    if (this.planPoints) {
+      if (key === 'Enter') { this.finishPlan(); return true; }
+      if (key === 'Escape') { this.cancelPlan(); return true; }
+      if (key === 'Backspace') { this.backPoint(); return true; }
+      return false;
+    }
     if (ctrl) {
       if (lower === 'c') return this.copySelected();
       if (lower === 'v') return this.paste();
@@ -932,7 +1348,13 @@ export class BuildingTool {
       }
       return false;
     }
+    const tools: Record<string, CreatorTool> = { '1': 'sketch', '2': 'shape', '3': 'facade', '4': 'roof' };
+    if (tools[key]) { this.setStage(tools[key]); return true; }
     if (lower === 'r') {
+      if (this.stage === 'roof' && this.selectedRoofDetail !== null) {
+        this.turnRoofDetail();
+        return true;
+      }
       const angle = shift ? ROTATE_STEP : Math.PI / 2;
       if (this.mode === 'place') {
         this.rotation = normaliseAngle(this.rotation + angle);
@@ -946,11 +1368,15 @@ export class BuildingTool {
     if (key === 'Escape') {
       if (this.drag) {
         this.pointerUp(true);
+      } else if (this.roofDetailKind) {
+        this.roofDetailKind = null;
       } else if (this.armed) {
         this.armed = null;
         this.setPreview(null);
       } else if (this.component) {
         this.component = null;
+      } else if (this.selectedRoofDetail !== null) {
+        this.selectedRoofDetail = null;
       } else if (this.mode === 'place') {
         this.setMode('edit');
       } else {
@@ -969,6 +1395,10 @@ export class BuildingTool {
       return true;
     }
     if (key === 'Delete' || key === 'Backspace') {
+      if (this.stage === 'roof' && this.selectedRoofDetail !== null) {
+        this.deleteRoofDetail();
+        return true;
+      }
       if (this.selectedElement()) this.removeElement();
       else this.removeVolume();
       return true;

@@ -48,9 +48,11 @@ export class BlueprintLibrary {
   /** Saves a body under a name; returns the stored blueprint, or null. */
   save(name: string, body: BlueprintBody): Blueprint | null {
     const list = this.list();
-    const key = `user-${Date.now().toString(36)}-${list.length}`;
-    const entry: Blueprint = { key, name: name.trim().slice(0, 40) || 'Blueprint', body };
-    const next = [entry, ...list].slice(0, LIMIT);
+    const title = name.trim().slice(0, 40) || 'Blueprint';
+    const existing = list.find((item) => item.name?.toLocaleLowerCase() === title.toLocaleLowerCase());
+    const key = existing?.key ?? `user-${Date.now().toString(36)}-${list.length}`;
+    const entry: Blueprint = { key, name: title, body };
+    const next = [entry, ...list.filter((item) => item.key !== key)].slice(0, LIMIT);
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(next.map((b) => ({ key: b.key, name: b.name, body: b.body }))));
       return entry;

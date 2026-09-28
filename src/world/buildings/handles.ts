@@ -1,6 +1,6 @@
 import { m } from '../units';
+import { edgeFrame, localFootprint, volumeSides } from './footprints';
 import {
-  SIDE_NORMAL,
   bayWidth,
   footprintBox,
   levelElevation,
@@ -11,7 +11,7 @@ import {
   sideStart,
   volumeHeight,
 } from './geometry';
-import { type Building, type Side, SIDES, volumeById } from './types';
+import { type Building, type FaceId, volumeById } from './types';
 
 /**
  * Where the edit handles of a selected building stand, in world 3D.
@@ -19,11 +19,11 @@ import { type Building, type Side, SIDES, volumeById } from './types';
  * Pure geometry, shared by the tool (which hit-tests them) and the overlay
  * (which draws them), so the two can never disagree about where a handle is.
  */
-export type HandleKind = 'storeys' | 'side' | 'move' | 'rotate' | 'relief';
+export type HandleKind = 'storeys' | 'side' | 'move' | 'rotate' | 'relief' | 'vertex';
 
 /** A rectangle of bays and storeys of one face (see `editor/buildings.ts`, `FaceRegion`). */
 export interface HandleRegion {
-  readonly side: Side;
+  readonly side: FaceId;
   readonly bay0: number;
   readonly bay1: number;
   readonly storey0: number;
@@ -32,7 +32,8 @@ export interface HandleRegion {
 
 export interface Handle {
   readonly kind: HandleKind;
-  readonly side?: Side;
+  readonly side?: FaceId;
+  readonly vertex?: number;
   readonly x: number;
   readonly y: number;
   /** Absolute height. */
@@ -71,13 +72,18 @@ export function buildingHandles(
     dy: 0,
   });
   const baseZ = floor + levelElevation(b, v.base) + m(0.3);
-  for (const side of SIDES) {
-    const n = SIDE_NORMAL[side];
-    const cx = v.x + v.w / 2 + n.x * (v.w / 2 + HANDLE_OUT);
-    const cy = v.y + v.d / 2 + n.y * (v.d / 2 + HANDLE_OUT);
+  for (const side of volumeSides(v)) {
+    const f = edgeFrame(v, side);
+    const n = { x: f.nx, y: f.ny };
+    const cx = v.outline ? f.x + f.tx * f.length / 2 + n.x * HANDLE_OUT : v.x + v.w / 2 + n.x * (v.w / 2 + HANDLE_OUT);
+    const cy = v.outline ? f.y + f.ty * f.length / 2 + n.y * HANDLE_OUT : v.y + v.d / 2 + n.y * (v.d / 2 + HANDLE_OUT);
     const p = localToWorld(b, cx, cy);
     const d = localDirToWorld(b, n.x, n.y);
     out.push({ kind: 'side', side, x: p.x, y: p.y, z: baseZ, dx: d.x, dy: d.y });
+  }
+  for (const [vertex, point] of localFootprint(v).entries()) {
+    const p = localToWorld(b, point.x, point.y);
+    out.push({ kind: 'vertex', vertex, x: p.x, y: p.y, z: baseZ, dx: 0, dy: 0 });
   }
   const f = footprintBox(b);
   const corners = [
@@ -94,7 +100,8 @@ export function buildingHandles(
   if (region) {
     // Push-pull: an arrow standing off the middle of the picked region, at the
     // depth the region is pushed to now.
-    const n = SIDE_NORMAL[region.side];
+    const edge = edgeFrame(v, region.side);
+    const n = { x: edge.nx, y: edge.ny };
     const s = sideStart(v, region.side);
     const a = ((region.bay0 + region.bay1 + 1) / 2) * bayWidth(b, v, region.side);
     const depth = reliefAt(v, region.side, region.bay0, region.storey0)?.depth ?? 0;

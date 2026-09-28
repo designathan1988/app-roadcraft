@@ -1,3 +1,4 @@
+import { validOutline, overlapArea, roofPartFits } from './footprints';
 import type { Vec2 } from '@core/vec2';
 import { pointInPolygon } from '@core/polygon';
 import { MAP_HALF } from '../bounds';
@@ -28,6 +29,7 @@ import {
   MIN_PITCH,
   MAX_STOREYS,
   MAX_STOREY_HEIGHT,
+  MAX_GROUND_HEIGHT,
   MAX_VOLUMES,
   MIN_MODULE,
   MIN_STOREY_HEIGHT,
@@ -35,6 +37,10 @@ import {
 
 /** Why a building cannot stand where it is. See docs/buildings.md section 3. */
 export type BuildingProblem =
+  | 'cut'
+  | 'setback'
+  | 'roofSpace'
+  | 'outline'
   | 'size'
   | 'overlap'
   | 'support'
@@ -62,21 +68,38 @@ const TOUCH = 0.05;
 /** Structural checks: need no world at all. */
 export function structuralProblem(b: Building): BuildingProblem | null {
   if (!(b.module >= MIN_MODULE - 1e-9 && b.module <= MAX_MODULE + 1e-9)) return 'size';
-  for (const h of [b.groundHeight, b.storeyHeight, ...(b.levels ?? []).filter((x): x is number => typeof x === 'number')]) {
+  if (!(b.groundHeight >= MIN_STOREY_HEIGHT - 1e-9 && b.groundHeight <= MAX_GROUND_HEIGHT + 1e-9)) return 'size';
+  for (const h of [b.storeyHeight, ...(b.levels ?? []).slice(1).filter((x): x is number => typeof x === 'number')]) {
     if (!(h >= MIN_STOREY_HEIGHT - 1e-9 && h <= MAX_STOREY_HEIGHT + 1e-9)) return 'size';
   }
+  const first = b.levels?.[0];
+  if (typeof first === 'number' && !(first >= MIN_STOREY_HEIGHT - 1e-9 && first <= MAX_GROUND_HEIGHT + 1e-9)) return 'size';
   if (b.volumes.length === 0 || b.volumes.length > MAX_VOLUMES) return 'size';
   for (const v of b.volumes) {
+    if (v.outline && !validOutline(v.outline)) return 'outline';
+    if ((v.roofDetails?.length ?? 0) > 32 || v.roofDetails?.some((detail) => !roofPartFits(v, detail))) return 'size';
     if (![v.x, v.y, v.w, v.d].every(Number.isFinite)) return 'size';
     if (v.w < MIN_SIZE - 1e-6 || v.d < MIN_SIZE - 1e-6 || v.w > MAX_SIZE + 1e-6 || v.d > MAX_SIZE + 1e-6) return 'size';
     if (!Number.isInteger(v.base) || v.base < 0) return 'size';
     if (v.storeys.length < 1 || v.base + v.storeys.length > MAX_STOREYS) return 'size';
     if (v.pitch !== undefined && !(v.pitch >= MIN_PITCH && v.pitch <= MAX_PITCH)) return 'size';
     for (const r of v.reliefs ?? []) {
+      if (r.side < 0 || r.side >= (v.outline?.length ?? 4)) return 'size';
       if (!Number.isFinite(r.depth) || r.depth > MAX_PROJECTION + 1e-6 || r.depth < -MAX_RECESS - 1e-6) return 'size';
       // A recess leaves at least a metre of the volume behind it.
       const across = sideLength(v, r.side === 0 || r.side === 2 ? 1 : 0);
       if (r.depth < 0 && -r.depth > across - MIN_SIZE / 2) return 'size';
+    }
+    for (const [faceKey, geometry] of Object.entries(v.facadeGeometry ?? {})) {
+      if (!geometry) return 'size';
+      const face = Number(faceKey);
+      if (!Number.isInteger(face) || face < 0 || face >= (v.outline?.length ?? 4)) return 'size';
+      if (geometry.bays !== undefined && (!Number.isInteger(geometry.bays) || geometry.bays < 1 || geometry.bays > 64)) return 'size';
+      for (const ratio of [geometry.windowWidth, geometry.windowHeight])
+        if (ratio !== undefined && (!Number.isFinite(ratio) || ratio < .15 || ratio > .95)) return 'size';
+      for (const length of [geometry.sill, geometry.pierWidth, geometry.pierDepth])
+        if (length !== undefined && (!Number.isFinite(length) || length < 0 || length > MAX_PROJECTION)) return 'size';
+      if (geometry.pierEvery !== undefined && (!Number.isInteger(geometry.pierEvery) || geometry.pierEvery < 1 || geometry.pierEvery > 16)) return 'size';
     }
   }
   if (clashes(b).length > 0) return 'overlap';
@@ -113,7 +136,7 @@ export function validateBuilding(ctx: SiteContext, b: Building, ignore?: Buildin
     const ob = buildingBounds(other);
     if (ob.minX > box.maxX || ob.maxX < box.minX || ob.minY > box.maxY || ob.maxY < box.minY) continue;
     const others = [...footprintRects(other), ...groundProjections(other), ...groundElements(other)];
-    for (const a of rects) for (const c of others) if (convexOverlap(a, c)) return 'building';
+    for (const a of rects) for (const c of others) if (overlapArea(a, c) > 1e-5) return 'building';
   }
 
   if (ctx.groundAt) {

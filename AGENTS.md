@@ -111,7 +111,7 @@ that `world` and `sim` never call `Math.random` (invariant 5, which
 | the building model: volumes, storeys, facades, foundations, validation, presets | `src/world/buildings/` | [docs/buildings.md](docs/buildings.md) |
 | building commands, snapping, the building tool | `src/editor/buildings.ts`, `buildingSnap.ts`, `buildingTool.ts` | [docs/buildings.md](docs/buildings.md) |
 | what a building LOOKS like: shell, openings, roofs, instanced parts | `src/render/buildings/` | [docs/buildings.md](docs/buildings.md) |
-| the building palette and its handles | `src/ui/buildingPanel.ts`, `src/ui/overlay/buildingOverlay.ts`, `src/buildingsWiring.ts` | [docs/buildings.md](docs/buildings.md) |
+| the building creator and its handles | `src/ui/buildingCreatorPanel.ts`, `src/ui/overlay/buildingOverlay.ts`, `src/buildingsWiring.ts` | [docs/buildings.md](docs/buildings.md) |
 | any text the player reads | `src/ui/i18n/en.ts` **and** `pt-BR.ts` | [docs/i18n.md](docs/i18n.md) |
 | panels, buttons, the inspector | `index.html`, `src/ui/` | [docs/i18n.md](docs/i18n.md) |
 

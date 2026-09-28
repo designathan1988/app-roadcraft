@@ -1,13 +1,14 @@
 import type { Vec2 } from '@core/vec2';
 import { m } from '../units';
+import { localFootprint, edgeFrame, volumeSides, offsetRing, overlapArea, supportedBy } from './footprints';
 import {
   type BayComponent,
   type Building,
   type BuildingElement,
   type Relief,
+  type FaceId,
   type Side,
   type Volume,
-  SIDES,
   componentAt,
   volumeTop,
 } from './types';
@@ -93,6 +94,7 @@ export function volumeRectLocal(_b: Building, v: Volume): [number, number, numbe
 
 /** The four world corners of a volume, anticlockwise in the local frame. */
 export function volumeCorners(b: Building, v: Volume, grow = 0): Vec2[] {
+  if (v.outline) return offsetRing(localFootprint(v), grow).map((p) => localToWorld(b, p.x, p.y));
   const [x0, y0, x1, y1] = volumeRectLocal(b, v);
   return [
     localToWorld(b, x0 - grow, y0 - grow),
@@ -175,6 +177,7 @@ type Rect = readonly [number, number, number, number];
 
 /** Whether two volumes share floor area in plan (touching is not sharing). */
 export const planOverlap = (a: Volume, c: Volume): boolean =>
+  a.outline || c.outline ? overlapArea(localFootprint(a), localFootprint(c)) > EPS :
   a.x < c.x + c.w - EPS && c.x < a.x + a.w - EPS && a.y < c.y + c.d - EPS && c.y < a.y + a.d - EPS;
 
 /** Pairs of volumes that would stand in the same space: overlapping in plan and in levels. */
@@ -212,6 +215,7 @@ function subtract(rect: Rect, cut: Rect): Rect[] {
  */
 export function isSupported(b: Building, v: Volume): boolean {
   if (v.base === 0) return true;
+  if (b.volumes.some((o) => o.outline)) return supportedBy(localFootprint(v), b.volumes.filter((o) => o.id !== v.id && occupiesLevel(o, v.base - 1)).map(localFootprint));
   let left: Rect[] = [[v.x, v.y, v.x + v.w, v.y + v.d]];
   for (const o of b.volumes) {
     if (o.id === v.id || !occupiesLevel(o, v.base - 1)) continue;
@@ -225,17 +229,18 @@ export function isSupported(b: Building, v: Volume): boolean {
 // ------------------------------------------------------------------ facades
 
 /** Length of one side of a volume. */
-export const sideLength = (v: Volume, side: Side): number => (side === 0 || side === 2 ? v.w : v.d);
+export const sideLength = (v: Volume, side: FaceId): number => edgeFrame(v, side).length;
 
 /** Bays on a side: as many as fit at about one module each, at least one. */
-export const baysOn = (b: Building, v: Volume, side: Side): number =>
-  Math.max(1, Math.round(sideLength(v, side) / b.module));
+export const baysOn = (b: Building, v: Volume, side: FaceId): number =>
+  v.facadeGeometry?.[side]?.bays ?? Math.max(1, Math.round(sideLength(v, side) / b.module));
 
 /** Width of every bay of a side: the side shared evenly. */
-export const bayWidth = (b: Building, v: Volume, side: Side): number => sideLength(v, side) / baysOn(b, v, side);
+export const bayWidth = (b: Building, v: Volume, side: FaceId): number => sideLength(v, side) / baysOn(b, v, side);
 
 /** Local start of a side (where its along coordinate is 0) and its along direction. */
-export function sideStart(v: Volume, side: Side): { x: number; y: number; tx: number; ty: number } {
+export function sideStart(v: Volume, side: FaceId): { x: number; y: number; tx: number; ty: number } {
+  if (v.outline) return edgeFrame(v, side);
   switch (side) {
     case 0: return { x: v.x, y: v.y, tx: 1, ty: 0 };
     case 1: return { x: v.x + v.w, y: v.y, tx: 0, ty: 1 };
@@ -248,8 +253,24 @@ export function sideStart(v: Volume, side: Side): { x: number; y: number; tx: nu
  * Stretches of a side, in its along coordinate, that another volume stands
  * against on `level`: shared walls, where no facade is built.
  */
-export function coveredSpans(b: Building, v: Volume, side: Side, level: number): [number, number][] {
+export function coveredSpans(b: Building, v: Volume, side: FaceId, level: number): [number, number][] {
   const out: [number, number][] = [];
+  if (b.volumes.some((o) => o.outline)) {
+    const a = edgeFrame(v, side);
+    for (const o of b.volumes) {
+      if (o.id === v.id || !occupiesLevel(o, level)) continue;
+      for (const edge of volumeSides(o)) {
+        const c = edgeFrame(o, edge);
+        if (a.nx * c.nx + a.ny * c.ny > -.9999) continue;
+        if (Math.abs((c.x - a.x) * a.nx + (c.y - a.y) * a.ny) > EPS * 10) continue;
+        const start = (c.x - a.x) * a.tx + (c.y - a.y) * a.ty;
+        const end = start + c.length * (c.tx * a.tx + c.ty * a.ty);
+        const from = Math.max(0, Math.min(start, end)), to = Math.min(a.length, Math.max(start, end));
+        if (to - from > EPS) out.push([from, to]);
+      }
+    }
+    return out.sort((p, q) => p[0] - q[0]);
+  }
   for (const o of b.volumes) {
     if (o.id === v.id || !occupiesLevel(o, level)) continue;
     let touches: boolean;
@@ -286,7 +307,7 @@ export function exposedParts(spans: readonly (readonly [number, number])[], a0: 
 // ------------------------------------------------------------------ reliefs
 
 /** The relief a bay of a storey is in, if any (the last one listed wins). */
-export function reliefAt(v: Volume, side: Side, index: number, storey: number): Relief | null {
+export function reliefAt(v: Volume, side: FaceId, index: number, storey: number): Relief | null {
   const list = v.reliefs;
   if (!list) return null;
   for (let i = list.length - 1; i >= 0; i--) {
@@ -302,6 +323,18 @@ export function reliefAt(v: Volume, side: Side, index: number, storey: number): 
  */
 export function projectionRect(b: Building, v: Volume, r: Relief): [number, number, number, number] | null {
   if (r.depth <= 0) return null;
+  if (v.outline) {
+    const f = edgeFrame(v, r.side), width = bayWidth(b, v, r.side);
+    const a0 = r.bay0 * width, a1 = (r.bay1 + 1) * width;
+    const points = [
+      { x: f.x + f.tx * a0, y: f.y + f.ty * a0 },
+      { x: f.x + f.tx * a1, y: f.y + f.ty * a1 },
+      { x: f.x + f.tx * a1 + f.nx * r.depth, y: f.y + f.ty * a1 + f.ny * r.depth },
+      { x: f.x + f.tx * a0 + f.nx * r.depth, y: f.y + f.ty * a0 + f.ny * r.depth },
+    ];
+    return [Math.min(...points.map((p) => p.x)), Math.min(...points.map((p) => p.y)),
+      Math.max(...points.map((p) => p.x)), Math.max(...points.map((p) => p.y))];
+  }
   const w = bayWidth(b, v, r.side);
   const count = baysOn(b, v, r.side);
   const a0 = Math.max(0, r.bay0) * w;
@@ -326,6 +359,13 @@ export function groundProjections(b: Building, grow = 0): Vec2[][] {
       if (r.storey0 !== 0) continue;
       const rect = projectionRect(b, v, r);
       if (!rect) continue;
+      if (v.outline) {
+        const f = edgeFrame(v, r.side), width = bayWidth(b, v, r.side);
+        const start = r.bay0 * width, end = (r.bay1 + 1) * width;
+        const at = (a: number, d: number): Vec2 => localToWorld(b, f.x + f.tx * a + f.nx * d, f.y + f.ty * a + f.ny * d);
+        out.push([at(start - grow, -grow), at(end + grow, -grow), at(end + grow, r.depth + grow), at(start - grow, r.depth + grow)]);
+        continue;
+      }
       const [x0, y0, x1, y1] = rect;
       out.push([
         localToWorld(b, x0 - grow, y0 - grow),
@@ -339,7 +379,7 @@ export function groundProjections(b: Building, grow = 0): Vec2[][] {
 }
 
 /** Local centre of bay `index` on the facade line of `side`. */
-export function bayCentreLocal(b: Building, v: Volume, side: Side, index: number): Vec2 {
+export function bayCentreLocal(b: Building, v: Volume, side: FaceId, index: number): Vec2 {
   const s = sideStart(v, side);
   const a = (index + 0.5) * bayWidth(b, v, side);
   return { x: s.x + s.tx * a, y: s.y + s.ty * a };
@@ -351,7 +391,7 @@ export interface FacadeBay {
   /** Storey index within the volume. */
   readonly storey: number;
   readonly level: number;
-  readonly side: Side;
+  readonly side: FaceId;
   readonly index: number;
   readonly component: BayComponent;
   /** World point at the bottom centre of the bay (of the piece), on the facade line. */
@@ -387,8 +427,9 @@ export function facadeBays(b: Building): FacadeBay[] {
       const level = v.base + k;
       const z = elevations[level] ?? levelElevation(b, level);
       const height = levelHeight(b, level);
-      for (const side of SIDES) {
-        const n = SIDE_NORMAL[side];
+      for (const side of volumeSides(v)) {
+        const frame = edgeFrame(v, side);
+        const n = { x: frame.nx, y: frame.ny };
         const normal = localDirToWorld(b, n.x, n.y);
         const count = baysOn(b, v, side);
         const width = bayWidth(b, v, side);
@@ -464,6 +505,26 @@ export function roofRise(b: Building, v: Volume): number {
       return sawtoothRun(b, v) * 0.5 * slope;
     default:
       return 0;
+  }
+}
+
+/** Height over the eaves at one local roof point, shared by roof parts. */
+export function roofHeightAt(b: Building, v: Volume, p: Vec2): number {
+  const x0 = v.x, y0 = v.y, x1 = v.x + v.w, y1 = v.y + v.d;
+  const slope = roofSlope(v);
+  switch (v.roof) {
+    case 'flat': case 'terrace': return 0;
+    case 'gable': return (ridgeAlongX(v) ? Math.min(p.y - y0, y1 - p.y) : Math.min(p.x - x0, x1 - p.x)) * slope;
+    case 'hip': return Math.min(p.x - x0, x1 - p.x, p.y - y0, y1 - p.y) * slope;
+    case 'shed': {
+      const fall = shedFall(v);
+      return (fall === 0 ? p.y - y0 : fall === 2 ? y1 - p.y : fall === 1 ? x1 - p.x : p.x - x0) * slope;
+    }
+    case 'sawtooth': {
+      const run = sawtoothRun(b, v), segment = Math.floor((p.y - y0) / run);
+      const from = y0 + segment * run, to = Math.min(y1, from + run);
+      return Math.min(p.y - from, to - p.y) * slope;
+    }
   }
 }
 

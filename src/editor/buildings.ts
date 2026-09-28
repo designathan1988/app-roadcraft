@@ -1,4 +1,6 @@
 import type { Vec2 } from '@core/vec2';
+import { edgeFrame, localFootprint, offsetRing, supportedBy, overlapArea, roofDetailRing } from '@world/buildings/footprints';
+import { setVolumePlan } from './buildingPlans';
 import { clamp } from '@core/scalar';
 import { METERS_PER_UNIT } from '@world/units';
 import {
@@ -36,9 +38,11 @@ import {
   type Facade,
   type Relief,
   type RoofKind,
+  type FaceId,
   type Side,
   type Storey,
   type Volume,
+  SIDES,
   MAX_MODULE,
   MAX_PITCH,
   MAX_PROJECTION,
@@ -47,6 +51,7 @@ import {
   MIN_PITCH,
   MAX_STOREYS,
   MAX_STOREY_HEIGHT,
+  MAX_GROUND_HEIGHT,
   MIN_MODULE,
   MIN_STOREY_HEIGHT,
   PALETTE_COUNT,
@@ -123,7 +128,7 @@ export function opSetStoreys(b: Building, volumeId: number, count: number): bool
 }
 
 /** Re-indexes single-bay overrides on `sides` by `shift` (a side grew at its start). */
-function shiftBays(v: Volume, sides: readonly Side[], shift: number): void {
+function shiftBays(v: Volume, sides: readonly FaceId[], shift: number): void {
   if (shift === 0) return;
   for (const storey of v.storeys) {
     const bays = storey.facade.bays;
@@ -131,9 +136,9 @@ function shiftBays(v: Volume, sides: readonly Side[], shift: number): void {
     const next: Record<string, BayComponent> = {};
     for (const [key, value] of Object.entries(bays)) {
       const [s, i] = key.split(':').map(Number) as [number, number];
-      if (sides.includes(s as Side)) {
+      if (sides.includes(s)) {
         const moved = i + shift;
-        if (moved >= 0) next[bayKey(s as Side, moved)] = value;
+        if (moved >= 0) next[bayKey(s, moved)] = value;
       } else {
         next[key] = value;
       }
@@ -175,9 +180,12 @@ function copyStoreys(v: Volume, count = v.storeys.length): Storey[] {
   for (let k = 0; k < count; k++) {
     const source = v.storeys[Math.min(k, v.storeys.length - 1)] as Storey;
     const facade: Facade = { fill: source.facade.fill };
+    if (source.facade.pattern) facade.pattern = source.facade.pattern;
+    if (source.facade.patterns) facade.patterns = { ...source.facade.patterns };
     if (source.facade.sides) facade.sides = { ...source.facade.sides };
     const storey: Storey = { facade };
     if (source.use) storey.use = source.use;
+    if (source.materials) storey.materials = structuredClone(source.materials);
     out.push(storey);
   }
   return out;
@@ -188,9 +196,27 @@ function copyStoreys(v: Volume, count = v.storeys.length): Storey[] {
  * units out, `length` along the side (default: about half of it, centred),
  * both snapped to the grid. Returns the new volume's id, or null.
  */
-export function opAddWing(b: Building, volumeId: number, side: Side, depth?: number, length?: number): number | null {
+export function opAddWing(b: Building, volumeId: number, side: FaceId, depth?: number, length?: number): number | null {
   const v = volumeById(b, volumeId);
   if (!v) return null;
+  if (v.outline) {
+    const f = edgeFrame(v, side);
+    const len = Math.min(f.length, Math.max(MIN_SIZE, snapLength(length ?? f.length * .6)));
+    const out = Math.max(MIN_SIZE, snapLength(depth ?? 3 * b.module));
+    const a = (f.length - len) / 2;
+    const p0 = { x: f.x + f.tx * a, y: f.y + f.ty * a };
+    const p1 = { x: p0.x + f.tx * len, y: p0.y + f.ty * len };
+    const wing: Volume = { id: b.nextVolumeId++, x: 0, y: 0, w: 1, d: 1, base: v.base,
+      roof: v.roof === 'terrace' ? 'flat' : v.roof, storeys: copyStoreys(v) };
+    if (!setVolumePlan(wing, [p1, p0,
+      { x: p0.x + f.nx * out, y: p0.y + f.ny * out },
+      { x: p1.x + f.nx * out, y: p1.y + f.ny * out }])) return null;
+    if (v.materials) wing.materials = JSON.parse(JSON.stringify(v.materials)) as NonNullable<Volume['materials']>;
+    if (v.facadePattern) wing.facadePattern = v.facadePattern;
+    if (wing.base === 0 && wing.storeys[0]) wing.storeys[0].facade.bays = { [bayKey(2, Math.floor(baysOn(b, wing, 2) / 2))]: 'door' };
+    b.volumes.push(wing);
+    return wing.id;
+  }
   const sideLength = side === 0 || side === 2 ? v.w : v.d;
   const half = Math.max(2 * b.module, Math.ceil(sideLength / 2 / b.module) * b.module);
   const len = clamp(snapLength(Math.min(sideLength, length ?? half)), MIN_SIZE, MAX_SIZE);
@@ -208,6 +234,7 @@ export function opAddWing(b: Building, volumeId: number, side: Side, depth?: num
   };
   // A wing is built in what its volume is built in.
   if (v.materials) wing.materials = JSON.parse(JSON.stringify(v.materials)) as NonNullable<Volume['materials']>;
+  if (v.facadePattern) wing.facadePattern = v.facadePattern;
   switch (side) {
     case 0: Object.assign(wing, { x: v.x + offset, y: v.y - out, w: len, d: out }); break;
     case 2: Object.assign(wing, { x: v.x + offset, y: v.y + v.d, w: len, d: out }); break;
@@ -231,7 +258,10 @@ export function opAddWing(b: Building, volumeId: number, side: Side, depth?: num
 export function opAddSetback(b: Building, volumeId: number, inset?: number, storeys = 2): number | null {
   const v = volumeById(b, volumeId);
   if (!v) return null;
-  const step = snapLength(inset ?? b.module);
+  const requested = Math.max(0, snapLength(inset ?? b.module));
+  const step = v.outline && inset === undefined
+    ? Math.min(requested, Math.max(GRID, snapLength(Math.min(v.w, v.d) * .1)))
+    : requested;
   const ix = v.w - 2 * step >= MIN_SIZE ? step : 0;
   const iy = v.d - 2 * step >= MIN_SIZE ? step : 0;
   const base = volumeTop(v);
@@ -247,8 +277,16 @@ export function opAddSetback(b: Building, volumeId: number, inset?: number, stor
     roof: v.roof === 'terrace' ? 'flat' : v.roof,
     storeys: copyStoreys({ ...v, storeys: [template] }, count),
   };
+  if (v.outline) {
+    const ring = offsetRing(localFootprint(v), -step);
+    if (!setVolumePlan(volume, ring) || !supportedBy(localFootprint(volume), [localFootprint(v)])) return null;
+  }
   if (v.materials) volume.materials = JSON.parse(JSON.stringify(v.materials)) as NonNullable<Volume['materials']>;
+  if (v.facadePattern) volume.facadePattern = v.facadePattern;
+  if (v.facadeGeometry) volume.facadeGeometry = structuredClone(v.facadeGeometry);
   v.roof = 'terrace';
+  if (v.roofDetails) v.roofDetails = v.roofDetails.filter((part) =>
+    overlapArea(roofDetailRing(part), localFootprint(volume)) < 1e-5);
   b.volumes.push(volume);
   return volume.id;
 }
@@ -321,7 +359,7 @@ export function opSetParameters(b: Building, p: BuildingParameters): boolean {
     }
   };
   if (p.module !== undefined) set('module', clamp(p.module, MIN_MODULE, MAX_MODULE));
-  if (p.groundHeight !== undefined) set('groundHeight', clamp(p.groundHeight, MIN_STOREY_HEIGHT, MAX_STOREY_HEIGHT));
+  if (p.groundHeight !== undefined) set('groundHeight', clamp(p.groundHeight, MIN_STOREY_HEIGHT, MAX_GROUND_HEIGHT));
   if (p.storeyHeight !== undefined) set('storeyHeight', clamp(p.storeyHeight, MIN_STOREY_HEIGHT, MAX_STOREY_HEIGHT));
   if (p.palette !== undefined) set('palette', ((Math.round(p.palette) % PALETTE_COUNT) + PALETTE_COUNT) % PALETTE_COUNT);
   return changed;
@@ -332,7 +370,7 @@ export function opSetLevelHeight(b: Building, level: number, height: number | nu
   if (level < 0 || level >= MAX_STOREYS) return false;
   const levels = b.levels ? [...b.levels] : [];
   while (levels.length <= level) levels.push(null);
-  const value = height === null ? null : clamp(height, MIN_STOREY_HEIGHT, MAX_STOREY_HEIGHT);
+  const value = height === null ? null : clamp(height, MIN_STOREY_HEIGHT, level === 0 ? MAX_GROUND_HEIGHT : MAX_STOREY_HEIGHT);
   if (levels[level] === value) return false;
   levels[level] = value;
   while (levels.length > 0 && levels[levels.length - 1] === null) levels.pop();
@@ -352,7 +390,7 @@ export function opSetComponent(
   b: Building,
   volumeId: number,
   storey: number,
-  side: Side,
+  side: FaceId,
   index: number,
   component: BayComponent,
   scope: FacadeScope = 'bay',
@@ -557,7 +595,7 @@ export function clearBuildingsOnRoads(ctx: BuildingContext): number {
 
 /** A rectangle of whole bays and storeys on one face of a volume, inclusive. */
 export interface FaceRegion {
-  readonly side: Side;
+  readonly side: FaceId;
   readonly bay0: number;
   readonly bay1: number;
   readonly storey0: number;
@@ -692,37 +730,55 @@ export function opMirror(b: Building): boolean {
   const before = footprintCentre(b);
   const flipSide = (side: Side): Side => MIRROR_SIDE[side];
   for (const v of b.volumes) {
-    const count = (side: Side): number => baysOn(b, v, side);
+    const sidesCount = v.outline?.length ?? 4;
+    const flipFace = (side: FaceId): FaceId => {
+      if (v.outline) return (sidesCount - 2 - side + sidesCount) % sidesCount;
+      const cardinal = SIDES.find((candidate) => candidate === side);
+      return cardinal === undefined ? side : flipSide(cardinal);
+    };
+    const previousCounts = Array.from({ length: sidesCount }, (_, side) => baysOn(b, v, side));
+    const count = (side: FaceId): number => previousCounts[side] ?? 1;
     v.x = -(v.x + v.w);
+    if (v.outline) v.outline = v.outline.map((p) => ({ x: 1 - p.x, y: p.y })).reverse();
     for (const storey of v.storeys) {
       const facade = storey.facade;
       if (facade.sides) {
-        const sides: Partial<Record<Side, BayComponent>> = {};
-        for (const [key, value] of Object.entries(facade.sides)) sides[flipSide(Number(key) as Side)] = value;
+        const sides: Partial<Record<FaceId, BayComponent>> = {};
+        for (const [key, value] of Object.entries(facade.sides)) sides[flipFace(Number(key))] = value;
         facade.sides = sides;
+      }
+      if (facade.patterns) {
+        const patterns: NonNullable<Facade['patterns']> = {};
+        for (const [key, value] of Object.entries(facade.patterns)) patterns[flipFace(Number(key))] = value;
+        facade.patterns = patterns;
       }
       if (facade.bays) {
         const bays: Record<string, BayComponent> = {};
         for (const [key, value] of Object.entries(facade.bays)) {
-          const [s, i] = key.split(':').map(Number) as [Side, number];
-          const side = flipSide(s);
-          bays[bayKey(side, side === 0 || side === 2 ? count(side) - 1 - i : i)] = value;
+          const [s, i] = key.split(':').map(Number) as [FaceId, number];
+          const side = flipFace(s);
+          bays[bayKey(side, v.outline || side === 0 || side === 2 ? count(s) - 1 - i : i)] = value;
         }
         facade.bays = bays;
       }
       for (const space of storey.spaces ?? []) space.x = -(space.x + space.w);
     }
     for (const r of v.reliefs ?? []) {
-      r.side = flipSide(r.side);
-      if (r.side === 0 || r.side === 2) {
-        const n = count(r.side);
+      r.side = flipFace(r.side);
+      if (v.outline || r.side === 0 || r.side === 2) {
+        const n = count(flipFace(r.side));
         [r.bay0, r.bay1] = [n - 1 - r.bay1, n - 1 - r.bay0];
       }
     }
     if (v.materials?.sides) {
-      const sides: Partial<Record<Side, NonNullable<Volume['materials']>['wall']>> = {};
-      for (const [key, value] of Object.entries(v.materials.sides)) sides[flipSide(Number(key) as Side)] = value;
+      const sides: Partial<Record<FaceId, NonNullable<Volume['materials']>['wall']>> = {};
+      for (const [key, value] of Object.entries(v.materials.sides)) sides[flipFace(Number(key))] = value;
       v.materials.sides = sides as NonNullable<NonNullable<Volume['materials']>['sides']>;
+    }
+    if (v.facadeGeometry) {
+      const controls: NonNullable<Volume['facadeGeometry']> = {};
+      for (const [key, value] of Object.entries(v.facadeGeometry)) controls[flipFace(Number(key))] = value;
+      v.facadeGeometry = controls;
     }
     if (v.fall !== undefined) v.fall = flipSide(v.fall);
   }

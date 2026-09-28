@@ -1,4 +1,5 @@
 import { m } from '../units';
+import type { Vec2 } from '@core/vec2';
 import type { BuildingMaterials, MaterialSpec, VolumeMaterials } from './materials';
 
 /**
@@ -28,6 +29,7 @@ export type BuildingUse = (typeof BUILDING_USES)[number];
 export const BAY_COMPONENTS = [
   'wall',
   'window',
+  'sashWindow',
   'wideWindow',
   'balcony',
   'door',
@@ -37,8 +39,32 @@ export const BAY_COMPONENTS = [
 ] as const;
 export type BayComponent = (typeof BAY_COMPONENTS)[number];
 
+export const FACADE_PATTERNS = ['residential', 'storefront', 'office', 'industrial', 'arcade', 'gallery', 'artDeco', 'artDecoCrown', 'observation'] as const;
+export type FacadePattern = (typeof FACADE_PATTERNS)[number];
+export const isFacadePattern = (value: unknown): value is FacadePattern =>
+  (FACADE_PATTERNS as readonly unknown[]).includes(value);
+
 export const ROOF_KINDS = ['flat', 'terrace', 'gable', 'hip', 'shed', 'sawtooth'] as const;
 export type RoofKind = (typeof ROOF_KINDS)[number];
+
+export const ROOF_DETAIL_KINDS = ['solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire'] as const;
+export type RoofDetailKind = (typeof ROOF_DETAIL_KINDS)[number];
+export const isRoofDetailKind = (value: unknown): value is RoofDetailKind =>
+  (ROOF_DETAIL_KINDS as readonly unknown[]).includes(value);
+export interface RoofDetail {
+  id: number;
+  kind: RoofDetailKind;
+  /** Position in the building's local plan, on the owning volume's roof. */
+  x: number;
+  y: number;
+  rotation: number;
+  w: number;
+  d: number;
+  /** Height above the roof, in world units; used by adjustable details. */
+  h?: number;
+  /** Optional flag on a spire; plain leaves a coloured banner for generic buildings. */
+  flag?: 'none' | 'plain' | 'saoPaulo' | 'saoPauloState';
+}
 
 /**
  * A face of a volume, in the building's local frame: 0 front (local -y, the
@@ -46,6 +72,8 @@ export type RoofKind = (typeof ROOF_KINDS)[number];
  */
 export type Side = 0 | 1 | 2 | 3;
 export const SIDES: readonly Side[] = [0, 1, 2, 3];
+/** Any edge of an authored footprint. Cardinal `Side` is for oriented parts. */
+export type FaceId = number;
 
 export const CORE_KINDS = ['stair', 'lift', 'stairLift'] as const;
 export type CoreKind = (typeof CORE_KINDS)[number];
@@ -59,7 +87,10 @@ export type SpaceKind = (typeof SPACE_KINDS)[number];
  */
 export interface Facade {
   fill: BayComponent;
-  sides?: Partial<Record<Side, BayComponent>>;
+  /** Optional composition for this storey; side compositions take priority. */
+  pattern?: FacadePattern;
+  patterns?: Partial<Record<FaceId, FacadePattern>>;
+  sides?: Partial<Record<FaceId, BayComponent>>;
   bays?: Record<string, BayComponent>;
 }
 
@@ -82,6 +113,8 @@ export interface Storey {
   /** Overrides the building's use on this storey (mixed use). */
   use?: BuildingUse;
   facade: Facade;
+  /** Face finishes for this floor, over mass and building finishes. */
+  materials?: Partial<Record<FaceId, MaterialSpec>>;
   /** Extension point, see `Space`. */
   spaces?: Space[];
 }
@@ -95,12 +128,27 @@ export interface Storey {
  * volume is resized.
  */
 export interface Relief {
-  side: Side;
+  side: FaceId;
   bay0: number;
   bay1: number;
   storey0: number;
   storey1: number;
   depth: number;
+}
+
+/** Measured facade rhythm on one physical face of a volume. */
+export interface FacadeGeometry {
+  /** Number of equally spaced structural bays along this face. */
+  bays?: number;
+  /** Fractions of each bay's width and storey's height used by openings. */
+  windowWidth?: number;
+  windowHeight?: number;
+  /** Absolute height of the window sill above its floor, in world units. */
+  sill?: number;
+  /** Projecting vertical pier dimensions, in world units; depth 0 removes it. */
+  pierWidth?: number;
+  pierDepth?: number;
+  pierEvery?: number;
 }
 
 /** A rectangular block, standing on level `base`: a rectangle of the local frame, world units. */
@@ -110,6 +158,13 @@ export interface Volume {
   y: number;
   w: number;
   d: number;
+  /** Optional simple counterclockwise polygon, normalized to x/y/w/d. */
+  outline?: Vec2[];
+  /** The generative composition last applied to this mass. */
+  facadePattern?: FacadePattern;
+  /** Independent bay and pier proportions on any face. */
+  facadeGeometry?: Partial<Record<FaceId, FacadeGeometry>>;
+  roofDetails?: RoofDetail[];
   base: number;
   roof: RoofKind;
   /** Bottom to top: storey k occupies level `base + k`. */
@@ -209,6 +264,7 @@ export const MAX_MODULE = m(8);
 export const DEFAULT_MODULE = m(3);
 export const MIN_STOREY_HEIGHT = m(2.6);
 export const MAX_STOREY_HEIGHT = m(9);
+export const MAX_GROUND_HEIGHT = m(20);
 export const MAX_STOREYS = 60;
 /** Widest a volume may be on either axis, world units. */
 export const MAX_SIZE = m(160);
@@ -230,10 +286,10 @@ export const isSide = (v: unknown): v is Side => v === 0 || v === 1 || v === 2 |
 export const isElementKind = (v: unknown): v is ElementKind => (ELEMENT_KINDS as readonly unknown[]).includes(v);
 export const MAX_ELEMENTS = 64;
 
-export const bayKey = (side: Side, index: number): string => `${side}:${index}`;
+export const bayKey = (side: FaceId, index: number): string => `${side}:${index}`;
 
 /** The component a facade puts in one bay. */
-export function componentAt(facade: Facade, side: Side, index: number): BayComponent {
+export function componentAt(facade: Facade, side: FaceId, index: number): BayComponent {
   return facade.bays?.[bayKey(side, index)] ?? facade.sides?.[side] ?? facade.fill;
 }
 

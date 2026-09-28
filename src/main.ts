@@ -51,6 +51,8 @@ import {
 } from '@ui/labels';
 import { isQualityLevel, type QualityLevel } from '@render/quality';
 import { createBuildingWiring } from './buildingsWiring';
+import { levelElevation, roofRise } from '@world/buildings/geometry';
+import { volumeTop } from '@world/buildings/types';
 
 type Tool =
   | 'building'
@@ -366,6 +368,35 @@ const buildings = createBuildingWiring({
   scene,
   view: () => view,
   size: () => ({ w: surface.cssW, h: surface.cssH }),
+  focusBuilding(building) {
+    const ground = building.volumes.filter((v) => v.base === 0);
+    if (ground.length === 0) return;
+    const cx = (Math.min(...ground.map((v) => v.x)) + Math.max(...ground.map((v) => v.x + v.w))) / 2;
+    const cy = (Math.min(...ground.map((v) => v.y)) + Math.max(...ground.map((v) => v.y + v.d))) / 2;
+    const c = Math.cos(building.rotation), s = Math.sin(building.rotation);
+    const centre = { x: building.x + cx * c - cy * s, y: building.y + cx * s + cy * c };
+    view.moveTo(centre);
+    const span = Math.max(...ground.map((v) => Math.max(v.w, v.d)));
+    const paletteWidth = document.getElementById('buildingPalette')?.getBoundingClientRect().width ?? 330;
+    const available = Math.max(110, surface.cssW - paletteWidth - (surface.cssW < 600 ? 20 : 110));
+      const corners = building.volumes.flatMap((v) => [
+        [v.x, v.y], [v.x + v.w, v.y], [v.x + v.w, v.y + v.d], [v.x, v.y + v.d],
+      ] as const).map(([x, y]) => view.toScreen({ x: building.x + x * c - y * s, y: building.y + x * s + y * c }, surface.cssW, surface.cssH));
+      const projectedWidth = Math.max(...corners.map((p) => p.x)) - Math.min(...corners.map((p) => p.x));
+      const top = Math.max(...building.volumes.map((v) => levelElevation(building, volumeTop(v)) + roofRise(building, v)
+        + Math.max(0, ...(v.roofDetails ?? []).map((detail) => detail.h ?? 0))));
+      const projectedRise = Math.abs(view.toScreen(centre, surface.cssW, surface.cssH, top).y
+        - view.toScreen(centre, surface.cssW, surface.cssH).y);
+      const projectedFootprint = Math.max(...corners.map((p) => p.y)) - Math.min(...corners.map((p) => p.y));
+      const fit = Math.min(view.zoom * (available * .72) / Math.max(1, projectedWidth),
+        view.zoom * (surface.cssH - 145) * .88 / Math.max(1, projectedRise + projectedFootprint));
+    const ideal = Math.min(surface.cssW < 600 ? 3.2 : 7, Math.max(2.6, (surface.cssW < 600 ? 135 : 210) / span));
+    const target = Math.max(view.zoomBounds.min, Math.min(view.zoomBounds.max, ideal, fit));
+    view.zoomAt(surface.cssW / 2, surface.cssH / 2, target / view.zoom, surface.cssW, surface.cssH);
+      const rise = Math.abs(view.toScreen(centre, surface.cssW, surface.cssH, top).y
+        - view.toScreen(centre, surface.cssW, surface.cssH).y);
+      view.panTo(centre, (surface.cssW - paletteWidth) / 2, surface.cssH / 2 + rise / 2, surface.cssW, surface.cssH);
+  },
   afterEdit() {
     persistence.saveSessionSoon(doc, sessionSettings);
     updateHistoryButtons();
@@ -1345,6 +1376,7 @@ updateRoadHeightValue();
 const roadPalette = document.querySelector<HTMLElement>('.road-palette');
 const terrainPalette = document.getElementById('terrainPalette') as HTMLElement;
 const buildingPalette = document.getElementById('buildingPalette') as HTMLElement;
+const creatorRail = document.getElementById('creatorRail') as HTMLElement;
 
 function setTerrainMode(next: TerrainMode): void {
   terrainMode = next;
@@ -1432,7 +1464,9 @@ function setTool(next: Tool): void {
   terrainPalette.setAttribute('aria-hidden', String(!terrainActive));
   const buildingActive = next === 'building';
   buildingPalette.classList.toggle('hidden', !buildingActive);
+  creatorRail.classList.toggle('hidden', !buildingActive);
   buildingPalette.setAttribute('aria-hidden', String(!buildingActive));
+  creatorRail.setAttribute('aria-hidden', String(!buildingActive));
   if (buildingActive) buildings.activate();
   else buildings.deactivate();
   updateHint();

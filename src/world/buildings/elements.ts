@@ -1,10 +1,10 @@
 import type { Vec2 } from '@core/vec2';
 import { m } from '../units';
+import { edgeFrame, localFootprint, overlapArea } from './footprints';
 import { STEP_RISE, STEP_RUN } from './foundation';
 import {
   EPS,
   GRID,
-  SIDE_NORMAL,
   bayWidth,
   elementRect,
   levelElevation,
@@ -16,6 +16,7 @@ import {
   type Building,
   type BuildingElement,
   type ElementKind,
+  type FaceId,
   type Side,
   type Volume,
   volumeTop,
@@ -83,7 +84,9 @@ export function elementClash(b: Building, e: BuildingElement): Volume | null {
   for (const v of b.volumes) {
     const vz0 = levelElevation(b, v.base);
     const vz1 = levelElevation(b, volumeTop(v));
-    if (x0 < v.x + v.w - EPS && v.x < x1 - EPS && y0 < v.y + v.d - EPS && v.y < y1 - EPS && z0 < vz1 - EPS && vz0 < z1 - EPS) return v;
+    if (z0 < vz1 - EPS && vz0 < z1 - EPS &&
+      (v.outline ? overlapArea(localFootprint(v), [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]) > EPS
+        : x0 < v.x + v.w - EPS && v.x < x1 - EPS && y0 < v.y + v.d - EPS && v.y < y1 - EPS)) return v;
   }
   return null;
 }
@@ -101,7 +104,7 @@ export function takeElementId(b: Building): number {
 /** A bay of a face, as the pointer picked it. */
 export interface BayRef {
   readonly volume: number;
-  readonly side: Side;
+  readonly side: FaceId;
   readonly index: number;
   readonly storey: number;
 }
@@ -115,7 +118,9 @@ const snap = (v: number, step = GRID): number => Math.round(v / step) * step;
  */
 export function elementsAgainstBay(b: Building, v: Volume, bay: BayRef, kind: ElementKind): Omit<BuildingElement, 'id'>[] {
   const [dw, dd, dh] = ELEMENT_DEFAULTS[kind];
-  const n = SIDE_NORMAL[bay.side];
+  const frame = edgeFrame(v, bay.side);
+  const n = { x: frame.nx, y: frame.ny };
+  const facing: Side = v.outline ? (Math.abs(n.x) > Math.abs(n.y) ? (n.x > 0 ? 1 : 3) : (n.y > 0 ? 2 : 0)) : (Math.abs(n.x) > Math.abs(n.y) ? (n.x > 0 ? 1 : 3) : (n.y > 0 ? 2 : 0));
   const s = sideStart(v, bay.side);
   const width = bayWidth(b, v, bay.side);
   const along = (bay.index + 0.5) * width;
@@ -127,7 +132,7 @@ export function elementsAgainstBay(b: Building, v: Volume, bay: BayRef, kind: El
       // Over the bay's opening, a little below the next floor.
       const z = Math.max(floorZ + m(2.5), levelElevation(b, v.base + bay.storey + 1) - m(0.6));
       const c = at(along, dd / 2);
-      return [{ kind, x: c.x, y: c.y, facing: bay.side, w: Math.max(width, dw), d: dd, z, h: dh }];
+      return [{ kind, x: c.x, y: c.y, facing, w: Math.max(width, dw), d: dd, z, h: dh }];
     }
     case 'stair':
     case 'ramp': {
@@ -136,12 +141,12 @@ export function elementsAgainstBay(b: Building, v: Volume, bay: BayRef, kind: El
       const run = runFor(kind, rise);
       const w = kind === 'ramp' ? dw : Math.max(dw, Math.min(width, m(1.6)));
       const straight = at(along, run / 2);
-      const out: Omit<BuildingElement, 'id'>[] = [{ kind, x: straight.x, y: straight.y, facing: bay.side, w, d: run, z: 0, h: rise }];
+      const out: Omit<BuildingElement, 'id'>[] = [{ kind, x: straight.x, y: straight.y, facing, w, d: run, z: 0, h: rise }];
       // Turned to run along the facade, either way, its top at the bay.
       for (const dir of [1, -1] as const) {
-        const facing = ((bay.side + (dir === 1 ? 1 : 3)) % 4) as Side;
+        const turned = ((facing + (dir === 1 ? 1 : 3)) % 4) as Side;
         const c = at(along + dir * (run / 2 - w / 2), w / 2);
-        out.push({ kind, x: c.x, y: c.y, facing, w, d: run, z: 0, h: rise });
+        out.push({ kind, x: c.x, y: c.y, facing: turned, w, d: run, z: 0, h: rise });
       }
       return out;
     }
@@ -149,17 +154,17 @@ export function elementsAgainstBay(b: Building, v: Volume, bay: BayRef, kind: El
       // On the nearest bay line, just in front of the face, as tall as the storey.
       const line = Math.round(along / width) * width;
       const c = at(line, dd / 2 + m(0.6));
-      return [{ kind, x: c.x, y: c.y, facing: bay.side, w: dw, d: dd, z: floorZ, h: levelElevation(b, v.base + bay.storey + 1) - floorZ }];
+      return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: floorZ, h: levelElevation(b, v.base + bay.storey + 1) - floorZ }];
     }
     case 'wall': {
       // Parallel to the face, a module out, on the ground.
       const c = at(along, b.module);
-      return [{ kind, x: snap(c.x), y: snap(c.y), facing: bay.side, w: Math.max(dw, width), d: dd, z: 0, h: dh }];
+      return [{ kind, x: snap(c.x), y: snap(c.y), facing, w: Math.max(dw, width), d: dd, z: 0, h: dh }];
     }
     case 'slab': {
       // A deck in front of the bay, at its floor.
       const c = at(along, dd / 2);
-      return [{ kind, x: c.x, y: c.y, facing: bay.side, w: Math.max(width, dw), d: dd, z: Math.max(0, floorZ - dh), h: dh }];
+      return [{ kind, x: c.x, y: c.y, facing, w: Math.max(width, dw), d: dd, z: Math.max(0, floorZ - dh), h: dh }];
     }
   }
 }

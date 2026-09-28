@@ -1,6 +1,7 @@
+import { containsPoint, localFootprint } from './footprints';
 import { m } from '../units';
 import { type FacadeBay, facadeBays, groundVolumes, localToWorld } from './geometry';
-import type { BayComponent, Building, Side } from './types';
+import type { BayComponent, Building, FaceId } from './types';
 
 /**
  * How a building meets the ground. See docs/buildings.md section 2.
@@ -56,7 +57,7 @@ const RECESS_BACK = m(1.2);
  */
 export interface Entrance {
   readonly volume: number;
-  readonly side: Side;
+  readonly side: FaceId;
   readonly index: number;
   readonly component: BayComponent;
   /** World point of the threshold, on the facade line. */
@@ -100,12 +101,18 @@ export function sampleFootprint(b: Building, groundAt: GroundAt): { lowest: numb
   let lowest = Infinity;
   let highest = -Infinity;
   for (const v of groundVolumes(b)) {
+    for (const vertex of localFootprint(v)) {
+      const p = localToWorld(b, vertex.x, vertex.y);
+      const h = groundAt(p.x, p.y);
+      if (Number.isFinite(h)) { lowest = Math.min(lowest, h); highest = Math.max(highest, h); }
+    }
     const stepsX = Math.max(1, Math.min(24, Math.ceil(v.w / (b.module * 0.5))));
     const stepsY = Math.max(1, Math.min(24, Math.ceil(v.d / (b.module * 0.5))));
     for (let a = 0; a <= stepsX; a++) {
       for (let c = 0; c <= stepsY; c++) {
         const lx = v.x + (v.w * a) / stepsX;
         const ly = v.y + (v.d * c) / stepsY;
+        if (v.outline && !containsPoint(v, { x: lx, y: ly })) continue;
         const p = localToWorld(b, lx, ly);
         const h = groundAt(p.x, p.y);
         if (!Number.isFinite(h)) continue;

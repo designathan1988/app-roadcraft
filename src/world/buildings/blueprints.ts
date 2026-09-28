@@ -6,7 +6,6 @@ import {
   type Core,
   type Facade,
   type RoofKind,
-  type Side,
   type Storey,
   type Volume,
   BUILDING_SCHEMA,
@@ -143,18 +142,21 @@ const ABOVE_STREET: Partial<Record<BayComponent, BayComponent>> = {
 export function upperStoreyFrom(source: Storey): Storey {
   const lift = (c: BayComponent): BayComponent => ABOVE_STREET[c] ?? c;
   const facade: Facade = { fill: lift(source.facade.fill) };
+  if (source.facade.pattern) facade.pattern = source.facade.pattern;
+  if (source.facade.patterns) facade.patterns = { ...source.facade.patterns };
   if (source.facade.sides) {
-    facade.sides = Object.fromEntries(Object.entries(source.facade.sides).map(([k, c]) => [k, lift(c)]));
+    facade.sides = Object.fromEntries(Object.entries(source.facade.sides).map(([k, c]) => [k, lift(c ?? facade.fill)]));
   }
   if (source.facade.bays) {
     // A single-bay override that now says what its side says anyway is dropped.
     const kept = Object.entries(source.facade.bays)
       .map(([key, c]) => [key, lift(c)] as const)
-      .filter(([key, c]) => c !== componentAt({ ...facade, bays: {} }, Number(key.split(':')[0]) as Side, 0));
+      .filter(([key, c]) => c !== componentAt({ ...facade, bays: {} }, Number(key.split(':')[0]), 0));
     if (kept.length > 0) facade.bays = Object.fromEntries(kept);
   }
   const storey: Storey = { facade };
   if (source.use) storey.use = source.use;
+  if (source.materials) storey.materials = structuredClone(source.materials);
   return storey;
 }
 

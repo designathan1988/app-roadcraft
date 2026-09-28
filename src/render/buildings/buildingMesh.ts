@@ -1,3 +1,6 @@
+import earcut from 'earcut';
+import clipping from 'polygon-clipping';
+import { asPolygon, edgeFrame, localFootprint, volumeSides } from '@world/buildings/footprints';
 import {
   BufferGeometry,
   Color,
@@ -32,6 +35,7 @@ import {
   projectionRect,
   ridgeAlongX,
   roofRise,
+  roofHeightAt,
   roofSlope,
   sawtoothRun,
   shedFall,
@@ -54,10 +58,12 @@ import {
   type BayComponent,
   type Building,
   type BuildingElement,
+  type FacadeGeometry,
   type Relief,
+  type FaceId,
   type Side,
-  type Volume,
   SIDES,
+  type Volume,
   volumeTop,
 } from '@world/buildings/types';
 import { type BuildingKit, PART_KINDS, type PartKind } from './kit';
@@ -128,13 +134,14 @@ interface Opening {
 }
 
 /** The hole a component cuts in its bay, or null for a solid bay. */
-function openingOf(component: BayComponent, W: number, H: number): Opening | null {
+function openingOf(component: BayComponent, W: number, H: number, geometry?: FacadeGeometry): Opening | null {
   let w: number;
   let h0: number;
   let h1: number;
   let depth = REVEAL;
   switch (component) {
     case 'window':
+    case 'sashWindow':
       w = Math.min(W - m(1.1), m(1.5));
       h0 = m(0.9);
       h1 = H - m(0.55);
@@ -169,6 +176,11 @@ function openingOf(component: BayComponent, W: number, H: number): Opening | nul
       break;
     default:
       return null;
+  }
+  if (geometry && (component === 'window' || component === 'sashWindow' || component === 'wideWindow')) {
+    if (geometry.windowWidth !== undefined) w = W * geometry.windowWidth;
+    if (geometry.sill !== undefined) h0 = Math.min(geometry.sill, H - m(.65));
+    if (geometry.windowHeight !== undefined) h1 = h0 + H * geometry.windowHeight;
   }
   w = Math.max(m(0.4), Math.min(w, W - m(0.2)));
   h1 = Math.max(h0 + m(0.5), Math.min(h1, H - m(0.15)));
@@ -311,9 +323,10 @@ interface BayFace {
  * The frame of a face of `side`, starting `along` units from the side's
  * start, its plane `push` units out from the side (negative: set back).
  */
-function sideFrame(v: Volume, side: Side, along: number, push = 0): Pick<BayFace, 'ax' | 'ay' | 'tx' | 'ty' | 'nx' | 'ny'> {
+function sideFrame(v: Volume, side: FaceId, along: number, push = 0): Pick<BayFace, 'ax' | 'ay' | 'tx' | 'ty' | 'nx' | 'ny'> {
   const s = sideStart(v, side);
-  const n = SIDE_NORMAL[side];
+  const edge = edgeFrame(v, side);
+  const n = { x: edge.nx, y: edge.ny };
   return { ax: s.x + s.tx * along + n.x * push, ay: s.y + s.ty * along + n.y * push, tx: s.tx, ty: s.ty, nx: n.x, ny: n.y };
 }
 
@@ -398,7 +411,7 @@ function emitBuilding(
   const f: Foundation = foundationOf(b, groundAt, bays, pavedAt);
   const floor = f.floor;
   shell.ground = floor;
-  const entranceKey = (volume: number, side: Side, index: number): string => `${volume}:${side}:${index}`;
+  const entranceKey = (volume: number, side: FaceId, index: number): string => `${volume}:${side}:${index}`;
   const entrances = new Map<string, Entrance>(f.entrances.map((x) => [entranceKey(x.volume, x.side, x.index), x]));
   /** The opening of an entrance, in its bay's face frame. */
   const entranceOpening = (x: Entrance): Opening =>
@@ -409,7 +422,7 @@ function emitBuilding(
   // A small, stable shade per building, so a street of one preset is not a
   // single flat colour.
   const shade = 0.93 + (((b.id * 2654435761) >>> 0) % 1000) / 1000 * 0.12;
-  const wallOf = (v: Volume, side: Side): Paint => paint(wallMaterial(b, v, side), shade);
+  const wallOf = (v: Volume, side: FaceId, storey?: number): Paint => paint(wallMaterial(b, v, side, storey), shade);
   // Mouldings - bands, cornices, copings, reveals - are smooth: a finish with
   // a pattern (formwork ties, courses) repeated along a moulding reads as rivets.
   const trimSpec = trimMaterial(b);
@@ -421,7 +434,7 @@ function emitBuilding(
   // a flight of steps is set into the building
   for (const v of b.volumes) {
     if (v.base !== 0) continue;
-    const notches = new Map<Side, { a0: number; a1: number; recess: number }[]>();
+    const notches = new Map<FaceId, { a0: number; a1: number; recess: number }[]>();
     for (const x of f.entrances) {
       if (x.volume !== v.id || x.recess <= 0) continue;
       const o = entranceOpening(x);
@@ -437,7 +450,16 @@ function emitBuilding(
       const rect = r.storey0 === 0 ? projectionRect(b, v, r) : null;
       if (!rect) continue;
       const g = PLINTH_GROW;
-      e.box(rect[0] - g, rect[1] - g, rect[2] + g, rect[3] + g, f.bottom, floor, plinth);
+      if (v.outline) {
+        const frame = edgeFrame(v, r.side), width = bayWidth(b, v, r.side);
+        const a0 = r.bay0 * width - g, a1 = (r.bay1 + 1) * width + g;
+        const at = (a: number, depth: number, z: number): V3 =>
+          e.L(frame.x + frame.tx * a + frame.nx * depth, frame.y + frame.ty * a + frame.ny * depth, z);
+        e.shell.face([at(a0, r.depth + g, f.bottom), at(a1, r.depth + g, f.bottom), at(a1, r.depth + g, floor), at(a0, r.depth + g, floor)], e.N(frame.nx, frame.ny), plinth);
+        e.shell.face([at(a0, -g, floor), at(a1, -g, floor), at(a1, r.depth + g, floor), at(a0, r.depth + g, floor)], [0, 0, 1], plinth);
+      } else {
+        e.box(rect[0] - g, rect[1] - g, rect[2] + g, rect[3] + g, f.bottom, floor, plinth);
+      }
     }
   }
 
@@ -451,12 +473,39 @@ function emitBuilding(
     const left = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index - 1}`);
     const right = componentAt.get(`${bay.volume}:${bay.level}:${bay.side}:${bay.index + 1}`);
     const recess = bay.level === 0 ? entrances.get(entranceKey(bay.volume, bay.side, bay.index))?.recess ?? 0 : 0;
-    emitBay(e, face, bay, wallOf(v, bay.side), trim, awning, left === 'pillar', right === 'pillar', recess);
+    const composition = v.storeys[bay.storey]?.facade;
+    const grammar = composition?.patterns?.[bay.side] ?? composition?.pattern ?? v.facadePattern;
+    const controls = v.facadeGeometry?.[bay.side];
+    if (grammar === 'observation' && bay.component === 'wideWindow') {
+      const mullion = Math.min(m(0.12), face.W * .12);
+      const head = Math.min(m(0.25), face.H * .12);
+      const glass = paint({ finish: 'glass', colour: 0x526b73 });
+      const frame = paint({ finish: 'metal', colour: 0xd5d5ca });
+      e.rect(face, mullion, face.W - mullion, head, face.H - head, -m(.11), e.N(face.nx, face.ny), glass);
+      e.rect(face, 0, mullion, 0, face.H, -m(.16), e.N(face.nx, face.ny), frame);
+      e.rect(face, face.W - mullion, face.W, 0, face.H, -m(.16), e.N(face.nx, face.ny), frame);
+      e.rect(face, 0, face.W, 0, head, -m(.16), e.N(face.nx, face.ny), frame);
+      e.rect(face, 0, face.W, face.H - head, face.H, -m(.16), e.N(face.nx, face.ny), frame);
+      continue;
+    }
+    emitBay(e, face, bay, wallOf(v, bay.side, bay.storey), trim, awning, left === 'pillar', right === 'pillar', recess, controls);
+    const ribDepth = controls?.pierDepth ?? (grammar === 'artDecoCrown' ? m(.65) : grammar === 'artDeco' ? m(.3) : 0);
+    if (ribDepth > 0 && bay.index % (controls?.pierEvery ?? 1) === 0) {
+      // Shallow, continuous-looking stone pilasters give every mass a vertical
+      // rhythm while retaining individually editable windows and wall bays.
+      const width = Math.min(controls?.pierWidth ?? (grammar === 'artDecoCrown' ? m(.65) : m(.36)), face.W * .3);
+      const a0 = width * 0.35, a1 = a0 + width;
+      const depth = -ribDepth;
+      const stone = paint({ finish: 'plaster', colour: 0xd9d4c5 });
+      e.rect(face, a0, a1, 0, face.H, depth, e.N(face.nx, face.ny), stone);
+      e.jamb(face, a0, 0, face.H, 0, depth, e.N(-face.tx, -face.ty), stone);
+      e.jamb(face, a1, 0, face.H, depth, 0, e.N(face.tx, face.ty), stone);
+    }
   }
 
   // ---- reliefs: the cheeks, head and sill of every face region pushed in or out
   for (const v of b.volumes) {
-    for (const r of v.reliefs ?? []) emitRelief(e, b, v, r, floor, wallOf(v, r.side), trim);
+    for (const r of v.reliefs ?? []) emitRelief(e, b, v, r, floor, wallOf(v, r.side, r.storey0), trim);
   }
 
   // ---- storey bands and cornices, per volume
@@ -469,7 +518,10 @@ function emitBuilding(
   }
 
   // ---- roofs
-  for (const v of b.volumes) emitRoof(e, b, v, floor, (side) => wallOf(v, side), trim, paint(roofMaterial(b, v)));
+  for (const v of b.volumes) {
+    emitRoof(e, b, v, floor, (side) => wallOf(v, side), trim, paint(roofMaterial(b, v)));
+    emitRoofDetails(e, b, v, floor);
+  }
 
   // ---- entrance steps: outside, down to the ground in front, or set into
   // the building where the paving leaves no room for them
@@ -552,6 +604,7 @@ function emitBay(
   pillarRight: boolean,
   /** An entrance whose flight is set into the building: the opening becomes a porch this deep. */
   recess = 0,
+  geometry?: FacadeGeometry,
 ): void {
   const out = e.N(f.nx, f.ny);
   const along = e.N(f.tx, f.ty);
@@ -570,7 +623,7 @@ function emitBay(
     return;
   }
 
-  const found = openingOf(bay.component, W, H);
+  const found = openingOf(bay.component, W, H, geometry);
   if (!found) {
     e.rect(f, 0, W, 0, H, 0, out, wall);
     return;
@@ -596,10 +649,11 @@ function emitBay(
   const am = (o.a0 + o.a1) / 2;
   const hm = (o.h0 + o.h1) / 2;
   switch (bay.component) {
-    case 'window': {
+    case 'window':
+    case 'sashWindow': {
       // No two rows alike: some rooms darker, some curtained, some with the
       // roller shutter part way down - picked from the bay, so stable.
-      const pick = bayHash(bay) % 20;
+      const pick = bay.component === 'sashWindow' ? 13 : bayHash(bay) % 20;
       e.put(pick < 5 ? 'glassDark' : 'glass', f, am, hm, o.depth, w, h, 1);
       if (pick >= 5 && pick < 9) {
         const side = w * 0.26;
@@ -661,14 +715,38 @@ function emitPlinth(
   bottom: number,
   floor: number,
   c: Paint,
-  notches: ReadonlyMap<Side, readonly { a0: number; a1: number; recess: number }[]>,
+  notches: ReadonlyMap<FaceId, readonly { a0: number; a1: number; recess: number }[]>,
 ): void {
   const g = PLINTH_GROW;
+  if (v.outline) {
+    for (const side of volumeSides(v)) {
+      const f = edgeFrame(v, side);
+      const at = (a: number, depth: number, z: number): V3 => e.L(f.x + f.tx * a - f.nx * depth, f.y + f.ty * a - f.ny * depth, z);
+      const n = e.N(f.nx, f.ny);
+      const t = e.N(f.tx, f.ty);
+      const cuts = [...(notches.get(side) ?? [])].sort((a, b) => a.a0 - b.a0);
+      let from = 0;
+      const wallTo = (to: number): void => {
+        if (to - from < 1e-4) return;
+        e.shell.face([at(from, -g, bottom), at(to, -g, bottom), at(to, -g, floor), at(from, -g, floor)], n, c);
+        e.shell.face([at(from, -g, floor), at(to, -g, floor), at(to, g, floor), at(from, g, floor)], [0, 0, 1], c);
+      };
+      for (const cut of cuts) {
+        wallTo(cut.a0);
+        const depth = g + cut.recess;
+        e.shell.face([at(cut.a0, -g, bottom), at(cut.a0, depth, bottom), at(cut.a0, depth, floor), at(cut.a0, -g, floor)], t, c);
+        e.shell.face([at(cut.a1, depth, bottom), at(cut.a1, -g, bottom), at(cut.a1, -g, floor), at(cut.a1, depth, floor)], [-t[0], -t[1], 0], c);
+        from = cut.a1;
+      }
+      wallTo(f.length);
+    }
+    return;
+  }
   const x0 = v.x - g;
   const y0 = v.y - g;
   const x1 = v.x + v.w + g;
   const y1 = v.y + v.d + g;
-  for (const side of SIDES) {
+  for (const side of volumeSides(v)) {
     // The side as a line in the plan: where it runs along its axis and where it stands across it.
     const alongX = side === 0 || side === 2;
     const lo = alongX ? x0 : y0;
@@ -677,7 +755,8 @@ function emitPlinth(
     const inward = side === 0 || side === 3 ? 1 : -1;
     const point = (a: number, depth: number, z: number): V3 =>
       alongX ? e.L(a, at + inward * depth, z) : e.L(at + inward * depth, a, z);
-    const n = SIDE_NORMAL[side];
+    const edge = edgeFrame(v, side);
+    const n = { x: edge.nx, y: edge.ny };
     const out = e.N(n.x, n.y);
     const cuts = [...(notches.get(side) ?? [])].sort((p, q) => p.a0 - q.a0);
     let from = lo;
@@ -753,7 +832,8 @@ function emitRelief(e: Emitter, b: Building, v: Volume, r: Relief, floor: number
   const z0 = floor + levelElevation(b, v.base + Math.max(0, r.storey0));
   const z1 = floor + levelElevation(b, v.base + Math.min(top, r.storey1) + 1);
   const s = sideStart(v, r.side);
-  const n = SIDE_NORMAL[r.side];
+  const f = edgeFrame(v, r.side);
+  const n = { x: f.nx, y: f.ny };
   const d = r.depth;
   const P = (a: number, z: number, out: number): V3 => e.L(s.x + s.tx * a + n.x * out, s.y + s.ty * a + n.y * out, z);
   const t = e.N(s.tx, s.ty);
@@ -772,13 +852,15 @@ function emitRelief(e: Emitter, b: Building, v: Volume, r: Relief, floor: number
  * on roofs big enough to walk on.
  */
 function emitRoofPlant(e: Emitter, b: Building, v: Volume, z: number, trim: Paint): void {
+  if (v.roofDetails?.length) return;
   // Drains in two opposite corners, where the roof's fall takes the water.
+  if (v.outline) return;
   for (const [dx, dy] of [[m(0.7), m(0.7)], [v.w - m(0.7), v.d - m(0.7)]] as const) {
     const x = v.x + dx;
     const y = v.y + dy;
     e.box(x - m(0.18), y - m(0.18), x + m(0.18), y + m(0.18), z, z + 0.02, DRAIN);
   }
-  if (v.w < m(6) || v.d < m(6)) return;
+  if (v.outline || v.w < m(6) || v.d < m(6)) return;
   const pick = ((b.id * 2654435761 + v.id * 40503) >>> 0) % 4;
   const inset = m(1.4);
   const tank = m(2.2);
@@ -944,8 +1026,9 @@ function emitLot(e: Emitter, b: Building, f: Foundation, groundAt: GroundAt, pav
   for (const v of b.volumes) {
     if (v.base !== 0) continue;
     const g = PLINTH_GROW;
-    for (const side of SIDES) {
-      const n = SIDE_NORMAL[side];
+    for (const side of volumeSides(v)) {
+      const edge = edgeFrame(v, side);
+      const n = { x: edge.nx, y: edge.ny };
       const s0 = sideStart(v, side);
       const length = sideLength(v, side);
       // From corner to corner, grown past the corners so the apron closes round them.
@@ -1072,10 +1155,213 @@ function postAt(e: Emitter, P: (u: number, a: number, z: number) => V3, u: numbe
 function band(e: Emitter, v: Volume, z: number, out: number, height: number, c: Paint): void {
   // A moulding is a PROFILE, not a slab: a fillet under a projecting drip,
   // whose shadow line is what makes it read at a distance.
-  const tier = (o: number, z0: number, z1: number, paint: Paint): void =>
-    e.box(v.x - o, v.y - o, v.x + v.w + o, v.y + v.d + o, z0, z1, paint);
+  const tier = (o: number, z0: number, z1: number, paint: Paint): void => {
+    if (!v.outline) { e.box(v.x - o, v.y - o, v.x + v.w + o, v.y + v.d + o, z0, z1, paint); return; }
+    for (const side of volumeSides(v)) {
+      const f = edgeFrame(v, side), n = e.N(f.nx, f.ny);
+      const P = (a: number, z: number): V3 => e.L(f.x + f.tx * a + f.nx * o, f.y + f.ty * a + f.ny * o, z);
+      e.shell.face([P(0, z0), P(f.length, z0), P(f.length, z1), P(0, z1)], n, paint);
+    }
+  };
   tier(out * 0.45, z - height / 2, z - height * 0.1, shaded(c, 0.94));
   tier(out, z - height * 0.1, z + height / 2, c);
+}
+
+function emitCornice(e: Emitter, v: Volume, z: number, trim: Paint): void {
+  const deco = v.facadePattern === 'artDeco' || v.facadePattern === 'artDecoCrown';
+  band(e, v, z - m(.2), deco ? m(.55) : CORNICE_OUT, deco ? m(.55) : m(.36), trim);
+  if (deco) band(e, v, z - m(1.05), m(.28), m(.32), trim);
+}
+
+/** User-placed details follow the mass and rest on its actual roof surface. */
+function emitRoofDetails(e: Emitter, b: Building, v: Volume, floor: number): void {
+  const base = floor + volumeHeight(b, v);
+  const metal = paint({ finish: 'metal', colour: 0x677b79 });
+  const panel = paint({ finish: 'glass', colour: 0x153e4c });
+  const glazing = paint({ finish: 'glass', colour: 0x6098a6 });
+  const masonry = paint({ finish: 'brick', colour: 0x876755 });
+  const concrete = paint({ finish: 'concrete', colour: 0xaaa99d });
+  for (const detail of v.roofDetails ?? []) {
+    const z = base + roofHeightAt(b, v, detail);
+    if (detail.kind === 'solar' || detail.kind === 'skylight') {
+      const c = Math.cos(detail.rotation), s = Math.sin(detail.rotation);
+      const point = (x: number, y: number, lift: number): V3 => {
+        const px = detail.x + x * c - y * s, py = detail.y + x * s + y * c;
+        return e.L(px, py, base + roofHeightAt(b, v, { x: px, y: py }) + lift);
+      };
+      const quad = (grow: number, lift: number): V3[] => [
+        point(-detail.w / 2 - grow, -detail.d / 2 - grow, lift),
+        point(detail.w / 2 + grow, -detail.d / 2 - grow, lift),
+        point(detail.w / 2 + grow, detail.d / 2 + grow, lift),
+        point(-detail.w / 2 - grow, detail.d / 2 + grow, lift),
+      ];
+      e.shell.face(quad(0.15, 0.18), [0, 0, 1], metal);
+      e.shell.face(quad(0, 0.24), [0, 0, 1], detail.kind === 'solar' ? panel : glazing);
+      continue;
+    }
+    if (detail.kind === 'vent') {
+      e.box(detail.x - detail.w / 2, detail.y - detail.d / 2,
+        detail.x + detail.w / 2, detail.y + detail.d / 2, z - 0.2, z + m(1), metal);
+    } else if (detail.kind === 'spire') {
+      const height = detail.h ?? m(11.7);
+      const radius = Math.min(detail.w, detail.d) * 0.47;
+      const baseStone = paint({ finish: 'plaster', colour: 0xd1ccbe });
+      e.box(detail.x - radius, detail.y - radius, detail.x + radius, detail.y + radius, z - m(0.15), z + m(0.75), baseStone);
+      const rings = [
+        { z: z + m(0.75), r: radius * .78 },
+        { z: z + height * .28, r: radius * .48 },
+        { z: z + height * .84, r: radius * .12 },
+        { z: z + height, r: Math.max(m(0.025), radius * .025) },
+      ];
+      for (let band = 0; band < rings.length - 1; band++) {
+        const lo = rings[band]!, hi = rings[band + 1]!;
+        for (let i = 0; i < 8; i++) {
+          const a = i * Math.PI / 4, c = (i + 1) * Math.PI / 4;
+          const point = (angle: number, r: number, h: number): V3 =>
+            e.L(detail.x + Math.cos(angle) * r, detail.y + Math.sin(angle) * r, h);
+          e.shell.face([point(a, lo.r, lo.z), point(c, lo.r, lo.z), point(c, hi.r, hi.z), point(a, hi.r, hi.z)],
+            e.N(Math.cos((a + c) / 2), Math.sin((a + c) / 2)), band === 0 ? baseStone : metal);
+        }
+      }
+      if (detail.flag && detail.flag !== 'none') {
+        const flagTop = z + height * .98, flagBottom = flagTop - m(1.25);
+        const x0 = detail.x + m(.08), x1 = x0 + m(2.2);
+        const white = paint({ finish: 'plaster', colour: 0xf3eee3 });
+        const red = paint({ finish: 'plaster', colour: 0xb43138 });
+        const blue = paint({ finish: 'plaster', colour: 0x3f688d });
+        const black = paint({ finish: 'plaster', colour: 0x20252a });
+        for (const face of [-1, 1] as const) {
+          const y = detail.y + face * m(.035);
+          const p = (x: number, h: number): V3 => e.L(x, y + (x - x0) * .065, h);
+          const quad = (a: number, c: number, lo: number, hi: number, colour: Paint): void =>
+            e.shell.face([p(a, lo), p(c, lo), p(c, hi), p(a, hi)], e.N(0, face), colour);
+          quad(x0, x1, flagBottom, flagTop, detail.flag === 'plain' ? blue : white);
+          const raised = face * m(.014);
+          const mark = (a: number, c: number, lo: number, hi: number, colour: Paint): void =>
+            e.shell.face([e.L(a, y + (a - x0) * .065 + raised, lo), e.L(c, y + (c - x0) * .065 + raised, lo),
+              e.L(c, y + (c - x0) * .065 + raised, hi), e.L(a, y + (a - x0) * .065 + raised, hi)], e.N(0, face), colour);
+          if (detail.flag === 'saoPaulo') {
+            mark(x0 + m(.67), x0 + m(.93), flagBottom, flagTop, red);
+            mark(x0, x1, flagBottom + m(.47), flagBottom + m(.74), red);
+          } else if (detail.flag === 'saoPauloState') {
+            const stripe = (flagTop - flagBottom) / 13;
+            for (let i = 0; i < 13; i += 2) mark(x0, x1, flagBottom + i * stripe, flagBottom + (i + 1) * stripe, black);
+            mark(x0, x0 + m(.7), flagTop - m(.7), flagTop, red);
+            mark(x0 + m(.28), x0 + m(.42), flagTop - m(.42), flagTop - m(.28), white);
+          }
+        }
+      }
+    } else if (detail.kind === 'chimney') {
+      e.box(detail.x - detail.w / 2, detail.y - detail.d / 2,
+        detail.x + detail.w / 2, detail.y + detail.d / 2, z - 0.2, z + m(2.1), masonry);
+      e.box(detail.x - detail.w / 2 - .1, detail.y - detail.d / 2 - .1,
+        detail.x + detail.w / 2 + .1, detail.y + detail.d / 2 + .1, z + m(2.1), z + m(2.25), concrete);
+    } else {
+      e.box(detail.x - detail.w / 2, detail.y - detail.d / 2,
+        detail.x + detail.w / 2, detail.y + detail.d / 2, z - .1, z + m(1.6), metal);
+    }
+  }
+}
+
+/** Cut a pitched roof into planar regions, then clip each region to any outline. */
+function emitPolygonRoof(
+  e: Emitter, b: Building, v: Volume, floor: number,
+  wallOf: (side: FaceId) => Paint, trim: Paint, roofColour: Paint,
+): void {
+  const z = floor + volumeHeight(b, v);
+  const x0 = v.x, y0 = v.y, x1 = v.x + v.w, y1 = v.y + v.d;
+  const slope = roofSlope(v);
+  type Patch = { ring: Vec2[]; height: (p: Vec2) => number };
+  const rect = (a: number, c: number, d: number, f: number): Vec2[] =>
+    [{ x: a, y: c }, { x: d, y: c }, { x: d, y: f }, { x: a, y: f }];
+  let patches: Patch[] = [];
+  if (v.roof === 'flat' || v.roof === 'terrace') {
+    patches = [{ ring: rect(x0, y0, x1, y1), height: () => 0 }];
+  } else if (v.roof === 'gable') {
+    if (ridgeAlongX(v)) {
+      const mid = (y0 + y1) / 2;
+      patches = [
+        { ring: rect(x0, y0, x1, mid), height: (p) => (p.y - y0) * slope },
+        { ring: rect(x0, mid, x1, y1), height: (p) => (y1 - p.y) * slope },
+      ];
+    } else {
+      const mid = (x0 + x1) / 2;
+      patches = [
+        { ring: rect(x0, y0, mid, y1), height: (p) => (p.x - x0) * slope },
+        { ring: rect(mid, y0, x1, y1), height: (p) => (x1 - p.x) * slope },
+      ];
+    }
+  } else if (v.roof === 'hip') {
+    const alongX = v.w >= v.d;
+    const long = alongX ? v.w : v.d, short = alongX ? v.d : v.w;
+    const h = short / 2;
+    const P = (u: number, a: number): Vec2 => alongX ? { x: x0 + u, y: y0 + a } : { x: x0 + a, y: y0 + u };
+    const polygon = (pairs: readonly (readonly [number, number])[]): Vec2[] => pairs.map(([u, a]) => P(u, a));
+    const U = (p: Vec2): number => alongX ? p.x - x0 : p.y - y0;
+    const A = (p: Vec2): number => alongX ? p.y - y0 : p.x - x0;
+    patches = [
+      { ring: polygon([[0, 0], [h, h], [0, short]]), height: (p) => U(p) * slope },
+      { ring: polygon([[long, 0], [long, short], [long - h, h]]), height: (p) => (long - U(p)) * slope },
+      { ring: polygon([[0, 0], [long, 0], [long - h, h], [h, h]]), height: (p) => A(p) * slope },
+      { ring: polygon([[h, h], [long - h, h], [long, short], [0, short]]), height: (p) => (short - A(p)) * slope },
+    ];
+  } else if (v.roof === 'shed') {
+    const fall = shedFall(v);
+    patches = [{ ring: rect(x0, y0, x1, y1), height: (p) =>
+      (fall === 0 ? p.y - y0 : fall === 2 ? y1 - p.y : fall === 1 ? x1 - p.x : p.x - x0) * slope }];
+  } else {
+    const run = sawtoothRun(b, v);
+    for (let from = y0; from < y1 - 1e-6; from += run) {
+      const to = Math.min(y1, from + run), middle = (from + to) / 2;
+      patches.push({ ring: rect(x0, from, x1, middle), height: (p) => (p.y - from) * slope });
+      patches.push({ ring: rect(x0, middle, x1, to), height: (p) => (to - p.y) * slope });
+    }
+  }
+  const footprint = asPolygon(localFootprint(v));
+  const heightAt = (p: Vec2): number => roofHeightAt(b, v, p);
+  const roofPaint = v.roof === 'terrace' ? TERRACE : roofColour;
+  for (const patch of patches) {
+    const pieces = clipping.intersection(footprint, asPolygon(patch.ring));
+    for (const piece of pieces) {
+      const ring = piece[0];
+      if (!ring || ring.length < 4) continue;
+      const flat = ring.slice(0, -1).flat();
+      const triangles = earcut(flat);
+      for (let i = 0; i < triangles.length; i += 3) {
+        const plan = [triangles[i], triangles[i + 1], triangles[i + 2]].map((index) =>
+          ({ x: flat[2 * index!]!, y: flat[2 * index! + 1]! }));
+        const a = plan[0]!, c = plan[1]!, d = plan[2]!;
+        const az = patch.height(a), cz = patch.height(c), dz = patch.height(d);
+        const ux = c.x - a.x, uy = c.y - a.y, uz = cz - az;
+        const vx = d.x - a.x, vy = d.y - a.y, vz = dz - az;
+        let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        if (nz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+        const length = Math.hypot(nx, ny, nz) || 1;
+        e.shell.face([e.L(a.x, a.y, z + az), e.L(c.x, c.y, z + cz), e.L(d.x, d.y, z + dz)],
+          e.N(nx / length, ny / length, nz / length), roofPaint);
+      }
+    }
+  }
+  // The eaves close under pitched surfaces. Short segments follow every break.
+  for (const side of volumeSides(v)) {
+    const frame = edgeFrame(v, side);
+    const divisions = Math.max(1, Math.ceil(frame.length / b.module));
+    for (let i = 0; i < divisions; i++) {
+      const a0 = i * frame.length / divisions, a1 = (i + 1) * frame.length / divisions;
+      const p0 = { x: frame.x + frame.tx * a0, y: frame.y + frame.ty * a0 };
+      const p1 = { x: frame.x + frame.tx * a1, y: frame.y + frame.ty * a1 };
+      const h0 = Math.max(0, heightAt(p0)), h1 = Math.max(0, heightAt(p1));
+      if (h0 + h1 > 1e-4) e.shell.face([e.L(p0.x, p0.y, z), e.L(p1.x, p1.y, z), e.L(p1.x, p1.y, z + h1), e.L(p0.x, p0.y, z + h0)], e.N(frame.nx, frame.ny), wallOf(side));
+    }
+    // A low continuous coping makes the plan legible at game zoom.
+    const f: BayFace = { ...sideFrame(v, side, 0), z0: z, W: frame.length, H: PARAPET_H };
+    if (v.roof === 'flat' || v.roof === 'terrace') {
+      if (v.roof === 'terrace') e.put('roofRailing', f, frame.length / 2, 0, m(.12), frame.length, m(1), 1);
+      else e.rect(f, 0, frame.length, 0, PARAPET_H, 0, e.N(f.nx, f.ny), wallOf(side));
+    }
+  }
+  if (v.roof === 'flat' || v.roof === 'terrace') emitCornice(e, v, z, trim);
+  if (v.roof === 'flat') emitRoofPlant(e, b, v, z, trim);
 }
 
 
@@ -1084,10 +1370,11 @@ function emitRoof(
   b: Building,
   v: Volume,
   floor: number,
-  wallOf: (side: Side) => Paint,
+  wallOf: (side: FaceId) => Paint,
   trim: Paint,
   roofColour: Paint,
 ): void {
+  if (v.outline) { emitPolygonRoof(e, b, v, floor, wallOf, trim, roofColour); return; }
   const top = volumeTop(v);
   const z = floor + volumeHeight(b, v);
   const x0 = v.x;
@@ -1103,10 +1390,10 @@ function emitRoof(
     if (!terrace) emitRoofPlant(e, b, v, z, trim);
     // Its top stays just under the roof: a face shared with the roof cap
     // z-fights into stripes.
-    band(e, v, z - m(0.2), CORNICE_OUT, m(0.36), trim);
+    emitCornice(e, v, z, trim);
     // An edge bay gets a parapet (or a railing, on a terrace) only where the
     // roof really ends: not against a neighbour of the same or greater height.
-    for (const side of SIDES) {
+    for (const side of volumeSides(v)) {
       // Only where the roof really ends: not against a neighbour as tall or taller.
       const spans = [...coveredSpans(b, v, side, top - 1), ...coveredSpans(b, v, side, top)].sort((p, q) => p[0] - q[0]);
       const step = bayWidth(b, v, side);

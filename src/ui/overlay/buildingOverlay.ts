@@ -1,4 +1,7 @@
 import type { Vec2 } from '@core/vec2';
+import { edgeFrame } from '@world/buildings/footprints';
+import { volumeSides } from '@world/buildings/footprints';
+import { METERS_PER_UNIT } from '@world/units';
 import {
   bayCentreLocal,
   bayWidth,
@@ -8,12 +11,11 @@ import {
   levelElevation,
   levelHeight,
   localToWorld,
-  SIDE_NORMAL,
   volumeCorners,
   volumeHeight,
 } from '@world/buildings/geometry';
 import type { Handle } from '@world/buildings/handles';
-import { type Building, type Side, volumeById } from '@world/buildings/types';
+import { type Building, type FaceId, volumeById } from '@world/buildings/types';
 import { HOVER, INVALID, SELECTION } from './palette';
 
 /**
@@ -24,16 +26,20 @@ import { HOVER, INVALID, SELECTION } from './palette';
  */
 export interface BuildingOverlayInput {
   readonly project: (x: number, y: number, z: number) => Vec2;
+  readonly stage?: 'sketch' | 'shape' | 'facade' | 'roof';
+  readonly plan?: { readonly points: readonly Vec2[]; readonly cursor: Vec2 | null; readonly groundAt: (x: number, y: number) => number } | null;
   readonly hover: { readonly building: Building; readonly floor: number } | null;
   readonly selected: {
     readonly building: Building;
     readonly volume: number;
     readonly floor: number;
-    readonly bay: { readonly storey: number; readonly side: Side; readonly index: number } | null;
+    readonly bay: { readonly storey: number; readonly side: FaceId; readonly index: number } | null;
+    readonly vertex?: number | null | undefined;
     /** The picked region of that face (bays and storeys, inclusive); defaults to the one bay. */
-    readonly region?: { readonly side: Side; readonly bay0: number; readonly bay1: number; readonly storey0: number; readonly storey1: number } | null;
+    readonly region?: { readonly side: FaceId; readonly bay0: number; readonly bay1: number; readonly storey0: number; readonly storey1: number } | null;
   } | null;
   readonly handles: readonly Handle[];
+  readonly activeHandle?: Handle | null;
   readonly label: { readonly text: string; readonly valid: boolean; readonly building: Building; readonly floor: number } | null;
   /** The live measure of the gesture in progress, beside the pointer. */
   readonly measure?: { readonly text: string; readonly x: number; readonly y: number; readonly z: number } | null;
@@ -60,6 +66,32 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
     ctx.setLineDash([]);
   };
 
+  if (input.plan) {
+    const { points, cursor, groundAt } = input.plan;
+    const all = cursor ? [...points, cursor] : points;
+    if (all.length > 0) {
+      ctx.beginPath();
+      all.forEach((p, i) => {
+        const q = project(p.x, p.y, groundAt(p.x, p.y) + 0.3);
+        if (i === 0) ctx.moveTo(q.x, q.y);
+        else ctx.lineTo(q.x, q.y);
+      });
+      ctx.strokeStyle = '#79e3bf';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      for (const [i, p] of points.entries()) {
+        const q = project(p.x, p.y, groundAt(p.x, p.y) + 0.3);
+        ctx.fillStyle = '#12271f';
+        ctx.strokeStyle = '#9cffe0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, i === 0 && points.length >= 3 ? 8 : 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }
+
   if (input.hover && input.hover.building.id !== input.selected?.building.id) {
     const b = input.hover.building;
     for (const v of b.volumes) if (v.base === 0) ring(volumeCorners(b, v), input.hover.floor, HOVER, 1.5, [5, 4]);
@@ -76,14 +108,34 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
       const corners = volumeCorners(b, v, 0.4);
       ring(corners, sel.floor + levelElevation(b, v.base), SELECTION, 1.25);
       ring(volumeCorners(b, v, 0.2), sel.floor + volumeHeight(b, v), SELECTION_FAINT, 1);
+      if (input.stage === 'shape' && volumeSides(v).length <= 8) {
+        for (const side of volumeSides(v)) {
+          const f = edgeFrame(v, side);
+          const local = { x: f.x + f.tx * f.length / 2 + f.nx * 1.3, y: f.y + f.ty * f.length / 2 + f.ny * 1.3 };
+          const world = localToWorld(b, local.x, local.y);
+          const at = project(world.x, world.y, sel.floor + 1);
+          const label = `${(f.length * METERS_PER_UNIT).toFixed(1)} m`;
+          ctx.font = '600 11px system-ui, sans-serif';
+          const width = ctx.measureText(label).width + 10;
+          ctx.fillStyle = 'rgba(10,28,23,.86)';
+          ctx.beginPath();
+          ctx.roundRect(at.x - width / 2, at.y - 9, width, 18, 5);
+          ctx.fill();
+          ctx.fillStyle = '#d5f7e7';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, at.x, at.y);
+        }
+      }
       // The picked bay, as a filled quad on its facade.
       if (sel.bay) {
         const region = sel.region ?? { side: sel.bay.side, bay0: sel.bay.index, bay1: sel.bay.index, storey0: sel.bay.storey, storey1: sel.bay.storey };
         const first = bayCentreLocal(b, v, region.side, region.bay0);
         const last = bayCentreLocal(b, v, region.side, region.bay1);
         const centre = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
-        const n = SIDE_NORMAL[region.side];
-        const along = { x: Math.abs(n.y), y: Math.abs(n.x) };
+        const edge = edgeFrame(v, region.side);
+        const n = { x: edge.nx, y: edge.ny };
+        const along = v.outline ? { x: edge.tx, y: edge.ty } : { x: Math.abs(n.y), y: Math.abs(n.x) };
         const half = ((region.bay1 - region.bay0 + 1) * bayWidth(b, v, region.side)) / 2;
         const za = sel.floor + levelElevation(b, v.base + region.storey0);
         const zb = sel.floor + levelElevation(b, v.base + region.storey1) + levelHeight(b, v.base + region.storey1);
@@ -106,7 +158,20 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
     }
   }
 
-  for (const h of input.handles) drawHandle(ctx, h, project);
+  for (const h of input.handles) {
+    if (h.kind === 'vertex') {
+      const p = project(h.x, h.y, h.z);
+      ctx.fillStyle = '#102b22';
+      ctx.strokeStyle = SELECTION;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, input.activeHandle?.kind === 'vertex' && input.activeHandle.vertex === h.vertex ? 6 : 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      continue;
+    }
+    drawHandle(ctx, h, project);
+  }
 
   if (input.label) {
     const { building, floor, text, valid } = input.label;
@@ -142,6 +207,7 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
 }
 
 const GLYPH: Readonly<Record<Handle['kind'], string>> = {
+  vertex: '',
   storeys: '⇕',
   side: '',
   move: '✥',
@@ -161,9 +227,10 @@ function drawHandle(ctx: CanvasRenderingContext2D, h: Handle, project: (x: numbe
   ctx.strokeStyle = SELECTION;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, h.kind === 'side' || h.kind === 'relief' ? 7 : 9, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, h.kind === 'vertex' ? 5 : h.kind === 'side' || h.kind === 'relief' ? 7 : 9, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
+  if (h.kind === 'vertex') return;
   if (h.kind === 'relief') {
     // In and out: a double arrow along the face's normal, in the second accent.
     const q = project(h.x + h.dx * 4, h.y + h.dy * 4, h.z);
