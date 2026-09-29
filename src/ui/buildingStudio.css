@@ -18,8 +18,8 @@
 .building-creator.hidden, .building-creator[hidden], .inspector-open .building-creator { display: none; }
 .creator-dock[hidden], .creator-rail.hidden, .inspector-open .creator-rail { display: none; }
 .creator-dock [hidden] { display: none !important; }
-.creator-model-palette { display: flex; justify-content: center; gap: 6px; }
-.creator-model-palette button { min-width: 78px; min-height: 52px; padding: 5px 9px; border: 1px solid #385749; border-radius: 9px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; }
+.creator-model-palette { display: flex; justify-content: flex-start; gap: 6px; overflow-x: auto; }
+.creator-model-palette button { flex: 0 0 auto; min-width: 78px; min-height: 52px; padding: 5px 9px; border: 1px solid #385749; border-radius: 9px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; }
 .creator-model-palette button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .creator-model-palette button[aria-pressed="true"] { border-color: #79e3bf; color: #79e3bf; background: #204637; }
 .creator-dock {
@@ -179,7 +179,7 @@
   .building-creator { top: 74px; right: 8px; width: min(245px, 56vw); max-height: calc(100dvh - 280px); padding: 11px; }
   .creator-dock { left: 72px; right: 8px; width: auto; transform: none; bottom: max(96px, calc(env(safe-area-inset-bottom) + 90px)); padding: 6px; }
   .creator-model-palette { width: 100%; gap: 3px; }
-  .creator-model-palette button { min-width: 0; width: calc((100% - 12px) / 5); padding: 3px 1px; font-size: 9.5px; line-height: 1.05; }
+  .creator-model-palette button { min-width: 66px; width: calc((100% - 15px) / 6); padding: 3px 1px; font-size: 9.5px; line-height: 1.05; }
   .creator-model-palette button svg { width: 18px; height: 18px; }
   .creator-dock .creator-rail button { min-height: 48px; font-size: 9px; }
   .creator-dock .creator-rail button svg { width: 18px; height: 18px; }

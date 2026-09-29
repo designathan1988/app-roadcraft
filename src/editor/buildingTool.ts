@@ -114,7 +114,7 @@ export interface ToolHost {
 export type BuildingToolMode = 'place' | 'edit';
 export type PlanAction = 'new' | 'ground' | 'top' | 'cut';
 export type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
-export type BuildingModelTool = 'draw' | 'extrude' | 'offset' | 'bevel' | 'cut' | 'paint' | 'openings';
+export type BuildingModelTool = 'select' | 'draw' | 'extrude' | 'offset' | 'bevel' | 'cut' | 'paint' | 'openings';
 
 /** What a material pick paints: the whole building, the selected volume, one face of it, or its roof. */
 export type MaterialScope = 'building' | 'volume' | 'face' | 'floor' | 'roof';
@@ -322,6 +322,15 @@ export class BuildingTool {
 
   armModelTool(tool: BuildingModelTool | null): void {
     this.activeModelTool = tool;
+    if (tool === 'select') {
+      this.mode = 'edit';
+      this.drag = null;
+      this.planPoints = null;
+      this.planCursor = null;
+      this.armed = null;
+      this.roofDetailKind = null;
+      this.setPreview(null);
+    }
     if (tool !== 'openings') this.component = null;
     this.problem = null;
     this.host.changed();
