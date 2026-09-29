@@ -18,9 +18,12 @@
 .building-creator.hidden, .building-creator[hidden], .inspector-open .building-creator { display: none; }
 .creator-dock[hidden], .creator-rail.hidden, .inspector-open .creator-rail { display: none; }
 .creator-dock [hidden] { display: none !important; }
+.creator-tool-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; margin-bottom: 8px; }
+.creator-tool-tabs button { min-width: 0; min-height: 32px; padding: 4px 2px; border: 1px solid #385749; border-radius: 7px; background: #10291f; color: #b9d0c1; cursor: pointer; font-size: 10px; }
+.creator-tool-tabs button[aria-selected="true"] { border-color: #79e3bf; color: #79e3bf; background: #204637; }
 .creator-model-palette { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-.creator-model-palette button { min-width: 0; min-height: 52px; padding: 5px 9px; border: 1px solid #385749; border-radius: 9px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; }
-.creator-model-palette button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.creator-model-palette button { min-width: 0; min-height: 39px; padding: 3px 6px; border: 1px solid #385749; border-radius: 7px; background: #143127; color: #d6e8dc; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: 10px; }
+.creator-model-palette button svg { width: 15px; height: 15px; flex: 0 0 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .creator-model-palette button[aria-pressed="true"] { border-color: #79e3bf; color: #79e3bf; background: #204637; }
 .creator-dock {
   position: static;
@@ -37,9 +40,9 @@
 .creator-dock .creator-rail button svg { width: 24px; height: 24px; }
 .creator-dock-secondary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .creator-dock-secondary:not(:empty) { border-top: 1px solid #315044; margin-top: 8px; padding-top: 8px; }
-.creator-dock-secondary button { min-width: 0; min-height: 48px; padding: 5px 8px; border: 1px solid #385749; border-radius: 8px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; }
+.creator-dock-secondary button { min-width: 0; min-height: 40px; padding: 4px 6px; border: 1px solid #385749; border-radius: 8px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; }
 .creator-dock-secondary button[aria-pressed="true"] { color: #79e3bf; border-color: #79e3bf; background: #204637; }
-.creator-dock-secondary button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.creator-dock-secondary button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .creator-dock-secondary button span { font-size: 10px; line-height: 1; }
 .creator-dock-secondary input[type="color"] { width: 100%; height: 48px; padding: 3px; border-radius: 8px; border: 1px solid #79e3bf; background: #143127; cursor: pointer; }
 .creator-dock-popover { position: static; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 10px; border: 1px solid #4b7961; border-radius: 12px; background: #10291f; }
@@ -173,8 +176,8 @@
 @media (max-width: 780px) {
   .building-creator { top: 74px; right: 8px; width: min(245px, 56vw); max-height: calc(100dvh - 150px); padding: 11px; }
   .creator-model-palette { gap: 3px; }
-  .creator-model-palette button { padding: 3px 1px; font-size: 9.5px; line-height: 1.05; }
-  .creator-model-palette button svg { width: 18px; height: 18px; }
+  .creator-model-palette button { padding: 3px 1px; font-size: 9px; line-height: 1.05; }
+  .creator-model-palette button svg { width: 14px; height: 14px; flex-basis: 14px; }
   .creator-dock .creator-rail button { min-height: 48px; font-size: 9px; }
   .creator-dock .creator-rail button svg { width: 18px; height: 18px; }
   .creator-dock-popover { max-height: 50dvh; overflow: auto; }

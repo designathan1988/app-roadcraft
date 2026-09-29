@@ -7,6 +7,12 @@ import { FINISHES, type Finish, type MaterialSpec } from '@world/buildings/mater
 /** Presentation commands are mapped to editor commands by buildingsWiring. */
 type CreatorTool = 'sketch' | 'shape' | 'facade' | 'roof';
 type ModelTool = 'select' | 'draw' | 'extrude' | 'offset' | 'paint' | 'openings';
+type ToolGroup = 'selection' | 'modeling' | 'painting';
+const GROUP_TOOLS: Record<ToolGroup, readonly ModelTool[]> = {
+  selection: ['select'],
+  modeling: ['draw', 'extrude', 'offset', 'openings'],
+  painting: ['paint'],
+};
 type DrawAction = 'new' | 'ground' | 'top' | 'cut';
 type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered';
 type FacadeScope = 'building' | 'volume' | 'face' | 'floor';
@@ -137,7 +143,13 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   const dockPopover = document.getElementById('creatorDockPopover')!;
   dock.prepend(rail);
   const modelPalette = el('div', 'creator-model-palette');
+  modelPalette.id = 'creatorModelPalette';
+  modelPalette.setAttribute('role', 'tabpanel');
   dock.prepend(modelPalette);
+  const groupTabs = el('div', 'creator-tool-tabs');
+  groupTabs.setAttribute('role', 'tablist');
+  groupTabs.setAttribute('aria-label', t('creator.tools'));
+  dock.prepend(groupTabs);
   const get = (id: string): HTMLElement => document.getElementById(id)!;
   const title = get('creatorTitle'), description = get('creatorDescription');
   const frameButton = get('creatorFrame');
@@ -190,6 +202,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   let dockKey = '';
   let dockSubmode: 'patterns' | 'openings' | 'materials' = 'patterns';
   let latest: CreatorState | null = null;
+  let activeGroup: ToolGroup = 'selection';
 
   const makeButton = (key: string, onClick: () => void, value?: string): HTMLButtonElement => {
     const button = el('button');
@@ -408,6 +421,34 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
     modelButtons.set(kind, button);
     modelPalette.append(button);
   }
+  const tabButtons = new Map<ToolGroup, HTMLButtonElement>();
+  const refreshToolTabs = (): void => {
+    groupTabs.setAttribute('aria-label', t('creator.tools'));
+    modelPalette.dataset['group'] = activeGroup;
+    modelPalette.setAttribute('aria-labelledby', tabButtons.get(activeGroup)!.id);
+    for (const [group, button] of tabButtons) {
+      const selected = group === activeGroup;
+      button.textContent = t(`creator.group.${group}`);
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+    for (const [kind, button] of modelButtons) button.hidden = !GROUP_TOOLS[activeGroup].includes(kind);
+  };
+  for (const group of ['selection', 'modeling', 'painting'] as const) {
+    const button = el('button');
+    button.type = 'button';
+    button.id = `creatorGroup-${group}`;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', modelPalette.id);
+    button.onclick = () => {
+      activeGroup = group;
+      actions.modelTool('select');
+      refreshToolTabs();
+    };
+    tabButtons.set(group, button);
+    groupTabs.append(button);
+  }
+  refreshToolTabs();
   get('creatorDraw').onclick = () => actions.draw('new');
   frameButton.onclick = actions.frame;
   get('creatorSaveBlueprint').onclick = () => {
@@ -538,6 +579,7 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
               kind === 'openings' ? 'M3 3h22v22H3zM8 8h12v12H8zM14 8v12' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
       }
     }
+    refreshToolTabs();
     root.dataset['creatorTool'] = next.tool;
     rail.querySelectorAll<HTMLButtonElement>('[data-creator-tool]').forEach((button) => {
       button.setAttribute('aria-pressed', String(button.dataset['creatorTool'] === next.tool));
