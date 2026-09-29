@@ -1,7 +1,6 @@
 import { AmbientLight, DirectionalLight, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 
-import type { Blueprint } from '@world/buildings/blueprints';
-import { instantiate } from '@editor/buildings';
+import { type Blueprint, instantiate } from '@world/buildings/blueprints';
 import { buildingBounds, buildingHeight } from '@world/buildings/geometry';
 import type { Building } from '@world/buildings/types';
 import { m } from '@world/units';

@@ -7,6 +7,7 @@ import {
   blueprintByKey,
   bodyOf,
   generateBlock,
+  instantiate,
 } from '@world/buildings/blueprints';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
 import { localFootprint } from '@world/buildings/footprints';
@@ -44,7 +45,6 @@ import {
   deleteBuilding,
   duplicateBuilding,
   editBuilding,
-  instantiate,
   normaliseAngle,
   opAddSetback,
   opAddWing,

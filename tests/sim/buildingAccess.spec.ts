@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
-import { blueprintByKey } from '@world/buildings/blueprints';
-import { instantiate } from '@editor/buildings';
+import { blueprintByKey, instantiate } from '@world/buildings/blueprints';
 import { SimWorld } from '@sim/world';
 import { step } from '@sim/pipeline';
 import { nextTowardGoal } from '@sim/peds/route';

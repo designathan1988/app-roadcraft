@@ -1,3 +1,5 @@
+import type { Vec2 } from '@core/vec2';
+import { footprintBox, localDirToWorld } from './geometry';
 import { m } from '../units';
 import {
   type BayComponent,
@@ -27,6 +29,25 @@ export interface Blueprint {
   readonly nameKey?: string;
   readonly name?: string;
   readonly body: BlueprintBody;
+}
+
+/**
+ * A building record for a blueprint, placed so the middle of its FRONT edge
+ * (the street side) is at `anchor`.
+ *
+ * Here rather than with the editing commands because it is only arithmetic on
+ * a record: the tool, the placement command and the gallery's photographs all
+ * want it, and the renderer may not reach into `editor/`.
+ */
+export function instantiate(body: BlueprintBody, anchor: Vec2, rotation: number, blueprint?: string): Omit<Building, 'id'> {
+  const draft = { ...(JSON.parse(JSON.stringify(body)) as BlueprintBody), x: 0, y: 0, rotation } as Omit<Building, 'id'>;
+  const f = footprintBox(draft as Building);
+  const local = { x: (f.x0 + f.x1) / 2, y: f.y0 };
+  const offset = localDirToWorld(draft as Building, local.x, local.y);
+  draft.x = anchor.x - offset.x;
+  draft.y = anchor.y - offset.y;
+  if (blueprint) draft.blueprint = blueprint;
+  return draft;
 }
 
 export const DEFAULT_GROUND_HEIGHT = m(3.6);

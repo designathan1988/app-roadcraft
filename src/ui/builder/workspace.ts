@@ -844,6 +844,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     if (lastState) refresh(lastState);
   };
 
+  // The game opens on the road, where nothing of the Builder's is shown: a
+  // chip left in the bar would sit there empty until the Builder was opened
+  // once and closed again.
+  for (const node of root.querySelectorAll<HTMLElement>('[data-bw-mode]')) {
+    node.hidden = node.dataset['bwMode'] !== mode;
+  }
+
   return {
     refresh,
     setMode(next) {

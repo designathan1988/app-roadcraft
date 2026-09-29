@@ -5,12 +5,11 @@ import { Network } from '@world/network';
 import type { NodeId } from '@world/ids';
 import { buildRoadElevation } from '@world/elevation';
 import { sampleTerrainHeight } from '@world/terrain';
-import { BLUEPRINTS } from '@world/buildings/blueprints';
+import { BLUEPRINTS, instantiate } from '@world/buildings/blueprints';
 import { SimWorld } from '@sim/world';
 import { rebindAgents, rebindPeds, rebindVehicles, step } from '@sim/pipeline';
 import { DT } from '@sim/params';
 import { commitDraft } from '@editor/commit';
-import { instantiate } from '@editor/buildings';
 
 /**
  * THE HEADLESS BENCHMARK (`node scripts/bench-sim.mjs`, BENCH=1).

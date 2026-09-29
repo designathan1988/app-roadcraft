@@ -8,6 +8,7 @@ import {
   type BlueprintBody,
   DEFAULT_PALETTE,
   defaultFacade,
+  instantiate,
   storeyUse,
   upperStoreyFrom,
 } from '@world/buildings/blueprints';
@@ -463,21 +464,6 @@ export const normaliseAngle = (a: number): number => {
   if (r <= -Math.PI) r += tau;
   return Math.abs(r) < 1e-12 ? 0 : r;
 };
-
-/**
- * A building record for a blueprint, placed so the middle of its FRONT edge
- * (the street side) is at `anchor`.
- */
-export function instantiate(body: BlueprintBody, anchor: Vec2, rotation: number, blueprint?: string): Omit<Building, 'id'> {
-  const draft = { ...(JSON.parse(JSON.stringify(body)) as BlueprintBody), x: 0, y: 0, rotation } as Omit<Building, 'id'>;
-  const f = footprintBox(draft as Building);
-  const local = { x: (f.x0 + f.x1) / 2, y: f.y0 };
-  const offset = localDirToWorld(draft as Building, local.x, local.y);
-  draft.x = anchor.x - offset.x;
-  draft.y = anchor.y - offset.y;
-  if (blueprint) draft.blueprint = blueprint;
-  return draft;
-}
 
 // =============================================================== commands
 
