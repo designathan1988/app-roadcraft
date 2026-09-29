@@ -911,5 +911,7 @@ export const EN: Dictionary = {
   'hint.builder.planShape': 'Add or remove a corner of the plan',
   'builder.family.floors': 'Floors of the selected mass: add, remove, split it in two, or stack an inset mass on top.',
   'builder.family.volumes': 'A wing grows against a wall, Stack puts a mass on what is under it, Cut takes one away, Move slides a block in its own plan.',
-  'builder.family.planShape': 'A free plan keeps editable corners: click an edge to add one, a corner to remove it.'
+  'builder.family.planShape': 'A free plan keeps editable corners: click an edge to add one, a corner to remove it.',
+  'builder.tool.stairRun': 'Stair (traced)',
+  'hint.builder.stairRun': 'Click the corners of the climb · Enter lays a flight that turns with the trace and lands on the floor above',
 };

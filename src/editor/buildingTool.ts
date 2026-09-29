@@ -952,6 +952,38 @@ export class BuildingTool {
     });
   }
 
+  /**
+   * The canvas paint tool as a BRUSH: whatever the pointer is over is painted,
+   * and a drag paints face after face without ever stopping to select one.
+   * One commit per face crossed, so undo steps back wall by wall.
+   */
+  private lastPaintKey: string | null = null;
+
+  paintStroke(screen: Vec2): boolean {
+    if (this.activeModelTool !== 'paint') return false;
+    const hit = this.pick(screen);
+    if (!hit) return false;
+    const building = this.host.context().doc.buildings.get(hit.building);
+    if (!building) return false;
+    const key = `${hit.building}:${hit.volume}:${String(hit.face)}:${hit.storey}:${hit.index}`;
+    if (key === this.lastPaintKey) return false;
+    this.lastPaintKey = key;
+    const bay = hit.face === 'top' ? null : { storey: hit.storey, side: hit.face, index: hit.index };
+    this.selection = { building: hit.building, volume: hit.volume, bay };
+    if (this.mode === 'place') this.setMode('edit');
+    // A roof face paints the roof; a wall face paints that wall (the whole
+    // side, so one drag down a facade is one decision, not one per bay).
+    this.materialScope = hit.face === 'top' ? 'roof' : 'face';
+    this.paint(this.paintBrush);
+    this.host.changed();
+    return true;
+  }
+
+  /** The stroke is over: the next press starts a new one. */
+  endPaintStroke(): void {
+    this.lastPaintKey = null;
+  }
+
   /** Sets the swatch carried by the canvas paint tool; the edit happens on a face click. */
   setPaintBrush(patch: Partial<MaterialSpec>): void {
     this.paintBrush = { ...this.paintBrush, ...patch };
@@ -1012,14 +1044,50 @@ export class BuildingTool {
       return;
     }
     const local = points.map((p) => worldToLocal(building, p));
+    // A stair laid along the path climbs the floor being edited, its rise
+    // spread over the segments in proportion to their length: the run turns
+    // where the trace turns and still lands on the floor above.
+    const selection = this.selection;
+    const volume = volumeById(building, selection?.volume ?? 0) ?? building.volumes[0];
+    const level = volume ? volume.base + (selection?.bay?.storey ?? 0) : 0;
+    const startZ = levelElevation(building, level);
+    const rise = Math.max(m(0.5), levelElevation(building, level + 1) - startZ);
+    const lengths: number[] = [];
+    let total = 0;
+    for (let i = 1; i < local.length; i++) {
+      const a = local[i - 1] as Vec2;
+      const b = local[i] as Vec2;
+      const run = Math.hypot(b.x - a.x, b.y - a.y);
+      lengths.push(run);
+      total += run;
+    }
+    let climbed = 0;
     const result = this.host.commit(() => editBuilding(this.host.context(), building.id, (draft) => {
       let added = 0;
       const [dw, dd, dh] = ELEMENT_DEFAULTS[kind];
       for (let i = 1; i < local.length; i++) {
         const a = local[i - 1] as Vec2;
         const b = local[i] as Vec2;
-        const run = Math.hypot(b.x - a.x, b.y - a.y);
+        const run = lengths[i - 1] as number;
         if (run < m(0.4)) continue;
+        const angle = Math.atan2(b.y - a.y, b.x - a.x);
+        if (kind === 'stair') {
+          const step = (rise * run) / Math.max(1e-6, total);
+          opAddElement(draft, {
+            kind,
+            x: (a.x + b.x) / 2,
+            y: (a.y + b.y) / 2,
+            facing: 0,
+            w: Math.max(dw, m(1.2)),
+            d: run,
+            z: startZ + climbed,
+            h: Math.max(m(0.2), step),
+            angle,
+          });
+          climbed += step;
+          added++;
+          continue;
+        }
         // A paving run is a band: its traced length along, its own width across.
         const across = kind === 'pavement' ? Math.max(dd, m(1.6)) : Math.max(dd, m(0.12));
         const along = kind === 'pavement' || kind === 'wall' || kind === 'slab' ? run : Math.max(dw, run);
@@ -1032,7 +1100,7 @@ export class BuildingTool {
           d: across,
           z: 0,
           h: Math.max(dh, m(0.12)),
-          angle: Math.atan2(b.y - a.y, b.x - a.x),
+          angle,
         });
         added++;
       }

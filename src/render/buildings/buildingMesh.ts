@@ -938,6 +938,12 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
         default: return [x1 - u1, y0, x1 - u0, y1];
       }
     };
+    if (el.kind === 'stair' && el.angle) {
+      // A stair laid along a traced path: its own frame is turned, so the run
+      // follows the line it was drawn on and turns with it.
+      emitTurnedStair(e, el, z0, zb, c);
+      return;
+    }
     if (el.kind === 'stair') {
       const n = stairSteps(el);
       const tread = el.d / n;
@@ -1285,6 +1291,62 @@ function emitTree(e: Emitter, el: BuildingElement, z0: number, bottom: number): 
       e.shell.face([low[i] as V3, low[j] as V3, high[j] as V3, high[i] as V3], e.N(Math.cos(a), Math.sin(a), 0.35), crown);
     }
     e.shell.face([high[0] as V3, high[1] as V3, high[2] as V3, high[3] as V3], e.N(0, 0, 1), crown);
+  }
+}
+
+/**
+ * A flight laid along a traced path: the steps live in the element's own
+ * turned frame, so a run that wraps a corner follows the line it was drawn on.
+ * The rise is the element's `h`, spread evenly over its steps.
+ */
+function emitTurnedStair(e: Emitter, el: BuildingElement, z0: number, zb: number, c: Paint): void {
+  const a = el.angle ?? 0;
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  // A point `u` along the run from the foot, `v` across it, at height z.
+  const P = (u: number, v: number, z: number): V3 =>
+    e.L(el.x + u * ca - v * sa, el.y + u * sa + v * ca, z);
+  const hw = el.w / 2;
+  const n = stairSteps(el);
+  const tread = el.d / n;
+  const riser = el.h / n;
+  const across: V3 = e.N(-sa, ca, 0);
+  const back: V3 = e.N(-ca, -sa, 0);
+  for (let k = 0; k < n; k++) {
+    const u0 = k * tread;
+    const u1 = (k + 1) * tread;
+    const top = z0 + (k + 1) * riser;
+    const base = k === 0 ? zb : z0 + k * riser - m(0.08);
+    // The riser, then the tread.
+    e.shell.face([P(u0, -hw, base), P(u0, hw, base), P(u0, hw, top), P(u0, -hw, top)], back, c);
+    e.shell.face([P(u0, -hw, top), P(u0, hw, top), P(u1, hw, top), P(u1, -hw, top)], e.N(0, 0, 1), c);
+    // The two cheeks, down to the flight's underside.
+    const under = Math.max(zb, z0 + el.h * (u0 / el.d) - m(0.25));
+    e.shell.face([P(u0, -hw, under), P(u1, -hw, under), P(u1, -hw, top), P(u0, -hw, top)], e.N(-across[0], -across[1], 0), c);
+    e.shell.face([P(u1, hw, under), P(u0, hw, under), P(u0, hw, top), P(u1, hw, top)], across, c);
+  }
+  emitRailLine(e, P, el, z0, hw);
+}
+
+/** Both handrails of a flight in an arbitrary frame. */
+function emitRailLine(
+  e: Emitter,
+  P: (u: number, v: number, z: number) => V3,
+  el: BuildingElement,
+  z0: number,
+  hw: number,
+): void {
+  if (el.h < m(0.5)) return;
+  const n = stairSteps(el);
+  const tread = el.d / n;
+  const riser = el.h / n;
+  const rail = m(0.05);
+  for (const v of [-hw + rail, hw - rail]) {
+    const r0 = z0 + riser + HANDRAIL;
+    const r1 = z0 + el.h + HANDRAIL;
+    e.shell.face([P(0, v - rail, r0), P(0, v + rail, r0), P(el.d, v + rail, r1), P(el.d, v - rail, r1)], e.N(0, 0, 1), RAIL);
+    const every = Math.max(1, Math.round(m(1.2) / tread));
+    for (let k = 0; k < n; k += every) postAt(e, P, k * tread + tread / 2, v, z0 + (k + 1) * riser, HANDRAIL);
   }
 }
 

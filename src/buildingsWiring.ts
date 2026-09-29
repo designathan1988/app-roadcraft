@@ -272,8 +272,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     }
     // Runs traced as a path: fence, wall and paving follow the line drawn,
     // one part per segment, end to end.
-    if (id === 'wallRun' || id === 'fenceRun' || id === 'pavementRun') {
-      const kind = id === 'wallRun' ? 'wall' : id === 'fenceRun' ? 'fence' : 'pavement';
+    if (id === 'wallRun' || id === 'fenceRun' || id === 'pavementRun' || id === 'stairRun') {
+      const kind = id === 'wallRun' ? 'wall' : id === 'fenceRun' ? 'fence' : id === 'stairRun' ? 'stair' : 'pavement';
       tool.startElementRun(kind);
       toolId = id;
       return;

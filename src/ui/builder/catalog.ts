@@ -46,7 +46,7 @@ export const BUILDER_GALLERIES: Readonly<Record<string, readonly string[]>> = {
   shapes: ['rect', 'shapeL', 'shapeU', 'circle', 'hexagon', 'octagon', 'chamfered'],
   openWindows: ['window', 'sashWindow', 'wideWindow', 'ribbon', 'bayWindow', 'frenchWindow'],
   openDoors: ['door', 'doubleDoor', 'garageDoor', 'loadingDoor'],
-  runs: ['wallRun', 'fenceRun', 'pavementRun', 'railing'],
+  runs: ['wallRun', 'fenceRun', 'pavementRun', 'railing', 'stairRun'],
   greenery: ['tree', 'flowers', 'rocks'],
   furniture: ['bench', 'planter', 'parking', 'ac', 'awning'],
   roofGear: ['solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire'],

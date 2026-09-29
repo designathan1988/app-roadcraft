@@ -897,5 +897,7 @@ export const PT_BR: Dictionary = {
   'hint.builder.planShape': 'Insira ou remova um canto da planta',
   'builder.family.floors': 'Pavimentos do volume selecionado: some, tire, divida em dois ou empilhe um volume recuado.',
   'builder.family.volumes': 'A ala cresce contra uma parede, Empilhar apoia um volume no que está embaixo, Recortar tira um, Mover desliza o bloco na própria planta.',
-  'builder.family.planShape': 'A planta livre mantém cantos editáveis: clique numa aresta para inserir, num canto para remover.'
+  'builder.family.planShape': 'A planta livre mantém cantos editáveis: clique numa aresta para inserir, num canto para remover.',
+  'builder.tool.stairRun': 'Escada (traçada)',
+  'hint.builder.stairRun': 'Clique nos cantos da subida · Enter assenta um lance que vira com o traçado e chega ao pavimento de cima',
 };
