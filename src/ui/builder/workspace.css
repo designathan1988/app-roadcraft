@@ -110,7 +110,17 @@
 .bw-slot .top-menu { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
 .bw-slot .top-menu .button-group { flex-direction: column; align-items: stretch; gap: 4px; }
 .bw-slot .top-menu .menu-label { display: inline; }
-.bw-slot .top-menu .icon-button { width: 100%; height: 32px; justify-content: flex-start; gap: 8px; padding: 0 9px; }
+/* The game's icon buttons are grids (icon over label) for the bar; a row of
+   the menu wants them side by side, or the label falls out of the button. */
+.bw-slot .top-menu .icon-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 32px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 9px;
+}
 .bw-slot .top-menu .select-chip { height: 32px; width: 100%; }
 .bw-slot .select-chip select { flex: 1; max-width: none; text-align-last: right; }
 
