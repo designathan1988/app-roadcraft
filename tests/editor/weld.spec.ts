@@ -69,7 +69,7 @@ describe('welding two buildings', () => {
     const second = placeOverlapping(ctx, first, { x: 12, y: 60 });
     const draft = cloneBuilding(second);
     const absorbed = weldInto(ctx, draft, []);
-    const bounds = (b) => footprintRects(b, 0.02).map((r) => [Math.min(...r.map(p => p.x)).toFixed(1), Math.min(...r.map(p => p.y)).toFixed(1), Math.max(...r.map(p => p.x)).toFixed(1), Math.max(...r.map(p => p.y)).toFixed(1)]);
+    const bounds = (b: Building) => footprintRects(b, 0.02).map((r) => [Math.min(...r.map(p => p.x)).toFixed(1), Math.min(...r.map(p => p.y)).toFixed(1), Math.max(...r.map(p => p.x)).toFixed(1), Math.max(...r.map(p => p.y)).toFixed(1)]);
     expect(absorbed, JSON.stringify({ first: bounds(first), second: bounds(second), pos: [second.x, second.y, second.rotation] })).toEqual([first.id]);
     expect(draft.volumes.length).toBe(1);
     expect(draft.volumes[0]!.w).toBeGreaterThan(22.5);
@@ -89,7 +89,7 @@ describe('welding two buildings', () => {
     const v = first.volumes[0]!;
     const draft = cloneBuilding(first);
     // A wing exactly against the first mass, the same storeys: one block.
-    const wing = cloneBuilding(v);
+    const wing = { ...(JSON.parse(JSON.stringify(v)) as typeof v) };
     wing.id = draft.nextVolumeId++;
     wing.x = v.x + v.w;
     draft.volumes.push(wing);
