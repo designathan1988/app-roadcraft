@@ -314,7 +314,10 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   const quick = el('div', 'bw-quick');
   const hint = el('div', 'bw-hint');
-  foot.appendChild(hint);
+  // The hint line is about the pointer, so it wears one.
+  const mouse = el('span', 'bw-mouse');
+  mouse.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 6v4"/></svg>';
+  foot.append(mouse, hint);
 
   const inspector = el('aside', 'bw-inspector');
   const inspectorHead = el('div', 'bw-inspector-head');

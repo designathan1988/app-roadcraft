@@ -1363,9 +1363,12 @@ function updateLaneChoices(): void {
   for (const b of roadLanesEl.querySelectorAll<HTMLButtonElement>('.road-lane')) {
     const id = b.dataset['laneChoice'];
     const choice = LANE_CHOICES.find((c) => c.id === id);
+    // With no count chosen, the class's own count is the one in hand: the row
+    // says what the next road will actually be laid as.
     const on = choice !== undefined && (
-      choice.lanes === null ? roadLanePreset === null && roadTypeIndex === MEDIAN_CLASS
-        : roadLanePreset === choice.lanes && roadTypeIndex !== MEDIAN_CLASS
+      choice.lanes === null
+        ? roadLanePreset === null && roadTypeIndex === MEDIAN_CLASS
+        : roadTypeIndex !== MEDIAN_CLASS && choice.lanes === (roadLanePreset ?? roadType(roadTypeIndex).lanes)
     );
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
