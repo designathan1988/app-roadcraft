@@ -116,14 +116,16 @@
    the same width in every mode and never grows a covering rectangle. */
 .bw-dock {
   position: absolute;
-  left: 50%;
+  /* Centred on the map that is left once the minimap keeps its corner: a band
+     centred on the window would sit under it on every screen below 1600 px. */
+  left: calc(50% - 110px);
   bottom: 52px;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   width: max-content;
   min-width: min(660px, calc(100vw - 20px));
-  max-width: min(1120px, calc(100vw - 20px));
+  max-width: min(1120px, calc(100vw - 260px));
   pointer-events: auto;
   background: color-mix(in srgb, var(--bw-panel) 95%, transparent);
   border: 1px solid var(--bw-border);
@@ -134,8 +136,13 @@
   overflow: hidden;
 }
 /* The status bar is the only thing left under the container, and only on the
-   road: with it out of the way the Builder's band sits on the screen edge. */
-.builder-mode .bw-dock { bottom: 12px; }
+   road: with it out of the way the Builder's band sits on the screen edge,
+   centred, because the minimap is gone with the rest of the road HUD. */
+.builder-mode .bw-dock {
+  left: 50%;
+  bottom: 12px;
+  max-width: min(1120px, calc(100vw - 20px));
+}
 
 .bw-tier {
   display: flex;
@@ -475,11 +482,6 @@
 .builder-mode .hint,
 .builder-mode .mobile-hint { display: none !important; }
 
-@media (max-width: 1250px) {
-  /* The minimap keeps its corner: the band gives way instead of covering it. */
-  .bw-dock { max-width: calc(100vw - 260px); }
-}
-
 @media (max-width: 780px) {
   .bw-top { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px; }
   .bw-chip span, .bw-button span { display: none; }
@@ -495,6 +497,9 @@
     max-width: none;
   }
   .bw-tier { flex-wrap: wrap; }
+  /* A phone has no room for the whole palette: the tray scrolls instead of
+     covering the map it is editing. */
+  .bw-tier2 { max-height: 38dvh; overflow-y: auto; scrollbar-width: thin; }
   .bw-tier1 { padding-right: 40px; }
   .bw-tile { width: 72px; }
   .bw-tile-art, .bw-tile-art img { width: 44px; height: 44px; }

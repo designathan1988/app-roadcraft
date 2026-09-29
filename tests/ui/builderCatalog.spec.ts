@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUILDER_CATALOG } from '@ui/builder/catalog';
+import { BUILDER_CATALOG, BUILDER_GALLERIES } from '@ui/builder/catalog';
+import { builderIcon } from '@ui/builder/icons';
+import { ELEMENT_KINDS } from '@world/buildings/types';
 import { EN } from '../../src/ui/i18n/en';
 import { PT_BR } from '../../src/ui/i18n/pt-BR';
 
@@ -37,5 +39,19 @@ describe('builder catalogue', () => {
       }
     }
     expect(repeated).toEqual([]);
+  });
+
+  /**
+   * A gallery of identical blank squares names the options without picturing
+   * them: every id a button can carry has a glyph of its own.
+   */
+  it('pictures every button the catalogue or a gallery can show', () => {
+    const fallback = builderIcon('__no-such-icon__');
+    const ids = new Set<string>();
+    for (const category of BUILDER_CATALOG) for (const tool of category.tools) ids.add(tool.id);
+    for (const family of Object.values(BUILDER_GALLERIES)) for (const id of family) ids.add(id);
+    for (const kind of ELEMENT_KINDS) ids.add(kind);
+    const blank = [...ids].filter((id) => builderIcon(id) === fallback);
+    expect(blank).toEqual([]);
   });
 });

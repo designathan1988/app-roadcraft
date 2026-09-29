@@ -271,6 +271,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     else dropBar.appendChild(dropBodyFor(id));
     const r = anchor.getBoundingClientRect();
     drop.style.left = `${Math.max(10, Math.min(r.left, window.innerWidth - 340))}px`;
+    // Hung from the chip that opened it: left to itself an absolute box sits at
+    // the top of the overlay, over the bar it belongs to.
+    drop.style.top = `${Math.round(r.bottom + 6)}px`;
     drop.hidden = false;
   };
   const closeMenu = (): void => {
