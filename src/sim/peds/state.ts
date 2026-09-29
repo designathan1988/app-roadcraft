@@ -220,6 +220,20 @@ export interface Ped {
    * step round, from one standing still.
    */
   turnV: number;
+  /**
+   * The direction a walker waiting at a kerb faces towards, decided ONCE when
+   * it arrives and held until it leaves. Nobody at a kerb turns.
+   *
+   * The direction it wants is the tangent of the crossing it is waiting for,
+   * and that tangent is read off the graph through the node the walker entered
+   * its edge by. That entry can flip while the walker stands there - the
+   * waiting area and the edge transfers move people about - and a flip turns
+   * the tangent through half a circle. Recomputing it every tick therefore had
+   * a person standing at a red light spinning on the spot: 7.3 radians of the
+   * 10.7 the gait audit measures as rotation on motionless legs, all of it
+   * turnLeft and turnRight clips at a kerb, half a turn at a time.
+   */
+  lockedFacing: number | null;
   /** Seconds spent in `WaitAtKerb`, driving gap-acceptance impatience. */
   waited: number;
   /**
@@ -287,6 +301,7 @@ export function createPed(spec: PedSpec): Ped {
     pause: 0,
     activity: null,
     turnV: 0,
+    lockedFacing: null,
     prev: { edge: spec.edge, s: spec.s, lat: spec.lat, x: 0, y: 0, heading: 0 },
   };
 }

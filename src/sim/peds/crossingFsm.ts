@@ -211,6 +211,11 @@ export function stepPedestrians(w: SimWorld): void {
     // stuck: counting it released queuers straight through the person ahead.
     const queued = (NEAR.blockerQueue && NEAR.blockerGap < PED.jamGap + desired * PED.headway) ||
       atClosedKerb(w, p);
+    // The kerb's facing lasts exactly as long as the wait does. Cleared here,
+    // once, rather than in each of the half dozen places the state can change:
+    // a walker that comes back to a kerb later looks again, and one that walks
+    // off is free to face the way it is going.
+    if (p.state !== 'WaitAtKerb') p.lockedFacing = null;
     if (p.state === 'WaitAtKerb') {
       // Accumulated in the kerb case itself, only while permitted and boxed in.
     } else if (wantsToMove && p.v < 0.05 && !queued) p.stuck += DT;
@@ -1595,11 +1600,27 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
     face = Math.atan2(ty, tx) + lean;
     rate = TURN_RATE;
   } else if (p.state === 'WaitAtKerb') {
-    const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
-    if (next) {
-      const t = w.sidewalks.orientedPath(next, w.sidewalks.other(edge, p.entry)).sampleAt(0).t;
-      face = Math.atan2(t.y, t.x);
+    // THE DIRECTION IS DECIDED ONCE, WHEN THE WAITING BEGINS.
+    //
+    // It used to be read off the graph every tick, through the node the walker
+    // entered this edge by - and that entry can flip while somebody stands at
+    // a kerb, because the waiting area and the edge transfers move people
+    // about. A flip turns the tangent through half a circle, so a person
+    // standing at a red light span on the spot, half a turn at a time: 7.3 of
+    // the 10.7 radians the gait audit counts as rotation on motionless legs,
+    // every one of them a turnLeft or turnRight clip at a kerb.
+    //
+    // Nobody at a kerb turns. The direction is taken when they arrive and held
+    // until they leave, and it is cleared the moment the state changes, so a
+    // walker who comes back to this kerb later looks again.
+    if (p.lockedFacing === null) {
+      const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+      if (next) {
+        const t = w.sidewalks.orientedPath(next, w.sidewalks.other(edge, p.entry)).sampleAt(0).t;
+        p.lockedFacing = Math.atan2(t.y, t.x);
+      }
     }
+    if (p.lockedFacing !== null) face = p.lockedFacing;
   } else if (wants) {
     // About to walk off from standing: turn to the way first. Without this a
     // body facing its companions set off walking backwards, the feet playing
