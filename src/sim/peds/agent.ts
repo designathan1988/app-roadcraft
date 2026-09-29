@@ -417,6 +417,16 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
    */
   let bestFA = 0, bestFL = 0;
   /**
+   * The largest side-step that can actually be taken, on the side the walker
+   * wants to go. The fan's side-steps carry the whole lateral rate and no
+   * pace, so a walker whose way forward is refused but whose line lies to one
+   * side has this left — and this is what a person does with it: shoulders
+   * round, they step across. Without it the escape below has nothing to fall
+   * back on when the gate refuses every forward heading, and the walker stands
+   * there — measured, while all four side-steps were admissible.
+   */
+  let bestSA = 0, bestSL = 0;
+  /**
    * Whether the body could actually take this velocity from where it stands:
    * the step it maps to, inside the walker's own acceleration, held on the
    * footway, against the clearance gate.
@@ -496,14 +506,18 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     // Only the candidates that would win are put to the gate, so the walker
     // pays for this once or twice a tick rather than for every heading it
     // thinks of.
-    if (cost < bestCost && takeable(ca, cl)) { bestCost = cost; bestA = ca; bestL = cl; }
+    const ok = takeable(ca, cl);
+    if (!ok) return;
+    if (cost < bestCost) { bestCost = cost; bestA = ca; bestL = cl; }
     // The best heading that carries the walker FORWARD and can actually be
     // taken. Fastest first, and cost only to break a tie: the cheapest forward
     // heading is by construction the widest one, and the widest one carries a
     // twelfth of the pace - measured, a walker sliding out of a jam at 0.13
     // units a second, five centimetres a second, which is indistinguishable
     // from standing there and turning.
-    if (ca > 1e-9 && takeable(ca, cl) && ca > bestFA) { bestFA = ca; bestFL = cl; }
+    if (ca > 1e-9 && ca > bestFA) { bestFA = ca; bestFL = cl; }
+    // And the widest step ACROSS that can be taken, towards the side wanted.
+    if (Math.abs(cl) > Math.abs(bestSL) && (prefL === 0 || cl * prefL > 0)) { bestSA = ca; bestSL = cl; }
   };
   consider(prefA, prefL);
   consider(0, 0);
@@ -538,9 +552,16 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   // Held up and choosing to stand, with nowhere the choice can go that is not
   // backwards: shoulder past whatever is in the way at a real pace, leaning
   // off the line. Forward only, and it is why nothing ever has to step back.
+  // When the gate refuses every forward heading there is still the step
+  // across, and it is taken rather than standing there: a person who cannot
+  // walk on does not stop, they go round, and the line they are on is round
+  // there.
   if (escalated && want > m(0.1) && bestA < m(0.05) && bestFA > 1e-9) {
     bestA = Math.min(bestFA, want);
     bestL = bestFL;
+  } else if (escalated && want > m(0.1) && bestA < m(0.05) && Math.abs(bestSL) > 1e-9) {
+    bestA = bestSA;
+    bestL = bestSL;
   }
 
   // ---- 3. move, within a walker's acceleration, the clearance as the last guard
@@ -561,6 +582,20 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     if (admissible(p, edge, s1, lat1, space)) { p.s = s1; p.lat = lat1; }
     else if (a > 1e-9 && admissible(p, edge, s1, lat0, space)) p.s = s1;
     else if (Math.abs(l) > 1e-9 && admissible(p, edge, s0, lat1, space)) p.lat = lat1;
+    // The step it chose was refused and there is still a step ACROSS to take:
+    // a walker's way out of the edge of a hydrant's clearance is sideways, and
+    // a person with a way round does not stand. This is the fallback that was
+    // missing: the escape above hands back a heading with the full pace on it,
+    // the gate refuses it, and the walker stood there until the release let it
+    // brush past — measured, all four side-steps admissible and nobody taking
+    // one.
+    else if (Math.abs(bestSL) > Math.abs(l) && Math.abs(bestSL) > 1e-9) {
+      const side = Math.max(-LAT_STEP, Math.min(LAT_STEP,
+        Math.max(p.latV - LAT_ACCEL * DT, Math.min(p.latV + LAT_ACCEL * DT, bestSL))));
+      edge.corridor.bounds(p.s, rev, WALLS);
+      const sideLat = Math.max(WALLS.lo, Math.min(WALLS.hi, p.lat + side * DT));
+      if (admissible(p, edge, s0, sideLat, space)) p.lat = sideLat;
+    }
     else if (a <= 1e-9 && want > 1e-9) {
       // Boxed in sideways with the choice to stand: walk on the way it wanted
       // to, past whatever holds the line, and cross after it.
@@ -570,6 +605,28 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   }
   p.v = (p.s - s0) / DT;
   p.latV = (p.lat - lat0) / DT;
+}
+
+/**
+ * Whether this walker stands inside the radius a piece of street furniture is
+ * given in the fan — the radius that charges forty times the price of standing
+ * still for any step that closes on it.
+ *
+ * Read by the stuck counter, so that the release which lets a walker brush
+ * past (`admissible`) lasts until it is actually clear. It used to run out on
+ * a clock: the radius closed around the walker mid-squeeze, it stopped, the
+ * counter grew again, the release opened, it went on — measured, ten seconds
+ * of stutter where walking past would do, which the audit reads as a walker
+ * standing still on the open footway.
+ */
+export function insideFurniture(p: Ped, x: number, y: number, space: PedestrianClearance): boolean {
+  let inside = false;
+  space.around(x, y, m(2), (other) => {
+    if (inside || other.id === p.id || other.id > FURNITURE_IDS) return;
+    const room = other.halfLength === undefined ? other.radius : 0;
+    if (space.distanceTo(other, x, y) <= (PERSON + room) * furnitureSqueeze(p) + FURNITURE_GAP) inside = true;
+  });
+  return inside;
 }
 
 /** First contact of a moving point with an expanded oriented obstacle box. */

@@ -1,7 +1,7 @@
 import { DIV_EPS, clamp, lerp } from '@core/scalar';
 import { dist } from '@core/vec2';
 import { DT, PED, PED_AGENT } from '../params';
-import { PLAN_CAP, plannedLine, stepAgent } from './agent';
+import { PLAN_CAP, insideFurniture, plannedLine, stepAgent } from './agent';
 import { type WaitSlot, claimSlot, heldSlot, releaseSlot, waitArea } from './waitArea';
 import { m } from '@world/units';
 import type { SimWorld } from '../world';
@@ -218,7 +218,16 @@ export function stepPedestrians(w: SimWorld): void {
     if (p.state === 'WaitAtKerb') {
       // Accumulated in the kerb case itself, only while permitted and boxed in.
     } else if (wantsToMove && p.v < 0.05 && !queued) p.stuck += DT;
-    else if (p.stuck >= STUCK_RELEASE) p.stuck = Math.max(0, p.stuck - DT * p.v / 2.5 * 3);
+    // The release lasts until the walker has actually got clear: while it is
+    // still inside the radius that charges it for closing on a piece of
+    // furniture, the release it earned must not run out, or the radius closes
+    // around it again and it stops, and starts, and stops all the way past.
+    else if (p.stuck >= STUCK_RELEASE) {
+      const at = settled ? space.point(w, settled, p.entry, p.s, p.lat) : null;
+      if (!at || !insideFurniture(p, at.x, at.y, space)) {
+        p.stuck = Math.max(0, p.stuck - DT * p.v / 2.5 * 3);
+      }
+    }
     else p.stuck = Math.max(0, p.stuck - 2 * DT);
     space.update(w, p);
   }
@@ -1468,6 +1477,8 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   // its kerb (`kerbTurn`). Read up here because the firewall below needs it.
   const kerbFace = kerbTurn(w, p, edge);
   const turning = kerbFace !== null && p.v > FACE_MIN_SPEED;
+  // Stepping across, at a pace that is plainly a step aside and not a drift.
+  const stepping = Math.abs(p.latV) > PED_BEHAVIOUR.lateralRate * 0.4;
   // Changing edge can move the path position sideways: somebody waiting
   // beside a zebra's mouth steps onto its centreline, a corner starts from a
   // different offset. That gap is real and has to be WALKED, so it becomes an
@@ -1575,7 +1586,14 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
     // crossing the step is measured against the way it is GOING instead,
     // which is what this firewall is for: nobody is dragged back the way they
     // walk, whatever the reason.
-    const against = turning
+    //
+    // The same holds for a walker stepping ACROSS to get round something: its
+    // own step aside is deliberate, and it is angled away from the way it is
+    // going by definition. Measured with the sideways escape in the agent and
+    // this exemption absent: the walker's only way out was refused by its own
+    // chest, so it stood at the edge of a hydrant's clearance for the rest of
+    // the scene.
+    const against = turning || stepping
       ? mx * tx + my * ty
       : mx * Math.cos(p.heading) + my * Math.sin(p.heading);
     if (against < 0) {
