@@ -3,7 +3,7 @@ import { edgeFrame, localFootprint, offsetRing, supportedBy, overlapArea, roofDe
 import { setVolumePlan } from './buildingPlans';
 
 import { clamp } from '@core/scalar';
-import { METERS_PER_UNIT } from '@world/units';
+import { METERS_PER_UNIT, m } from '@world/units';
 import {
   type BlueprintBody,
   DEFAULT_PALETTE,
@@ -658,6 +658,53 @@ export function groupInto(ctx: BuildingContext, targetId: BuildingId, sourceId: 
 }
 
 // =============================================================== massing
+
+/**
+ * Fuses a free part placed beside an identical one: two flights of stairs
+ * side by side become one wider flight, two runs of fence one longer fence.
+ * Parts only fuse when they agree in everything but their length along the
+ * row - the same kind, facing, depth, base height and rise.
+ */
+export function opFuseElement(b: Building, id: number): boolean {
+  const e = b.elements?.find((x) => x.id === id);
+  if (!e || e.angle) return false;
+  const alongY = e.facing === 1 || e.facing === 3;
+  for (const other of b.elements ?? []) {
+    if (other.id === e.id || other.kind !== e.kind || other.angle) continue;
+    if (other.facing !== e.facing) continue;
+    if (Math.abs(other.z - e.z) > 1e-6 || Math.abs(other.h - e.h) > 1e-6) continue;
+    if (alongY) {
+      // Their runs are along x: width along y, length along x.
+      if (Math.abs(e.x - other.x) > 1e-6 || Math.abs(e.d - other.d) > 1e-6) continue;
+      const gap = Math.min(
+        Math.abs(other.y + other.w / 2 - (e.y - e.w / 2)),
+        Math.abs(e.y + e.w / 2 - (other.y - other.w / 2)),
+      );
+      if (gap > FUSE_GAP) continue;
+      const lo = Math.min(e.y - e.w / 2, other.y - other.w / 2);
+      const hi = Math.max(e.y + e.w / 2, other.y + other.w / 2);
+      e.w = hi - lo;
+      e.y = (lo + hi) / 2;
+    } else {
+      if (Math.abs(e.y - other.y) > 1e-6 || Math.abs(e.d - other.d) > 1e-6) continue;
+      const gap = Math.min(
+        Math.abs(other.x + other.w / 2 - (e.x - e.w / 2)),
+        Math.abs(e.x + e.w / 2 - (other.x - other.w / 2)),
+      );
+      if (gap > FUSE_GAP) continue;
+      const lo = Math.min(e.x - e.w / 2, other.x - other.w / 2);
+      const hi = Math.max(e.x + e.w / 2, other.x + other.w / 2);
+      e.w = hi - lo;
+      e.x = (lo + hi) / 2;
+    }
+    b.elements = (b.elements ?? []).filter((x) => x.id !== other.id);
+    return true;
+  }
+  return false;
+}
+
+/** How far apart two parts may be and still be welded into one run. */
+const FUSE_GAP = m(0.6);
 
 /** Moves one volume of a building in its own plan: the block, not the building. */
 export function opMoveVolume(b: Building, volumeId: number, dx: number, dy: number, snap = true): boolean {

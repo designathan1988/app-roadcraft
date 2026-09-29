@@ -69,7 +69,7 @@ import {
   replaceBuilding,
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
-import { groupInto, opMoveVolume, weldInto } from './buildings';
+import { groupInto, opFuseElement, opMoveVolume, weldInto } from './buildings';
 import { type PlanShape, type UpperMassPlacement, shapeBody, shapePoints, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
 import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
 import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
@@ -1110,9 +1110,15 @@ export class BuildingTool {
     }
     const draft = preview.building;
     const added = draft.elements?.[draft.elements.length - 1];
+    // A part placed against an identical one is a continuation of it: two
+    // flights side by side are one wide flight, not two with a gap.
+    if (added) opFuseElement(draft, added.id);
     const result = this.host.commit(() => replaceBuilding(this.host.context(), draft));
     this.setPreview(null);
-    if (result.ok && added && this.selection) this.selection = { ...this.selection, bay: null, element: added.id };
+    if (result.ok && added && this.selection) {
+      const still = draft.elements?.find((e) => e.id === added.id);
+      this.selection = { ...this.selection, bay: null, element: still ? added.id : null };
+    }
     this.report(result);
   }
 
