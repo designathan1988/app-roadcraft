@@ -2,6 +2,7 @@ import { BLUEPRINTS, type Blueprint } from '@world/buildings/blueprints';
 import { FINISHES, type Finish, STYLES } from '@world/buildings/materials';
 import {
   BUILDER_CATALOG,
+  BUILDER_GALLERIES,
   FACADE_SCOPES,
   type BuilderCategoryId,
   type BuilderField,
@@ -426,6 +427,34 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     if (lastState) markFinishes(wrap, lastState);
   }
 
+  /**
+   * A family of tools behind one button: the tray keeps the families, and the
+   * variants open here, on the spot.
+   */
+  function openFamily(anchor: HTMLElement, family: string): void {
+    const members = BUILDER_GALLERIES[family];
+    if (!members) return;
+    const wrap = popBody();
+    const grid = el('div', 'bw-pop-grid');
+    for (const id of members) {
+      const b = el('button', 'bw-pop-item bw-family-item');
+      b.type = 'button';
+      b.dataset['familyTool'] = id;
+      const on = lastState?.tool === id || lastState?.armed === id;
+      b.classList.toggle('active', on);
+      b.innerHTML = `${builderIconSvg(id, 16)}<span></span>`;
+      (b.querySelector('span') as HTMLElement).textContent = t(`builder.tool.${id}`);
+      b.title = t(`builder.tool.${id}`);
+      b.onclick = () => {
+        actions.chooseTool(id);
+        closePopover();
+      };
+      grid.appendChild(b);
+    }
+    wrap.append(grid, note(`builder.family.${family}`));
+    openPopover(`family-${family}`, anchor, wrap);
+  }
+
   /** The "More" gallery: the rest of the free parts a building can carry. */
   function openMoreComponents(anchor: HTMLElement): void {
     const wrap = popBody();
@@ -686,7 +715,8 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.title = label;
       b.onclick = () => {
         if (tool.kind === 'menu') {
-          if (tool.id === 'models') openModels(b);
+          if (BUILDER_GALLERIES[tool.id]) openFamily(b, tool.id);
+          else if (tool.id === 'models') openModels(b);
           else if (tool.id === 'material' || tool.id === 'colour') openFinishes(b);
           else if (tool.id === 'patterns') openPatterns(b);
           else if (tool.id === 'roofShape') openRoofShape(b);

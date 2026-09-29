@@ -33,6 +33,23 @@ export interface BuilderToolSpec {
   readonly danger?: boolean;
 }
 
+
+/**
+ * A family of tools behind one button: the tray shows the family, and clicking
+ * it opens the variants. Twenty buttons for twenty window and door types is
+ * not a toolbar, it is a wall.
+ */
+export const BUILDER_GALLERIES: Readonly<Record<string, readonly string[]>> = {
+  shapes: ['rect', 'shapeL', 'shapeU', 'circle', 'hexagon', 'octagon', 'chamfered'],
+  openWindows: ['window', 'sashWindow', 'wideWindow', 'ribbon', 'bayWindow', 'frenchWindow'],
+  openDoors: ['door', 'doubleDoor', 'garageDoor', 'loadingDoor'],
+  runs: ['wallRun', 'fenceRun', 'pavementRun', 'railing'],
+  greenery: ['tree', 'flowers', 'rocks'],
+  furniture: ['bench', 'planter', 'parking', 'ac', 'awning'],
+  roofGear: ['solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire'],
+  roofs: ['roofFlat', 'roofTerrace', 'roofGable', 'roofHip', 'roofShed', 'roofSawtooth'],
+};
+
 export interface BuilderCategorySpec {
   readonly id: BuilderCategoryId;
   readonly tools: readonly BuilderToolSpec[];
@@ -47,13 +64,7 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
   {
     id: 'draw',
     tools: [
-      mode('rect'),
-      mode('shapeL'),
-      mode('shapeU'),
-      mode('circle'),
-      mode('hexagon'),
-      mode('octagon'),
-      mode('chamfered'),
+      menu('shapes'),
       mode('sketch'),
       menu('models'),
     ],
@@ -86,20 +97,13 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
   {
     id: 'openings',
     tools: [
-      mode('window'),
-      mode('sashWindow'),
-      mode('wideWindow'),
-      mode('frenchWindow'),
-      mode('bayWindow'),
-      mode('ribbon'),
+      menu('openWindows'),
+      menu('openDoors'),
       mode('balcony'),
-      mode('door'),
-      mode('doubleDoor'),
-      mode('garageDoor'),
       mode('shopfront'),
-      mode('loadingDoor'),
       mode('pillarBay'),
       mode('wallBay'),
+      mode('freeOpening'),
     ],
   },
   {
@@ -111,41 +115,22 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
       mode('canopy'),
       mode('wall'),
       mode('slab'),
-      mode('wallRun'),
-      mode('fenceRun'),
-      mode('pavementRun'),
-      mode('railing'),
+      menu('runs'),
     ],
   },
   {
     id: 'roof',
     tools: [
-      action('roofFlat'),
-      action('roofTerrace'),
-      action('roofGable'),
-      action('roofHip'),
-      action('roofShed'),
-      action('roofSawtooth'),
+      menu('roofs'),
       menu('roofShape'),
     ],
   },
   {
     id: 'components',
     tools: [
-      mode('tree'),
-      mode('bench'),
-      mode('planter'),
-      mode('flowers'),
-      mode('rocks'),
-      mode('parking'),
-      mode('awning'),
-      mode('ac'),
-      mode('solar'),
-      mode('skylight'),
-      mode('vent'),
-      mode('chimney'),
-      mode('waterTank'),
-      mode('spire'),
+      menu('greenery'),
+      menu('furniture'),
+      menu('roofGear'),
       menu('moreComponents'),
     ],
   },
