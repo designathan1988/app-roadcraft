@@ -92,7 +92,11 @@ const IMPATIENCE_MAX = 2;
 const LAT_STEP = PED_BEHAVIOUR.lateralRate;
 /** Seconds held up before a walker escalates: no stranger margin, headings to ±110°. */
 const ESCALATE_AFTER = 1.2;
-const WIDE_ANGLES = [1.45, -1.45, 1.7, -1.7, 1.92, -1.92];
+// Never past a right angle: a heading beyond 90 degrees from the way is a
+// step BACKWARDS, and the walker does not take one. The old list ran to 1.92
+// rad (110 degrees), which is how a held-up walker ended up filming itself
+// walking backwards.
+const WIDE_ANGLES = [1.45, -1.45];
 /** Speed below which stepping aside on the spot is among the choices, and its pace. */
 const STEP_BACK_BELOW = m(0.4);
 const STEP_BACK = m(0.35);
@@ -194,6 +198,9 @@ export function plannedLine(_w: SimWorld, p: Ped, edge: SidewalkEdge, wanted: nu
   return line;
 }
 
+/** How far a held-up walker may brush into the margin round furniture, world units. */
+const BRUSH = m(0.06);
+
 /** Closest two people's centres may be brought, and the room kept from furniture and vehicles. */
 const CONTACT = m(0.45);
 const HARD = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
@@ -219,13 +226,26 @@ function admissible(p: Ped, edge: SidewalkEdge, s: number, lat: number,
     const now = space.distanceTo(other, cx, cy);
     if (other.id > 0) {
       // Held up past the release, people may brush shoulder to shoulder -
-      // never through one another - as the clearance has always allowed.
-      const contact = p.stuck >= STUCK_RELEASE ? PERSON_RELEASED_SPACING : CONTACT;
-      if (next < contact && next < now - 1e-6) ok = false;
+      // never through one another - as the clearance has always allowed. Held
+      // up longer still, they may shoulder past: a knot that has stopped
+      // moving does not untie itself by everybody waiting politely, and the
+      // alternative to brushing is standing in it for a minute, which is what
+      // this whole file is trying not to do. The room never goes below the two
+      // bodies' own radii, so no step here can put one inside another.
+      const stuck = p.stuck >= STUCK_RELEASE;
+      const contact = stuck ? PERSON_RELEASED_SPACING : CONTACT;
+      const reach = stuck ? contact - BRUSH : contact;
+      if (next < reach && next < now - 1e-6) ok = false;
       return;
     }
-    // Furniture or a vehicle: its edge, and a body's radius from it.
-    const floor = PERSON + (other.halfLength === undefined ? other.radius : 0);
+    // Furniture or a vehicle: its edge, and a body's radius from it. A walker
+    // held up against it for a while may BRUSH past - a shoulder's width into
+    // the margin - because that is what passing a lamp column on a narrow
+    // footway looks like, and because the alternative is standing in front of
+    // it for ever. The margin never goes below the bodies' own radii, so no
+    // step here can put a body inside anything.
+    const floor = PERSON + (other.halfLength === undefined ? other.radius : 0) -
+      (p.stuck >= STUCK_RELEASE ? BRUSH : 0);
     if (next < floor && next < now - 1e-6) ok = false;
   });
   return ok;
@@ -330,6 +350,21 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   const scale = Math.max(want, m(0.6));
   let bestA = 0, bestL = 0, bestCost = Infinity;
   /**
+   * The same, among the candidates that carry the walker FORWARD.
+   *
+   * Every heading in the fan lies within about seventy degrees of the way, so
+   * all of them but the two side-steps have pace on them; this is the best of
+   * those, and it is what a walker held up against something it cannot pass
+   * falls back on. Sliding along the face of a lamp column or a stopped car -
+   * shouldering past it - is not a special move: it is a heading well off the
+   * way, taken at a walking pace, and the fan has always contained it. What
+   * was missing was the nerve to take it, because standing still scored
+   * cheaper than any wide heading. Standing is what a person does when there
+   * is nothing to be done; against something they can walk round, they walk
+   * round.
+   */
+  let bestFA = 0, bestFL = 0, bestFCost = Infinity;
+  /**
    * Whether the body could actually take this velocity from where it stands:
    * the step it maps to, inside the walker's own acceleration, held on the
    * footway, against the clearance gate.
@@ -402,6 +437,7 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     // pays for this once or twice a tick rather than for every heading it
     // thinks of.
     if (cost < bestCost && takeable(ca, cl)) { bestCost = cost; bestA = ca; bestL = cl; }
+    if (ca > 1e-9 && cost < bestFCost) { bestFCost = cost; bestFA = ca; bestFL = cl; }
   };
   consider(prefA, prefL);
   consider(0, 0);
@@ -421,6 +457,15 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   // whatever the reason was, and a walker boxed in is better off standing:
   // standing is what a person does, and the crowd comes to it.
   bestA = Math.min(Math.max(bestA, 0), want);
+  // Held up and choosing to stand, with nowhere the choice can go that is not
+  // backwards: slide along whatever is in the way. This is the forward-only
+  // answer to being boxed in - the walker keeps a walking pace and leans off
+  // its line, shouldering past the lamp column instead of queueing behind it
+  // for a minute - and it is why nothing ever has to step back.
+  if (escalated && want > m(0.1) && bestA < m(0.05) && bestFA > 1e-9) {
+    bestA = Math.min(bestFA, want);
+    bestL = bestFL;
+  }
 
   // ---- 3. move, within a walker's acceleration, the clearance as the last guard
   const a = bestA >= p.v ? Math.min(bestA, p.v + ACCEL * DT) : Math.max(bestA, p.v - BRAKE * DT);
@@ -451,7 +496,6 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   p.latV = (p.lat - lat0) / DT;
 }
 
-
 /** First contact of a moving point with an expanded oriented obstacle box. */
 function boxContactTime(dx: number, dy: number, vx: number, vy: number,
   ux: number, uy: number, halfLength: number, halfWidth: number, horizon: number): number {
@@ -476,3 +520,5 @@ function boxContactTime(dx: number, dy: number, vx: number, vy: number,
   }
   return enter <= leave ? enter : Infinity;
 }
+
+/** TEMPORARY. */

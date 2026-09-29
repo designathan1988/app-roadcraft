@@ -424,9 +424,8 @@ const ALIGN_STOP = Math.cos(1.9);
 /** Share of the pace kept while turning round: enough to step, never enough to stride backwards. */
 const ALIGN_FLOOR = 0.1;
 
-/** Moves onto the next routed edge, carrying the overshoot. */
+/** Moves onto the next routed edge, keeping the walker where it stands. */
 function advance(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClearance): boolean {
-  const carried = Math.max(0, p.s - edge.length);
   const exit = w.sidewalks.other(edge, p.entry);
   const nextId = p.route[0];
   const next = nextId ? w.sidewalks.edges.get(nextId) : undefined;
@@ -442,14 +441,18 @@ function advance(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClear
     return true;
   }
   p.route.shift();
-  p.s = Math.min(carried, next.length);
+  // `transfer` has already put the walker where it actually is on the new edge
+  // - both axes, from its own position at the shared node - so nothing here
+  // overrules it with the edge's start line. Forcing `s = 0` was half of the
+  // teleport at a zebra mouth; the other half was throwing away the part of
+  // the walker's place that lay along the new edge, and the drawn body was
+  // then dragged across to catch up.
 
   // A crossing is never entered directly. Even arriving from another crossing
   // — the second half of a staged crossing — the pedestrian stops at the kerb
   // and asks permission, because "may I start" is the only rule that keeps
   // anyone from being caught in the road.
   if (next.kind === 'crossing') {
-    p.s = 0;
     p.state = 'WaitAtKerb';
     p.waited = 0;
   } else {
@@ -486,7 +489,6 @@ function enterEdge(w: SimWorld, p: Ped, next: SidewalkEdge, space: PedestrianCle
   if (!current) return false;
   const exit = w.sidewalks.other(current, p.entry);
   if (!transfer(w, p, current, next, exit, space)) return false;
-  p.s = 0;
   p.route.shift();
   return true;
 }
@@ -494,9 +496,23 @@ function enterEdge(w: SimWorld, p: Ped, next: SidewalkEdge, space: PedestrianCle
 function transfer(w: SimWorld, p: Ped, current: SidewalkEdge, next: SidewalkEdge,
   exit: string, space: PedestrianClearance): boolean {
   const before = space.point(w, current, p.entry, current.length, p.lat);
+  // Carry the walker's place onto the new edge on BOTH axes, by projecting its
+  // position onto the new edge's own tangent and normal at the node the two
+  // share. Projecting onto the normal alone - which is what this did - keeps
+  // only the part of the walker's place that lies across the new edge and
+  // throws away the part that lies ALONG it. At a zebra the two frames are
+  // square to each other, so that discarded part is most of the walker's
+  // place: a person at the kerbside edge of the footway stepped onto the
+  // crossing and arrived on its centreline, 2.4 units away, in a single frame.
+  // The drawn body then had to be dragged across to catch up, which is the
+  // backwards pull at every crossing mouth.
   const frame = w.sidewalks.orientedPath(next, exit).sampleAt(0);
-  const lat = wallsClamp(next, exit, 0,
-    (before.x - frame.p.x) * frame.n.x + (before.y - frame.p.y) * frame.n.y);
+  const vx = before.x - frame.p.x;
+  const vy = before.y - frame.p.y;
+  const along = vx * frame.t.x + vy * frame.t.y;
+  const across = vx * frame.n.x + vy * frame.n.y;
+  const s = Math.min(next.length, Math.max(0, along));
+  const lat = wallsClamp(next, exit, s, across);
   if (!space.canEnter(w, p, next, exit, lat)) {
     // Hold at the end of the edge. Stepping back to the previous position
     // made a blocked walker bounce between two points every tick, which is
@@ -508,6 +524,7 @@ function transfer(w: SimWorld, p: Ped, current: SidewalkEdge, next: SidewalkEdge
   p.entry = exit;
   p.edge = next.id;
   p.lat = lat;
+  p.s = s;
   return true;
 }
 
