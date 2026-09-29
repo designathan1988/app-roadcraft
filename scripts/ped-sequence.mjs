@@ -1,3 +1,4 @@
+/* global window */
 /**
  * Photographs pedestrians in the running game: one walker at close zoom, frame
  * by frame, then the busiest kerb.
