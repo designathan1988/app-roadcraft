@@ -1646,7 +1646,8 @@ function mountUnifiedChrome(): void {
   move(document.getElementById('terrainPalette'), hosts.level2);
   move(document.querySelector('.simulation-controls'), hosts.simMenu);
   move(document.getElementById('topMenu'), hosts.appMenu);
-  move(document.getElementById('trafficToggle'), hosts.controls);
+  // Pausing is a speed, and every speed is inside the simulation menu: the
+  // bar keeps only the camera. The button itself stays wired to the spacebar.
   move(document.getElementById('resetView'), hosts.controls);
   // The hint bar is the band's foot line now: floating over the map it landed
   // on the panel's own last row and the two sentences drew over each other.

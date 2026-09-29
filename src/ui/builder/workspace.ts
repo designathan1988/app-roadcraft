@@ -209,7 +209,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   (appMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.app');
   appMenu.onclick = () => showMenu('app', appMenu);
 
-  top.append(historyGroup, controlsSlot, spacer, simMenu, appMenu, help);
+  // Menu first, then the simulation, then the help: the two that open panels
+  // and the one that explains them, at the left where the eye starts.
+  top.append(appMenu, simMenu, help, spacer, historyGroup, controlsSlot);
 
   /**
    * One drop-down below the bar. Three children live in it for good - the
