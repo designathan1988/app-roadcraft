@@ -12,7 +12,7 @@ import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool
 import type { PlanShape } from '@editor/buildingPlans';
 import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
-import { DRAW_SHAPES, OPENING_COMPONENTS, categorySpec, type BuilderCategoryId, type BuilderField } from '@ui/builder/catalog';
+import { BUILDER_CATALOG, DRAW_SHAPES, OPENING_COMPONENTS, categorySpec, type BuilderCategoryId, type BuilderField } from '@ui/builder/catalog';
 import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
@@ -166,7 +166,10 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
    * the pointer at a time (the spec's rule, and the reason a plan could never
    * finish while an opening brush was still armed).
    */
-  function clearArming(keep: 'component' | 'element' | 'detail' | 'model' | null): void {
+  function clearArming(keep: 'component' | 'element' | 'detail' | 'model' | 'path' | null): void {
+    // A plan left half-drawn when another tool is chosen is put away, or the
+    // tray would keep offering Finish for a plan nobody is drawing.
+    if (tool.planPoints && !tool.pathKind && keep !== 'path') tool.cancelPlan();
     tool.massMoveArmed = false;
     if (keep !== 'component') tool.armComponent(null);
     if (keep !== 'element' && tool.armed) tool.armElement(null);
@@ -214,9 +217,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       return;
     }
     if (id === 'sketch') {
+      // The free plan arms here and starts on the first click: opening the
+      // Draw category used to leave a plan in progress, with the tray locked
+      // on Finish and the shapes unreachable.
       clearArming(null);
       tool.setStage('sketch');
-      tool.startPlan('new');
       toolId = id;
       return;
     }
@@ -739,6 +744,13 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         dirty = true;
         return;
       }
+      // The free plan starts on the first click of the gesture.
+      if (toolId === 'sketch' && !tool.planPoints) {
+        tool.startPlan('new');
+        tool.pointerMove(screen, world, shift);
+        dirty = true;
+        return;
+      }
       tool.pointerDown(screen, world, shift);
       dirty = true;
     },
@@ -871,17 +883,9 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
 }
 
 /** Every tool the catalogue lists, all of them wired to the engine. */
-const READY: ReadonlySet<string> = new Set([
-  'select',
-  'rect', 'shapeL', 'shapeU', 'circle', 'hexagon', 'octagon', 'chamfered', 'sketch', 'models',
-  'storey', 'storeyDown', 'wing', 'stack', 'cut', 'split', 'setback', 'vertexAdd', 'vertexRemove',
-  'pushpull', 'inset', 'outset', 'flush', 'patterns', 'geometry',
-  'window', 'sashWindow', 'wideWindow', 'balcony', 'door', 'shopfront', 'loadingDoor', 'pillarBay', 'wallBay',
-  'stair', 'ramp', 'pillar', 'canopy', 'wall', 'slab',
-  'roofFlat', 'roofTerrace', 'roofGable', 'roofHip', 'roofShed', 'roofSawtooth', 'roofShape',
-  'solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire', 'moreComponents',
-  'paint', 'material', 'colour', 'copyStyle', 'pavement',
-  'wallRun', 'fenceRun', 'pavementRun', 'tree', 'bench', 'planter', 'ac', 'moveMass',
-  'frenchWindow', 'bayWindow', 'ribbon',
-  'railing', 'awning', 'flowers', 'rocks', 'parking', 'doubleDoor', 'garageDoor',
-]);
+/**
+ * Every tool the catalogue lists is wired to the engine. Derived from the
+ * catalogue itself, so a tool added there can never sit in the tray disabled
+ * with no reason - which is exactly what happened to the first family menus.
+ */
+const READY: ReadonlySet<string> = new Set(BUILDER_CATALOG.flatMap((category) => category.tools.map((tool) => tool.id)));
