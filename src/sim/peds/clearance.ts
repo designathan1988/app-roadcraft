@@ -105,6 +105,25 @@ function squeezeOf(p: Ped): number {
   // Clearing a carriageway, or stepping off a kerb together with the others
   // who were waiting there: people go shoulder to shoulder.
   if (p.state === 'Crossing' || p.state === 'WaitAtKerb') return SQUEEZE_FLOOR;
+  return furnitureSqueeze(p);
+}
+
+/**
+ * How much of its personal clearance a walker gives up to get past STREET
+ * FURNITURE, on the same clock as the squeeze past people.
+ *
+ * It used to give up none: poles and pit in, the design said, or a figure
+ * would be drawn through them. That made the footway a trap. A walker's line
+ * usually runs BEHIND a hydrant or a lamp column, so reaching it means
+ * stepping sideways across the obstacle's clearance — a step that closes on
+ * the obstacle, which the gate refuses; the wall and the rest of the pavement
+ * are no better, so the walker stands there. Measured on the saved player
+ * map: one walker stood beside a hydrant for 69 s of a 90 s scene, and the
+ * queue behind it stood with it. A walker that has plainly been stopped
+ * squeezes past a hydrant as it squeezes past a stranger — never past a
+ * vehicle, whose clearance stays full.
+ */
+export function furnitureSqueeze(p: Ped): number {
   return Math.max(SQUEEZE_FLOOR, 1 - (1 - SQUEEZE_FLOOR) * Math.min(1, p.stuck / SQUEEZE_SECONDS));
 }
 

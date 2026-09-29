@@ -3,7 +3,7 @@ import { m } from '@world/units';
 import type { SimWorld } from '../world';
 import type { Ped } from './state';
 import type { SidewalkEdge } from './sidewalk';
-import { type PedestrianClearance, PERSON_RELEASED_SPACING, STUCK_RELEASE } from './clearance';
+import { type PedestrianClearance, PERSON_RELEASED_SPACING, STUCK_RELEASE, furnitureSqueeze } from './clearance';
 import { PED_BEHAVIOUR } from './behaviour';
 
 /**
@@ -207,6 +207,8 @@ const YIELD_SPEED = 0.5;
 
 /** Closest two people's centres may be brought, and the room kept from furniture and vehicles. */
 const CONTACT = m(0.45);
+/** Skin a released walker keeps from a piece of furniture it brushes past, u. */
+const BRUSH = m(0.04);
 const HARD = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
 
 /**
@@ -240,14 +242,25 @@ function admissible(p: Ped, edge: SidewalkEdge, s: number, lat: number,
       if (next < contact && next < now - 1e-6) ok = false;
       return;
     }
-    // Furniture or a vehicle: its edge, and a body's radius from it. No
-    // brushing, however long a walker has been held up. The gait audit
-    // measures this exact floor, and a body that comes inside it is a body
-    // drawn inside a lamp column: with a shoulder's width of brushing allowed
-    // it read 1.24 % of walking time inside furniture against a budget of
-    // 0.3 %. A guarantee the rest of the team enforces is worth more than the
-    // marginal unstick it buys.
-    const floor = PERSON + (other.halfLength === undefined ? other.radius : 0);
+    // Furniture or a vehicle: its edge, and a body's radius from it. A walker
+    // held up past the release stops insisting on that margin against
+    // FURNITURE the way it stops insisting on it against people: this thing
+    // has had it stopped for three seconds, and standing still for ever is
+    // not one of the choices (`STUCK_RELEASE`). It keeps the object's own
+    // extent, so it is drawn brushing past a hydrant, never through it.
+    //
+    // Without that release a piece of furniture is a trap with no way out.
+    // A walker's line past a hydrant runs behind it, so getting to it means
+    // stepping sideways across the hydrant's clearance: the step closes on
+    // the hydrant, the gate refuses it, and every other direction is either
+    // the wall or further from the line. It stands there for the rest of the
+    // scene — measured, 69 s of a 90 s run, one walker — and the queue behind
+    // it stands too. Vehicles are never given the release; nobody is drawn
+    // through a car.
+    const room = other.halfLength === undefined ? other.radius : 0;
+    const floor = other.id <= FURNITURE_IDS
+      ? (p.stuck >= STUCK_RELEASE ? room + BRUSH : (PERSON + room) * furnitureSqueeze(p))
+      : PERSON + room;
     if (next < floor && next < now - 1e-6) ok = false;
   });
   return ok;
@@ -321,7 +334,19 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
       boxes++;
       return;
     }
-    push(dx, dy, 0, 0, PERSON + other.radius + FURNITURE_GAP, 1.2, false);
+    // FURNITURE: the margin a walker gives it follows how long it has been
+    // held up, and once it is released it is down to a brush — the same
+    // bargain it makes with people. Without that the cost function can never
+    // let it out of a corner: inside the margin, every move that closes on
+    // the obstacle pays forty times the price of standing still, and beside a
+    // hydrant every move the walker has left does close on it. Measured: a
+    // walker that had squeezed to the margin's edge and stopped there for the
+    // remaining minute of the scene.
+    const room = other.halfLength === undefined ? other.radius : 0;
+    const margin = other.id <= FURNITURE_IDS && p.stuck >= STUCK_RELEASE
+      ? room + BRUSH
+      : (PERSON + room) * furnitureSqueeze(p) + FURNITURE_GAP;
+    push(dx, dy, 0, 0, margin, 1.2, false);
   });
 
   // ---- 2. choose

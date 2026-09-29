@@ -211,11 +211,10 @@ export function stepPedestrians(w: SimWorld): void {
     // stuck: counting it released queuers straight through the person ahead.
     const queued = (NEAR.blockerQueue && NEAR.blockerGap < PED.jamGap + desired * PED.headway) ||
       atClosedKerb(w, p);
-    // The kerb's facing lasts exactly as long as the wait does. Cleared here,
-    // once, rather than in each of the half dozen places the state can change:
-    // a walker that comes back to a kerb later looks again, and one that walks
-    // off is free to face the way it is going.
-    if (p.state !== 'WaitAtKerb') p.lockedFacing = null;
+    // The kerb's facing now lives entirely in `settlePose`, which takes it a
+    // stride before the kerb, holds it through the wait and clears it as soon
+    // as the walker is walking somewhere that is not that crossing — one
+    // writer, in the one place that reads it.
     if (p.state === 'WaitAtKerb') {
       // Accumulated in the kerb case itself, only while permitted and boxed in.
     } else if (wantsToMove && p.v < 0.05 && !queued) p.stuck += DT;
@@ -1465,6 +1464,10 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   const ty = SPOT.ty;
   const pathX = SPOT.x;
   const pathY = SPOT.y;
+  // The crossing this walker is about to wait for, when it is a stride from
+  // its kerb (`kerbTurn`). Read up here because the firewall below needs it.
+  const kerbFace = kerbTurn(w, p, edge);
+  const turning = kerbFace !== null && p.v > FACE_MIN_SPEED;
   // Changing edge can move the path position sideways: somebody waiting
   // beside a zebra's mouth steps onto its centreline, a corner starts from a
   // different offset. That gap is real and has to be WALKED, so it becomes an
@@ -1501,7 +1504,13 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   // position grow without bound while whoever it is avoiding stays put.
   // Closing it to zero outright is a visible pop, but a rare, bounded one —
   // and a pop is a far smaller defect than a body passing through a person.
-  if ((p.offX !== 0 || p.offY !== 0) && space.tooCloseToPerson(p.id, pathX + p.offX, pathY + p.offY)) {
+  //
+  // The test was the DESTINATION alone, which is the one point on the sweep
+  // that cannot be crossed through: the line between the body and that point
+  // is never vetted. Measured, a body closing a 1.9-unit offset was drawn
+  // 3.8 cm from somebody who was standing still, walking through them on the
+  // way. It is the whole line now.
+  if ((p.offX !== 0 || p.offY !== 0) && sweepBlocked(p, space, pathX, pathY)) {
     p.offX = 0;
     p.offY = 0;
   }
@@ -1557,13 +1566,31 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   if (!first) {
     const mx = x - p.x;
     const my = y - p.y;
-    if (mx * Math.cos(p.heading) + my * Math.sin(p.heading) < 0) {
+    // A walker turning onto the crossing a stride from the kerb faces ACROSS
+    // the footway while that last stride still goes ALONG it, and the stride
+    // then projects against its own chest: refused, the figure froze where it
+    // stood for the whole turn — drawn standing and swinging its arms while
+    // the simulation walked it, which is how bodies come to be drawn sweeping
+    // through a person who is not moving. While it is turning onto the
+    // crossing the step is measured against the way it is GOING instead,
+    // which is what this firewall is for: nobody is dragged back the way they
+    // walk, whatever the reason.
+    const against = turning
+      ? mx * tx + my * ty
+      : mx * Math.cos(p.heading) + my * Math.sin(p.heading);
+    if (against < 0) {
       x = p.x;
       y = p.y;
       p.offX = 0;
       p.offY = 0;
     }
   }
+  // How far the DRAWN body actually moved this tick. A walker can hold a
+  // healthy pace along its own path and still be drawn standing: everything
+  // above — the footway's edge, an offset being caught up, the firewall that
+  // refuses a step against the body's own chest — can cancel the path motion
+  // outright. The legs it is drawn with have not moved, whatever `p.v` says.
+  const drawn = first ? 0 : Math.hypot(x - p.x, y - p.y) / DT;
   p.x = x;
   p.y = y;
   if (first) {
@@ -1579,11 +1606,33 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   // the whole body towards it and back, and the crowd walked in zigzags; and
   // standing still, a sideways shuffle of a few millimetres turned people
   // right round on the spot.
+  //
+  // The lean is FILTERED (`latSmooth`): the sideways speed it is read from is
+  // one tick's, and it flips sign as the agent's choice flips between two
+  // candidates a hair apart, which is jitter the body should not obey.
+  p.latSmooth += ((!anchor && p.v > FACE_MIN_SPEED ? p.latV : 0) - p.latSmooth) * LEAN_EASE;
+  // Its direction is taken while the walker still WALKS: selecting the
+  // crossing only once the body had stopped pivoted a person on the spot
+  // through up to a right angle — measured, 6.9 of the 10.7 radians the gait
+  // audit counts as rotation on legs that are not stepping, every one of them
+  // an arrival at a kerb.
+  if (kerbFace === null) p.lockedFacing = null;
+  // While walking, the direction may still be corrected — the route can pick
+  // another crossing a stride from the kerb — and the correction is walked,
+  // like the turn itself. Once the walker stands, it is frozen: nobody pivots
+  // at a kerb.
+  else if (p.lockedFacing === null || p.v > FACE_MIN_SPEED) p.lockedFacing = kerbFace;
   let face: number | null = null;
   let rate = TURN_RATE_STANDING;
   // Standing on the footway, not placed by an activity: turns are made in
-  // decisive steps rather than tracked by the degree (`steerHeading`).
-  let standing = !anchor && p.v <= FACE_MIN_SPEED;
+  // decisive steps rather than tracked by the degree (`steerHeading`). A body
+  // the simulation believes is walking while the DRAWN one stands — held by
+  // the firewall above, by the footway's edge, or by an offset being caught up
+  // — counts as standing too: legs that are not moving cannot be turned by a
+  // target that is, and following it anyway is rotation a player sees on a
+  // motionless figure.
+  const walking = p.v > FACE_MIN_SPEED;
+  let standing = !anchor && !(kerbFace !== null && walking) && (!walking || drawn <= FACE_MIN_SPEED);
   const talk = anchor ? null : talkFacing(w, p);
   if (anchor) {
     face = anchor.face;
@@ -1595,31 +1644,21 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
     face = talk;
     rate = TURN_RATE;
     standing = true;
-  } else if (p.v > FACE_MIN_SPEED) {
-    const lean = Math.atan2(p.latV, Math.max(p.v, m(0.8))) * SIDESTEP_LEAN;
-    face = Math.atan2(ty, tx) + lean;
+  } else if (walking) {
+    const lean = Math.atan2(p.latSmooth, Math.max(p.v, m(0.8))) * SIDESTEP_LEAN;
+    face = kerbFace ?? Math.atan2(ty, tx) + lean;
     rate = TURN_RATE;
   } else if (p.state === 'WaitAtKerb') {
-    // THE DIRECTION IS DECIDED ONCE, WHEN THE WAITING BEGINS.
+    // THE DIRECTION IS DECIDED ONCE, WHILE THE WALKER IS STILL WALKING.
     //
     // It used to be read off the graph every tick, through the node the walker
     // entered this edge by - and that entry can flip while somebody stands at
     // a kerb, because the waiting area and the edge transfers move people
     // about. A flip turns the tangent through half a circle, so a person
-    // standing at a red light span on the spot, half a turn at a time: 7.3 of
-    // the 10.7 radians the gait audit counts as rotation on motionless legs,
-    // every one of them a turnLeft or turnRight clip at a kerb.
+    // standing at a red light span on the spot, half a turn at a time.
     //
-    // Nobody at a kerb turns. The direction is taken when they arrive and held
-    // until they leave, and it is cleared the moment the state changes, so a
-    // walker who comes back to this kerb later looks again.
-    if (p.lockedFacing === null) {
-      const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
-      if (next) {
-        const t = w.sidewalks.orientedPath(next, w.sidewalks.other(edge, p.entry)).sampleAt(0).t;
-        p.lockedFacing = Math.atan2(t.y, t.x);
-      }
-    }
+    // Nobody at a kerb turns. The direction is taken a stride before the kerb
+    // (`kerbTurn`), turned onto on the way, and held until the walker leaves.
     if (p.lockedFacing !== null) face = p.lockedFacing;
   } else if (wants) {
     // About to walk off from standing: turn to the way first. Without this a
@@ -1632,6 +1671,21 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
     face = holdFacing(w, p, edge);
   }
   steerHeading(p, face, rate, standing);
+}
+
+/** How near the kerb a walker bound for a crossing turns onto it, world units. */
+const KERB_TURN = m(1.5);
+
+/**
+ * The direction of the crossing this walker is about to wait for, while it is
+ * near enough to the kerb to turn onto it on the way; null anywhere else.
+ */
+function kerbTurn(w: SimWorld, p: Ped, edge: SidewalkEdge): number | null {
+  if (edge.kind === 'crossing' || edge.length - p.s > KERB_TURN) return null;
+  const next = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+  if (next?.kind !== 'crossing') return null;
+  const t = w.sidewalks.orientedPath(next, w.sidewalks.other(edge, p.entry)).sampleAt(0).t;
+  return Math.atan2(t.y, t.x);
 }
 
 /**
@@ -1670,6 +1724,9 @@ function steerHeading(p: Ped, face: number | null, rate: number, standing = fals
 const FACE_MIN_SPEED = m(0.12);
 /** Share of a sidestep's angle the body turns into. */
 const SIDESTEP_LEAN = 0.35;
+/** Seconds over which the lean follows the sideways step, as the renderer's own lean does. */
+const LEAN_TIME = 0.25;
+const LEAN_EASE = 1 - Math.exp(-DT / LEAN_TIME);
 /** Seconds over which a heading error is closed, and the turning acceleration, rad/s². */
 const TURN_EASE = 0.28;
 const TURN_ACCEL = 7;
@@ -1740,6 +1797,20 @@ function standable(w: SimWorld, edge: SidewalkEdge, x: number, y: number): boole
   // On a zebra, the zebra's own strip is the other place to stand.
   return edge.kind === 'crossing';
 }
+
+/**
+ * Whether the line from where the body stands to where the catch-up offset
+ * would carry it passes within shoulder range of somebody. The offset closes
+ * as a straight line, and a straight line is what a body is drawn along.
+ */
+function sweepBlocked(p: Ped, space: PedestrianClearance, pathX: number, pathY: number): boolean {
+  for (let i = 1; i <= SWEEP_SAMPLES; i++) {
+    const t = i / SWEEP_SAMPLES;
+    if (space.tooCloseToPerson(p.id, pathX + p.offX * t, pathY + p.offY * t)) return true;
+  }
+  return false;
+}
+const SWEEP_SAMPLES = 4;
 
 /** Seconds over which an edge-change offset closes, and the largest one bridged. */
 const OFFSET_SETTLE = 0.3;

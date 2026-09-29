@@ -194,6 +194,17 @@ export interface Ped {
   /** Sideways speed across the footway, eased rather than switched. */
   latV: number;
   /**
+   * `latV` filtered, which is the sideways speed the body leans into.
+   *
+   * `latV` is one tick's drawn sideways motion: the agent rewrites it from the
+   * step it actually took, so it flips sign as its choice flips between
+   * candidates a hair apart. Turning the body by it raw put that tick-to-tick
+   * jitter into the heading — rotation a player sees on legs that are not
+   * stepping — so the lean follows this instead, and it leaks back to nothing
+   * whenever the walker is not walking.
+   */
+  latSmooth: number;
+  /**
    * Side committed to while squeezing past a knot: -1, 0 or +1. Chosen once
    * when held up and kept until free, so a boxed-in walker steps decisively
    * one way instead of hesitating on the spot.
@@ -294,6 +305,7 @@ export function createPed(spec: PedSpec): Ped {
     y: 0,
     heading: 0,
     latV: 0,
+    latSmooth: 0,
     offX: 0,
     offY: 0,
     dodge: 0,
