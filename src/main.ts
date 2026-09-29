@@ -369,6 +369,9 @@ const buildings = createBuildingWiring({
   scene,
   view: () => view,
   size: () => ({ w: surface.cssW, h: surface.cssH }),
+  exitBuilder: () => setTool('road'),
+  undo: () => undoButton.click(),
+  redo: () => redoButton.click(),
   focusBuilding(building) {
     const ground = building.volumes.filter((v) => v.base === 0);
     if (ground.length === 0) return;
@@ -378,7 +381,7 @@ const buildings = createBuildingWiring({
     const centre = { x: building.x + cx * c - cy * s, y: building.y + cx * s + cy * c };
     view.moveTo(centre);
     const span = Math.max(...ground.map((v) => Math.max(v.w, v.d)));
-    const paletteWidth = document.getElementById('buildingPalette')?.getBoundingClientRect().width ?? 330;
+    const paletteWidth = document.getElementById('builder')?.getBoundingClientRect().width ?? 0;
     const available = Math.max(110, surface.cssW - paletteWidth - (surface.cssW < 600 ? 20 : 110));
       const corners = building.volumes.flatMap((v) => [
         [v.x, v.y], [v.x + v.w, v.y], [v.x + v.w, v.y + v.d], [v.x, v.y + v.d],
@@ -1392,9 +1395,6 @@ updateRoadHeightValue();
 
 const roadPalette = document.querySelector<HTMLElement>('.road-palette');
 const terrainPalette = document.getElementById('terrainPalette') as HTMLElement;
-const buildingPalette = document.getElementById('buildingPalette') as HTMLElement;
-const creatorRail = document.getElementById('creatorRail') as HTMLElement;
-const creatorDock = document.getElementById('creatorDock') as HTMLElement;
 
 function setTerrainMode(next: TerrainMode): void {
   terrainMode = next;
@@ -1480,13 +1480,10 @@ function setTool(next: Tool): void {
   roadPalette?.setAttribute('aria-hidden', String(!roadActive));
   terrainPalette.classList.toggle('hidden', !terrainActive);
   terrainPalette.setAttribute('aria-hidden', String(!terrainActive));
+  // Buildings are their own place now: the whole HUD becomes the Builder
+  // Workspace (`ui/builder/`), and the map keeps the middle of the screen.
   const buildingActive = next === 'building';
-  buildingPalette.classList.toggle('hidden', !buildingActive);
-  creatorRail.classList.toggle('hidden', !buildingActive);
-  creatorDock.hidden = !buildingActive;
-  buildingPalette.setAttribute('aria-hidden', String(!buildingActive));
-  creatorRail.setAttribute('aria-hidden', String(!buildingActive));
-  creatorDock.setAttribute('aria-hidden', String(!buildingActive));
+  document.getElementById('app')?.classList.toggle('builder-mode', buildingActive);
   if (buildingActive) buildings.activate();
   else buildings.deactivate();
   updateHint();

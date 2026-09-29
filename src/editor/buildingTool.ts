@@ -69,6 +69,7 @@ import {
   replaceBuilding,
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
+import { groupInto } from './buildings';
 import { type PlanShape, type UpperMassPlacement, shapeBody, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
 import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
 import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
@@ -292,6 +293,73 @@ export class BuildingTool {
   /** The building face under a screen point, if any (the bulldozer asks). */
   pickAt(screen: Vec2): BuildingHit | null {
     return this.pick(screen);
+  }
+
+  /**
+   * A key for the workspace's hint sentence: `hint.builder.<key>` in the
+   * dictionaries. The plan being drawn has its own sentence per shape, the
+   * rest follow the stage or the tool the model palette has armed.
+   */
+  builderHintKey(): string {
+    if (this.planPoints) return `draw.${this.stage === 'sketch' ? 'sketch' : this.planAction}`;
+    if (this.armed) return this.armed;
+    if (this.roofDetailKind) return this.roofDetailKind;
+    if (this.activeModelTool) return this.activeModelTool;
+    return this.stage;
+  }
+
+  /** Right button, or Escape: ends whatever the tool is doing, staying in the Builder. */
+  cancelOperation(): boolean {
+    if (this.planPoints) {
+      this.cancelPlan();
+      return true;
+    }
+    if (this.drag) {
+      this.pointerUp(true);
+      return true;
+    }
+    if (this.armed) {
+      this.armElement(null);
+      return true;
+    }
+    if (this.roofDetailKind) {
+      this.armRoofDetail(null);
+      return true;
+    }
+    if (this.component) {
+      this.armComponent(null);
+      return true;
+    }
+    if (this.activeModelTool && this.activeModelTool !== 'select') {
+      this.armModelTool('select');
+      return true;
+    }
+    return false;
+  }
+
+  /** Points the face tools at one floor of the selected volume. */
+  selectFloor(storey: number): void {
+    const s = this.selection;
+    if (!s) return;
+    const building = this.selected();
+    const volume = building ? volumeById(building, s.volume) : undefined;
+    if (!volume) return;
+    const index = Math.max(0, Math.min(volume.storeys.length - 1, Math.round(storey)));
+    const bay = s.bay ?? { storey: index, side: 0 as Side, index: 0 };
+    this.selection = { ...s, bay: { ...bay, storey: index } };
+    this.host.changed();
+  }
+
+  /**
+   * Agrupar: every volume of another building moves into this record, brought
+   * into its frame; the emptied record goes. One undo step.
+   */
+  groupWith(otherId: BuildingId): boolean {
+    const building = this.selected();
+    if (!building) return false;
+    const result = this.host.commit(() => groupInto(this.host.context(), building.id, otherId));
+    this.report(result);
+    return result.ok;
   }
 
   get dragging(): boolean {

@@ -21,7 +21,9 @@ import {
   footprintRects,
   isSupported,
   localDirToWorld,
+  localToWorld,
   planOverlap,
+  worldToLocal,
 } from '@world/buildings/geometry';
 import {
   type BuildingProblem,
@@ -589,6 +591,60 @@ export function clearBuildingsOnRoads(ctx: BuildingContext): number {
   }
   for (const id of doomed) ctx.doc.buildings.remove(id);
   return doomed.length;
+}
+
+/**
+ * Agrupar: every volume of `source` moves into `target`, brought into the
+ * target's own frame. A volume of a building with a different bearing keeps
+ * its exact shape as an outline; the emptied record goes. Elements come along,
+ * their centres transformed the same way.
+ */
+export function groupInto(ctx: BuildingContext, targetId: BuildingId, sourceId: BuildingId): EditResult {
+  const target = ctx.doc.buildings.get(targetId);
+  const source = ctx.doc.buildings.get(sourceId);
+  if (!target || !source || targetId === sourceId) return FAIL_MISSING;
+  const draft = cloneBuilding(target);
+  for (const v of source.volumes) {
+    const ring = localFootprint(v).map((p) => worldToLocal(draft, localToWorld(source, p.x, p.y)));
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of ring) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    const w = Math.max(MIN_SIZE, maxX - minX);
+    const d = Math.max(MIN_SIZE, maxY - minY);
+    const volume: Volume = JSON.parse(JSON.stringify(v)) as Volume;
+    volume.id = draft.nextVolumeId++;
+    volume.x = minX;
+    volume.y = minY;
+    volume.w = w;
+    volume.d = d;
+    // A ring that is not the plain rectangle keeps its shape as an outline.
+    const plain =
+      ring.length === 4 &&
+      ring.every((p) =>
+        (Math.abs(p.x - minX) < 1e-6 || Math.abs(p.x - maxX) < 1e-6) &&
+        (Math.abs(p.y - minY) < 1e-6 || Math.abs(p.y - maxY) < 1e-6),
+      );
+    if (plain) delete volume.outline;
+    else volume.outline = ring.map((p) => ({ x: p.x - minX, y: p.y - minY }));
+    draft.volumes.push(volume);
+  }
+  for (const el of source.elements ?? []) {
+    const p = worldToLocal(draft, localToWorld(source, el.x, el.y));
+    const element: BuildingElement = JSON.parse(JSON.stringify(el)) as BuildingElement;
+    draft.elements = [...(draft.elements ?? []), { ...element, id: takeElementId(draft), x: p.x, y: p.y }];
+  }
+  const problem = validateBuilding(ctx, draft, targetId);
+  if (problem) return { ok: false, problem };
+  ctx.doc.buildings.put(draft);
+  ctx.doc.buildings.remove(sourceId);
+  return { ok: true, id: targetId };
 }
 
 // =============================================================== faces and roofs

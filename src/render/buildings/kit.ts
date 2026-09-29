@@ -58,6 +58,9 @@ export interface BuildingKit {
   /** Ghost materials for the placement / drag preview, tinted by validity. */
   readonly ghostShell: MeshStandardMaterial;
   readonly ghostParts: MeshStandardMaterial;
+  /** "Ocultar outros": the same shells, faded, for every building but the edited one. */
+  readonly dimShell: Readonly<Record<Finish, MeshStandardMaterial>>;
+  readonly dimParts: MeshStandardMaterial;
   /** Parts that cast shadows; the small ones do not, to spare the shadow pass. */
   readonly castsShadow: ReadonlySet<PartKind>;
   setGhostValid(valid: boolean): void;
@@ -196,7 +199,21 @@ export function createBuildingKit(): BuildingKit {
   });
   const ghostParts = ghostShell.clone();
 
-  const unique = new Set<Material>([...Object.values(material), ...Object.values(shell), ghostShell, ghostParts]);
+  // The faded copies: same colour and maps, a fraction of the presence, and no
+  // depth write, so the edited building reads through them.
+  const dim = (m: MeshStandardMaterial): MeshStandardMaterial => {
+    const faded = m.clone();
+    faded.transparent = true;
+    faded.opacity = 0.22;
+    faded.depthWrite = false;
+    faded.color.multiplyScalar(0.75);
+    return faded;
+  };
+  const dimShell = Object.fromEntries(Object.entries(shell).map(([finish, mat]) => [finish, dim(mat)])) as Record<Finish, MeshStandardMaterial>;
+  const dimParts = dim(material['concrete'] as MeshStandardMaterial);
+  dimParts.opacity = 0.16;
+
+  const unique = new Set<Material>([...Object.values(material), ...Object.values(shell), ...Object.values(dimShell), ghostShell, ghostParts, dimParts]);
   const geometries = new Set<BufferGeometry>(Object.values(geometry));
 
   return {
@@ -205,6 +222,8 @@ export function createBuildingKit(): BuildingKit {
     shell,
     ghostShell,
     ghostParts,
+    dimShell,
+    dimParts,
     // Glass, doors and shutters close the openings for the sun: without them
     // the shadow of every building is a lattice of lit windows.
     castsShadow: new Set<PartKind>(['glass', 'glassDark', 'door', 'shutter', 'concrete', 'railing', 'awning', 'column', 'roofRailing']),

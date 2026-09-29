@@ -37,6 +37,11 @@ export interface BuildingLayer {
    */
   update(doc: RoadDoc, groundAt: GroundAt, groundKey: string, pavedAt?: PavedAt): boolean;
   setPreview(preview: BuildingPreviewInput | null): void;
+  /**
+   * "Ocultar outros": undefined draws every building solid, null fades them
+   * all, and an id fades every building but that one.
+   */
+  setDimmed(except: BuildingId | null | undefined): void;
   /** Whether a world point is under a building (for the scenery's plant cull). */
   covers(x: number, y: number): boolean;
   dispose(): void;
@@ -51,6 +56,8 @@ export function createBuildingLayer(): BuildingLayer {
   const group = new Group();
   group.name = 'buildings-layer';
   let stored: BuildingMeshes | null = null;
+  let faded: BuildingMeshes | null = null;
+  let dimmed: BuildingId | null | undefined = undefined;
   let ghost: BuildingMeshes | null = null;
   let storedKey = '';
   let ghostKey = '';
@@ -104,18 +111,29 @@ export function createBuildingLayer(): BuildingLayer {
     },
     update(doc, groundAt, groundKey, pavedAt) {
       const hides = preview?.hides ?? null;
-      const key = `${doc.buildings.revision}|${groundKey}|${hides}`;
+      const dimKey = dimmed === undefined ? 'off' : String(dimmed ?? 'all');
+      const key = `${doc.buildings.revision}|${groundKey}|${hides}|${dimKey}`;
       let rebuilt = false;
       if (key !== storedKey) {
         storedKey = key;
-        if (stored) {
-          group.remove(stored.group);
-          stored.dispose();
+        for (const batch of [stored, faded]) {
+          if (!batch) continue;
+          group.remove(batch.group);
+          batch.dispose();
         }
         const shown = [...doc.buildings.all()].filter((b) => b.id !== hides);
         for (const id of chunks.keys()) if (!doc.buildings.has(id)) chunks.delete(id);
-        stored = assembleBuildingMeshes(shown.map((b) => chunkFor(b, groundAt, pavedAt)), kit);
+        const solid = dimmed === undefined ? shown : shown.filter((b) => b.id === dimmed);
+        const others = dimmed === undefined ? [] : shown.filter((b) => b.id !== dimmed);
+        stored = assembleBuildingMeshes(solid.map((b) => chunkFor(b, groundAt, pavedAt)), kit);
         group.add(stored.group);
+        faded = others.length > 0
+          ? assembleBuildingMeshes(others.map((b) => chunkFor(b, groundAt, pavedAt)), kit, false, true)
+          : null;
+        if (faded) {
+          faded.group.renderOrder = 1;
+          group.add(faded.group);
+        }
         index(doc.buildings.all());
         version++;
         rebuilt = true;
@@ -136,6 +154,9 @@ export function createBuildingLayer(): BuildingLayer {
         }
       }
       return rebuilt;
+    },
+    setDimmed(except) {
+      dimmed = except;
     },
     setPreview(next) {
       preview = next;

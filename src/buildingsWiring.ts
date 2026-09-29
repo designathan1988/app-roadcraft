@@ -3,19 +3,20 @@ import { signedArea } from '@core/polygon';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
-import { DEFAULT_PITCH, baysOn, footprintBox, ridgeAlongX, topLevel } from '@world/buildings/geometry';
+import { DEFAULT_PITCH, baysOn, footprintBox, topLevel } from '@world/buildings/geometry';
 import { type Building, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
 import { METERS_PER_UNIT, m } from '@world/units';
 import { type EditResult, clearBuildingsOnRoads, deleteBuilding } from '@editor/buildings';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
-import { detectPlanShape } from '@editor/buildingPlans';
 import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
+import { DRAW_SHAPES, OPENING_COMPONENTS, type BuilderCategoryId, type BuilderField } from '@editor/builderCatalog';
 import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
-import { initBuildingCreatorPanel } from '@ui/buildingCreatorPanel';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
+import { drawBuilderGizmos, type GizmoInput } from '@ui/overlay/builderGizmos';
+import { initBuilderWorkspace, type BuilderActions, type BuilderState } from '@ui/builder/workspace';
 import { plural, t } from '@ui/i18n';
 
 /**
@@ -24,8 +25,8 @@ import { plural, t } from '@ui/i18n';
  * This is `main.ts`, split: the one other file allowed to wire every layer
  * together (AGENTS.md section 2), kept apart so the building feature touches
  * `main.ts` in a handful of lines. It builds the `ToolView` from the viewport,
- * the `ToolHost` from the history and the autosave, the palette, the overlay
- * and the road-wins rule. See docs/buildings.md.
+ * the `ToolHost` from the history and the autosave, the Builder Workspace
+ * (`ui/builder/`), the overlay and the road-wins rule. See docs/buildings.md.
  */
 export interface BuildingWiringDeps {
   readonly doc: RoadDoc;
@@ -41,6 +42,10 @@ export interface BuildingWiringDeps {
   flash(key: string, params?: Readonly<Record<string, string | number>>): void;
   /** The tool's mode changed, so the hint bar's sentence did. */
   hintChanged(): void;
+  /** Leaves the Builder: back to the normal HUD. */
+  exitBuilder(): void;
+  undo(): void;
+  redo(): void;
 }
 
 export interface BuildingWiring {
@@ -50,6 +55,8 @@ export interface BuildingWiring {
   pointerUp(cancelled: boolean): void;
   /** Returns true when the tool used the key. */
   key(e: KeyboardEvent): boolean;
+  /** Right button: cancels the operation in progress, if any. */
+  cancelOperation(): boolean;
   activate(): void;
   deactivate(): void;
   /** Before each draw: hands the preview to the renderer. */
@@ -97,9 +104,15 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     pickPixels: 16,
   };
 
-  let panelDirty = true;
-  let lastMode = 'place';
-  let lastStage = 'sketch';
+  let dirty = true;
+  let inspectorOpen = true;
+  let category: BuilderCategoryId = 'select';
+  let toolId = 'select';
+  let snapMode: string = 'auto';
+  let gridVisible = false;
+  let hideOthers = false;
+  let lastHint = '';
+
   const host: ToolHost = {
     context: () => ({ doc, net, groundAt: (x: number, y: number) => scene.terrainHeightAt(x, y) }),
     groundKey: () => `${doc.revision}:${doc.terrainRevision}`,
@@ -117,10 +130,9 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       return result;
     },
     changed() {
-      panelDirty = true;
-      if (tool.mode !== lastMode || tool.stage !== lastStage) {
-        lastMode = tool.mode;
-        lastStage = tool.stage;
+      dirty = true;
+      if (tool.builderHintKey() !== lastHint) {
+        lastHint = tool.builderHintKey();
         deps.hintChanged();
       }
       deps.requestDraw();
@@ -133,24 +145,221 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   // Alt held frees a drag from the grid (Windows convention; the key is read
   // from the window so the pointer handlers need not pass it).
   const setFree = (free: boolean): void => {
-    if (tool.free === free) return;
-    tool.free = free;
+    const wanted = free || snapMode === 'off';
+    if (tool.free === wanted) return;
+    tool.free = wanted;
     host.changed();
   };
   window.addEventListener('keydown', (e) => setFree(e.altKey));
   window.addEventListener('keyup', (e) => setFree(e.altKey));
   window.addEventListener('blur', () => setFree(false));
 
-  const panel = initBuildingCreatorPanel({
-    modelTool: (kind) => tool.armModelTool(kind === 'select' ? 'select' : tool.activeModelTool === kind ? null : kind),
-    paintBrush: (patch) => tool.setPaintBrush(patch),
-    openingBrush: (value) => tool.armComponent(value),
-    tool: (stage) => tool.setStage(stage),
-    frame: () => tool.focusSelected(),
-    draw: (action) => tool.startPlan(action),
-    shape: (shape) => tool.chooseShape(shape),
-    tierShape: (shape) => tool.reshapeTier(shape),
-    starter: (key) => tool.chooseBlueprint(key),
+  // ------------------------------------------------------------ the workspace
+
+  /** Runs an action tool, arms a mode tool, or opens a gallery (the workspace's job). */
+  function runTool(id: string): void {
+    switch (id) {
+      case 'storey': tool.addStoreys(1); return;
+      case 'storeyDown': tool.addStoreys(-1); return;
+      case 'split': tool.splitAtFloor(defaultSplitFloor()); return;
+      case 'setback': tool.addUpperShape('match', m(1), 2); return;
+      case 'vertexAdd': tool.changeVertex('insert'); return;
+      case 'vertexRemove': tool.changeVertex('remove'); return;
+      case 'inset': tool.setRelief(-m(0.5)); return;
+      case 'outset': tool.setRelief(m(0.5)); return;
+      case 'flush': tool.setRelief(0); return;
+      case 'roofFlat': tool.setRoof('flat'); return;
+      case 'roofTerrace': tool.setRoof('terrace'); return;
+      case 'roofGable': tool.setRoof('gable'); return;
+      case 'roofHip': tool.setRoof('hip'); return;
+      case 'roofShed': tool.setRoof('shed'); return;
+      case 'roofSawtooth': tool.setRoof('sawtooth'); return;
+      case 'copyStyle': copyStyle(); return;
+      default: break;
+    }
+    // Mode tools.
+    const shape = DRAW_SHAPES[id];
+    if (shape) {
+      tool.setStage('sketch');
+      tool.chooseShape(shape);
+      tool.startPlan('new');
+      toolId = id;
+      return;
+    }
+    if (id === 'sketch') {
+      tool.setStage('sketch');
+      tool.startPlan('new');
+      toolId = id;
+      return;
+    }
+    if (id === 'select') {
+      tool.armModelTool('select');
+      toolId = id;
+      return;
+    }
+    if (id === 'wing' || id === 'stack' || id === 'cut') {
+      tool.setStage('shape');
+      tool.armModelTool('draw');
+      tool.startPlan(id === 'wing' ? 'ground' : id === 'stack' ? 'top' : 'cut');
+      toolId = id;
+      return;
+    }
+    if (id === 'pushpull') {
+      tool.armModelTool('offset');
+      toolId = id;
+      return;
+    }
+    if (id === 'paint') {
+      tool.armModelTool('paint');
+      toolId = id;
+      return;
+    }
+    const component = OPENING_COMPONENTS[id];
+    if (component) {
+      tool.armModelTool('openings');
+      tool.armComponent(component as never);
+      toolId = id;
+      return;
+    }
+    if (id === 'solar' || id === 'skylight' || id === 'vent' || id === 'chimney' || id === 'waterTank' || id === 'spire') {
+      tool.armRoofDetail(id);
+      toolId = id;
+      return;
+    }
+    // The free parts (stairs, ramps, pillars, canopies, walls, slabs).
+    if (id === 'stair' || id === 'ramp' || id === 'pillar' || id === 'canopy' || id === 'wall' || id === 'slab') {
+      tool.armElement(id);
+      toolId = id;
+      return;
+    }
+  }
+
+  function defaultSplitFloor(): number {
+    const building = tool.selected();
+    const volume = building && tool.selection ? volumeById(building, tool.selection.volume) : undefined;
+    if (!volume) return 1;
+    return volume.base + Math.max(1, Math.floor(volume.storeys.length / 2));
+  }
+
+  function copyStyle(): void {
+    const material = tool.currentMaterial();
+    if (!material) {
+      deps.flash('building.selectFirst');
+      return;
+    }
+    tool.setPaintBrush({ finish: material.finish, colour: material.colour });
+    deps.flash('builder.styleCopied');
+  }
+
+  const actions: BuilderActions = {
+    exit: () => deps.exitBuilder(),
+    undo: () => deps.undo(),
+    redo: () => deps.redo(),
+    setCategory: (id) => {
+      category = id;
+      const first = id === 'select' ? 'select' : id === 'draw' ? 'rect' : id === 'mass' ? 'storey'
+        : id === 'face' ? 'pushpull' : id === 'openings' ? 'window' : id === 'structure' ? 'stair'
+          : id === 'roof' ? 'roofFlat' : id === 'components' ? 'solar' : 'paint';
+      runTool(first);
+      host.changed();
+    },
+    chooseTool: (id) => {
+      runTool(id);
+      host.changed();
+    },
+    setFloor: (level) => {
+      const building = tool.selected();
+      if (!building) return;
+      // The floor selector points the face tools at one level: the bay the
+      // selection carries moves with it.
+      const volume = tool.selection ? volumeById(building, tool.selection.volume) : undefined;
+      if (volume && tool.selection?.bay) {
+        tool.selectFloor(level - volume.base);
+      }
+      host.changed();
+    },
+    floorCommand: (command) => {
+      if (command === 'duplicate') tool.addStoreys(1);
+      else if (command === 'insertAbove') tool.splitAtFloor(defaultSplitFloor() + 1);
+      else tool.splitAtFloor(defaultSplitFloor());
+      host.changed();
+    },
+    setSnap: (mode) => {
+      snapMode = mode;
+      setFree(false);
+      host.changed();
+    },
+    toggleGrid: () => {
+      gridVisible = !gridVisible;
+      host.changed();
+    },
+    toggleHideOthers: () => {
+      hideOthers = !hideOthers;
+      scene.setBuildingsDimmed(hideOthers ? tool.selection?.building ?? null : undefined);
+      host.changed();
+    },
+    toggleInspector: () => {
+      inspectorOpen = !inspectorOpen;
+      dirty = true;
+      deps.requestDraw();
+    },
+    selectionAction: (name) => {
+      const building = tool.selected();
+      switch (name) {
+        case 'duplicate':
+          if (building) tool.duplicateSelected();
+          break;
+        case 'mirror':
+          if (building) tool.mirrorSelected();
+          break;
+        case 'group': {
+          // Group with the nearest building: its masses move into this record.
+          if (!building) break;
+          const centre = { x: building.x, y: building.y };
+          let best: Building | null = null;
+          let bestDistance = 60;
+          for (const other of doc.buildings.all()) {
+            if (other.id === building.id) continue;
+            const d = Math.hypot(other.x - centre.x, other.y - centre.y);
+            if (d < bestDistance) {
+              bestDistance = d;
+              best = other;
+            }
+          }
+          if (!best) {
+            deps.flash('builder.noGroup');
+            break;
+          }
+          if (tool.groupWith(best.id)) deps.flash('builder.grouped');
+          break;
+        }
+        case 'delete':
+          if (building) tool.deleteSelected();
+          break;
+      }
+      host.changed();
+    },
+    setField: (id, value) => {
+      setField(id, value);
+      host.changed();
+    },
+    presetThumbnails(images) {
+      workspace.setPresetThumbnails(images);
+    },
+    choosePreset: (key) => {
+      tool.chooseBlueprint(key);
+      host.changed();
+    },
+    chooseUserBlueprint(key) {
+      const blueprint = userBlueprints.find((item) => item.key === key);
+      if (blueprint) tool.useBody(blueprint.body, key);
+      host.changed();
+    },
+    removeUserBlueprint(key) {
+      library.remove(key);
+      userBlueprints = library.list();
+      host.changed();
+    },
     saveBlueprint(name) {
       const building = tool.selected();
       if (building && library.save(name, bodyOf(building))) {
@@ -159,151 +368,204 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         host.changed();
       }
     },
-    useBlueprint(key) {
-      const blueprint = userBlueprints.find((item) => item.key === key);
-      if (blueprint) tool.useBody(blueprint.body, key);
-    },
-    deleteBlueprint(key) {
-      library.remove(key);
-      userBlueprints = library.list();
+    chooseFinish: (finish) => {
+      tool.paint({ finish });
       host.changed();
     },
-    finishPlan: () => tool.finishPlan(),
-    cancelPlan: () => tool.cancelPlan(),
-    backPoint: () => tool.backPoint(),
-    mass: (id) => tool.selectVolume(id),
-    floors: (delta) => tool.addStoreys(delta),
-    floorCount: (count) => tool.setStoreys(count),
-    floorHeight: (metres) => tool.setParameter('storeyHeight', metres / METERS_PER_UNIT),
-    groundHeight: (metres) => tool.setGroundHeight(metres / METERS_PER_UNIT),
-    split: (afterFloor) => tool.splitAtFloor(afterFloor),
-    setback: (shape, metres, floors, placement) => tool.addUpperShape(shape, metres / METERS_PER_UNIT, floors, {
-        ...(placement.width === undefined ? {} : { width: placement.width / METERS_PER_UNIT }),
-        ...(placement.depth === undefined ? {} : { depth: placement.depth / METERS_PER_UNIT }),
-        offsetX: placement.offsetX / METERS_PER_UNIT, offsetY: placement.offsetY / METERS_PER_UNIT,
-      }),
-    vertex: (action) => tool.changeVertex(action),
-    element: (kind) => tool.armElement(kind),
-    elementSize: (name, metres) => tool.updateElement({ [name]: metres / METERS_PER_UNIT }),
-    turnElement() {
-      const part = tool.selectedElement();
-      if (part) tool.updateElement({ facing: ((part.facing + 1) % 4) as 0 | 1 | 2 | 3 });
+    chooseColour: (colour) => {
+      tool.paint({ colour });
+      host.changed();
     },
-    repeatElement: () => tool.repeatElement(),
-    removeElement: () => tool.removeElement(),
-    pattern: (value, scope) => tool.applyFacadeGrammar(value, scope),
-    opening(component) {
-      tool.armComponent(component);
-      if (tool.selection?.bay) tool.applyToSelectedBay(component);
+    chooseStyle: (key) => {
+      tool.applyStyle(key);
+      host.changed();
     },
-    openingScope: (scope) => tool.setScope(scope),
-    target(scope) {
-      tool.setMaterialScope(scope === 'building' ? 'building' : scope === 'face' ? 'face' : scope === 'floor' ? 'floor' : 'volume');
+    choosePattern: (pattern) => {
+      const scope = tool.scope === 'storey' ? 'floor' : tool.scope === 'side' || tool.scope === 'bay' ? 'face' : 'volume';
+      tool.applyFacadeGrammar(pattern as never, scope);
+      host.changed();
     },
-    finish: (value) => tool.paint({ finish: value }),
-    color: (value) => tool.paint({ colour: value }),
-    roof: (value) => tool.setRoof(value),
-    pitch: (value) => tool.setRoofShape({ pitch: value }),
-    ridge: (value) => tool.setRoofShape({ ridge: value }),
-    fall: (value) => tool.setRoofShape({ fall: value }),
-    roofFinish: (value) => tool.paint({ finish: value }),
-    roofColor: (value) => tool.paint({ colour: value }),
-    roofDetail: (value) => tool.armRoofDetail(value),
-    selectDetail: (id) => tool.selectRoofDetail(id),
-    turnDetail: () => tool.turnRoofDetail(),
-    moveDetail: (dx, dy) => tool.moveRoofDetail(dx, dy),
-    deleteDetail: () => tool.deleteRoofDetail(),
-    detailHeight: (metres) => tool.setRoofDetailHeight(metres),
-    detailFlag: (flag) => tool.setRoofDetailFlag(flag),
-    relief: (metres) => tool.setRelief(metres / METERS_PER_UNIT),
-    geometry: (name, value) => tool.setFacadeGeometry({ [name]:
-      name === 'windowWidth' || name === 'windowHeight' ? value / 100
-        : name === 'sill' || name === 'pierWidth' || name === 'pierDepth' ? value / METERS_PER_UNIT : value }),
-  });
-
-  const refreshPanel = (): void => {
-    if (!panelDirty) return;
-    panelDirty = false;
-    const building = tool.mode === 'edit' || (tool.planPoints && tool.planAction !== 'new') ? tool.selected() : null;
-    const volume = building && tool.selection ? volumeById(building, tool.selection.volume) : undefined;
-    panel.refresh({
-      modelTool: tool.activeModelTool === 'select' || tool.activeModelTool === 'draw' || tool.activeModelTool === 'extrude' || tool.activeModelTool === 'offset' || tool.activeModelTool === 'paint' || tool.activeModelTool === 'openings' ? tool.activeModelTool : null,
-      paintBrush: tool.paintBrush,
-      tool: tool.stage,
-      drawing: tool.planPoints?.length ?? null,
-      action: tool.planAction,
-      selected: !!building,
-      current: tool.selection?.volume ?? null,
-      masses: building?.volumes.map((mass) => ({ id: mass.id, base: mass.base, floors: mass.storeys.length })) ?? [],
-      blueprints: userBlueprints.map((item) => ({ key: item.key, name: item.name ?? item.key })),
-      selectedFace: !!tool.selection?.bay,
-      selectedFloor: tool.selection?.bay && volume ? volume.base + tool.selection.bay.storey + 1 : null,
-      reliefDepth: tool.reliefDepth(),
-      geometry: (() => {
-        const bay = tool.selection?.bay;
-        if (!building || !volume || !bay) return null;
-        const authored = volume.facadeGeometry?.[bay.side];
-        const facade = volume.storeys[bay.storey]?.facade;
-        const grammar = facade?.patterns?.[bay.side] ?? facade?.pattern ?? volume.facadePattern;
-        return { bays: baysOn(building, volume, bay.side), windowWidth: authored?.windowWidth ?? .55,
-          windowHeight: authored?.windowHeight ?? .6, sill: authored?.sill ?? m(.9),
-          pierWidth: authored?.pierWidth ?? (grammar === 'artDecoCrown' ? m(.65) : m(.36)),
-          pierDepth: authored?.pierDepth ?? (grammar === 'artDecoCrown' ? m(.65) : grammar === 'artDeco' ? m(.3) : 0),
-          pierEvery: authored?.pierEvery ?? 1 };
-      })(),
-      scope: tool.materialScope === 'face' ? 'face' : tool.materialScope === 'floor' ? 'floor' : tool.materialScope === 'building' ? 'building' : 'volume',
-      openingScope: tool.scope,
-      width: volume?.w ?? 0,
-      depth: volume?.d ?? 0,
-      selectedVertex: tool.selection?.vertex !== undefined && tool.selection.vertex !== null,
-      armedElement: tool.armed,
-      element: (() => {
-        const part = tool.selectedElement();
-        return part ? { kind: part.kind, w: part.w, d: part.d, h: part.h } : null;
-      })(),
-      floors: volume?.storeys.length ?? 0,
-      floorHeight: building?.storeyHeight ?? 0,
-      groundHeight: building?.groundHeight ?? 0,
-      splitMin: volume ? volume.base + 1 : 1,
-      splitMax: volume ? volume.base + volume.storeys.length - 1 : 0,
-      splitDefault: volume ? volume.base + Math.max(1, Math.floor(volume.storeys.length / 2)) : 1,
-      tierShape: volume ? detectPlanShape(volume) : null,
-      area: volume ? Math.abs(signedArea(localFootprint(volume))) * METERS_PER_UNIT ** 2 : 0,
-      roof: volume?.roof ?? null,
-      pitch: volume?.pitch ?? DEFAULT_PITCH[volume?.roof ?? ''] ?? 30,
-      ridge: volume ? ridgeAlongX(volume) ? 'x' : 'y' : null,
-      fall: volume?.fall ?? null,
-      facadePattern: (() => {
-        const selectedBay = tool.selection?.bay;
-        const facade = selectedBay ? volume?.storeys[selectedBay.storey]?.facade : undefined;
-        if (tool.materialScope === 'face' && selectedBay)
-          return facade?.patterns?.[selectedBay.side] ?? facade?.pattern ?? volume?.facadePattern ?? null;
-        if (tool.materialScope === 'floor') return facade?.pattern ?? volume?.facadePattern ?? null;
-        if (tool.materialScope === 'building' && building?.volumes.some((mass) => mass.facadePattern !== volume?.facadePattern)) return null;
-        return volume?.facadePattern ?? null;
-      })(),
-      component: tool.component,
-      material: tool.currentMaterial(),
-      details: volume?.roofDetails?.map((part) => ({ id: part.id, kind: part.kind,
-        ...(part.h === undefined ? {} : { h: part.h }), ...(part.flag === undefined ? {} : { flag: part.flag }) })) ?? [],
-      selectedDetail: tool.selectedRoofDetail,
-      armedDetail: tool.roofDetailKind,
-      problem: tool.problem,
-    });
+    setScope: (scope) => {
+      tool.setScope(scope as never);
+      host.changed();
+    },
+    view: () => tool.focusSelected(),
   };
 
-  const floorOf = tool.floorOf.bind(tool);
+  const workspace = initBuilderWorkspace(actions);
+
+  /** One inspector number, applied to the model. */
+  function setField(id: string, value: number): void {
+    const metres = METERS_PER_UNIT;
+    switch (id) {
+      case 'floors': tool.setStoreys(Math.max(1, Math.round(value))); return;
+      case 'floorHeight': tool.setParameter('storeyHeight', value / metres); return;
+      case 'groundHeight': tool.setGroundHeight(value / metres); return;
+      case 'pitch': tool.setRoofShape({ pitch: value }); return;
+      case 'relief': tool.setRelief(value / metres); return;
+      case 'elementW': tool.updateElement({ w: value / metres }); return;
+      case 'elementD': tool.updateElement({ d: value / metres }); return;
+      case 'elementH': tool.updateElement({ h: value / metres }); return;
+      case 'bays': tool.setFacadeGeometry({ bays: Math.max(1, Math.round(value)) }); return;
+      case 'windowWidth': tool.setFacadeGeometry({ windowWidth: value / 100 }); return;
+      case 'windowHeight': tool.setFacadeGeometry({ windowHeight: value / 100 }); return;
+      case 'sill': tool.setFacadeGeometry({ sill: value / metres }); return;
+      case 'pierWidth': tool.setFacadeGeometry({ pierWidth: value / metres }); return;
+      case 'pierDepth': tool.setFacadeGeometry({ pierDepth: value / metres }); return;
+      case 'detailHeight': tool.setRoofDetailHeight(value); return;
+      default: return;
+    }
+  }
+
+  /** The precise numbers of the current selection, for the inspector. */
+  function inspectorFields(): BuilderField[] {
+    const building = tool.selected();
+    if (!building) return [];
+    const volume = tool.selection ? volumeById(building, tool.selection.volume) : undefined;
+    const fields: BuilderField[] = [];
+    const metres = METERS_PER_UNIT;
+    if (volume) {
+      fields.push(
+        { id: 'floors', labelKey: 'builder.field.storeys', value: volume.storeys.length, unit: 'count', min: 1, max: 60, step: 1 },
+      );
+    }
+    fields.push(
+      { id: 'floorHeight', labelKey: 'builder.field.storeyHeight', value: building.storeyHeight * metres, unit: 'm', min: 2.6, max: 9, step: 0.05 },
+      { id: 'groundHeight', labelKey: 'builder.field.groundHeight', value: building.groundHeight * metres, unit: 'm', min: 2.6, max: 20, step: 0.1 },
+    );
+    if (volume) {
+      const area = Math.abs(signedArea(localFootprint(volume))) * metres ** 2;
+      fields.push({ id: 'area', labelKey: 'builder.field.area', value: area, unit: 'm', text: `${area.toFixed(1)} m²` });
+      const pitched = volume.roof === 'gable' || volume.roof === 'hip' || volume.roof === 'shed' || volume.roof === 'sawtooth';
+      if (pitched) {
+        fields.push({ id: 'pitch', labelKey: 'builder.field.pitch', value: volume.pitch ?? DEFAULT_PITCH[volume.roof] ?? 30, unit: 'deg', min: 5, max: 60, step: 1 });
+      }
+    }
+    if (tool.selection?.bay && volume) {
+      const bay = tool.selection.bay;
+      const authored = volume.facadeGeometry?.[bay.side];
+      fields.push(
+        { id: 'relief', labelKey: 'builder.field.depth', value: tool.reliefDepth() * metres, unit: 'm', min: -4, max: 2.4, step: 0.05 },
+        { id: 'bays', labelKey: 'builder.field.bays', value: baysOn(building, volume, bay.side), unit: 'count', min: 1, max: 40, step: 1 },
+        { id: 'windowWidth', labelKey: 'builder.field.windowWidth', value: (authored?.windowWidth ?? 0.55) * 100, unit: 'percent', min: 10, max: 100, step: 1 },
+        { id: 'windowHeight', labelKey: 'builder.field.windowHeight', value: (authored?.windowHeight ?? 0.6) * 100, unit: 'percent', min: 10, max: 100, step: 1 },
+        { id: 'sill', labelKey: 'builder.field.sill', value: (authored?.sill ?? m(0.9)) * metres, unit: 'm', min: 0, max: 6, step: 0.05 },
+        { id: 'pierWidth', labelKey: 'builder.field.pierWidth', value: (authored?.pierWidth ?? m(0.36)) * metres, unit: 'm', min: 0, max: 4, step: 0.05 },
+      );
+    }
+    const element = tool.selectedElement();
+    if (element) {
+      fields.push(
+        { id: 'elementW', labelKey: 'builder.field.width', value: element.w * metres, unit: 'm', min: 0.1, max: 40, step: 0.05 },
+        { id: 'elementD', labelKey: 'builder.field.length', value: element.d * metres, unit: 'm', min: 0.1, max: 40, step: 0.05 },
+        { id: 'elementH', labelKey: 'builder.field.height', value: element.h * metres, unit: 'm', min: 0.1, max: 40, step: 0.05 },
+      );
+    }
+    const detail = volume?.roofDetails?.find((part) => part.id === tool.selectedRoofDetail);
+    if (detail?.kind === 'spire') {
+      fields.push({ id: 'detailHeight', labelKey: 'builder.field.height', value: (detail.h ?? 0) * metres, unit: 'm', min: 0, max: 40, step: 0.1 });
+    }
+    return fields;
+  }
+
+  /** What the inspector is looking at, in one line. */
+  function selectionName(): string {
+    const building = tool.selected();
+    if (!building) return '';
+    const volume = tool.selection ? volumeById(building, tool.selection.volume) : undefined;
+    if (tool.selectedElement()) return t('builder.sel.element');
+    if (tool.selection?.bay && volume) return `${t('builder.sel.face')} · ${t('builder.sel.floor', { n: volume.base + tool.selection.bay.storey + 1 })}`;
+    if (tool.selectedRoofDetail !== null) return t('builder.sel.detail');
+    if (volume) return t('builder.sel.volume', { n: volume.id });
+    return t('builder.sel.building');
+  }
+
+  const materialLine = (): string | undefined => {
+    const material = tool.currentMaterial();
+    return material ? `${t(`building.finish.${material.finish}`)} · #${material.colour.toString(16).padStart(6, '0')}` : undefined;
+  };
+
+  const state = (): BuilderState => {
+    const building = tool.selected();
+    const volume = building && tool.selection ? volumeById(building, tool.selection.volume) : undefined;
+    const fields = inspectorFields();
+    const material = materialLine();
+    return {
+      category,
+      tool: toolId,
+      armed: tool.armed,
+      ready: new Set(READY),
+      floor: {
+        active: volume && tool.selection?.bay ? volume.base + tool.selection.bay.storey : volume?.base ?? 0,
+        total: building ? topLevel(building) : 1,
+      },
+      snap: snapMode,
+      grid: gridVisible,
+      hideOthers,
+      canUndo: history.canUndo,
+      canRedo: history.canRedo,
+      inspectorOpen,
+      busy: tool.dragging || (tool.planPoints?.length ?? 0) > 0,
+      selection: building && (volume || tool.selection?.bay || tool.selectedElement() || tool.selectedRoofDetail !== null)
+        ? {
+          titleKey: 'builder.sel.title',
+          name: selectionName(),
+          fields,
+          ...(material === undefined ? {} : { material }),
+        }
+        : null,
+      quickBar: null,
+      hint: t(`hint.builder.${tool.builderHintKey()}`),
+      userBlueprints,
+      pattern: building && volume ? (volume.facadePattern ?? null) : null,
+      scope: tool.scope,
+      material: tool.currentMaterial(),
+    };
+  };
+
+  const refresh = (): void => {
+    if (!dirty) return;
+    dirty = false;
+    workspace.refresh(state());
+  };
+
+  /** The Builder's own layer: the construction grid and the number being typed. */
+  const drawGizmos = (ctx: CanvasRenderingContext2D): void => {
+    const building = tool.selected();
+    const input: GizmoInput = {
+      project: view.project,
+      handles: [],
+      hovered: null,
+      grid: gridVisible && building ? { centre: { x: building.x, y: building.y }, z: tool.floorOf(building) + m(0.05) } : null,
+      ring: null,
+      draw: null,
+      measure: null,
+      numeric: null,
+      snap: null,
+      repeat: null,
+      floorBand: null,
+    };
+    drawBuilderGizmos(ctx, input);
+  };
 
   return {
     tool,
     pointerDown(screen, world, shift) {
       tool.pointerDown(screen, world, shift);
+      dirty = true;
     },
     pointerMove(screen, world, shift) {
       tool.pointerMove(screen, world, shift);
+      dirty = true;
     },
     pointerUp(cancelled) {
       tool.pointerUp(cancelled);
+      dirty = true;
+    },
+    cancelOperation() {
+      const used = tool.cancelOperation();
+      if (used) dirty = true;
+      return used;
     },
     key(e) {
       const ctrl = e.ctrlKey || e.metaKey;
@@ -311,19 +573,23 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         deps.flash('building.copied');
         return true;
       }
-      return tool.key(e.key, ctrl, e.shiftKey);
+      const used = tool.key(e.key, ctrl, e.shiftKey);
+      if (used) dirty = true;
+      return used;
     },
     activate() {
-      panelDirty = true;
-      refreshPanel();
+      dirty = true;
+      refresh();
     },
     deactivate() {
       tool.deactivate();
       scene.setBuildingPreview(null);
+      scene.setBuildingsDimmed(undefined);
+      hideOthers = false;
     },
     beforeDraw(active) {
       scene.setBuildingPreview(active ? tool.preview : null);
-      if (active) refreshPanel();
+      if (active) refresh();
     },
     drawOverlay(ctx) {
       const selected = tool.selected();
@@ -339,15 +605,15 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         const text = preview.problem
           ? t(`building.problem.${preview.problem}`)
           : `${plural('building.floors', floors)} · ${size}`;
-        label = { text, valid: preview.valid, building: preview.building, floor: floorOf(preview.building) };
+        label = { text, valid: preview.valid, building: preview.building, floor: tool.floorOf(preview.building) };
       }
       drawBuildingOverlay(ctx, {
         project: view.project,
         stage: tool.stage,
         plan: tool.planPoints ? { points: tool.planPoints, cursor: tool.planCursor, groundAt: tool.planHeight === null ? view.groundAt : () => tool.planHeight! } : null,
-        hover: hovered && tool.mode === 'edit' ? { building: hovered, floor: floorOf(hovered) } : null,
+        hover: hovered && tool.mode === 'edit' ? { building: hovered, floor: tool.floorOf(hovered) } : null,
         selected: shown && tool.selection && tool.mode === 'edit'
-          ? { building: shown, volume: tool.selection.volume, floor: floorOf(shown), bay: tool.selection.bay, vertex: tool.selection.vertex, region: tool.faceRegion() }
+          ? { building: shown, volume: tool.selection.volume, floor: tool.floorOf(shown), bay: tool.selection.bay, vertex: tool.selection.vertex, region: tool.faceRegion() }
           : null,
         handles: tool.handles(),
         activeHandle: tool.hoverHandle,
@@ -363,6 +629,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           }
           : null,
       });
+      drawGizmos(ctx);
     },
     restored() {
       tool.sync();
@@ -383,11 +650,26 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       return result.ok;
     },
     hintKey(prefix) {
-      return tool.planPoints ? `${prefix}.building.draw` : `${prefix}.building.${tool.stage}`;
+      return `${prefix}.builder.${tool.builderHintKey()}`;
     },
     languageChanged() {
-      panelDirty = true;
-      refreshPanel();
+      dirty = true;
+      workspace.relabel();
+      lastHint = '';
+      refresh();
     },
   };
 }
+
+/** Every tool the catalogue lists, all of them wired to the engine. */
+const READY: ReadonlySet<string> = new Set([
+  'select',
+  'rect', 'shapeL', 'shapeU', 'circle', 'hexagon', 'octagon', 'chamfered', 'sketch', 'models',
+  'storey', 'storeyDown', 'wing', 'stack', 'cut', 'split', 'setback', 'vertexAdd', 'vertexRemove',
+  'pushpull', 'inset', 'outset', 'flush', 'patterns', 'geometry',
+  'window', 'sashWindow', 'wideWindow', 'balcony', 'door', 'shopfront', 'loadingDoor', 'pillarBay', 'wallBay',
+  'stair', 'ramp', 'pillar', 'canopy', 'wall', 'slab',
+  'roofFlat', 'roofTerrace', 'roofGable', 'roofHip', 'roofShed', 'roofSawtooth', 'roofShape',
+  'solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire', 'moreComponents',
+  'paint', 'material', 'colour', 'copyStyle',
+]);

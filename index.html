@@ -9,7 +9,6 @@
        no stray asset to copy. -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23152119'/%3E%3Cpath d='M6 22 16 5l10 17-10 5Z' fill='none' stroke='%237ee0b8' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/src/ui/app.css" />
-  <link rel="stylesheet" href="/src/ui/buildingStudio.css" />
 </head>
 <body>
   <main id="app" data-i18n-label="app.region" aria-label="Roadcraft road builder">
@@ -144,113 +143,9 @@
       </div>
     </section>
 
-    <section id="buildingPalette" class="building-creator glass hidden" data-panel="building" data-i18n-label="building.label" aria-label="Buildings" aria-hidden="true">
-      <div class="panel-title"><button type="button" class="panel-toggle" aria-expanded="true" aria-controls="buildingBody"><span data-i18n="creator.title">BUILD</span><svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><kbd>H</kbd></div>
-      <div class="panel-body" id="buildingBody">
-        <section id="creatorDock" class="creator-dock" aria-label="Building tools" hidden>
-          <div id="creatorDockSecondary" class="creator-dock-secondary"></div>
-          <div id="creatorDockPopover" class="creator-dock-popover" hidden>
-            <div class="creator-dock-popover-title" data-i18n="creator.upperMass">Build an upper mass</div>
-            <div class="creator-dock-fields">
-              <label><span data-i18n="creator.upperShape">Footprint</span><select id="dockUpperShape"><option value="match" data-i18n="creator.upperMatch">Same outline</option><option value="rectangle" data-i18n="creator.shape.rectangle">Rectangle</option><option value="l" data-i18n="creator.shape.l">L</option><option value="u" data-i18n="creator.shape.u">U</option><option value="circle" data-i18n="creator.shape.circle">Circle</option><option value="hexagon" data-i18n="creator.shape.hexagon">Hexagon</option><option value="octagon" data-i18n="creator.shape.octagon">Octagon</option><option value="chamfered" data-i18n="creator.shape.chamfered">Chamfered</option></select></label>
-              <label><span data-i18n="creator.upperFloors">Floors</span><input id="dockUpperFloors" type="number" min="1" max="59" step="1" value="2"></label>
-              <label><span data-i18n="creator.upperWidth">Width (m)</span><input id="dockUpperWidth" type="number" min="2" max="160" step="0.1"></label>
-              <label><span data-i18n="creator.upperDepth">Depth (m)</span><input id="dockUpperDepth" type="number" min="2" max="160" step="0.1"></label>
-              <label><span data-i18n="creator.upperInset">Setback (m)</span><input id="dockUpperInset" type="number" min="0" max="40" step="0.1" value="1"></label>
-            </div>
-            <details><summary data-i18n="creator.upperAdvanced">Position and dimensions</summary><div class="creator-dock-fields"><label><span data-i18n="creator.upperOffsetX">Left / right (m)</span><input id="dockUpperX" type="number" step="0.1" value="0"></label><label><span data-i18n="creator.upperOffsetY">Front / back (m)</span><input id="dockUpperY" type="number" step="0.1" value="0"></label></div></details>
-            <button id="dockUpperApply" type="button" class="creator-primary" data-i18n="creator.createUpper">Create upper mass</button>
-          </div>
-        </section>
-        <div id="creatorRail" class="creator-rail hidden" role="group" data-i18n-label="creator.tools" aria-label="Building steps">
-          <button type="button" data-creator-tool="sketch" data-i18n="creator.tool.sketch">1 Plan</button>
-          <button type="button" data-creator-tool="shape" data-i18n="creator.tool.shape">2 Volume</button>
-          <button type="button" data-creator-tool="facade" data-i18n="creator.tool.facade">3 Facade</button>
-          <button type="button" data-creator-tool="roof" data-i18n="creator.tool.roof">4 Roof</button>
-        </div>
-        <div class="creator-heading"><h2 id="creatorTitle"></h2><p id="creatorDescription"></p><button type="button" id="creatorFrame" class="creator-frame" data-i18n="creator.frame">Frame entire building</button></div>
-        <div id="creatorStart" class="creator-section">
-          <button type="button" id="creatorDraw" class="creator-primary" data-i18n="creator.draw">Draw freely on terrain</button>
-          <details class="creator-library"><summary data-i18n="creator.quickShapes">Quick shapes (optional)</summary><div id="creatorShapes" class="creator-shapes" role="group" data-i18n-label="creator.shapes" aria-label="Starter shapes"></div></details>
-          <div class="creator-label" data-i18n="creator.starts">Ideas to start with</div>
-          <div id="creatorStarters" class="creator-starters"></div>
-          <details id="creatorSavedModels" class="creator-library"><summary data-i18n="creator.myModels">My models</summary><div id="creatorUserBlueprints" class="creator-masses"></div></details>
-        </div>
-        <div id="creatorSketch" class="creator-section" hidden>
-          <div id="creatorSketchActions" class="creator-buttons">
-            <button type="button" data-creator-action="draw-new" data-i18n="creator.drawNew">New building</button>
-            <button type="button" data-creator-action="draw-ground" data-i18n="creator.drawGround">Draw ground mass</button>
-            <button type="button" data-creator-action="draw-top" data-i18n="creator.drawTop">Draw on selected roof</button>
-          </div>
-          <div id="creatorDrawing" hidden>
-            <div id="creatorPointCount" class="creator-note" aria-live="polite"></div>
-            <button type="button" data-creator-action="finish" class="creator-primary" data-i18n="creator.finish">Finish outline</button>
-            <div class="creator-buttons"><button type="button" data-creator-action="back" data-i18n="creator.back">Undo point</button><button type="button" data-creator-action="cancel" data-i18n="creator.cancel">Cancel</button></div>
-          </div>
-          <div class="creator-label" data-i18n="creator.masses">Masses</div>
-          <div id="creatorMasses" class="creator-masses"></div>
-          <div id="creatorSaveBox" class="creator-save"><label for="creatorBlueprintName" data-i18n="creator.modelName">Model name</label><input id="creatorBlueprintName" type="text" maxlength="40"/><button type="button" id="creatorSaveBlueprint" data-i18n="creator.saveModel">Save model</button></div>
-        </div>
-        <div id="creatorShape" class="creator-section" hidden>
-          <div id="creatorShapeSummary" class="creator-summary"></div>
-          <div class="creator-label" data-i18n="creator.combine">Combine structures</div>
-          <div class="creator-buttons"><button type="button" data-creator-action="attach" data-i18n="creator.attach">Attach a wing</button><button type="button" data-creator-action="stack" data-i18n="creator.stack">Build on this roof</button></div>
-          <div class="creator-buttons"><button type="button" data-creator-action="floor-down" data-i18n="creator.floorDown">− Floor</button><button type="button" data-creator-action="floor-up" data-i18n="creator.floorUp">+ Floor</button></div>
-          <div class="creator-measures"><label><span data-i18n="creator.floorCount">Floors in this mass</span><input id="creatorFloorCount" type="number" min="1" max="60" step="1" inputmode="numeric"></label><label><span data-i18n="creator.floorHeight">Floor height (m)</span><input id="creatorFloorHeight" type="number" min="2.6" max="9" step="0.1" inputmode="decimal"></label></div>
-          <details class="creator-advanced"><summary data-i18n="creator.moreOptions">More building options</summary>
-          <div class="creator-label" data-i18n="creator.profile">Sculpt the silhouette</div>
-          <div class="creator-measures"><label><span data-i18n="creator.splitAfter">Split after floor</span><input id="creatorSplitAt" type="number" min="1" max="59" step="1" inputmode="numeric"></label><label><span data-i18n="creator.groundHeight">Ground hall (m)</span><input id="creatorGroundHeight" type="number" min="2.6" max="20" step="0.1" inputmode="decimal"></label></div>
-          <button type="button" id="creatorSplit" class="creator-primary" data-i18n="creator.split">Create editable upper tier</button>
-          <p class="creator-note" data-i18n="creator.splitHint">The overall height stays the same. Shape the new upper tier with its handles.</p>
-          <details class="creator-library"><summary data-i18n="creator.tierPlan">Plan of this tier</summary><p class="creator-note" data-i18n="creator.tierPlanHint">Choose a starting contour, then reshape its corners and edges directly on the building.</p><div id="creatorTierShapes" class="creator-shapes"></div></details>
-          <div class="creator-label" data-i18n="creator.upperMass">Build an upper mass</div>
-          <div class="creator-measures"><label><span data-i18n="creator.upperShape">Footprint</span><select id="creatorUpperShape"><option value="match" data-i18n="creator.upperMatch">Same outline</option><option value="rectangle" data-i18n="creator.shape.rectangle">Rectangle</option><option value="chamfered" data-i18n="creator.shape.chamfered">Chamfered</option><option value="octagon" data-i18n="creator.shape.octagon">Octagon</option><option value="circle" data-i18n="creator.shape.circle">Circle</option></select></label><label><span data-i18n="creator.upperFloors">Floors</span><input id="creatorUpperFloors" type="number" min="1" max="59" value="2" step="1" inputmode="numeric"></label><label><span data-i18n="creator.upperInset">Setback (m)</span><input id="creatorUpperInset" type="number" min="0" max="40" value="2" step="0.5" inputmode="decimal"></label></div>
-          <p class="creator-note" data-i18n="creator.fitNote">New shapes fit within the selected roof. Drag their handles to refine.</p>
-          <details id="creatorUpperAdvanced" class="creator-library"><summary data-i18n="creator.upperAdvanced">Position and dimensions</summary><div class="creator-measures"><label><span data-i18n="creator.upperWidth">Width (m)</span><input id="creatorUpperWidth" type="number" min="2" max="160" step="0.5" inputmode="decimal" placeholder="Auto"></label><label><span data-i18n="creator.upperDepth">Depth (m)</span><input id="creatorUpperDepth" type="number" min="2" max="160" step="0.5" inputmode="decimal" placeholder="Auto"></label><label><span data-i18n="creator.upperOffsetX">Left / right (m)</span><input id="creatorUpperOffsetX" type="number" min="-80" max="80" step="0.5" value="0" inputmode="decimal"></label><label><span data-i18n="creator.upperOffsetY">Front / back (m)</span><input id="creatorUpperOffsetY" type="number" min="-80" max="80" step="0.5" value="0" inputmode="decimal"></label></div></details>
-          <div class="creator-buttons"><button type="button" data-creator-action="setback" data-i18n="creator.createUpper">Create upper mass</button><button type="button" data-creator-action="cut" data-i18n="creator.cut">Cut a notch</button></div>
-          <div class="creator-buttons"><button type="button" data-creator-action="insert-point" data-i18n="creator.insertPoint">Add corner</button><button type="button" data-creator-action="remove-point" data-i18n="creator.removePoint">Remove corner</button></div>
-          </details>
-          <div class="creator-label" data-i18n="creator.masses">Masses</div><div id="creatorShapeMasses" class="creator-masses"></div>
-          <details id="creatorElementsBox" class="creator-library"><summary data-i18n="creator.elements">Architectural elements</summary>
-            <div id="creatorElements" class="creator-details"></div>
-            <p id="creatorElementHint" class="creator-note" data-i18n="creator.elementHint">Choose a part, then click a face or the ground beside the building.</p>
-            <div id="creatorElementEditor" hidden>
-              <div id="creatorElementName" class="creator-label"></div>
-              <label class="creator-range"><span data-i18n="building.element.w">Width</span><input data-creator-element-size="w" type="range" min="0.2" max="16" step="0.1"/><output></output></label>
-              <label class="creator-range"><span data-i18n="building.element.d">Length</span><input data-creator-element-size="d" type="range" min="0.2" max="16" step="0.1"/><output></output></label>
-              <label class="creator-range"><span data-i18n="building.element.h">Height</span><input data-creator-element-size="h" type="range" min="0.2" max="16" step="0.1"/><output></output></label>
-              <div class="creator-buttons"><button type="button" data-creator-action="element-turn" data-i18n="building.element.turn">Turn</button><button type="button" data-creator-action="element-repeat" data-i18n="building.element.repeat">Repeat</button><button type="button" data-creator-action="element-remove" data-i18n="building.element.remove">Remove</button></div>
-            </div>
-          </details>
-        </div>
-        <div id="creatorFacade" class="creator-section" hidden>
-          <details class="creator-advanced"><summary data-i18n="creator.moreOptions">More building options</summary>
-          <div class="creator-label" data-i18n="creator.facadePattern">Facade composition</div>
-          <div id="creatorPatterns" class="creator-patterns"></div>
-          <div class="creator-label" data-i18n="creator.target">Apply to</div>
-          <div class="creator-buttons"><select id="creatorFacadeScope" class="themed-select"><option value="building" data-i18n="creator.target.building">Building</option><option value="volume" data-i18n="creator.target.volume">Mass</option><option value="face" data-i18n="creator.target.face">Selected face</option><option value="floor" data-i18n="creator.target.floor">Selected floor</option></select></div>
-          <div id="creatorSelectedFloor" class="creator-note" hidden></div>
-          <div class="creator-label" data-i18n="creator.detail">One opening</div><div id="creatorOpenings" class="creator-openings"></div>
-          <details id="creatorReliefBox" class="creator-library" hidden><summary data-i18n="creator.relief">Sculpt selected bays</summary><p class="creator-note" data-i18n="creator.reliefHint">Click a wall bay; Shift-click another to select a region. Negative values recess, positive values project.</p><label class="creator-measure-single"><span data-i18n="creator.reliefDepth">Depth (m)</span><input id="creatorReliefDepth" type="number" min="-4" max="2.4" step="0.125" inputmode="decimal"></label><div class="creator-buttons"><button type="button" data-creator-action="relief-in" data-i18n="creator.reliefIn">Recess 0.5 m</button><button type="button" data-creator-action="relief-out" data-i18n="creator.reliefOut">Project 0.5 m</button><button type="button" data-creator-action="relief-flat" data-i18n="creator.reliefFlat">Flush</button></div></details>
-          <details id="creatorFacadeGeometry" class="creator-library" hidden><summary data-i18n="creator.facadeGeometry">Design this face</summary><p class="creator-note" data-i18n="creator.facadeGeometryHint">Set this face's window rhythm and pier dimensions. Each side can differ.</p><div class="creator-measures"><label><span data-i18n="creator.bayCount">Window bays</span><input data-creator-geometry="bays" type="number" min="1" max="64" step="1" inputmode="numeric"></label><label><span data-i18n="creator.windowWidth">Window width (%)</span><input data-creator-geometry="windowWidth" type="number" min="15" max="95" step="1" inputmode="numeric"></label><label><span data-i18n="creator.windowHeight">Window height (%)</span><input data-creator-geometry="windowHeight" type="number" min="15" max="95" step="1" inputmode="numeric"></label><label><span data-i18n="creator.windowSill">Sill height (m)</span><input data-creator-geometry="sill" type="number" min="0" max="2.4" step="0.05" inputmode="decimal"></label><label><span data-i18n="creator.pierWidth">Pier width (m)</span><input data-creator-geometry="pierWidth" type="number" min="0" max="2.4" step="0.05" inputmode="decimal"></label><label><span data-i18n="creator.pierDepth">Pier projection (m)</span><input data-creator-geometry="pierDepth" type="number" min="0" max="2.4" step="0.05" inputmode="decimal"></label><label><span data-i18n="creator.pierEvery">Every N bays</span><input data-creator-geometry="pierEvery" type="number" min="1" max="16" step="1" inputmode="numeric"></label></div></details>
-          </details>
-          <div class="creator-label" data-i18n="creator.material">Material</div><div class="creator-buttons"><select id="creatorFinish" class="themed-select"></select><input id="creatorColor" type="color" aria-label="Facade color" data-i18n-label="creator.color" /></div>
-        </div>
-        <div id="creatorRoof" class="creator-section" hidden>
-          <div id="creatorRoofKinds" class="creator-roofs"></div>
-          <label id="creatorPitchLabel" class="creator-range"><span data-i18n="building.pitch">Pitch</span><input id="creatorPitch" type="range" min="5" max="60" step="1"/><output id="creatorPitchValue"></output></label>
-          <div id="creatorRidgeGroup" class="creator-buttons" hidden><button type="button" data-creator-ridge="x" data-i18n="creator.ridgeX">Ridge across</button><button type="button" data-creator-ridge="y" data-i18n="creator.ridgeY">Ridge along</button></div>
-          <label id="creatorFallLabel" class="creator-measure-single" hidden><span data-i18n="creator.fall">Slope direction</span><select id="creatorFall"><option value="0" data-i18n="creator.fallFront">Front</option><option value="1" data-i18n="creator.fallRight">Right</option><option value="2" data-i18n="creator.fallBack">Back</option><option value="3" data-i18n="creator.fallLeft">Left</option></select></label>
-          <div class="creator-label" data-i18n="creator.roofMaterial">Roof material</div><div class="creator-buttons"><select id="creatorRoofFinish" class="themed-select"></select><input id="creatorRoofColor" type="color" data-i18n-label="creator.roofColor" aria-label="Roof color"></div>
-          <div class="creator-label" data-i18n="creator.roofDetails">Roof details</div><div id="creatorRoofDetails" class="creator-details"></div>
-          <div id="creatorDetailList" class="creator-masses"></div>
-          <label id="creatorSpireHeightLabel" class="creator-measure-single" hidden><span data-i18n="creator.spireHeight">Spire height (m)</span><input id="creatorSpireHeight" type="number" min="1" max="40" step="0.5" inputmode="decimal"></label>
-          <label id="creatorSpireFlagLabel" class="creator-measure-single" hidden><span data-i18n="creator.spireFlag">Flag</span><select id="creatorSpireFlag"><option value="none" data-i18n="creator.flag.none">None</option><option value="plain" data-i18n="creator.flag.plain">Plain</option><option value="saoPaulo" data-i18n="creator.flag.saoPaulo">Sao Paulo city</option><option value="saoPauloState" data-i18n="creator.flag.saoPauloState">Sao Paulo state</option></select></label>
-        </div>
-        <div id="creatorError" class="creator-error" role="status" hidden></div>
-        <div id="creatorHint" class="creator-hint"></div>
-      </div>
-    </section>
+    <!-- The Builder Workspace (the buildings module&#39;s own interface) is built
+         in TypeScript by src/ui/builder/workspace.ts and mounted here. -->
+    <section id="builder" data-i18n-label="builder.label" aria-label="Builder workspace"></section>
 
     <section id="inspector" class="inspector glass hidden" aria-live="polite" aria-hidden="true" aria-labelledby="inspectorTitle" hidden>
       <div class="panel-title"><span id="inspectorTitle" data-i18n="inspector.title">INSPECT</span><button type="button" id="closeInspector" class="tiny-button" data-i18n-label="inspector.close" aria-label="Close inspector">×</button></div>

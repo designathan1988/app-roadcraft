@@ -41,6 +41,7 @@ import { buildStructureDetails, type StructureDetails } from './structures';
 import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
 import { createTerrainSurface, type TerrainSurface } from './terrain';
 import { type BuildingPreviewInput, createBuildingLayer } from './buildings/layer';
+import type { BuildingId } from '@world/buildings/types';
 import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } from './quality';
 
 /**
@@ -100,6 +101,11 @@ export interface SceneHandle {
   elevationAt(x: number, y: number, structure?: RoadStructure): number;
   /** The editor's building ghost (docs/buildings.md); null removes it. */
   setBuildingPreview(preview: BuildingPreviewInput | null): void;
+  /**
+   * The Builder's "Ocultar outros": undefined draws every building solid,
+   * null fades them all, an id fades every building but that one.
+   */
+  setBuildingsDimmed(except: number | null | undefined): void;
   /** The height the terrain is drawn at — what anything laid on it must clear. */
   terrainHeightAt(x: number, y: number): number;
   /**
@@ -433,6 +439,9 @@ export function createSceneRenderer(
     pavedHeightAt,
     setBuildingPreview(preview) {
       buildings.setPreview(preview);
+    },
+    setBuildingsDimmed(except) {
+      buildings.setDimmed(except === undefined ? undefined : (except as BuildingId | null));
     },
     elevationAt(x, y, structure) {
       if (!elevation) return terrain.renderedHeightAt(x, y);

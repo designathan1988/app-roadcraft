@@ -1589,7 +1589,12 @@ export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): B
  * per part. `ghost` draws them with the translucent preview materials,
  * casting no shadow and with no instance colours (one program per material).
  */
-export function assembleBuildingMeshes(chunks: readonly BuildingChunk[], kit: BuildingKit, ghost = false): BuildingMeshes {
+export function assembleBuildingMeshes(
+  chunks: readonly BuildingChunk[],
+  kit: BuildingKit,
+  ghost = false,
+  dim = false,
+): BuildingMeshes {
   const group = new Group();
   group.name = ghost ? 'building-preview' : 'buildings';
   const meshes: (Mesh | InstancedMesh)[] = [];
@@ -1630,7 +1635,7 @@ export function assembleBuildingMeshes(chunks: readonly BuildingChunk[], kit: Bu
     g.setAttribute('uv', new Float32BufferAttribute(uv, 2));
     g.setIndex(new Uint32BufferAttribute(index, 1));
     g.computeBoundingSphere();
-    const mesh = new Mesh(g, ghost ? kit.ghostShell : kit.shell[finish]);
+    const mesh = new Mesh(g, ghost ? kit.ghostShell : dim ? kit.dimShell[finish] : kit.shell[finish]);
     mesh.name = ghost ? `building-preview-shell-${finish}` : `building-shell-${finish}`;
     mesh.castShadow = !ghost;
     mesh.receiveShadow = !ghost;
@@ -1642,7 +1647,7 @@ export function assembleBuildingMeshes(chunks: readonly BuildingChunk[], kit: Bu
     let count = 0;
     for (const chunk of chunks) count += chunk.parts[kind].count;
     if (count === 0) continue;
-    const mesh = new InstancedMesh(kit.geometry[kind], ghost ? kit.ghostParts : kit.material[kind], count);
+    const mesh = new InstancedMesh(kit.geometry[kind], ghost ? kit.ghostParts : dim ? kit.dimParts : kit.material[kind], count);
     mesh.name = `building-${kind}${ghost ? '-preview' : ''}`;
     mesh.castShadow = !ghost && kit.castsShadow.has(kind);
     mesh.receiveShadow = !ghost;
