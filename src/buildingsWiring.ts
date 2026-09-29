@@ -3,7 +3,7 @@ import { signedArea } from '@core/polygon';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
-import { DEFAULT_PITCH, baysOn, footprintBox, topLevel } from '@world/buildings/geometry';
+import { DEFAULT_PITCH, baysOn, footprintBox, levelElevation, localDirToWorld, topLevel } from '@world/buildings/geometry';
 import { type Building, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
 import { METERS_PER_UNIT, m } from '@world/units';
@@ -12,7 +12,7 @@ import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool
 import type { PlanShape } from '@editor/buildingPlans';
 import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
-import { DRAW_SHAPES, OPENING_COMPONENTS, type BuilderCategoryId, type BuilderField } from '@editor/builderCatalog';
+import { DRAW_SHAPES, OPENING_COMPONENTS, categorySpec, type BuilderCategoryId, type BuilderField } from '@editor/builderCatalog';
 import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
@@ -178,6 +178,10 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     return shape ? (shape as PlanShape) : null;
   };
 
+  /** Wing, stack and cut are drags too: a rectangle against the selection. */
+  const planActionOfTool = (id: string): 'ground' | 'top' | 'cut' | null =>
+    id === 'wing' ? 'ground' : id === 'stack' ? 'top' : id === 'cut' ? 'cut' : null;
+
   /** Runs an action tool, arms a mode tool, or opens a gallery (the workspace's job). */
   function runTool(id: string): void {
     switch (id) {
@@ -221,10 +225,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       return;
     }
     if (id === 'wing' || id === 'stack' || id === 'cut') {
-      clearArming('model');
+      clearArming(null);
       tool.setStage('shape');
-      tool.armModelTool('draw');
-      tool.startPlan(id === 'wing' ? 'ground' : id === 'stack' ? 'top' : 'cut');
       toolId = id;
       return;
     }
@@ -286,10 +288,13 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     redo: () => deps.redo(),
     setCategory: (id) => {
       category = id;
-      const first = id === 'select' ? 'select' : id === 'draw' ? 'rect' : id === 'mass' ? 'storey'
-        : id === 'face' ? 'pushpull' : id === 'openings' ? 'window' : id === 'structure' ? 'stair'
-          : id === 'roof' ? 'roofFlat' : id === 'components' ? 'solar' : 'paint';
-      runTool(first);
+      // A category is a shelf, not a button: opening it arms its first MODE
+      // tool, and never runs an action the player did not ask for (switching
+      // to Mass used to add a floor).
+      const spec = categorySpec(id);
+      const first = spec.tools.find((tool) => tool.kind === 'mode');
+      if (first) runTool(first.id);
+      else if (spec.tools[0]) toolId = spec.tools[0].id;
       host.changed();
     },
     chooseTool: (id) => {
@@ -458,6 +463,24 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     return toolId;
   }
 
+  /**
+   * Where the little bar of actions goes: over the selection, in screen
+   * space, kept inside the viewport and clear of the top bar. It carries only
+   * what the gizmos do not (duplicate, mirror, group, demolish).
+   */
+  function quickBar(): { x: number; y: number } | null {
+    const building = tool.selected();
+    if (!building || tool.planPoints || tool.shapeDragStart) return null;
+    const volume = tool.selection ? volumeById(building, tool.selection.volume) : undefined;
+    const f = footprintBox(building);
+    const c = localDirToWorld(building, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
+    const top = volume ? levelElevation(building, volume.base + volume.storeys.length) : 0;
+    const s = view.project(building.x + c.x, building.y + c.y, tool.floorOf(building) + top + m(1.2));
+    const { w, h } = deps.size();
+    void h;
+    return { x: Math.max(60, Math.min(w - 60, s.x)), y: Math.max(78, s.y) };
+  }
+
   /** The precise numbers of the current selection, for the inspector. */
   function inspectorFields(): BuilderField[] {
     const building = tool.selected();
@@ -555,7 +578,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           ...(material === undefined ? {} : { material }),
         }
         : null,
-      quickBar: null,
+      quickBar: quickBar(),
       hint: t(`hint.builder.${hintKey()}`),
       userBlueprints,
       pattern: building && volume ? (volume.facadePattern ?? null) : null,
@@ -595,6 +618,17 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       const shape = shapeOfTool(toolId);
       if (shape) {
         tool.beginShapeDrag(shape, world);
+        dirty = true;
+        return;
+      }
+      const action = planActionOfTool(toolId);
+      if (action) {
+        if (!tool.selected()) {
+          deps.flash('building.selectFirst');
+          dirty = true;
+          return;
+        }
+        tool.beginShapeDrag('rectangle', world, action);
         dirty = true;
         return;
       }

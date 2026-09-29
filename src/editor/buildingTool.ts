@@ -70,7 +70,7 @@ import {
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
 import { groupInto } from './buildings';
-import { type PlanShape, type UpperMassPlacement, shapeBody, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
+import { type PlanShape, type UpperMassPlacement, shapeBody, shapePoints, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
 import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
 import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
 import { splitVolumeAtFloor, reshapeTier as reshapeTierPlan } from './buildingProfile';
@@ -369,16 +369,32 @@ export class BuildingTool {
    */
   shapeDragStart: Vec2 | null = null;
   shapeDragShape: PlanShape | null = null;
+  shapeDragAction: PlanAction = 'new';
 
-  beginShapeDrag(shape: PlanShape, at: Vec2): void {
+  beginShapeDrag(shape: PlanShape, at: Vec2, action: PlanAction = 'new'): void {
     this.shapeDragShape = shape;
     this.shapeDragStart = at;
+    this.shapeDragAction = action;
     this.stage = 'sketch';
     this.mode = 'place';
-    this.planPoints = null;
+    this.planPoints = action === 'new' ? null : [];
+    this.planAction = action;
     this.chooseShape(shape);
-    this.hoverPlace(at);
+    if (action === 'new') this.hoverPlace(at);
     this.host.changed();
+  }
+
+  /** The shape's outline, fitted into the rectangle the drag has drawn. */
+  private shapeDragRing(): Vec2[] {
+    const start = this.shapeDragStart;
+    const shape = this.shapeDragShape;
+    const last = this.planCursor ?? this.lastWorld;
+    if (!start || !shape || !last) return [];
+    const x0 = Math.min(start.x, last.x);
+    const y0 = Math.min(start.y, last.y);
+    const w = Math.max(m(2), Math.abs(last.x - start.x));
+    const d = Math.max(m(2), Math.abs(last.y - start.y));
+    return shapePoints(shape).map((p) => ({ x: x0 + p.x * w, y: y0 + p.y * d }));
   }
 
   updateShapeDrag(at: Vec2): void {
@@ -386,20 +402,39 @@ export class BuildingTool {
     const start = this.shapeDragStart;
     const w = Math.max(m(2), Math.abs(at.x - start.x));
     const d = Math.max(m(2), Math.abs(at.y - start.y));
-    this.params.width = w;
-    this.params.depth = d;
-    this.chooseShape(this.shapeDragShape);
-    this.hoverPlace({ x: (start.x + at.x) / 2, y: (start.y + at.y) / 2 });
+    this.planCursor = at;
+    if (this.shapeDragAction === 'new') {
+      this.params.width = w;
+      this.params.depth = d;
+      this.chooseShape(this.shapeDragShape);
+      this.hoverPlace({ x: (start.x + at.x) / 2, y: (start.y + at.y) / 2 });
+    } else {
+      // The wing, the stack and the cut are plans: the drag writes the
+      // outline, and the ordinary plan preview and finish do the rest.
+      this.planPoints = this.shapeDragRing();
+      this.updatePlanPreview();
+    }
     this.host.changed();
   }
 
   /** Releases the drag: the shape is built where the ghost stands. */
   endShapeDrag(cancelled: boolean): void {
     const dragging = this.shapeDragStart !== null;
+    const action = this.shapeDragAction;
     this.shapeDragStart = null;
     this.shapeDragShape = null;
+    this.shapeDragAction = 'new';
     if (!dragging || cancelled) {
+      if (action !== 'new') this.planPoints = null;
+      this.planCursor = null;
       this.setPreview(null);
+      this.host.changed();
+      return;
+    }
+    if (action !== 'new') {
+      this.planPoints = this.shapeDragRing();
+      this.finishPlan();
+      this.planCursor = null;
       this.host.changed();
       return;
     }
