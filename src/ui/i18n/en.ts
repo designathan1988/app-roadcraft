@@ -917,4 +917,7 @@ export const EN: Dictionary = {
   'builder.panel.back': 'Back',
   'builder.rail.left': 'Scroll the categories left',
   'builder.rail.right': 'Scroll the categories right',
+  'builder.menu.simulation': 'Simulation',
+  'builder.menu.app': 'Menu',
+  'builder.dock.fold': 'Fold the container',
 };

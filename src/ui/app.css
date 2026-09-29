@@ -659,20 +659,16 @@ body { user-select: none; -webkit-user-select: none; }
   --bw-radius: 7px;
 }
 
-#builder { display: none; }
-.builder-mode #builder { display: block; }
-/* In the Builder the rest of the HUD steps aside: the simulation panel, the
-   road toolbar and palette, the minimap, the status bar and the hint bar. */
-.builder-mode .topbar,
-.builder-mode .toolbar,
-.builder-mode .simulation-controls,
-.builder-mode .road-palette,
-.builder-mode .terrain-palette,
+/* The chrome is the game's own: it is up in both modes, and the old floating
+   top bar steps aside for it. In the Builder the minimap, the status bar and
+   the road hint follow, because the container carries everything they did. */
 .builder-mode .minimap-panel,
 .builder-mode .statusbar,
 .builder-mode .hint,
 .builder-mode .mobile-hint,
 .builder-mode .inspector { display: none !important; }
+/* The old top bar is replaced by the chrome's own bar, in both modes. */
+.bw-hide-legacy .topbar { display: none !important; }
 
 #builder {
   position: absolute;

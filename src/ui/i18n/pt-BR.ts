@@ -903,4 +903,7 @@ export const PT_BR: Dictionary = {
   'builder.panel.back': 'Voltar',
   'builder.rail.left': 'Rolar as categorias para a esquerda',
   'builder.rail.right': 'Rolar as categorias para a direita',
+  'builder.menu.simulation': 'Simulação',
+  'builder.menu.app': 'Menu',
+  'builder.dock.fold': 'Recolher o container',
 };

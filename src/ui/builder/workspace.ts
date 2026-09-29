@@ -17,22 +17,22 @@ import './workspace.css';
 export type { BuilderField, BuilderSelectionInfo };
 
 /**
- * The Builder Workspace: the whole interface of the buildings module.
+ * The game's chrome, in one paradigm: a thin bar at the top for global state,
+ * and an expanding container at the bottom that grows upward in three tiers -
+ * the categories, the sub-tools of the chosen one, and a visual gallery of
+ * what can be placed. The centre of the screen belongs to the map, always.
  *
- * The top of the screen carries everything the player picks from: the status
- * row (exit, history, floor, snap, grid, view, hide, help), the rail of the
- * nine categories under it, and - dropping below the rail - the panel of the
- * chosen category. A category opens its tools, a tool with a chevron opens its
- * variants in that same panel, and the inspector on the right carries the
- * precise numbers of whatever is selected. The map owns the middle.
+ * The same container drives the whole game: on the road it carries the road
+ * tools and their palettes (which `main.ts` mounts into the tier hosts), and
+ * in the Builder it carries the building categories, their tools and their
+ * galleries. The right side stays a thin inspector of nothing but numbers.
  *
- * Everything is in the flow of the page, so nothing can be cut off by the edge
- * of the window; the rail scrolls with its own arrows when the catalogue
- * outgrows the width.
- *
- * This module only renders state and reports clicks: `buildingsWiring.ts` turns
- * every one of them into a tool command. Nothing here reads the document.
+ * This module only renders state and reports clicks: `buildingsWiring.ts` and
+ * `main.ts` turn every one of them into a command. Nothing here reads the
+ * document.
  */
+
+export type ChromeMode = 'road' | 'builder';
 
 export interface BuilderState {
   readonly category: BuilderCategoryId;
@@ -49,14 +49,14 @@ export interface BuilderState {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly inspectorOpen: boolean;
-  /** True while a gesture is running: the panel folds down to give the map room. */
+  /** True while a gesture is running: the gallery folds down to give the map room. */
   readonly busy: boolean;
   readonly selection: BuilderSelectionInfo | null;
   /** Screen position of the selection's quick actions bar, or null. */
   readonly quickBar: { readonly x: number; readonly y: number } | null;
   /** One sentence on what the active tool does now. */
   readonly hint: string;
-  /** A plan is being drawn: the panel carries Finish, Back and Cancel. */
+  /** A plan is being drawn: the trays carry Finish, Back and Cancel. */
   readonly planning: boolean;
   /** How many points the plan has, for the count beside those controls. */
   readonly planPoints: number;
@@ -64,7 +64,7 @@ export interface BuilderState {
   /** The facade pattern the Face category would apply, and where. */
   readonly pattern: string | null;
   readonly scope: string;
-  /** The selected mass's roof, for the ridge and slope panel. */
+  /** The selected mass's roof, for the ridge and slope gallery. */
   readonly roof: { readonly pitch: number; readonly ridge: 'x' | 'y'; readonly fall: number; readonly pitched: boolean } | null;
   /** The material the finish tools would paint now. */
   readonly material: { readonly finish: Finish; readonly colour: number } | null;
@@ -99,19 +99,32 @@ export interface BuilderActions {
   roofPitch(delta: number): void;
   roofRidge(ridge: 'x' | 'y'): void;
   roofFall(side: number): void;
-  /** A view command from the Vista panel: frame | top | turnLeft | turnRight. */
+  /** A view command from the Vista menu: frame | top | turnLeft | turnRight. */
   view(id: string): void;
-  /** A preset thumbnail was rendered off screen. */
-  presetThumbnails(images: ReadonlyMap<string, string>): void;
 }
 
 export interface BuilderWorkspace {
   refresh(state: BuilderState): void;
-  /** A transient sentence in the workspace's own hint bar. */
+  /** Which half of the game the container is driving. */
+  setMode(mode: ChromeMode): void;
+  /**
+   * The tier hosts: `main.ts` mounts the road toolbar and its palettes into
+   * `level1`/`level2`, and the simulation panel and the app menu into the two
+   * bar menus, so the whole game shares one chrome.
+   */
+  readonly hosts: {
+    readonly level1: HTMLElement;
+    readonly level2: HTMLElement;
+    readonly simMenu: HTMLElement;
+    readonly appMenu: HTMLElement;
+    /** Pause and framing, mounted by main.ts on the global bar. */
+    readonly controls: HTMLElement;
+  };
+  /** A transient sentence in the chrome's own hint bar. */
   flash(text: string): void;
   /** Re-labels everything after a language change. */
   relabel(): void;
-  /** Paints the preset gallery's pictures once they are rendered. */
+  /** Paints the gallery's pictures once they are rendered. */
   setPresetThumbnails(images: ReadonlyMap<string, string>): void;
   readonly root: HTMLElement;
 }
@@ -137,18 +150,37 @@ const el = <K extends keyof HTMLElementTagNameMap>(
   return node;
 };
 
-const caret = (): string =>
+const chevron = (): string =>
   '<svg class="bw-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg>';
+
+/** A gallery tile: the glyph large, the name under it. */
+const tile = (id: string, label: string, on: boolean, run: () => void, thumb?: string): HTMLButtonElement => {
+  const b = el('button', 'bw-tile' + (on ? ' active' : ''));
+  b.type = 'button';
+  b.dataset['tile'] = id;
+  b.title = label;
+  const art = thumb
+    ? `<img class="bw-tile-art" src="${thumb}" alt="" />`
+    : `<span class="bw-tile-art">${builderIconSvg(id, 26)}</span>`;
+  b.innerHTML = `${art}<span class="bw-tile-name"></span>`;
+  (b.querySelector('.bw-tile-name') as HTMLElement).textContent = label;
+  b.onclick = run;
+  return b;
+};
 
 export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace {
   const root = document.getElementById('builder') as HTMLElement;
 
-  // ------------------------------------------------------------ top bar
+  // ------------------------------------------------------------ the top bar
   const top = el('div', 'bw-top');
 
   const exit = el('button', 'bw-button bw-exit');
   exit.type = 'button';
   exit.onclick = () => actions.exit();
+  const builderOnly = (node: HTMLElement): HTMLElement => {
+    node.dataset['bwMode'] = 'builder';
+    return node;
+  };
 
   const historyGroup = el('div', 'bw-group');
   const undo = el('button', 'bw-icon-button');
@@ -161,74 +193,125 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   redo.onclick = () => actions.redo();
   historyGroup.append(undo, redo);
 
+  const spacer = el('span', 'bw-spacer');
   const floorChip = el('button', 'bw-chip bw-floor');
   floorChip.type = 'button';
-  floorChip.onclick = () => showPanel('floor');
-
+  floorChip.onclick = () => showMenu('floor', floorChip);
   const snapChip = el('button', 'bw-chip bw-snap');
   snapChip.type = 'button';
-  snapChip.onclick = () => showPanel('snap');
-
+  snapChip.onclick = () => showMenu('snap', snapChip);
   const gridToggle = el('button', 'bw-chip bw-toggle');
   gridToggle.type = 'button';
   gridToggle.onclick = () => actions.toggleGrid();
-
   const viewChip = el('button', 'bw-chip');
   viewChip.type = 'button';
-  viewChip.onclick = () => showPanel('view');
-
+  viewChip.onclick = () => showMenu('view', viewChip);
   const hideToggle = el('button', 'bw-chip bw-toggle');
   hideToggle.type = 'button';
   hideToggle.onclick = () => actions.toggleHideOthers();
-
   const help = el('button', 'bw-icon-button bw-help');
   help.type = 'button';
   help.dataset['i18nTitle'] = 'builder.help';
-  help.onclick = () => showPanel('help');
+  help.onclick = () => showMenu('help', help);
 
-  const spacer = el('span', 'bw-spacer');
-  top.append(exit, historyGroup, spacer, floorChip, snapChip, gridToggle, viewChip, hideToggle, help);
+  // Two menus belong to the whole game and are filled by `main.ts`.
+  const controlsSlot = el('div', 'bw-controls');
+  const simMenu = el('button', 'bw-chip');
+  simMenu.type = 'button';
+  simMenu.innerHTML = `${builderIconSvg('sim', 15)}<span></span><i class="bw-caret"></i>`;
+  (simMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.simulation');
+  simMenu.onclick = () => showMenu('sim', simMenu);
+  const appMenu = el('button', 'bw-chip');
+  appMenu.type = 'button';
+  appMenu.innerHTML = `${builderIconSvg('menu', 15)}<span></span><i class="bw-caret"></i>`;
+  (appMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.app');
+  appMenu.onclick = () => showMenu('app', appMenu);
 
-  // ------------------------------------------------------------ rail + panel
-  const head = el('div', 'bw-head');
-  const railWrap = el('div', 'bw-rail-wrap');
-  const rail = el('div', 'bw-rail');
-  const arrow = (dir: -1 | 1): HTMLButtonElement => {
-    const b = el('button', 'bw-rail-arrow');
-    b.type = 'button';
-    b.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir < 0 ? 'M14 6l-6 6 6 6' : 'M10 6l6 6-6 6'}"/></svg>`;
-    b.setAttribute('aria-label', t(dir < 0 ? 'builder.rail.left' : 'builder.rail.right'));
-    b.onclick = () => rail.scrollBy({ left: dir * 200, behavior: 'smooth' });
-    return b;
+  top.append(
+    exit,
+    historyGroup,
+    controlsSlot,
+    spacer,
+    builderOnly(floorChip),
+    builderOnly(snapChip),
+    builderOnly(gridToggle),
+    builderOnly(viewChip),
+    builderOnly(hideToggle),
+    simMenu,
+    appMenu,
+    help,
+  );
+
+  /**
+   * One drop-down below the bar. Three children live in it for good - the
+   * bar's own menus, the simulation panel and the app menu main.ts mounts -
+   * and showing one is a visibility change, never a move: moving a mounted
+   * panel out of its slot destroys it the moment another menu opens.
+   */
+  const drop = el('div', 'bw-drop');
+  drop.hidden = true;
+  const dropBar = el('div', 'bw-drop-body');
+  const simSlot = el('div', 'bw-slot');
+  const appSlot = el('div', 'bw-slot');
+  drop.append(dropBar, simSlot, appSlot);
+  let openMenu: { id: string; anchor: HTMLElement } | null = null;
+
+  const showMenu = (id: string, anchor: HTMLElement): void => {
+    if (openMenu?.id === id) {
+      closeMenu();
+      return;
+    }
+    openMenu = { id, anchor };
+    dropBar.hidden = id === 'sim' || id === 'app';
+    simSlot.hidden = id !== 'sim';
+    appSlot.hidden = id !== 'app';
+    if (dropBar.hidden) dropBar.innerHTML = '';
+    else dropBar.appendChild(dropBodyFor(id));
+    const r = anchor.getBoundingClientRect();
+    drop.style.left = `${Math.max(10, Math.min(r.left, window.innerWidth - 340))}px`;
+    drop.hidden = false;
   };
-  const railLeft = arrow(-1);
-  const railRight = arrow(1);
-  railWrap.append(railLeft, rail, railRight);
-  const panel = el('div', 'bw-panel');
-  head.append(top, railWrap, panel);
+  const closeMenu = (): void => {
+    drop.hidden = true;
+    dropBar.innerHTML = '';
+    simSlot.hidden = true;
+    appSlot.hidden = true;
+    openMenu = null;
+  };
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!openMenu) return;
+      const target = e.target as Node;
+      if (!drop.contains(target) && !top.contains(target)) closeMenu();
+    },
+    true,
+  );
+
+  // ------------------------------------------------------------ the dock
+  const dock = el('div', 'bw-dock');
+  const tier1 = el('div', 'bw-tier bw-tier1');
+  const tier1Road = el('div', 'bw-host bw-host-road');
+  const tier1Builder = el('div', 'bw-host bw-host-builder');
+  tier1.append(tier1Road, tier1Builder);
+  const tier2 = el('div', 'bw-tier bw-tier2');
+  const tier2Road = el('div', 'bw-host bw-host-road');
+  const tier2Builder = el('div', 'bw-host bw-host-builder');
+  tier2.append(tier2Road, tier2Builder);
+  const tier3 = el('div', 'bw-tier bw-tier3');
+  const fold = el('button', 'bw-fold');
+  fold.type = 'button';
+  fold.dataset['i18nTitle'] = 'builder.dock.fold';
+  fold.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
+  fold.onclick = () => {
+    dock.classList.toggle('folded');
+    syncDock();
+  };
+  dock.append(tier1, tier2, tier3, fold);
 
   const quick = el('div', 'bw-quick');
   const hint = el('div', 'bw-hint');
 
-  for (const category of BUILDER_CATALOG) {
-    const button = el('button', 'bw-cat');
-    button.type = 'button';
-    button.dataset['category'] = category.id;
-    button.onclick = () => {
-      closePanel();
-      actions.setCategory(category.id);
-    };
-    rail.appendChild(button);
-  }
-
-  /** The arrows only show when the rail actually overflows. */
-  const syncRailArrows = (): void => {
-    const over = rail.scrollWidth > rail.clientWidth + 2;
-    railLeft.hidden = !over;
-    railRight.hidden = !over;
-  };
-
-  // ------------------------------------------------------------ inspector
   const inspector = el('aside', 'bw-inspector');
   const inspectorHead = el('div', 'bw-inspector-head');
   const inspectorTitle = el('span', 'bw-inspector-title');
@@ -240,7 +323,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const inspectorBody = el('div', 'bw-inspector-body');
   inspector.append(inspectorHead, inspectorBody);
 
-  root.append(head, inspector, quick, hint);
+  root.append(top, drop, dock, inspector, quick, hint);
 
   const quickButtons = new Map<string, HTMLButtonElement>();
   for (const [name, icon] of [
@@ -257,270 +340,313 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     quickButtons.set(name, b);
   }
 
-  // ------------------------------------------------------------ the panel
-  /** Which panel is open below the rail: a family, a gallery, or nothing. */
-  let panelId: string | null = null;
+  // ------------------------------------------------------------ state
+  let mode: ChromeMode = 'road';
+  let openGallery: string | null = null;
   let lastState: BuilderState | null = null;
+  const thumbnails = new Map<string, string>();
+  let hintBase = '';
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const closePanel = (): void => {
-    panelId = null;
+  const syncDock = (): void => {
+    // Tier 3 only exists when there is something in it.
+    const hasThird = tier3.childElementCount > 0;
+    const folded = dock.classList.contains('folded');
+    dock.classList.toggle('has-third', hasThird);
+    tier2.hidden = folded;
+    tier3.hidden = folded || !hasThird;
+    root.dataset['dock'] = folded ? 'folded' : 'open';
   };
 
-  const showPanel = (id: string): void => {
-    panelId = panelId === id ? null : id;
-    renderPanel(lastState);
-  };
-
-  const closeAfter = (run: () => void): (() => void) => () => {
+  const closeGalleryAnd = (run: () => void): (() => void) => () => {
     run();
-    closePanel();
-    renderPanel(lastState);
+    openGallery = null;
+    renderDock(lastState);
   };
 
-  const note = (key: string): HTMLElement => {
-    const p = el('p', 'bw-panel-note');
-    p.dataset['i18n'] = key;
+  // ------------------------------------------------------------ bar menus
+  function dropBodyFor(id: string): HTMLElement {
+    const wrap = el('div', 'bw-drop-body');
+    if (id === 'snap') {
+      const grid = el('div', 'bw-drop-grid');
+      for (const snap of SNAP_MODES) {
+        grid.appendChild(menuItem(t(`builder.snap.${snap}`), lastState?.snap === snap, () => actions.setSnap(snap)));
+      }
+      wrap.append(grid, menuNote('builder.snap.note'));
+      return wrap;
+    }
+    if (id === 'floor') {
+      const grid = el('div', 'bw-drop-grid floors');
+      const total = Math.max(1, lastState?.floor.total ?? 1);
+      for (let i = 0; i < total; i++) {
+        grid.appendChild(menuItem(String(i + 1), lastState?.floor.active === i, () => actions.setFloor(i)));
+      }
+      const row = el('div', 'bw-drop-row');
+      for (const [command, key] of [
+        ['duplicate', 'builder.floor.duplicate'],
+        ['insertAbove', 'builder.floor.insertAbove'],
+        ['insertBelow', 'builder.floor.insertBelow'],
+      ] as const) {
+        row.appendChild(menuItem(t(key), false, () => actions.floorCommand(command)));
+      }
+      wrap.append(grid, row, menuNote('builder.floor.note'));
+      return wrap;
+    }
+    if (id === 'view') {
+      const grid = el('div', 'bw-drop-grid');
+      for (const [id2, key] of [
+        ['frame', 'builder.view.frame'],
+        ['top', 'builder.view.top'],
+        ['turnLeft', 'builder.view.turnLeft'],
+        ['turnRight', 'builder.view.turnRight'],
+      ] as const) {
+        grid.appendChild(menuItem(t(key), false, () => actions.view(id2)));
+      }
+      wrap.appendChild(grid);
+      return wrap;
+    }
+    if (id === 'help') {
+      wrap.classList.add('bw-help-body');
+      for (const [title, body] of [
+        ['builder.help.select', 'builder.help.select.text'],
+        ['builder.help.gizmo', 'builder.help.gizmo.text'],
+        ['builder.help.numeric', 'builder.help.numeric.text'],
+        ['builder.help.keys', 'builder.help.keys.text'],
+        ['builder.help.cancel', 'builder.help.cancel.text'],
+      ] as const) {
+        const row = el('div', 'bw-help-row');
+        const h = el('strong');
+        h.textContent = t(title);
+        const p = el('span');
+        p.textContent = t(body);
+        row.append(h, p);
+        wrap.appendChild(row);
+      }
+      return wrap;
+    }
+    return wrap;
+  }
+
+  const menuNote = (key: string): HTMLElement => {
+    const p = el('p', 'bw-note');
     p.textContent = t(key);
     return p;
   };
 
-  const item = (label: string, active: boolean, run: () => void): HTMLButtonElement => {
-    const b = el('button', 'bw-panel-item' + (active ? ' active' : ''));
+  const menuItem = (label: string, active: boolean, run: () => void): HTMLButtonElement => {
+    const b = el('button', 'bw-menu-item' + (active ? ' active' : ''));
     b.type = 'button';
     b.textContent = label;
-    b.onclick = closeAfter(run);
+    b.onclick = () => {
+      run();
+      closeMenu();
+    };
     return b;
   };
 
-  /** The panel's own header: a back arrow and the family's name. */
-  const panelHead = (titleKey: string): HTMLElement => {
-    const row = el('div', 'bw-panel-head');
-    const back = el('button', 'bw-panel-back');
-    back.type = 'button';
-    back.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>';
-    back.setAttribute('aria-label', t('builder.panel.back'));
-    back.onclick = closeAfter(() => undefined);
-    const title = el('span', 'bw-panel-title');
-    title.textContent = t(titleKey);
-    row.append(back, title);
-    return row;
-  };
-
-  function panelSnap(): HTMLElement {
-    const wrap = el('div', 'bw-panel-body');
-    const grid = el('div', 'bw-panel-grid');
-    for (const mode of SNAP_MODES) {
-      grid.appendChild(item(t(`builder.snap.${mode}`), lastState?.snap === mode, () => actions.setSnap(mode)));
-    }
-    wrap.append(grid, note('builder.snap.note'));
-    return wrap;
-  }
-
-  function panelFloor(): HTMLElement {
-    const state = lastState;
-    const wrap = el('div', 'bw-panel-body');
-    const list = el('div', 'bw-panel-grid floors');
-    const total = Math.max(1, state?.floor.total ?? 1);
-    for (let i = 0; i < total; i++) {
-      list.appendChild(item(String(i + 1), state?.floor.active === i, () => actions.setFloor(i)));
-    }
-    const commands = el('div', 'bw-panel-row');
-    for (const [command, key] of [
-      ['duplicate', 'builder.floor.duplicate'],
-      ['insertAbove', 'builder.floor.insertAbove'],
-      ['insertBelow', 'builder.floor.insertBelow'],
-    ] as const) {
-      commands.appendChild(item(t(key), false, () => actions.floorCommand(command)));
-    }
-    wrap.append(list, commands, note('builder.floor.note'));
-    return wrap;
-  }
-
-  function panelView(): HTMLElement {
-    const wrap = el('div', 'bw-panel-body');
-    const list = el('div', 'bw-panel-grid');
-    for (const [id, key] of [
-      ['frame', 'builder.view.frame'],
-      ['top', 'builder.view.top'],
-      ['turnLeft', 'builder.view.turnLeft'],
-      ['turnRight', 'builder.view.turnRight'],
-    ] as const) {
-      list.appendChild(item(t(key), false, () => actions.view(id)));
-    }
-    wrap.appendChild(list);
-    return wrap;
-  }
-
-  function panelHelp(): HTMLElement {
-    const wrap = el('div', 'bw-panel-body bw-help-body');
-    for (const [title, body] of [
-      ['builder.help.select', 'builder.help.select.text'],
-      ['builder.help.gizmo', 'builder.help.gizmo.text'],
-      ['builder.help.numeric', 'builder.help.numeric.text'],
-      ['builder.help.keys', 'builder.help.keys.text'],
-      ['builder.help.cancel', 'builder.help.cancel.text'],
-    ] as const) {
-      const row = el('div', 'bw-help-row');
-      const h = el('strong');
-      h.textContent = t(title);
-      const p = el('span');
-      p.textContent = t(body);
-      row.append(h, p);
-      wrap.appendChild(row);
-    }
-    return wrap;
-  }
-
-  function panelModels(): HTMLElement {
-    const wrap = el('div', 'bw-panel-body');
-    const grid = el('div', 'bw-presets');
-    grid.id = 'bwPresetGrid';
-    for (const bp of BLUEPRINTS) {
-      const b = el('button', 'bw-preset');
+  // ------------------------------------------------------------ the tiers
+  /** Tier 1: the categories, or the road tools `main.ts` mounted here. */
+  function renderTier1(state: BuilderState): void {
+    const signature = `${state.category}|${[...state.ready].join(',')}`;
+    if (tier1.dataset['signature'] === signature) return;
+    tier1Builder.dataset['signature'] = signature;
+    tier1Builder.innerHTML = '';
+    const row = el('div', 'bw-row');
+    for (const category of BUILDER_CATALOG) {
+      const b = el('button', 'bw-cat');
       b.type = 'button';
-      b.dataset['preset'] = bp.key;
-      b.innerHTML = `${builderIconSvg('models', 22)}<span class="bw-preset-name"></span>`;
-      b.onclick = closeAfter(() => actions.choosePreset(bp.key));
-      grid.appendChild(b);
+      b.dataset['category'] = category.id;
+      b.innerHTML = `${builderIconSvg(category.id, 18)}<span></span>`;
+      (b.querySelector('span') as HTMLElement).textContent = t(`builder.category.${category.id}`);
+      b.title = t(`builder.category.${category.id}`);
+      b.onclick = () => {
+        openGallery = null;
+        actions.setCategory(category.id);
+      };
+      row.appendChild(b);
     }
-    const mine = el('div', 'bw-presets');
-    mine.dataset['userPresets'] = '';
-    wrap.append(grid, mine, note('builder.models.note'));
-    if (lastState) {
-      renderUserPresets(mine, lastState);
-      labelPresets(wrap);
-      if (thumbnails.size > 0) paintThumbnails(thumbnails, wrap);
-    }
-    return wrap;
+    tier1Builder.appendChild(row);
   }
 
-  function panelFinishes(): HTMLElement {
-    const wrap = el('div', 'bw-panel-body');
-    const grid = el('div', 'bw-finishes');
-    for (const finish of FINISHES) {
-      const b = el('button', 'bw-finish');
-      b.type = 'button';
-      b.dataset['finish'] = finish;
-      b.onclick = closeAfter(() => actions.chooseFinish(finish));
-      grid.appendChild(b);
+  /** Tier 2: the sub-tools of the chosen category. */
+  function renderTier2(state: BuilderState): void {
+    const spec = categorySpec(state.category);
+    const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${openGallery ?? ''}`;
+    if (tier2.dataset['signature'] === signature) return;
+    tier2Builder.dataset['signature'] = signature;
+    tier2Builder.innerHTML = '';
+    if (state.planning) {
+      tier2Builder.appendChild(planControls(state));
+      return;
     }
-    const swatches = el('div', 'bw-swatches');
-    for (const colour of SWATCHES) {
-      const b = el('button', 'bw-swatch');
+    const row = el('div', 'bw-row');
+    for (const tool of spec.tools) {
+      const b = el('button', 'bw-tool' + (tool.danger ? ' danger' : ''));
       b.type = 'button';
-      b.dataset['colour'] = String(colour);
-      b.style.setProperty('--swatch', hexOf(colour));
-      b.setAttribute('aria-label', hexOf(colour));
-      b.onclick = closeAfter(() => actions.chooseColour(colour));
-      swatches.appendChild(b);
-    }
-    const custom = el('input', 'bw-swatch custom');
-    custom.type = 'color';
-    // One pick, one undo step.
-    custom.onchange = () => actions.chooseColour(parseInt(custom.value.slice(1), 16));
-    swatches.appendChild(custom);
-    const styles = el('div', 'bw-styles');
-    for (const style of STYLES) {
-      const b = el('button', 'bw-style');
-      b.type = 'button';
-      b.dataset['style'] = style.key;
-      const chip = (c: number): string => `<i style="background:${hexOf(c)}"></i>`;
-      b.innerHTML = `<span class="chips">${chip(style.materials.wall.colour)}${chip(style.materials.trim.colour)}${chip(style.materials.roof.colour)}</span><span class="name"></span>`;
-      b.onclick = closeAfter(() => actions.chooseStyle(style.key));
-      styles.appendChild(b);
-    }
-    wrap.append(grid, swatches, styles, note('builder.finish.note'));
-    if (lastState) markFinishes(wrap, lastState);
-    return wrap;
-  }
-
-  /** A family of tools: the rail keeps the families, the variants open here. */
-  function panelFamily(family: string): HTMLElement {
-    const members = BUILDER_GALLERIES[family] ?? [];
-    const wrap = el('div', 'bw-panel-body');
-    const grid = el('div', 'bw-panel-grid');
-    for (const id of members) {
-      const b = el('button', 'bw-panel-item bw-family-item');
-      b.type = 'button';
-      b.dataset['familyTool'] = id;
-      const on = lastState?.tool === id || lastState?.armed === id;
+      b.dataset['builderTool'] = tool.id;
+      const on = state.tool === tool.id && (tool.kind !== 'mode' || state.armed === tool.id);
       b.classList.toggle('active', on);
-      b.innerHTML = `${builderIconSvg(id, 16)}<span></span>`;
-      (b.querySelector('span') as HTMLElement).textContent = t(`builder.tool.${id}`);
-      b.title = t(`builder.tool.${id}`);
-      b.onclick = closeAfter(() => actions.chooseTool(id));
-      grid.appendChild(b);
+      b.disabled = !state.ready.has(tool.id);
+      b.setAttribute('aria-pressed', String(on));
+      const label = t(`builder.tool.${tool.id}`);
+      const gallery = tool.kind === 'menu';
+      b.innerHTML = `${builderIconSvg(tool.id, 16)}<span></span>${gallery ? chevron() : ''}`;
+      (b.querySelector('span') as HTMLElement).textContent = label;
+      b.title = label;
+      b.classList.toggle('open', gallery && openGallery === tool.id);
+      b.onclick = () => {
+        if (gallery) {
+          openGallery = openGallery === tool.id ? null : tool.id;
+          renderDock(lastState);
+          return;
+        }
+        openGallery = null;
+        actions.chooseTool(tool.id);
+        renderDock(lastState);
+      };
+      row.appendChild(b);
     }
-    wrap.append(grid, note(`builder.family.${family}`));
-    return wrap;
+    tier2Builder.appendChild(row);
   }
 
-  function panelMore(): HTMLElement {
-    const wrap = el('div', 'bw-panel-body');
-    const grid = el('div', 'bw-panel-grid');
-    for (const kind of ELEMENT_KINDS) {
-      grid.appendChild(item(t(`building.element.${kind}`), lastState?.tool === kind, () => actions.chooseTool(kind)));
+  /** Tier 3: the gallery of whatever the chosen sub-tool opens. */
+  function renderTier3(state: BuilderState): void {
+    tier3.innerHTML = '';
+    if (!openGallery || state.planning) return;
+    const box = el('div', 'bw-gallery');
+    const family = BUILDER_GALLERIES[openGallery];
+    if (family) {
+      const grid = el('div', 'bw-tiles');
+      for (const id of family) {
+        const on = state.tool === id || state.armed === id;
+        grid.appendChild(tile(id, t(`builder.tool.${id}`), on, closeGalleryAnd(() => actions.chooseTool(id))));
+      }
+      box.append(grid, menuNote(`builder.family.${openGallery}`));
+      tier3.appendChild(box);
+      return;
     }
-    wrap.append(grid, note('builder.components.note'));
-    return wrap;
+    if (openGallery === 'models') {
+      const grid = el('div', 'bw-tiles');
+      for (const bp of BLUEPRINTS) {
+        const label = bp.nameKey ? t(bp.nameKey) : bp.key;
+        const thumb = thumbnails.get(bp.key);
+        const b = tile(bp.key, label, false, closeGalleryAnd(() => actions.choosePreset(bp.key)), thumb);
+        b.dataset['preset'] = bp.key;
+        grid.appendChild(b);
+      }
+      for (const bp of state.userBlueprints) {
+        const b = tile('user', bp.name ?? bp.key, false, closeGalleryAnd(() => actions.chooseUserBlueprint(bp.key)));
+        b.dataset['userPreset'] = bp.key;
+        (b.querySelector('.bw-tile-name') as HTMLElement).textContent = `${bp.name ?? bp.key} ×`;
+        grid.appendChild(b);
+      }
+      box.append(grid, menuNote('builder.models.note'));
+      const saveRow = el('div', 'bw-row');
+      const save = el('button', 'bw-tool');
+      save.type = 'button';
+      save.innerHTML = `${builderIconSvg('models', 16)}<span></span>`;
+      (save.querySelector('span') as HTMLElement).textContent = t('building.saveBlueprint');
+      save.onclick = () => {
+        const name = window.prompt(t('building.blueprintName'), '');
+        if (name !== null && name.trim() !== '') actions.saveBlueprint(name);
+      };
+      saveRow.appendChild(save);
+      box.appendChild(saveRow);
+      tier3.appendChild(box);
+      return;
+    }
+    if (openGallery === 'material' || openGallery === 'colour') {
+      const grid = el('div', 'bw-tiles');
+      for (const finish of FINISHES) {
+        const on = state.material?.finish === finish;
+        grid.appendChild(tile('finish', t(`building.finish.${finish}`), on, closeGalleryAnd(() => actions.chooseFinish(finish))));
+      }
+      const swatches = el('div', 'bw-swatches');
+      for (const colour of SWATCHES) {
+        const b = el('button', 'bw-swatch' + (state.material?.colour === colour ? ' active' : ''));
+        b.type = 'button';
+        b.style.setProperty('--swatch', hexOf(colour));
+        b.setAttribute('aria-label', hexOf(colour));
+        b.onclick = closeGalleryAnd(() => actions.chooseColour(colour));
+        swatches.appendChild(b);
+      }
+      const custom = el('input', 'bw-swatch custom');
+      custom.type = 'color';
+      custom.onchange = () => actions.chooseColour(parseInt(custom.value.slice(1), 16));
+      swatches.appendChild(custom);
+      const styles = el('div', 'bw-tiles');
+      for (const style of STYLES) {
+        const b = tile('style', t(`building.style.${style.key}`), false, closeGalleryAnd(() => actions.chooseStyle(style.key)));
+        const chips = el('span', 'chips');
+        for (const c of [style.materials.wall.colour, style.materials.trim.colour, style.materials.roof.colour]) {
+          const i = el('i');
+          i.style.background = hexOf(c);
+          chips.appendChild(i);
+        }
+        b.querySelector('.bw-tile-art')?.replaceWith(chips);
+        styles.appendChild(b);
+      }
+      box.append(grid, swatches, styles, menuNote('builder.finish.note'));
+      tier3.appendChild(box);
+      return;
+    }
+    if (openGallery === 'patterns') {
+      const grid = el('div', 'bw-tiles');
+      for (const pattern of FACADE_PATTERNS) {
+        grid.appendChild(tile(pattern, t(`creator.pattern.${pattern}`), state.pattern === pattern, closeGalleryAnd(() => actions.choosePattern(pattern))));
+      }
+      const scopes = el('div', 'bw-row');
+      for (const scope of FACADE_SCOPES) {
+        const b = tile(scope, t(`creator.dock.scope.${scope}`), state.scope === scope, () => {
+          actions.setScope(scope);
+          renderDock(lastState);
+        });
+        scopes.appendChild(b);
+      }
+      box.append(grid, scopes, menuNote('builder.pattern.note'));
+      tier3.appendChild(box);
+      return;
+    }
+    if (openGallery === 'roofShape') {
+      const roof = state.roof;
+      const row = el('div', 'bw-row');
+      row.append(
+        menuItem('− 5°', false, () => actions.roofPitch(-5)),
+        menuNote2(`${t('builder.field.pitch')}: ${roof?.pitch ?? 30}°`),
+        menuItem('+ 5°', false, () => actions.roofPitch(5)),
+      );
+      const ridge = el('div', 'bw-row');
+      for (const r of ['x', 'y'] as const) {
+        ridge.appendChild(menuItem(t(`builder.roof.ridge.${r}`), roof?.ridge === r, () => actions.roofRidge(r)));
+      }
+      const fall = el('div', 'bw-row');
+      for (const [side, key] of [[0, 'front'], [1, 'right'], [2, 'back'], [3, 'left']] as const) {
+        fall.appendChild(menuItem(t(`builder.roof.side.${key}`), roof?.fall === side, () => actions.roofFall(side)));
+      }
+      box.append(row, ridge, fall, menuNote('builder.roofShape.note'));
+      tier3.appendChild(box);
+      return;
+    }
+    if (openGallery === 'moreComponents') {
+      const grid = el('div', 'bw-tiles');
+      for (const kind of ELEMENT_KINDS) {
+        grid.appendChild(tile(kind, t(`building.element.${kind}`), state.tool === kind, closeGalleryAnd(() => actions.chooseTool(kind))));
+      }
+      box.append(grid, menuNote('builder.components.note'));
+      tier3.appendChild(box);
+      return;
+    }
   }
 
-  /** Ridge, slope and pitch of the selected mass's roof. */
-  function panelRoofShape(): HTMLElement {
-    const wrap = el('div', 'bw-panel-body');
-    const roof = lastState?.roof ?? null;
-    const pitchRow = el('div', 'bw-panel-row');
-    const pitchLabel = el('span', 'bw-panel-note');
-    pitchLabel.textContent = `${t('builder.field.pitch')}: ${roof?.pitch ?? 30}°`;
-    pitchRow.append(
-      item('− 5°', false, () => actions.roofPitch(-5)),
-      pitchLabel,
-      item('+ 5°', false, () => actions.roofPitch(5)),
-    );
-    const ridgeRow = el('div', 'bw-panel-row');
-    for (const ridge of ['x', 'y'] as const) {
-      ridgeRow.appendChild(item(t(`builder.roof.ridge.${ridge}`), roof?.ridge === ridge, () => actions.roofRidge(ridge)));
-    }
-    const fallRow = el('div', 'bw-panel-row');
-    for (const [side, key] of [[0, 'front'], [1, 'right'], [2, 'back'], [3, 'left']] as const) {
-      fallRow.appendChild(item(t(`builder.roof.side.${key}`), roof?.fall === side, () => actions.roofFall(side)));
-    }
-    wrap.append(pitchRow, ridgeRow, fallRow, note('builder.roofShape.note'));
-    return wrap;
-  }
-
-  /** The facade patterns, applied to a bay, a floor, a face or the volume. */
-  function panelPatterns(): HTMLElement {
-    const wrap = el('div', 'bw-panel-body');
-    const grid = el('div', 'bw-panel-grid');
-    for (const pattern of FACADE_PATTERNS) {
-      grid.appendChild(item(t(`creator.pattern.${pattern}`), lastState?.pattern === pattern, () => actions.choosePattern(pattern)));
-    }
-    const scopes = el('div', 'bw-panel-row');
-    for (const scope of FACADE_SCOPES) {
-      scopes.appendChild(item(t(`creator.dock.scope.${scope}`), lastState?.scope === scope, () => actions.setScope(scope)));
-    }
-    wrap.append(grid, scopes, note('builder.pattern.note'));
-    return wrap;
-  }
-
-  function panelTitleKey(id: string): string | null {
-    if (id.startsWith('family:')) return `builder.tool.${id.slice('family:'.length)}`;
-    if (id === 'more') return 'builder.tool.moreComponents';
-    if (id === 'roofShape') return 'builder.tool.roofShape';
-    if (id === 'patterns') return 'builder.tool.patterns';
-    if (id === 'models') return 'builder.tool.models';
-    if (id === 'finishes') return 'builder.tool.material';
-    if (id === 'help') return 'builder.help';
-    if (id === 'view') return 'builder.view';
-    if (id === 'snap') return 'builder.snap.label';
-    if (id === 'floor') return 'builder.floor.title';
-    return null;
-  }
+  const menuNote2 = (text: string): HTMLElement => {
+    const p = el('span', 'bw-note');
+    p.textContent = text;
+    return p;
+  };
 
   /** Finish / Back / Cancel, while a plan is being drawn. */
   function planControls(state: BuilderState): HTMLElement {
-    const wrap = el('div', 'bw-panel-body bw-plan-body');
+    const row = el('div', 'bw-row bw-plan-body');
     const count = el('span', 'bw-plan-count');
     count.textContent = t('builder.plan.points', { count: state.planPoints });
     const finish = el('button', 'bw-tool bw-plan-finish');
@@ -539,79 +665,19 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     cancel.innerHTML = `${builderIconSvg('close', 15)}<span></span>`;
     (cancel.querySelector('span') as HTMLElement).textContent = t('builder.plan.cancel');
     cancel.onclick = () => actions.planCancel();
-    wrap.append(count, finish, back, cancel);
-    return wrap;
+    row.append(count, finish, back, cancel);
+    return row;
   }
 
-  // ------------------------------------------------------------ rendering
-  function renderUserPresets(container: HTMLElement, state: BuilderState): void {
-    const signature = state.userBlueprints.map((b) => b.key).join('|');
-    if (container.dataset['signature'] === signature) return;
-    container.dataset['signature'] = signature;
-    container.innerHTML = '';
-    if (state.userBlueprints.length === 0) return;
-    const heading = el('div', 'bw-panel-heading');
-    heading.textContent = t('building.myBlueprints');
-    container.appendChild(heading);
-    for (const bp of state.userBlueprints) {
-      const b = el('button', 'bw-preset');
-      b.type = 'button';
-      b.innerHTML = `${builderIconSvg('models', 20)}<span class="bw-preset-name"></span><span class="remove">×</span>`;
-      (b.querySelector('.bw-preset-name') as HTMLElement).textContent = bp.name ?? bp.key;
-      b.onclick = closeAfter(() => actions.chooseUserBlueprint(bp.key));
-      (b.querySelector('.remove') as HTMLElement).onclick = (e) => {
-        e.stopPropagation();
-        actions.removeUserBlueprint(bp.key);
-      };
-      container.appendChild(b);
-    }
+  function renderDock(state: BuilderState | null): void {
+    if (!state) return;
+    renderTier1(state);
+    renderTier2(state);
+    renderTier3(state);
+    syncDock();
   }
 
-  function labelPresets(wrap: HTMLElement): void {
-    wrap.querySelectorAll<HTMLButtonElement>('.bw-preset[data-preset]').forEach((b) => {
-      const key = b.dataset['preset'] ?? '';
-      const bp = BLUEPRINTS.find((x) => x.key === key);
-      const label = bp?.nameKey ? t(bp.nameKey) : key;
-      const span = b.querySelector('.bw-preset-name');
-      if (span) span.textContent = label;
-      b.title = label;
-    });
-  }
-
-  function paintThumbnails(images: ReadonlyMap<string, string>, scope: ParentNode = panel): void {
-    scope.querySelectorAll<HTMLButtonElement>('.bw-preset[data-preset]').forEach((b) => {
-      const url = images.get(b.dataset['preset'] ?? '');
-      if (!url) return;
-      const icon = b.querySelector('svg, img');
-      if (!icon) return;
-      const img = document.createElement('img');
-      img.src = url;
-      img.alt = '';
-      img.className = 'bw-thumb';
-      icon.replaceWith(img);
-    });
-  }
-
-  const thumbnails = new Map<string, string>();
-
-  function markFinishes(scope: HTMLElement, state: BuilderState): void {
-    const finish = state.material?.finish ?? null;
-    const colour = state.material ? String(state.material.colour) : null;
-    scope.querySelectorAll<HTMLButtonElement>('.bw-finish').forEach((b) => {
-      b.classList.toggle('active', b.dataset['finish'] === finish);
-      const span = b.querySelector('span');
-      if (span) span.textContent = t(`building.finish.${b.dataset['finish']}`);
-      b.title = t(`building.finish.${b.dataset['finish']}`);
-    });
-    scope.querySelectorAll<HTMLButtonElement>('.bw-swatch[data-colour]').forEach((b) => {
-      b.classList.toggle('active', b.dataset['colour'] === colour);
-    });
-    scope.querySelectorAll<HTMLButtonElement>('.bw-style').forEach((b) => {
-      const name = b.querySelector('.name');
-      if (name) name.textContent = t(`building.style.${b.dataset['style']}`);
-    });
-  }
-
+  // ------------------------------------------------------------ inspector
   function renderInspector(state: BuilderState): void {
     inspector.classList.toggle('collapsed', !state.inspectorOpen);
     inspectorToggle.innerHTML = builderIconSvg(state.inspectorOpen ? 'collapse' : 'expand', 14);
@@ -684,97 +750,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     }
   }
 
-  function renderRail(state: BuilderState): void {
-    rail.querySelectorAll<HTMLButtonElement>('.bw-cat').forEach((b) => {
-      const id = b.dataset['category'] as BuilderCategoryId;
-      const on = id === state.category;
-      b.classList.toggle('active', on);
-      b.setAttribute('aria-pressed', String(on));
-      b.innerHTML = `${builderIconSvg(id, 17)}<span></span>`;
-      (b.querySelector('span') as HTMLElement).textContent = t(`builder.category.${id}`);
-      b.title = t(`builder.category.${id}`);
-    });
-    syncRailArrows();
-  }
-
-  /** The tools of the chosen category, in the row below the rail. */
-  function toolsRow(state: BuilderState): HTMLElement {
-    const spec = categorySpec(state.category);
-    const row = el('div', 'bw-panel-row bw-tools');
-    for (const tool of spec.tools) {
-      const b = el('button', 'bw-tool' + (tool.danger ? ' danger' : ''));
-      b.type = 'button';
-      b.dataset['builderTool'] = tool.id;
-      const on = state.tool === tool.id && (tool.kind !== 'mode' || state.armed === tool.id);
-      b.classList.toggle('active', on);
-      b.disabled = !state.ready.has(tool.id);
-      b.setAttribute('aria-pressed', String(on));
-      const label = t(`builder.tool.${tool.id}`);
-      const family = tool.kind === 'menu' && BUILDER_GALLERIES[tool.id] ? `family:${tool.id}` : null;
-      b.innerHTML = `${builderIconSvg(tool.id, 16)}<span></span>${tool.kind === 'menu' ? caret() : ''}`;
-      (b.querySelector('span') as HTMLElement).textContent = label;
-      b.title = label;
-      b.classList.toggle('open', family !== null && panelId === family);
-      b.onclick = () => {
-        if (tool.kind === 'menu') {
-          if (family) showPanel(family);
-          else if (tool.id === 'models') showPanel('models');
-          else if (tool.id === 'material' || tool.id === 'colour') showPanel('finishes');
-          else if (tool.id === 'patterns') showPanel('patterns');
-          else if (tool.id === 'roofShape') showPanel('roofShape');
-          else showPanel('more');
-          return;
-        }
-        closePanel();
-        actions.chooseTool(tool.id);
-        renderPanel(lastState);
-      };
-      row.appendChild(b);
-    }
-    return row;
-  }
-
-  /**
-   * The drop-down under the rail: the tools of the chosen category, and - when
-   * one is open - the panel of the chosen family or gallery below them.
-   */
-  function renderPanel(state: BuilderState | null): void {
-    if (!state) return;
-    const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${panelId ?? ''}|${[...state.ready].join(',')}`;
-    if (panel.dataset['signature'] === signature) return;
-    panel.dataset['signature'] = signature;
-    panel.innerHTML = '';
-    panel.hidden = false;
-    if (state.planning) {
-      panel.appendChild(planControls(state));
-      return;
-    }
-    panel.appendChild(toolsRow(state));
-    if (!panelId) return;
-    const body = panelBody(panelId);
-    if (!body) return;
-    const wrap = el('div', 'bw-panel-drop');
-    const titleKey = panelTitleKey(panelId);
-    if (titleKey) wrap.appendChild(panelHead(titleKey));
-    wrap.appendChild(body);
-    panel.appendChild(wrap);
-  }
-
-  function panelBody(id: string): HTMLElement | null {
-    if (id === 'snap') return panelSnap();
-    if (id === 'floor') return panelFloor();
-    if (id === 'view') return panelView();
-    if (id === 'help') return panelHelp();
-    if (id === 'models') return panelModels();
-    if (id === 'finishes') return panelFinishes();
-    if (id === 'more') return panelMore();
-    if (id === 'roofShape') return panelRoofShape();
-    if (id === 'patterns') return panelPatterns();
-    if (id.startsWith('family:')) return panelFamily(id.slice('family:'.length));
-    return null;
-  }
-
-  function renderTop(state: BuilderState): void {
+  const renderTop = (state: BuilderState): void => {
     exit.innerHTML = `${builderIconSvg('exit', 15)}<span></span>`;
     (exit.querySelector('span') as HTMLElement).textContent = t('builder.exit');
     exit.title = t('builder.exit');
@@ -804,9 +780,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     (hideToggle.querySelector('span') as HTMLElement).textContent = t('builder.hideOthers');
     hideToggle.title = t('builder.hideOthers');
     help.innerHTML = builderIconSvg('help', 16);
-  }
+  };
 
-  function renderQuick(state: BuilderState): void {
+  const renderQuick = (state: BuilderState): void => {
     const anchor = state.quickBar;
     const has = anchor !== null && state.selection !== null;
     quick.hidden = !has;
@@ -824,22 +800,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.title = t(key);
       b.setAttribute('aria-label', t(key));
     }
-  }
-
-  let hintBase = '';
-  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+  };
 
   const refresh = (state: BuilderState): void => {
     lastState = state;
     root.dataset['category'] = state.category;
     renderTop(state);
-    renderRail(state);
-    renderPanel(state);
-    // The inspector follows the head's real height: on a phone the status row
-    // wraps and the head grows, and a fixed offset put the two on top of each
-    // other.
-    const headHeight = head.getBoundingClientRect().height;
-    if (headHeight > 0) inspector.style.top = `${Math.round(headHeight + 20)}px`;
+    if (mode === 'builder') renderDock(state);
     renderInspector(state);
     renderQuick(state);
     hintBase = state.hint;
@@ -859,18 +826,39 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   const relabel = (): void => {
     inspectorBody.dataset['signature'] = '';
-    panel.dataset['signature'] = '';
+    tier1.dataset['signature'] = '';
+    tier2.dataset['signature'] = '';
+    (simMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.simulation');
+    (appMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.app');
     if (lastState) refresh(lastState);
   };
 
   return {
     refresh,
+    setMode(next) {
+      mode = next;
+      root.dataset['mode'] = next;
+      // Tier 1 and 2 belong to whichever half is driving; the other mounts its
+      // own elements there, so only clear the tiers we own.
+      if (next === 'builder') {
+        tier1.dataset['signature'] = '';
+        tier2.dataset['signature'] = '';
+      }
+      root.querySelectorAll<HTMLElement>('[data-bw-mode]').forEach((node) => {
+        node.hidden = node.dataset['bwMode'] !== next;
+      });
+      for (const host of root.querySelectorAll<HTMLElement>('.bw-host-road')) host.hidden = next !== 'road';
+      for (const host of root.querySelectorAll<HTMLElement>('.bw-host-builder')) host.hidden = next !== 'builder';
+      openGallery = null;
+      renderDock(lastState);
+    },
+    hosts: { level1: tier1Road, level2: tier2Road, simMenu: simSlot, appMenu: appSlot, controls: controlsSlot },
     flash,
     relabel,
     root,
     setPresetThumbnails(images) {
       for (const [key, url] of images) thumbnails.set(key, url);
-      paintThumbnails(images, panel);
+      if (openGallery === 'models') renderDock(lastState);
     },
   };
 }

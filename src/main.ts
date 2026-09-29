@@ -1484,11 +1484,41 @@ function setTool(next: Tool): void {
   // Workspace (`ui/builder/`), and the map keeps the middle of the screen.
   const buildingActive = next === 'building';
   document.getElementById('app')?.classList.toggle('builder-mode', buildingActive);
+  // The container at the bottom drives whichever half of the game is up.
+  buildings.workspace.setMode(buildingActive ? 'builder' : 'road');
   if (buildingActive) buildings.activate();
   else buildings.deactivate();
   updateHint();
   requestDraw();
 }
+
+/**
+ * ONE chrome for the whole game.
+ *
+ * The toolbar, the palettes, the simulation panel and the app menu are the
+ * game's own elements - their handlers are wired above - moved into the
+ * container's hosts, so there is one place to look for anything and nothing
+ * floats over the map. The chrome is up in both modes; `setMode` decides which
+ * half fills the container's tiers.
+ */
+function mountUnifiedChrome(): void {
+  const hosts = buildings.workspace.hosts;
+  const move = (element: Element | null, host: HTMLElement): void => {
+    if (element) host.appendChild(element);
+  };
+  move(document.querySelector('.toolbar'), hosts.level1);
+  move(document.querySelector('.road-palette'), hosts.level2);
+  move(document.getElementById('terrainPalette'), hosts.level2);
+  move(document.querySelector('.simulation-controls'), hosts.simMenu);
+  move(document.getElementById('topMenu'), hosts.appMenu);
+  move(document.getElementById('trafficToggle'), hosts.controls);
+  move(document.getElementById('resetView'), hosts.controls);
+  document.getElementById('app')?.classList.add('bw-hide-legacy');
+}
+// Mounted after this module has finished evaluating: moving the toolbar and
+// the panels is a layout change, and a pointer already over the canvas can fire
+// a move event mid-evaluation - before the run loop's own state exists.
+setTimeout(mountUnifiedChrome, 0);
 
 document.querySelectorAll<HTMLButtonElement>('.tool').forEach((b) => {
   b.addEventListener('click', () => setTool((b.dataset['tool'] as Tool) ?? 'road'));

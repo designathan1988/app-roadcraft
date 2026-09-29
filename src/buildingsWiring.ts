@@ -2,7 +2,7 @@ import type { Vec2 } from '@core/vec2';
 import { signedArea } from '@core/polygon';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
-import { bodyOf } from '@world/buildings/blueprints';
+import { BLUEPRINTS, bodyOf } from '@world/buildings/blueprints';
 import { DEFAULT_PITCH, baysOn, footprintBox, levelElevation, localDirToWorld, ridgeAlongX, topLevel } from '@world/buildings/geometry';
 import { type Building, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
@@ -17,6 +17,7 @@ import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
 import { drawBuilderGizmos, type GizmoInput } from '@ui/overlay/builderGizmos';
+import { renderBuildingThumbnails } from '@render/buildings/thumbnails';
 import { initBuilderWorkspace, type BuilderActions, type BuilderState } from '@ui/builder/workspace';
 import { plural, t } from '@ui/i18n';
 
@@ -51,6 +52,8 @@ export interface BuildingWiringDeps {
 
 export interface BuildingWiring {
   readonly tool: BuildingTool;
+  /** The shared chrome: main.ts mounts the road toolbar and panels into it. */
+  readonly workspace: ReturnType<typeof initBuilderWorkspace>;
   pointerDown(screen: Vec2, world: Vec2, shift: boolean): void;
   pointerMove(screen: Vec2, world: Vec2, shift: boolean): void;
   pointerUp(cancelled: boolean): void;
@@ -107,6 +110,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
 
   let dirty = true;
   let painting = false;
+  let thumbnailsDone = false;
   let inspectorOpen = true;
   let category: BuilderCategoryId = 'select';
   let toolId = 'select';
@@ -403,9 +407,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     setField: (id, value) => {
       setField(id, value);
       host.changed();
-    },
-    presetThumbnails(images) {
-      workspace.setPresetThumbnails(images);
     },
     choosePreset: (key) => {
       tool.chooseBlueprint(key);
@@ -720,6 +721,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
 
   return {
     tool,
+    workspace,
     pointerDown(screen, world, shift) {
       if (toolId === 'paint') {
         painting = true;
@@ -801,6 +803,14 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     activate() {
       dirty = true;
       refresh();
+      if (!thumbnailsDone) {
+        thumbnailsDone = true;
+        // After this frame, so opening the Builder is not held up by it: the
+        // gallery shows real pictures of the models, rendered off screen.
+        requestAnimationFrame(() => {
+          workspace.setPresetThumbnails(renderBuildingThumbnails(scene.gl, BLUEPRINTS));
+        });
+      }
     },
     deactivate() {
       tool.deactivate();

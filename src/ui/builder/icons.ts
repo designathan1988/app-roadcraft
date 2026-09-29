@@ -28,6 +28,10 @@ const P = {
   hide: '<path d="M3 3l18 18"/><path d="M10.6 6.2A10 10 0 0 1 12 6c6 0 10 6 10 6a17 17 0 0 1-3.2 3.6M6.2 7.6A16 16 0 0 0 2 12s4 6 10 6a10 10 0 0 0 3.4-.6"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.4"/><path d="M12 16.6v.4"/>',
 
+  sim: '<path d="M7 5.5v13l6-4 2.5 1.6V7.9L13 9.5Z"/><path d="M18 6v12"/>',
+
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+
   // --- selection bar
   duplicate: '<path d="M9 9h11v11H9Z"/><path d="M15 5H5v10"/>',
   mirror: '<path d="M12 3v18"/><path d="M9 7 4 12l5 5Z"/><path d="m15 7 5 5-5 5Z"/>',
