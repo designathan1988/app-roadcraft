@@ -201,7 +201,7 @@ export function plannedLine(_w: SimWorld, p: Ped, edge: SidewalkEdge, wanted: nu
 /** Seconds ahead a walker looks along a candidate velocity for somebody else's ground. */
 const PROBE_TIME = 0.6;
 /** Weight of walking into ground somebody else has already claimed with priority. */
-const K_CLAIM = 4;
+const K_CLAIM = 9;
 /** Share of the pace kept while giving way to the walker who owns the ground. */
 const YIELD_SPEED = 0.5;
 
@@ -390,7 +390,7 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
    * is nothing to be done; against something they can walk round, they walk
    * round.
    */
-  let bestFA = 0, bestFL = 0, bestFCost = Infinity;
+  let bestFA = 0, bestFL = 0;
   /**
    * Whether the body could actually take this velocity from where it stands:
    * the step it maps to, inside the walker's own acceleration, held on the
@@ -472,7 +472,13 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     // pays for this once or twice a tick rather than for every heading it
     // thinks of.
     if (cost < bestCost && takeable(ca, cl)) { bestCost = cost; bestA = ca; bestL = cl; }
-    if (ca > 1e-9 && cost < bestFCost) { bestFCost = cost; bestFA = ca; bestFL = cl; }
+    // The best heading that carries the walker FORWARD and can actually be
+    // taken. Fastest first, and cost only to break a tie: the cheapest forward
+    // heading is by construction the widest one, and the widest one carries a
+    // twelfth of the pace - measured, a walker sliding out of a jam at 0.13
+    // units a second, five centimetres a second, which is indistinguishable
+    // from standing there and turning.
+    if (ca > 1e-9 && takeable(ca, cl) && ca > bestFA) { bestFA = ca; bestFL = cl; }
   };
   consider(prefA, prefL);
   consider(0, 0);
@@ -480,6 +486,19 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     const speed = share * scale;
     for (const angle of ANGLES) consider(speed * Math.cos(angle), speed * Math.sin(angle));
     if (escalated) for (const angle of WIDE_ANGLES) consider(speed * Math.cos(angle), speed * Math.sin(angle));
+  }
+  // A HELD-UP WALKER'S WAY OUT: real pace, full side-step.
+  //
+  // The fan's own wide headings carry almost no pace, so a walker taking one
+  // of them crawls out of the way and reads, on screen, as standing there
+  // turning. These two carry half and a third of the pace with a whole
+  // side-step - which is what shouldering past a lamp column looks like - and
+  // they are what the escape below chooses between. Forward only: half the
+  // pace, and never a step back.
+  if (escalated) {
+    const aside = (prefL < 0 ? -1 : 1) * LAT_STEP;
+    consider(want * 0.5, aside);
+    consider(want * 0.33, -aside);
   }
   // Nearly stopped, a person can also step aside on the spot.
   if (p.v < STEP_BACK_BELOW) { consider(0, STEP_BACK); consider(0, -STEP_BACK); }
@@ -489,14 +508,11 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   // up against something it could not pass, the half step back along an edge
   // when a step aside was refused, the body put back where it stood last tick
   // - is gone. A figure that steps forward and is dragged back reads as broken
-  // whatever the reason was, and a walker boxed in is better off standing:
-  // standing is what a person does, and the crowd comes to it.
+  // whatever the reason was.
   bestA = Math.min(Math.max(bestA, 0), want);
   // Held up and choosing to stand, with nowhere the choice can go that is not
-  // backwards: slide along whatever is in the way. This is the forward-only
-  // answer to being boxed in - the walker keeps a walking pace and leans off
-  // its line, shouldering past the lamp column instead of queueing behind it
-  // for a minute - and it is why nothing ever has to step back.
+  // backwards: shoulder past whatever is in the way at a real pace, leaning
+  // off the line. Forward only, and it is why nothing ever has to step back.
   if (escalated && want > m(0.1) && bestA < m(0.05) && bestFA > 1e-9) {
     bestA = Math.min(bestFA, want);
     bestL = bestFL;

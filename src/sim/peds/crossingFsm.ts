@@ -191,8 +191,17 @@ export function stepPedestrians(w: SimWorld): void {
     // the edge the pedestrian is on when the tick ends: applying the old
     // edge's width to the new edge is how somebody ends up off the footway
     // for a frame after a turn.
+    //
+    // That width is not written here any more. The lateral place has ONE
+    // writer per tick - the steering that moves the walker, or the snap-back
+    // below that moves it onto the body - and each of those holds the place
+    // inside the corridor's walls as part of its own calculation. A clamp
+    // sitting between them as a third, independent writer was fighting both:
+    // measured, sideways steps came out at 2.18 units a second against the
+    // 1.75 anybody can step, and bodies were drawn off the footway, because
+    // the clamp moved the place and the steering then moved it again from
+    // there in the same tick.
     const settled = w.sidewalks.edges.get(p.edge);
-    if (settled) p.lat = wallsClamp(settled, p.entry, p.s, p.lat);
     settlePose(w, p, false, space, desired > 0.05 && p.state === 'Walking');
     if (settled?.kind === 'walk' && !p.activity) considerActivity(w, p, settled);
     const wantsToMove = p.state !== 'WaitAtKerb' && desired > 0.05;

@@ -135,7 +135,7 @@ const TUBE_BEHIND = m(0.3);
 /** Spacing of the sample points along the tube. */
 const TUBE_SAMPLE = m(0.5);
 /** Priorities within this of each other count as equal, and go to the lower id. */
-const TUBE_TIE = 0.12;
+const TUBE_TIE = 0.35;
 
 const TUBE_FRAME = { x: 0, y: 0, tx: 1, ty: 0, nx: 0, ny: 1 };
 /** One cell's worth of the tube grid, as an integer key. */
@@ -311,14 +311,23 @@ export class PedestrianClearance {
   }
 
   /**
-   * The walker whose ground this point is about to be walked over, when that
-   * walker has the PRIORITY over `priority`: the strongest claim on the point,
-   * or null when nobody is coming or everyone who is comes second to us.
+   * The ground this point owes somebody else, when this walker is the one who
+   * must give way: the strongest claim of a walker that outranks it, or 0 when
+   * nobody is coming or everyone who is comes second to us.
+   *
+   * STRICTLY THE LOSER PAYS. This returns a claim only against a walker that
+   * has already won the encounter - more of its way along the street, or the
+   * same and ahead of us in the order. A walker that outranks what is in front
+   * of it gets nothing back from here at all, so its own choice is left alone
+   * and it holds its cruising pace straight through the knot. Anything softer
+   * has everybody yielding to everybody: the courtesy jam, measured at 175 s
+   * of standstill at one crossroads with the penalty spread over both sides of
+   * every encounter.
    *
    * Ties go to the lower id, which is what breaks a head-on meeting between
    * two people walking the same line at the same speed: one of them has to
-   * have it first, and it has to be the same one every tick or the two of them
-   * swap the right of way for ever.
+   * have it first, and it has to be the same one every tick or the two swap
+   * the right of way for ever.
    */
   claimOf(x: number, y: number, id: PedId, priority: number): number {
     const list = this.tubeCells.get(tubeKey(x, y));
@@ -329,7 +338,7 @@ export class PedestrianClearance {
       if (tube.id === id) continue;
       const ahead = (x - tube.x) * tube.ux + (y - tube.y) * tube.uy;
       if (ahead < -TUBE_BEHIND || ahead > tube.length) continue;
-      // The other is giving way to us unless it is more along the street, or
+      // The other gives way to us unless it is more along the street, or
       // equally along and ahead of us in the order.
       if (tube.priority > priority + TUBE_TIE) continue;
       if (Math.abs(tube.priority - priority) <= TUBE_TIE && tube.id > id) continue;
