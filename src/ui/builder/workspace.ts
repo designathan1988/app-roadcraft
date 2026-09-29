@@ -119,6 +119,8 @@ export interface BuilderWorkspace {
     readonly appMenu: HTMLElement;
     /** Pause and framing, mounted by main.ts on the global bar. */
     readonly controls: HTMLElement;
+    /** The band's foot line, where the game's hint bar lives. */
+    readonly hint: HTMLElement;
   };
   /** A transient sentence in the chrome's own hint bar. */
   flash(text: string): void;
@@ -228,7 +230,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   appMenu.onclick = () => showMenu('app', appMenu);
 
   top.append(
-    exit,
+    builderOnly(exit),
     historyGroup,
     controlsSlot,
     spacer,
@@ -299,6 +301,8 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const tier2Builder = el('div', 'bw-host bw-host-builder');
   tier2.append(tier2Road, tier2Builder);
   const tier3 = el('div', 'bw-tier bw-tier3');
+  tier3.hidden = true;
+  const foot = el('div', 'bw-foot');
   const fold = el('button', 'bw-fold');
   fold.type = 'button';
   fold.dataset['i18nTitle'] = 'builder.dock.fold';
@@ -311,6 +315,8 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   const quick = el('div', 'bw-quick');
   const hint = el('div', 'bw-hint');
+  foot.appendChild(hint);
+  dock.appendChild(foot);
 
   const inspector = el('aside', 'bw-inspector');
   const inspectorHead = el('div', 'bw-inspector-head');
@@ -323,7 +329,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const inspectorBody = el('div', 'bw-inspector-body');
   inspector.append(inspectorHead, inspectorBody);
 
-  root.append(top, drop, dock, inspector, quick, hint);
+  root.append(top, drop, dock, inspector, quick);
 
   const quickButtons = new Map<string, HTMLButtonElement>();
   for (const [name, icon] of [
@@ -453,9 +459,11 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     tier1Builder.innerHTML = '';
     const row = el('div', 'bw-row');
     for (const category of BUILDER_CATALOG) {
-      const b = el('button', 'bw-cat');
+      const on = category.id === state.category;
+      const b = el('button', 'bw-cat' + (on ? ' active' : ''));
       b.type = 'button';
       b.dataset['category'] = category.id;
+      b.setAttribute('aria-pressed', String(on));
       b.innerHTML = `${builderIconSvg(category.id, 18)}<span></span>`;
       (b.querySelector('span') as HTMLElement).textContent = t(`builder.category.${category.id}`);
       b.title = t(`builder.category.${category.id}`);
@@ -851,8 +859,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       for (const host of root.querySelectorAll<HTMLElement>('.bw-host-builder')) host.hidden = next !== 'builder';
       openGallery = null;
       renderDock(lastState);
+      syncDock();
     },
-    hosts: { level1: tier1Road, level2: tier2Road, simMenu: simSlot, appMenu: appSlot, controls: controlsSlot },
+    hosts: { level1: tier1Road, level2: tier2Road, simMenu: simSlot, appMenu: appSlot, controls: controlsSlot, hint: foot },
     flash,
     relabel,
     root,

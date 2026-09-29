@@ -1,11 +1,11 @@
 /* The game's chrome, one paradigm: a thin bar at the top for global state and
    an expanding container at the bottom that grows upward in three tiers -
-   categories, sub-tools, and a gallery of what can be placed. The map owns the
-   middle of the screen in every mode.
+   categories, sub-tools, and a gallery of what can be placed - with one line
+   of hint along its foot. The map owns the middle of the screen, always.
 
-   The same classes drive the road and the Builder: in road mode the container
-   hosts the game's own toolbar and palettes (moved in by main.ts), so nothing
-   floats over the map and there is one place to look for anything. */
+   The same container drives the road and the Builder: in road mode it hosts
+   the game's own toolbar and palettes (moved in by main.ts), so nothing floats
+   over the map and there is one place to look for anything. */
 
 .bw-head { display: none; }
 
@@ -88,7 +88,9 @@
 .bw-controls:empty { display: none; }
 .bw-slot { display: grid; gap: 6px; }
 .bw-slot:empty { display: none; }
-/* The mounted sim controls and app menu lose their floating positions. */
+/* The mounted sim controls and app menu lose their floating positions, and a
+   panel the player folded elsewhere is open here: the container is the only
+   chrome, and a fold inside it would leave an empty tier. */
 .bw-slot .simulation-controls,
 .bw-slot .top-menu {
   position: static;
@@ -102,13 +104,16 @@
   -webkit-backdrop-filter: none;
 }
 .bw-slot .panel-title { display: none; }
+.bw-slot .simulation-controls.collapsed > .panel-body { display: block; }
 .bw-slot .top-menu { flex-direction: column; align-items: stretch; gap: 4px; }
 .bw-slot .top-menu .menu-label { display: inline; }
 .bw-slot .top-menu .icon-button { width: 100%; height: 32px; justify-content: flex-start; gap: 8px; padding: 0 9px; }
 .bw-slot .top-menu .select-chip { height: 32px; width: 100%; }
 .bw-slot .select-chip select { flex: 1; max-width: none; text-align-last: right; }
 
-/* --- the bottom container */
+/* --- the bottom container: one glass band, tiers stacked inside it ----------
+   Its width tracks the content between a floor and a ceiling, so the band is
+   the same width in every mode and never grows a covering rectangle. */
 .bw-dock {
   position: absolute;
   left: 50%;
@@ -116,43 +121,50 @@
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
   width: max-content;
-  max-width: calc(100vw - 20px);
+  min-width: min(660px, calc(100vw - 20px));
+  max-width: min(1120px, calc(100vw - 20px));
   pointer-events: auto;
+  background: color-mix(in srgb, var(--bw-panel) 95%, transparent);
+  border: 1px solid var(--bw-border);
+  border-radius: 10px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  overflow: hidden;
 }
+/* The status bar is the only thing left under the container, and only on the
+   road: with it out of the way the Builder's band sits on the screen edge. */
+.builder-mode .bw-dock { bottom: 12px; }
+
 .bw-tier {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  background: color-mix(in srgb, var(--bw-panel) 92%, transparent);
-  border: 1px solid var(--bw-border);
-  border-radius: var(--bw-radius);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px;
 }
-.bw-tier::-webkit-scrollbar { display: none; }
 .bw-tier[hidden] { display: none; }
-.bw-tier1 { background: color-mix(in srgb, var(--bw-bg-2) 92%, transparent); }
-.bw-tier3 { justify-content: flex-start; }
-.bw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
-.bw-host { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.bw-tier1 { background: color-mix(in srgb, var(--bw-bg-2) 72%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent); padding-right: 40px; }
+.bw-tier2 { align-items: flex-start; padding: 8px 12px; }
+.bw-tier3 { justify-content: flex-start; align-content: flex-start; padding: 8px 12px; max-height: min(34dvh, 320px); overflow-y: auto; scrollbar-width: thin; }
+.bw-host { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; min-width: 0; }
 .bw-host[hidden] { display: none; }
+.bw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
 
+/* The container folds to its first tier. */
 .bw-fold {
   position: absolute;
-  top: -12px;
-  right: 0;
+  top: 7px;
+  right: 7px;
   display: grid;
   place-items: center;
   width: 26px;
-  height: 20px;
+  height: 26px;
   border: 1px solid var(--bw-border);
-  border-radius: 6px 6px 0 0;
-  background: color-mix(in srgb, var(--bw-panel) 94%, transparent);
+  border-radius: 6px;
+  background: transparent;
   color: var(--bw-muted);
 }
 .bw-fold:hover { color: var(--bw-active); border-color: var(--bw-active); }
@@ -163,7 +175,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  height: 30px;
   padding: 0 11px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -234,8 +246,89 @@
 .bw-help-row strong { font-size: 11.5px; color: var(--bw-text); }
 .bw-help-row span { font-size: 11px; color: var(--bw-muted); line-height: 1.4; }
 
-/* --- the game's own toolbar and palettes, hosted by the container */
-.bw-tier1 .toolbar,
+/* --- the foot: one line of hint, inside the band ---------------------------
+   The hint used to float over the map at exactly the height of the panel's own
+   last line, so the two texts drew on top of each other. It is now the band's
+   bottom line: the game's bar on the road, the Builder's on the sites. */
+.bw-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 29px;
+  padding: 6px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent);
+  background: color-mix(in srgb, var(--bw-bg) 45%, transparent);
+  color: var(--bw-muted);
+  font-size: 11px;
+}
+.bw-foot .hint,
+.bw-foot .mobile-hint,
+.bw-foot .bw-hint {
+  position: static;
+  transform: none;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--bw-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.bw-foot .hint.flash,
+.bw-foot .mobile-hint.flash,
+.bw-foot .bw-hint.flash { transform: none; color: var(--bw-active); font-weight: 600; }
+.bw-foot .mobile-hint { display: none; }
+.bw-foot .bw-hint { display: none; }
+#builder[data-mode="builder"] .bw-foot .bw-hint { display: block; }
+@media (max-width: 780px) {
+  .bw-foot .hint { display: none; }
+  .bw-foot .mobile-hint { display: block; }
+}
+
+/* --- the game's own toolbar and palettes, hosted by the container ---------- */
+/* The toolbar becomes a row of icon-and-label pills: as a column of 62 px
+   tiles it overflowed the tier and its labels were clipped away. */
+.bw-tier1 .toolbar {
+  position: static;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.bw-tier1 .toolbar .tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.bw-tier1 .toolbar .tool-icon svg { width: 16px; height: 16px; }
+.bw-tier1 .toolbar .tool[data-key]::after { display: none; }
+
+/* The road palette reads as three columns - road, path, height - so the band
+   stays wide and short instead of standing 300 px tall over the map. */
 .bw-tier2 .road-palette,
 .bw-tier2 .terrain-palette {
   position: static;
@@ -249,27 +342,53 @@
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.bw-tier1 .toolbar { flex-direction: row; gap: 3px; }
-.bw-tier1 .toolbar .tool {
-  min-height: 0;
-  height: 32px;
-  flex-direction: row;
-  gap: 6px;
-  padding: 0 10px;
-  border-radius: 6px;
-  font-size: 11px;
+.bw-tier2 .panel-title { display: none; }
+.bw-tier2 .road-palette.collapsed > .panel-body,
+.bw-tier2 .terrain-palette.collapsed > .panel-body { display: flex; }
+.bw-tier2 .road-palette .panel-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px 22px;
 }
-.bw-tier1 .toolbar .tool-icon svg { width: 17px; height: 17px; }
-.bw-tier1 .toolbar .tool[data-key]::after { display: none; }
-.bw-tier2 .road-palette .road-types { display: flex; flex-wrap: wrap; gap: 4px; }
-.bw-tier2 .road-palette .road-type { grid-template-columns: 34px 1fr; padding: 5px 8px; width: auto; }
-.bw-tier2 .road-palette .road-type small, .bw-tier2 .road-palette .shortcut { display: none; }
-.bw-tier2 .road-palette .road-swatch { width: 34px; height: 16px; }
-.bw-tier2 .terrain-palette .terrain-modes { display: flex; flex-wrap: wrap; gap: 4px; }
-.bw-tier2 .terrain-palette .terrain-control { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
-.bw-tier2 .terrain-palette .terrain-control input { width: 110px; }
-.bw-tier2 .terrain-palette .terrain-clear { width: auto; padding: 6px 10px; margin: 0; }
-.bw-tier2 .alignment-modes, .bw-tier2 .structure-modes { display: flex; gap: 4px; margin: 0; }
+.bw-tier2 .palette-step { display: grid; gap: 6px; align-content: start; }
+.bw-tier2 .road-step-label {
+  margin: 0;
+  color: var(--bw-muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.bw-tier2 .road-palette .road-types { display: grid; grid-template-columns: repeat(3, minmax(118px, 1fr)); gap: 3px; }
+.bw-tier2 .road-palette .road-type { grid-template-columns: 30px 1fr; gap: 7px; padding: 6px 8px; width: auto; border-radius: 8px; }
+/* The class says its own name; the lane count and the speed live in the
+   button's aria-label, and the tooltip carries them for the pointer. */
+.bw-tier2 .road-palette .road-type strong { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bw-tier2 .road-palette .road-type small,
+.bw-tier2 .road-palette .road-type .shortcut { display: none; }
+.bw-tier2 .road-palette .road-swatch { width: 30px; height: 15px; }
+.bw-tier2 .road-palette .alignment-modes { display: grid; grid-template-columns: repeat(3, minmax(60px, 1fr)); gap: 4px; margin: 0; }
+.bw-tier2 .road-palette .road-height { grid-template-columns: 30px 92px 30px; gap: 6px; margin: 0; }
+.bw-tier2 .road-palette .road-height-step { font-size: 15px; padding: 5px; }
+.bw-tier2 .road-palette .road-height-context { margin: 0; }
+/* The same sentence is the band's foot line, one row down. */
+.bw-tier2 .road-palette .road-palette-help { display: none; }
+
+.bw-tier2 .terrain-palette .panel-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 20px;
+}
+.bw-tier2 .terrain-palette .terrain-modes { display: grid; grid-template-columns: repeat(4, minmax(78px, 1fr)); gap: 4px; }
+.bw-tier2 .terrain-palette .terrain-mode { padding: 8px 5px; }
+.bw-tier2 .terrain-palette .terrain-control { display: grid; grid-template-columns: 58px 130px 40px; margin: 0; }
+.bw-tier2 .terrain-palette .terrain-control input { width: auto; min-width: 0; }
+.bw-tier2 .terrain-palette .terrain-clear { width: auto; margin: 0; padding: 8px 12px; }
 
 /* --- inspector */
 .bw-inspector {
@@ -347,26 +466,6 @@
 .bw-quick-button:hover { color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
 .bw-quick-button.danger:hover { color: var(--bw-danger); background: color-mix(in srgb, var(--bw-danger) 14%, transparent); }
 
-/* --- hint */
-.bw-hint {
-  position: absolute;
-  left: 50%;
-  bottom: 176px;
-  transform: translateX(-50%);
-  max-width: min(720px, calc(100vw - 40px));
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bw-bg) 82%, transparent);
-  border: 1px solid var(--bw-border);
-  color: var(--bw-muted);
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-.bw-hint.flash { color: var(--bw-active); border-color: var(--bw-active); }
-
 /* The rest of the HUD steps aside: the container is the only control surface. */
 .bw-hide-legacy .toolbar:not(.bw-tier .toolbar),
 .bw-hide-legacy .road-palette:not(.bw-tier .road-palette),
@@ -375,15 +474,29 @@
 .builder-mode .topbar,
 .builder-mode .hint,
 .builder-mode .mobile-hint { display: none !important; }
-.builder-mode #builder .bw-hint { display: block; }
+
+@media (max-width: 1250px) {
+  /* The minimap keeps its corner: the band gives way instead of covering it. */
+  .bw-dock { max-width: calc(100vw - 260px); }
+}
 
 @media (max-width: 780px) {
   .bw-top { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px; }
   .bw-chip span, .bw-button span { display: none; }
   .bw-chip, .bw-button { padding: 0 8px; }
   .bw-inspector { width: min(230px, calc(60vw - 12px)); top: 110px; max-height: calc(100dvh - 230px); }
-  .bw-dock { bottom: 8px; }
+  .bw-dock {
+    left: 8px;
+    right: 8px;
+    bottom: 46px;
+    transform: none;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+  .bw-tier { flex-wrap: wrap; }
+  .bw-tier1 { padding-right: 40px; }
   .bw-tile { width: 72px; }
   .bw-tile-art, .bw-tile-art img { width: 44px; height: 44px; }
-  .bw-hint { bottom: 210px; }
+  .bw-tier2 .road-palette .road-types { grid-template-columns: repeat(2, minmax(104px, 1fr)); }
 }

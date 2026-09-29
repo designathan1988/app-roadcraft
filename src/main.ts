@@ -1513,6 +1513,10 @@ function mountUnifiedChrome(): void {
   move(document.getElementById('topMenu'), hosts.appMenu);
   move(document.getElementById('trafficToggle'), hosts.controls);
   move(document.getElementById('resetView'), hosts.controls);
+  // The hint bar is the band's foot line now: floating over the map it landed
+  // on the panel's own last row and the two sentences drew over each other.
+  move(document.getElementById('hint'), hosts.hint);
+  move(document.getElementById('mobileHint'), hosts.hint);
   document.getElementById('app')?.classList.add('bw-hide-legacy');
 }
 // Mounted after this module has finished evaluating: moving the toolbar and
