@@ -7,8 +7,6 @@
    the game's own toolbar and palettes (moved in by main.ts), so nothing floats
    over the map and there is one place to look for anything. */
 
-.bw-head { display: none; }
-
 /* --- the top bar */
 .bw-top {
   position: absolute;
@@ -29,7 +27,7 @@
 }
 .bw-group { display: flex; align-items: center; gap: 4px; }
 .bw-spacer { flex: 1; }
-.bw-button, .bw-icon-button, .bw-chip {
+.bw-icon-button, .bw-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -42,13 +40,12 @@
   font-size: 11px;
   white-space: nowrap;
 }
-.bw-button:hover, .bw-icon-button:hover:not(:disabled), .bw-chip:hover { color: var(--bw-text); border-color: var(--bw-active); }
+.bw-icon-button:hover:not(:disabled), .bw-chip:hover { color: var(--bw-text); border-color: var(--bw-active); }
 .bw-icon-button { width: 30px; padding: 0; justify-content: center; }
 .bw-icon-button:disabled { opacity: 0.3; }
-.bw-chip svg, .bw-button svg { opacity: 0.85; }
+.bw-chip svg { opacity: 0.85; }
 .bw-chip .bw-caret { width: 0; height: 0; border-left: 3.5px solid transparent; border-right: 3.5px solid transparent; border-top: 4px solid currentColor; opacity: 0.7; }
 .bw-chip.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
-.bw-exit { color: var(--bw-text); }
 
 /* --- a drop-down of the top bar (snap, floor, view, help, sim, app) */
 .bw-drop {
@@ -177,7 +174,6 @@
 /* The tray reads as a form: labels and controls from the left, the pictures
    owning the whole width under them. */
 .bw-tray { display: grid; gap: 7px; justify-items: start; width: 100%; padding: 0 6px; }
-.bw-cats { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
 .bw-context { display: flex; align-items: center; gap: 3px; }
 .bw-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
 .bw-host[hidden] { display: none; }
@@ -537,32 +533,6 @@
 .road-carousel.at-start .carousel-step.prev,
 .road-carousel.at-end .carousel-step.next { opacity: 0.4; }
 
-/* What can be done to a road once it is drawn. */
-.bw-tier2 .road-palette .road-ops {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding-left: 16px;
-  border-left: 1px solid color-mix(in srgb, var(--bw-border) 80%, transparent);
-}
-.road-op {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--bw-border);
-  border-radius: 7px;
-  background: transparent;
-  color: var(--bw-muted);
-  font: inherit;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.road-op svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.road-op:hover { color: var(--bw-text); border-color: var(--bw-active); }
-.road-op.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 13%, transparent); }
-
 .bw-tier2 .terrain-palette .panel-body {
   display: flex;
   flex-wrap: wrap;
@@ -606,7 +576,6 @@
 .bw-inspector-title { color: var(--bw-muted); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; }
 .bw-inspector-body { padding: 8px 10px 12px; display: grid; gap: 6px; }
 .bw-inspector-name { color: var(--bw-text); font-size: 12.5px; font-weight: 600; }
-.bw-inspector-empty { margin: 0; color: var(--bw-muted); font-size: 11px; line-height: 1.45; }
 .bw-field { display: grid; grid-template-columns: 1fr 76px 14px; align-items: center; gap: 6px; color: var(--bw-muted); font-size: 11px; }
 .bw-field-input {
   width: 100%;
@@ -659,8 +628,8 @@
   .bw-slot .top-menu,
   .bw-slot .top-menu.open { display: flex; }
   .bw-top { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px; }
-  .bw-chip span, .bw-button span { display: none; }
-  .bw-chip, .bw-button { padding: 0 8px; }
+  .bw-chip span { display: none; }
+  .bw-chip { padding: 0 8px; }
   .bw-inspector { width: min(230px, calc(60vw - 12px)); top: 110px; max-height: calc(100dvh - 230px); }
   .bw-dock {
     left: 8px;
