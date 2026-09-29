@@ -253,3 +253,21 @@ The latest checkpoint passed `npm run check` (526 tests, 4 expected failures,
 three-webgl backend). The broader 80-seed fuzz hunt, full roster-wide facial
 expression coverage, broad occupant visual inspection, and saturated traffic
 flow remain open. Block 7 and the full project remain open.
+
+## September 28 branch integration review
+
+The branch adds freeform road editing, authored road heights, destination
+routing, a building studio, pedestrian access to doors, turn paths, citizen
+casting and vehicle models. Lint, typecheck, production build, the 16-scenario
+WebGL verification and the building browser verification passed during the
+integration review. The full-map driving test exposed a discontinuous heading
+at connector exits; `sim/pose.ts` now samples the following lane on both sides
+of the transition, with a focused regression test.
+
+The six-seed fuzz hunt still finds projected vehicle overlaps on folded junction
+movements and near independently drawn ground and bridge approaches. The
+minimized cases are `open-body-overlap-on-folded-turn.json` and
+`open-unrelated-body-overlap-near-bridge.json`. Both remain **open**: the turn
+clearance check bounds one body against the asphalt but does not prove that two
+vehicles can safely occupy the movement, and the second case needs a height-aware
+contact check. These defects are not resolved by the routing and turn-path commits.

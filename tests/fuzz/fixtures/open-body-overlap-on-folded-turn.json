@@ -1,0 +1,75 @@
+{
+ "name": "open-body-overlap-on-folded-turn",
+ "category": "bodyOverlap",
+ "detail": "t=15.4 junction:link/right 13:12>9:0 / 25:18>11:1->15:11>12:1",
+ "sim": {
+  "seconds": 45,
+  "seed": 24301,
+  "intensity": 1.5
+ },
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    -188.47,
+    250.97
+   ],
+   "b": [
+    -145.02,
+    363.21
+   ],
+   "type": 3,
+   "curve": {
+    "t": 0.46,
+    "h": -15.73
+   },
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -107.31,
+    152.69
+   ],
+   "b": [
+    -198.56,
+    311.81
+   ],
+   "type": 4,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -91.35,
+    225.48
+   ],
+   "b": [
+    -98.78,
+    300.87
+   ],
+   "type": 4,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    195.67,
+    602.18
+   ],
+   "b": [
+    210.32,
+    656.86
+   ],
+   "type": 4,
+   "curve": {
+    "t": 0.44,
+    "h": 10.24
+   },
+   "structure": "ground"
+  }
+ ],
+ "open": "A connector may fold back across its own earlier arc. Two vehicles with a legal arc gap then meet side-on; the movement's body-size clearance check only tests the swept body against the road surface. The route geometry and admission policy need a shared physical occupancy rule before this category can be closed."
+}

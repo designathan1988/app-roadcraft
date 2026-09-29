@@ -7,7 +7,9 @@ import { step } from '@sim/pipeline';
 import { vehiclePose } from '@sim/pose';
 import { DT } from '@sim/params';
 import { integrateAll } from '@sim/vehicles/integrate';
-import { snapshot } from '@sim/vehicles/state';
+import { createVehicle, snapshot } from '@sim/vehicles/state';
+import { ARCHETYPES } from '@sim/vehicles/archetypes';
+import { makeDriver } from '@sim/vehicles/driver';
 
 /**
  * What the player sees, as opposed to what the simulation believes.
@@ -58,6 +60,33 @@ function grid(): { doc: RoadDoc; net: Network; sim: SimWorld } {
 }
 
 describe('rendered pose', () => {
+  it('keeps heading continuous as the front leaves a junction connector', () => {
+    const { sim } = grid();
+    const archetype = ARCHETYPES.find((candidate) => candidate.id === 'sedan')!;
+    const epsilon = 0.001;
+    let checked = 0;
+    for (const connector of sim.graph.connectors.values()) {
+      const path = sim.lanelet(connector.id)!;
+      const next = sim.lanelet(connector.toLane)!;
+      const car = createVehicle(1, archetype, makeDriver(archetype, () => 0.5), '#888888', path.id, 12, 0);
+      car.s = path.length - epsilon;
+      car.rearPath = [connector.fromLane];
+      car.route = [path.id, next.id];
+      car.prev = snapshot(car);
+      const before = vehiclePose(sim, car, 1);
+      car.lanelet = next.id;
+      car.s = epsilon;
+      car.rearPath = [path.id, connector.fromLane];
+      car.route = [next.id];
+      const after = vehiclePose(sim, car, 1);
+      if (!before || !after) continue;
+      checked++;
+      const delta = Math.atan2(Math.sin(after.angle - before.angle), Math.cos(after.angle - before.angle));
+      expect(Math.abs(delta), connector.id).toBeLessThan(0.01);
+    }
+    expect(checked).toBeGreaterThan(8);
+  });
+
   it('never moves a vehicle further in one tick than its own speed allows', () => {
     const { sim } = grid();
     const last = new Map<number, { x: number; y: number }>();

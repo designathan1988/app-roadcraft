@@ -1,0 +1,55 @@
+{
+ "name": "open-unrelated-body-overlap-near-bridge",
+ "category": "unrelatedBodyOverlap",
+ "detail": "t=19.1 junction:left/link 22:17>12:0->16:12>10:0 / 12:11>5:0",
+ "sim": {
+  "seconds": 45,
+  "seed": 24301,
+  "intensity": 1.5
+ },
+ "ops": [
+  {
+   "op": "draw",
+   "a": [
+    -154.88,
+    224.97
+   ],
+   "b": [
+    -139.51,
+    338.44
+   ],
+   "type": 4,
+   "curve": null,
+   "structure": "ground"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -20.86,
+    343.19
+   ],
+   "b": [
+    -139.56,
+    131.88
+   ],
+   "type": 1,
+   "curve": null,
+   "structure": "bridge"
+  },
+  {
+   "op": "draw",
+   "a": [
+    -107.31,
+    152.69
+   ],
+   "b": [
+    -198.56,
+    311.81
+   ],
+   "type": 4,
+   "curve": null,
+   "structure": "ground"
+  }
+ ],
+ "open": "An independently drawn ground road and bridge approach produce overlapping projected vehicle bodies in this seeded run. The current detector uses a coarse set of recent road structures, so the vertical separation and the road geometry need to be checked before the overlap can be classified or resolved."
+}

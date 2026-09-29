@@ -19,6 +19,7 @@ describe('kerb stops', () => {
     const sim = simOf(fixtureDoc(), 0x51de, 2);
     const phaseOf = new Map<number, string>();
     let drops = 0;
+    let passengersAlighting = 0;
     let picks = 0;
     let movingWithDoorOpen = 0;
     let openedIntoSomebody = 0;
@@ -44,7 +45,12 @@ describe('kerb stops', () => {
           }
         }
         if (prev.endsWith('transfer') && key.endsWith('close')) {
-          if (prev.startsWith('drop')) drops++;
+          if (prev.startsWith('drop')) {
+            drops++;
+            // Delivery mates get back into the same vehicle. Their drop
+            // uses the door animation but deliberately creates no walker.
+            if (!stop?.keep) passengersAlighting++;
+          }
           else picks++;
         }
         phaseOf.set(v.id, key);
@@ -60,7 +66,7 @@ describe('kerb stops', () => {
 
     expect(drops).toBeGreaterThan(2);
     expect(picks).toBeGreaterThan(0);
-    expect(droppedOnFootway).toBeGreaterThanOrEqual(drops);
+    expect(droppedOnFootway).toBeGreaterThanOrEqual(passengersAlighting);
     expect(movingWithDoorOpen).toBe(0);
     expect(openedIntoSomebody).toBe(0);
     expect(overlaps).toBe(0);

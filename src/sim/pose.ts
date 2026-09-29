@@ -85,7 +85,7 @@ function bodyOffset(k: Kinematics, length: number): number {
  * spinning the long way through 359 degrees.
  */
 export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null {
-  const frame = axleFrame(w, v, v.archetype.length);
+  const frame = axleFrame(w, v, v, v.archetype.length);
   if (!frame) return null;
   const t = clamp(alpha, 0, 1);
 
@@ -98,7 +98,7 @@ export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null
   const heading = angleOf(frame.t);
   const here: Pose = { p: at, angle: heading };
 
-  const before = axleFrame(w, v.prev, v.archetype.length);
+  const before = axleFrame(w, v, v.prev, v.archetype.length);
   if (!before) return here;
   const beforeAt = addScaled(before.p, perp(before.t), bodyOffset(v.prev, v.archetype.length));
   if (dist(beforeAt, at) > POSE_JUMP_LIMIT) return here;
@@ -124,20 +124,33 @@ export function vehiclePose(w: SimWorld, v: Vehicle, alpha: number): Pose | null
  * a circular arc it is the tangent at the centre, so the body stays where it
  * was and only the stepping is gone.
  */
-function axleFrame(w: SimWorld, kinematics: Kinematics, length: number): Frame | null {
-  const centre = bodyFrame(w, kinematics, length / 2);
+function axleFrame(w: SimWorld, vehicle: Vehicle, kinematics: Kinematics, length: number): Frame | null {
+  const centre = bodyFrame(w, vehicle, kinematics, length / 2);
   if (!centre) return null;
-  const ahead = bodyFrame(w, kinematics, length / 2 - HEADING_CHORD);
-  const behind = bodyFrame(w, kinematics, length / 2 + HEADING_CHORD);
+  const ahead = bodyFrame(w, vehicle, kinematics, length / 2 - HEADING_CHORD);
+  const behind = bodyFrame(w, vehicle, kinematics, length / 2 + HEADING_CHORD);
   if (!ahead || !behind) return centre;
   const t = chordHeading(behind.p, ahead.p, centre.t);
   return { ...centre, t, n: { x: -t.y, y: t.x } };
 }
 
-function bodyFrame(w: SimWorld, kinematics: Kinematics, behindFront: number): Frame | null {
+function bodyFrame(w: SimWorld, vehicle: Vehicle, kinematics: Kinematics, behindFront: number): Frame | null {
   let lane = w.lanelet(kinematics.lanelet);
   if (!lane) return null;
   let s = kinematics.s - behindFront;
+  // The heading chord can reach past the front's lanelet even while the
+  // front is still on it. Sample the following lanelet on both sides of the
+  // transition; clamping the earlier snapshot to the connector's endpoint
+  // made the body snap its heading as soon as the front crossed that point.
+  if (s > lane.length) {
+    const nextId = lane.kind === 'connector' ? lane.toLane
+      : kinematics.lanelet !== vehicle.lanelet && w.connector(vehicle.lanelet)?.fromLane === lane.id
+        ? vehicle.lanelet
+        : vehicle.admittedConnector && w.connector(vehicle.admittedConnector)?.fromLane === lane.id
+          ? vehicle.admittedConnector : undefined;
+    const next = nextId ? w.lanelet(nextId) : undefined;
+    if (next) return next.centre.sampleAt(s - lane.length);
+  }
   if (s >= 0) return lane.centre.sampleAt(s);
   for (const id of kinematics.rearPath) {
     lane = w.lanelet(id);
