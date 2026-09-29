@@ -678,6 +678,8 @@ export const EN: Dictionary = {
   'builder.pattern.note': 'A pattern dresses the bays of a face; the scope decides how far it reaches.',
   'builder.finish.note': 'Pick a finish and a colour, then paint with the brush or apply to the target.',
   'builder.styleCopied': 'Style copied: the brush carries it',
+  'builder.roof.ridge.label': 'Ridge',
+  'builder.roof.side.label': 'Falls to',
   'builder.roof.ridge.x': 'Ridge left–right',
   'builder.roof.ridge.y': 'Ridge front–back',
   'builder.roof.side.front': 'Falls front',

@@ -362,22 +362,60 @@ const SCENARIOS = [
       if (id === null) return 'the block did not place';
       const b = D.buildings.get(id);
       frame(b.x + 8, b.y + 8, 6); await settle();
-      document.querySelector('.bw-cat[data-category="draw"]').click();
-      await wait(120);
+      document.querySelector('.bw-section[data-builder-group="create"]').click();
+      await wait(250);
       document.querySelector('.bw-tool[data-builder-tool="models"]').click();
       await wait(1600);
       const tiles = [...document.querySelectorAll('.bw-tier3 .bw-tile')];
       const pictured = tiles.filter((t) => t.querySelector('img')).length;
       if (tiles.length < 8) return 'only ' + tiles.length + ' model tiles';
       if (pictured < tiles.length - 1) return pictured + ' of ' + tiles.length + ' tiles have a picture';
-      const clipped = [];
-      for (const tier of document.querySelectorAll('.bw-dock .bw-tier')) {
-        if (tier.scrollHeight > tier.clientHeight + 1) clipped.push(tier.className);
-      }
-      if (clipped.length > 0) return 'clipped: ' + clipped.join(', ');
+
+      // The parts are photographed too: a window, and a roof, from the same
+      // off-screen pass. The gallery is a gallery of pictures, not of glyphs.
+      document.querySelector('.bw-section[data-builder-group="insert"]').click();
+      await wait(250);
+      document.querySelector('.bw-tool[data-builder-tool="openWindows"]').click();
+      await wait(1500);
+      const windows = [...document.querySelectorAll('.bw-tier3 .bw-tile')];
+      const windowPics = windows.filter((t) => t.querySelector('img')).length;
+      if (windowPics < windows.length - 1) return windowPics + ' of ' + windows.length + ' windows have a picture';
+      const params = document.querySelector('.bw-params');
+      if (!params || params.querySelectorAll('button').length < 4) return 'the window parameters row is missing';
+      document.querySelector('.bw-section[data-builder-group="appearance"]').click();
+      await wait(250);
+      document.querySelector('.bw-tool[data-builder-tool="material"]').click();
+      await wait(900);
+      const finishes = [...document.querySelectorAll('.bw-tier3 .bw-tile')];
+      if (finishes.filter((t) => t.querySelector('img')).length < 13) return 'the materials are not pictured';
+      document.querySelector('.bw-globals .bw-select').click();
+      await wait(400);
+      if (document.querySelector('.bw-dock').getBoundingClientRect().height > 200) return 'selecting leaves a shelf standing';
+      return null;
+    `,
+  },
+  {
+    // The road panel: the plan fixed on top, the classes rolling underneath it,
+    // and the lanes the next road is laid at.
+    name: 'workspace-road-panel',
+    run: `
+      clear(); await wait(300);
+      document.querySelector('.tool[data-tool="road"]').click();
+      await wait(500);
       const dock = document.querySelector('.bw-dock').getBoundingClientRect();
-      if (dock.bottom > innerHeight + 1 || dock.right > innerWidth) return 'the band is off screen';
-      window.__focus = { x: b.x, y: b.y };
+      if (dock.height > 380) return 'the road panel is ' + Math.round(dock.height) + ' px tall';
+      const tiles = [...document.querySelectorAll('.road-type[data-type-index]')];
+      if (tiles.length < 6) return 'only ' + tiles.length + ' road classes';
+      if (tiles.filter((t) => t.querySelector('img')).length < tiles.length) return 'a road class has no picture';
+      if (document.querySelectorAll('.road-op').length < 3) return 'the road operations are not in the row';
+      if (document.querySelectorAll('.road-lane').length < 4) return 'the lanes row is missing';
+      for (const tier of document.querySelectorAll('.bw-dock .bw-tier')) {
+        if (tier.scrollHeight > tier.clientHeight + 1) return 'clipped: ' + tier.className;
+      }
+      const band = document.querySelector('.bw-dock').getBoundingClientRect();
+      if (band.bottom > innerHeight + 1 || band.right > innerWidth) return 'the band is off screen';
+      window.__focus = { x: 0, y: 10 };
+      frame(0, 10, 3.2); await settle();
       return null;
     `,
   },

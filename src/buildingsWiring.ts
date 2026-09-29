@@ -17,6 +17,7 @@ import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
 import { drawBuilderGizmos, type GizmoInput } from '@ui/overlay/builderGizmos';
+import { PART_IDS, renderPartThumbnails } from '@render/buildings/parts';
 import { renderBuildingThumbnails } from '@render/buildings/thumbnails';
 import { initBuilderWorkspace, type BuilderActions, type BuilderState } from '@ui/builder/workspace';
 import { plural, t } from '@ui/i18n';
@@ -803,9 +804,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       if (!thumbnailsDone) {
         thumbnailsDone = true;
         // After this frame, so opening the Builder is not held up by it: the
-        // gallery shows real pictures of the models, rendered off screen.
+        // galleries show real pictures of the models and of the parts, all of
+        // them photographed off screen by the game's own mesh builder.
         requestAnimationFrame(() => {
           workspace.setPresetThumbnails(renderBuildingThumbnails(scene.gl, BLUEPRINTS));
+          workspace.setPresetThumbnails(renderPartThumbnails(scene.gl, PART_IDS));
         });
       }
     },

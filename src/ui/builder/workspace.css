@@ -287,6 +287,27 @@
 .bw-swatch.custom::-webkit-color-swatch-wrapper { padding: 0; }
 .bw-swatch.custom::-webkit-color-swatch { border: none; border-radius: 4px; opacity: 0; }
 
+/* The parameters of the family in hand: one line under its pictures, and
+   nothing at all while the family has no numbers to set. */
+.bw-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 18px;
+  width: 100%;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--bw-border) 45%, transparent);
+}
+.bw-params-group { display: inline-flex; align-items: center; gap: 5px; }
+.bw-params-label {
+  color: var(--bw-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .bw-plan-body { gap: 6px; }
 .bw-plan-count { color: var(--bw-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .bw-help-body { display: grid; gap: 10px; }

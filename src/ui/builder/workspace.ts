@@ -3,6 +3,7 @@ import { FINISHES, type Finish, STYLES } from '@world/buildings/materials';
 import {
   BUILDER_GALLERIES,
   BUILDER_GROUPS,
+  DRAW_SHAPES,
   FACADE_SCOPES,
   type BuilderCategoryId,
   type BuilderField,
@@ -14,6 +15,7 @@ import { FACADE_PATTERNS, ELEMENT_KINDS } from '@world/buildings/types';
 import { t } from '../i18n';
 import { builderIconSvg } from './icons';
 import { materialSwatch } from '../materialSwatch';
+import { planSwatch } from '../planSwatch';
 import './workspace.css';
 
 export type { BuilderField, BuilderSelectionInfo };
@@ -578,9 +580,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       const grid = el('div', 'bw-tiles');
       for (const id of family) {
         const on = state.tool === id || state.armed === id;
-        grid.appendChild(tile(id, t(`builder.tool.${id}`), on, closeGalleryAnd(() => actions.chooseTool(id))));
+        const shape = DRAW_SHAPES[id];
+        const thumb = thumbnails.get(id) ?? (shape ? planSwatch(shape) : undefined);
+        grid.appendChild(tile(id, t(`builder.tool.${id}`), on, closeGalleryAnd(() => actions.chooseTool(id)), thumb));
       }
       box.append(grid, menuNote(`builder.family.${openGallery}`));
+      // A window or a door also asks where it goes.
+      if (openGallery === 'openWindows' || openGallery === 'openDoors') box.appendChild(scopeRow(state));
       tier3.appendChild(box);
       return;
     }
@@ -660,35 +666,23 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       for (const pattern of FACADE_PATTERNS) {
         grid.appendChild(tile(pattern, t(`creator.pattern.${pattern}`), state.pattern === pattern, closeGalleryAnd(() => actions.choosePattern(pattern))));
       }
-      const scopes = el('div', 'bw-row');
-      for (const scope of FACADE_SCOPES) {
-        const b = tile(scope, t(`creator.dock.scope.${scope}`), state.scope === scope, () => {
-          actions.setScope(scope);
-          renderDock(lastState);
-        });
-        scopes.appendChild(b);
-      }
-      box.append(grid, scopes, menuNote('builder.pattern.note'));
+      box.append(grid, scopeRow(state), menuNote('builder.pattern.note'));
       tier3.appendChild(box);
       return;
     }
     if (openGallery === 'roofShape') {
-      const roof = state.roof;
-      const row = el('div', 'bw-row');
-      row.append(
-        menuItem('− 5°', false, () => actions.roofPitch(-5)),
-        menuNote2(`${t('builder.field.pitch')}: ${roof?.pitch ?? 30}°`),
-        menuItem('+ 5°', false, () => actions.roofPitch(5)),
-      );
-      const ridge = el('div', 'bw-row');
-      for (const r of ['x', 'y'] as const) {
-        ridge.appendChild(menuItem(t(`builder.roof.ridge.${r}`), roof?.ridge === r, () => actions.roofRidge(r)));
+      // Pictures of what a roof can be, and its numbers in the band below.
+      const grid = el('div', 'bw-tiles');
+      for (const id of ['roofFlat', 'roofShed', 'roofGable', 'roofHip', 'roofSawtooth', 'roofTerrace']) {
+        grid.appendChild(tile(
+          id,
+          t(`builder.tool.${id}`),
+          false,
+          closeGalleryAnd(() => actions.chooseTool(id)),
+          thumbnails.get(id),
+        ));
       }
-      const fall = el('div', 'bw-row');
-      for (const [side, key] of [[0, 'front'], [1, 'right'], [2, 'back'], [3, 'left']] as const) {
-        fall.appendChild(menuItem(t(`builder.roof.side.${key}`), roof?.fall === side, () => actions.roofFall(side)));
-      }
-      box.append(row, ridge, fall, menuNote('builder.roofShape.note'));
+      box.append(grid, roofParams(state), menuNote('builder.roofShape.note'));
       tier3.appendChild(box);
       return;
     }
@@ -703,11 +697,49 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     }
   }
 
-  const menuNote2 = (text: string): HTMLElement => {
-    const p = el('span', 'bw-note');
-    p.textContent = text;
-    return p;
-  };
+  /**
+   * The band under the pictures: the parameters of whatever is in hand, and
+   * nothing at all when the family has none. A window says where it is applied;
+   * a roof says its pitch, its ridge and the side it falls to.
+   */
+  function scopeRow(state: BuilderState): HTMLElement {
+    const row = el('div', 'bw-params');
+    const label = el('span', 'bw-params-label');
+    label.textContent = t('creator.dock.scope');
+    row.appendChild(label);
+    for (const scope of FACADE_SCOPES) {
+      row.appendChild(menuItem(t(`creator.dock.scope.${scope}`), state.scope === scope, () => {
+        actions.setScope(scope);
+        renderDock(lastState);
+      }));
+    }
+    return row;
+  }
+
+  function roofParams(state: BuilderState): HTMLElement {
+    const roof = state.roof;
+    const row = el('div', 'bw-params');
+    const pitch = el('div', 'bw-params-group');
+    const pitchLabel = el('span', 'bw-params-label');
+    pitchLabel.textContent = `${t('builder.field.pitch')}: ${roof?.pitch ?? 30}°`;
+    pitch.append(pitchLabel, menuItem('− 5°', false, () => actions.roofPitch(-5)), menuItem('+ 5°', false, () => actions.roofPitch(5)));
+    const ridge = el('div', 'bw-params-group');
+    const ridgeLabel = el('span', 'bw-params-label');
+    ridgeLabel.textContent = t('builder.roof.ridge.label');
+    ridge.appendChild(ridgeLabel);
+    for (const r of ['x', 'y'] as const) {
+      ridge.appendChild(menuItem(t(`builder.roof.ridge.${r}`), roof?.ridge === r, () => actions.roofRidge(r)));
+    }
+    const fall = el('div', 'bw-params-group');
+    const fallLabel = el('span', 'bw-params-label');
+    fallLabel.textContent = t('builder.roof.side.label');
+    fall.appendChild(fallLabel);
+    for (const [side, key] of [[0, 'front'], [1, 'right'], [2, 'back'], [3, 'left']] as const) {
+      fall.appendChild(menuItem(t(`builder.roof.side.${key}`), roof?.fall === side, () => actions.roofFall(side)));
+    }
+    row.append(pitch, ridge, fall);
+    return row;
+  }
 
   /** Finish / Back / Cancel, while a plan is being drawn. */
   function planControls(state: BuilderState): HTMLElement {
@@ -822,26 +854,24 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     redo.innerHTML = builderIconSvg('redo', 16);
     undo.disabled = !state.canUndo;
     redo.disabled = !state.canRedo;
+    // The globals are the pointer's, not the building's: an icon and the value
+    // that matters - a floor number, a snap mode - never a sentence. What each
+    // one is lives in its tooltip.
     floorChip.innerHTML = `${builderIconSvg('floor', 15)}<span></span><i class="bw-caret"></i>`;
-    (floorChip.querySelector('span') as HTMLElement).textContent = t('builder.floor.of', {
-      n: state.floor.active + 1,
-      total: Math.max(1, state.floor.total),
-    });
+    (floorChip.querySelector('span') as HTMLElement).textContent = `${state.floor.active + 1}/${Math.max(1, state.floor.total)}`;
     floorChip.title = t('builder.floor.title');
     snapChip.innerHTML = `${builderIconSvg('snap', 15)}<span></span><i class="bw-caret"></i>`;
-    (snapChip.querySelector('span') as HTMLElement).textContent =
-      `${t('builder.snap.label')}: ${t(`builder.snap.${state.snap}`)}`;
+    (snapChip.querySelector('span') as HTMLElement).textContent = t(`builder.snap.${state.snap}`);
+    snapChip.title = `${t('builder.snap.label')}: ${t(`builder.snap.${state.snap}`)}`;
     gridToggle.classList.toggle('active', state.grid);
     gridToggle.setAttribute('aria-pressed', String(state.grid));
-    gridToggle.innerHTML = `${builderIconSvg('grid', 15)}<span></span>`;
-    (gridToggle.querySelector('span') as HTMLElement).textContent = t('builder.grid');
+    gridToggle.innerHTML = builderIconSvg('grid', 15);
     gridToggle.title = t('builder.grid');
-    viewChip.innerHTML = `${builderIconSvg('view', 15)}<span></span><i class="bw-caret"></i>`;
-    (viewChip.querySelector('span') as HTMLElement).textContent = t('builder.view');
+    viewChip.innerHTML = `${builderIconSvg('view', 15)}<i class="bw-caret"></i>`;
+    viewChip.title = t('builder.view');
     hideToggle.classList.toggle('active', state.hideOthers);
     hideToggle.setAttribute('aria-pressed', String(state.hideOthers));
-    hideToggle.innerHTML = `${builderIconSvg('hide', 15)}<span></span>`;
-    (hideToggle.querySelector('span') as HTMLElement).textContent = t('builder.hideOthers');
+    hideToggle.innerHTML = builderIconSvg('hide', 15);
     hideToggle.title = t('builder.hideOthers');
     help.innerHTML = builderIconSvg('help', 16);
   };

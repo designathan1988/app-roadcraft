@@ -664,6 +664,8 @@ export const PT_BR: Dictionary = {
   'builder.pattern.note': 'Um padrão veste os vãos de uma face; o alcance decide até onde ele vai.',
   'builder.finish.note': 'Escolha um acabamento e uma cor, e pinte com o pincel ou aplique ao alvo.',
   'builder.styleCopied': 'Estilo copiado: o pincel o carrega',
+  'builder.roof.ridge.label': 'Cumeeira',
+  'builder.roof.side.label': 'Água para',
   'builder.roof.ridge.x': 'Cumeeira esquerda–direita',
   'builder.roof.ridge.y': 'Cumeeira frente–fundos',
   'builder.roof.side.front': 'Água para a frente',
