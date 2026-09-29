@@ -900,4 +900,7 @@ export const PT_BR: Dictionary = {
   'builder.family.planShape': 'A planta livre mantém cantos editáveis: clique numa aresta para inserir, num canto para remover.',
   'builder.tool.stairRun': 'Escada (traçada)',
   'hint.builder.stairRun': 'Clique nos cantos da subida · Enter assenta um lance que vira com o traçado e chega ao pavimento de cima',
+  'builder.panel.back': 'Voltar',
+  'builder.rail.left': 'Rolar as categorias para a esquerda',
+  'builder.rail.right': 'Rolar as categorias para a direita',
 };

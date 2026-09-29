@@ -914,4 +914,7 @@ export const EN: Dictionary = {
   'builder.family.planShape': 'A free plan keeps editable corners: click an edge to add one, a corner to remove it.',
   'builder.tool.stairRun': 'Stair (traced)',
   'hint.builder.stairRun': 'Click the corners of the climb · Enter lays a flight that turns with the trace and lands on the floor above',
+  'builder.panel.back': 'Back',
+  'builder.rail.left': 'Scroll the categories left',
+  'builder.rail.right': 'Scroll the categories right',
 };
