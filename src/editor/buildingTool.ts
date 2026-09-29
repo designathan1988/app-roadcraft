@@ -11,7 +11,7 @@ import {
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
 import { localFootprint } from '@world/buildings/footprints';
 import { GRID } from '@world/buildings/geometry';
-import { METERS_PER_UNIT } from '@world/units';
+import { METERS_PER_UNIT, m } from '@world/units';
 import { MIN_SIZE, baysOn, footprintBox, levelElevation, levelHeight, localDirToWorld, localToWorld, reliefAt, worldToLocal } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
@@ -360,6 +360,57 @@ export class BuildingTool {
     const result = this.host.commit(() => groupInto(this.host.context(), building.id, otherId));
     this.report(result);
     return result.ok;
+  }
+
+  /**
+   * The Draw tools: a preset footprint sized by dragging on the ground.
+   * Click one corner, drag, release - the shape fills the rectangle drawn,
+   * and the map shows the same ghost it will place.
+   */
+  shapeDragStart: Vec2 | null = null;
+  shapeDragShape: PlanShape | null = null;
+
+  beginShapeDrag(shape: PlanShape, at: Vec2): void {
+    this.shapeDragShape = shape;
+    this.shapeDragStart = at;
+    this.stage = 'sketch';
+    this.mode = 'place';
+    this.planPoints = null;
+    this.chooseShape(shape);
+    this.hoverPlace(at);
+    this.host.changed();
+  }
+
+  updateShapeDrag(at: Vec2): void {
+    if (!this.shapeDragStart || !this.shapeDragShape) return;
+    const start = this.shapeDragStart;
+    const w = Math.max(m(2), Math.abs(at.x - start.x));
+    const d = Math.max(m(2), Math.abs(at.y - start.y));
+    this.params.width = w;
+    this.params.depth = d;
+    this.chooseShape(this.shapeDragShape);
+    this.hoverPlace({ x: (start.x + at.x) / 2, y: (start.y + at.y) / 2 });
+    this.host.changed();
+  }
+
+  /** Releases the drag: the shape is built where the ghost stands. */
+  endShapeDrag(cancelled: boolean): void {
+    const dragging = this.shapeDragStart !== null;
+    this.shapeDragStart = null;
+    this.shapeDragShape = null;
+    if (!dragging || cancelled) {
+      this.setPreview(null);
+      this.host.changed();
+      return;
+    }
+    if (!this.preview || !this.preview.valid) {
+      if (this.preview?.problem) this.host.flash(`building.problem.${this.preview.problem}`);
+      this.setPreview(null);
+      this.host.changed();
+      return;
+    }
+    this.placeHere();
+    this.host.changed();
   }
 
   get dragging(): boolean {

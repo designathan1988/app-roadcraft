@@ -9,6 +9,7 @@ import { localFootprint } from '@world/buildings/footprints';
 import { METERS_PER_UNIT, m } from '@world/units';
 import { type EditResult, clearBuildingsOnRoads, deleteBuilding } from '@editor/buildings';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
+import type { PlanShape } from '@editor/buildingPlans';
 import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
 import { DRAW_SHAPES, OPENING_COMPONENTS, type BuilderCategoryId, type BuilderField } from '@editor/builderCatalog';
@@ -118,14 +119,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     groundKey: () => `${doc.revision}:${doc.terrainRevision}`,
     commit(edit: () => EditResult): EditResult {
       const before = doc.toJSON();
-      const size = doc.buildings.size;
       const result = edit();
       if (!result.ok) return result;
       history.record(RoadDoc.fromJSON(before));
-      if (doc.buildings.size > size && result.id !== undefined) {
-        const created = doc.buildings.get(result.id);
-        if (created) deps.focusBuilding?.(created);
-      }
+      // The camera stays where the player put it: placing a building used to
+      // re-frame it, which threw the view across the map mid-gesture.
       deps.afterEdit();
       return result;
     },
@@ -135,10 +133,16 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         lastHint = tool.builderHintKey();
         deps.hintChanged();
       }
+      // The workspace follows the tool at once, not a frame later: the panels
+      // are cheap to re-render (each caches on its own signature) and a click
+      // has to answer immediately.
+      refresh();
       deps.requestDraw();
     },
     flash: (key) => deps.flash(key),
-    focus: (building) => deps.focusBuilding?.(building),
+    focus: () => {
+      /* the camera is the player's; a stored edit never moves it */
+    },
   };
 
   const tool = new BuildingTool(view, host);
@@ -155,6 +159,24 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   window.addEventListener('blur', () => setFree(false));
 
   // ------------------------------------------------------------ the workspace
+
+  /**
+   * Choosing a tool puts the previous one away: only one thing may be taking
+   * the pointer at a time (the spec's rule, and the reason a plan could never
+   * finish while an opening brush was still armed).
+   */
+  function clearArming(keep: 'component' | 'element' | 'detail' | 'model' | null): void {
+    if (keep !== 'component') tool.armComponent(null);
+    if (keep !== 'element' && tool.armed) tool.armElement(null);
+    if (keep !== 'detail' && tool.roofDetailKind) tool.armRoofDetail(null);
+    if (keep !== 'model') tool.armModelTool(null);
+  }
+
+  /** The shape a draw tool draws, when it is a drag shape. */
+  const shapeOfTool = (id: string): PlanShape | null => {
+    const shape = DRAW_SHAPES[id];
+    return shape ? (shape as PlanShape) : null;
+  };
 
   /** Runs an action tool, arms a mode tool, or opens a gallery (the workspace's job). */
   function runTool(id: string): void {
@@ -178,26 +200,28 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       default: break;
     }
     // Mode tools.
-    const shape = DRAW_SHAPES[id];
-    if (shape) {
+    if (shapeOfTool(id)) {
+      clearArming(null);
       tool.setStage('sketch');
-      tool.chooseShape(shape);
-      tool.startPlan('new');
+      tool.chooseShape(shapeOfTool(id) as PlanShape);
       toolId = id;
       return;
     }
     if (id === 'sketch') {
+      clearArming(null);
       tool.setStage('sketch');
       tool.startPlan('new');
       toolId = id;
       return;
     }
     if (id === 'select') {
+      clearArming(null);
       tool.armModelTool('select');
       toolId = id;
       return;
     }
     if (id === 'wing' || id === 'stack' || id === 'cut') {
+      clearArming('model');
       tool.setStage('shape');
       tool.armModelTool('draw');
       tool.startPlan(id === 'wing' ? 'ground' : id === 'stack' ? 'top' : 'cut');
@@ -205,29 +229,34 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       return;
     }
     if (id === 'pushpull') {
+      clearArming('model');
       tool.armModelTool('offset');
       toolId = id;
       return;
     }
     if (id === 'paint') {
+      clearArming('model');
       tool.armModelTool('paint');
       toolId = id;
       return;
     }
     const component = OPENING_COMPONENTS[id];
     if (component) {
+      clearArming('component');
       tool.armModelTool('openings');
       tool.armComponent(component as never);
       toolId = id;
       return;
     }
     if (id === 'solar' || id === 'skylight' || id === 'vent' || id === 'chimney' || id === 'waterTank' || id === 'spire') {
+      clearArming('detail');
       tool.armRoofDetail(id);
       toolId = id;
       return;
     }
     // The free parts (stairs, ramps, pillars, canopies, walls, slabs).
     if (id === 'stair' || id === 'ramp' || id === 'pillar' || id === 'canopy' || id === 'wall' || id === 'slab') {
+      clearArming('element');
       tool.armElement(id);
       toolId = id;
       return;
@@ -417,6 +446,18 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     }
   }
 
+  /**
+   * The sentence the hint bar shows: the plan being drawn wins, otherwise the
+   * tool the tray has chosen.
+   */
+  function hintKey(): string {
+    if (tool.planPoints) {
+      return tool.planAction === 'new' ? (toolId === 'sketch' ? 'sketch' : 'draw.new') : `draw.${tool.planAction}`;
+    }
+    if (DRAW_SHAPES[toolId]) return 'sketch';
+    return toolId;
+  }
+
   /** The precise numbers of the current selection, for the inspector. */
   function inspectorFields(): BuilderField[] {
     const building = tool.selected();
@@ -515,7 +556,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         }
         : null,
       quickBar: null,
-      hint: t(`hint.builder.${tool.builderHintKey()}`),
+      hint: t(`hint.builder.${hintKey()}`),
       userBlueprints,
       pattern: building && volume ? (volume.facadePattern ?? null) : null,
       scope: tool.scope,
@@ -523,11 +564,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     };
   };
 
-  const refresh = (): void => {
+  function refresh(): void {
     if (!dirty) return;
     dirty = false;
     workspace.refresh(state());
-  };
+  }
 
   /** The Builder's own layer: the construction grid and the number being typed. */
   const drawGizmos = (ctx: CanvasRenderingContext2D): void => {
@@ -551,14 +592,30 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   return {
     tool,
     pointerDown(screen, world, shift) {
+      const shape = shapeOfTool(toolId);
+      if (shape) {
+        tool.beginShapeDrag(shape, world);
+        dirty = true;
+        return;
+      }
       tool.pointerDown(screen, world, shift);
       dirty = true;
     },
     pointerMove(screen, world, shift) {
+      if (tool.shapeDragStart) {
+        tool.updateShapeDrag(world);
+        dirty = true;
+        return;
+      }
       tool.pointerMove(screen, world, shift);
       dirty = true;
     },
     pointerUp(cancelled) {
+      if (tool.shapeDragStart) {
+        tool.endShapeDrag(cancelled);
+        dirty = true;
+        return;
+      }
       tool.pointerUp(cancelled);
       dirty = true;
     },
