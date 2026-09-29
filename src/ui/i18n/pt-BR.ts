@@ -889,4 +889,13 @@ export const PT_BR: Dictionary = {
   'builder.family.roofs': 'A forma da cobertura sobre o volume selecionado.',
   'builder.tool.freeOpening': 'Abertura livre',
   'hint.builder.freeOpening': 'Clique nos vãos para abrir um vão livre',
+  'builder.tool.floors': 'Pavimentos',
+  'builder.tool.volumes': 'Volumes',
+  'builder.tool.planShape': 'Pontos da planta',
+  'hint.builder.floors': 'Some, tire, divida e recue pavimentos',
+  'hint.builder.volumes': 'Cresça uma ala, empilhe um volume, recorte ou deslize um bloco',
+  'hint.builder.planShape': 'Insira ou remova um canto da planta',
+  'builder.family.floors': 'Pavimentos do volume selecionado: some, tire, divida em dois ou empilhe um volume recuado.',
+  'builder.family.volumes': 'A ala cresce contra uma parede, Empilhar apoia um volume no que está embaixo, Recortar tira um, Mover desliza o bloco na própria planta.',
+  'builder.family.planShape': 'A planta livre mantém cantos editáveis: clique numa aresta para inserir, num canto para remover.'
 };

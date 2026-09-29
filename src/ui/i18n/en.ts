@@ -903,4 +903,13 @@ export const EN: Dictionary = {
   'builder.family.roofs': 'The shape of the roof over the selected mass.',
   'builder.tool.freeOpening': 'Free opening',
   'hint.builder.freeOpening': 'Click facade bays to cut a plain gap',
+  'builder.tool.floors': 'Floors',
+  'builder.tool.volumes': 'Blocks',
+  'builder.tool.planShape': 'Plan points',
+  'hint.builder.floors': 'Add, remove, split and set back floors',
+  'hint.builder.volumes': 'Grow a wing, stack a mass, cut one away, or slide a block',
+  'hint.builder.planShape': 'Add or remove a corner of the plan',
+  'builder.family.floors': 'Floors of the selected mass: add, remove, split it in two, or stack an inset mass on top.',
+  'builder.family.volumes': 'A wing grows against a wall, Stack puts a mass on what is under it, Cut takes one away, Move slides a block in its own plan.',
+  'builder.family.planShape': 'A free plan keeps editable corners: click an edge to add one, a corner to remove it.'
 };

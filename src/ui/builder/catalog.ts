@@ -40,6 +40,9 @@ export interface BuilderToolSpec {
  * not a toolbar, it is a wall.
  */
 export const BUILDER_GALLERIES: Readonly<Record<string, readonly string[]>> = {
+  floors: ['storey', 'storeyDown', 'split', 'setback'],
+  volumes: ['wing', 'stack', 'cut', 'moveMass'],
+  planShape: ['vertexAdd', 'vertexRemove'],
   shapes: ['rect', 'shapeL', 'shapeU', 'circle', 'hexagon', 'octagon', 'chamfered'],
   openWindows: ['window', 'sashWindow', 'wideWindow', 'ribbon', 'bayWindow', 'frenchWindow'],
   openDoors: ['door', 'doubleDoor', 'garageDoor', 'loadingDoor'],
@@ -72,16 +75,9 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
   {
     id: 'mass',
     tools: [
-      action('storey'),
-      action('storeyDown'),
-      mode('wing'),
-      mode('stack'),
-      mode('cut'),
-      mode('moveMass'),
-      action('split'),
-      action('setback'),
-      action('vertexAdd'),
-      action('vertexRemove'),
+      menu('floors'),
+      menu('volumes'),
+      menu('planShape'),
     ],
   },
   {
