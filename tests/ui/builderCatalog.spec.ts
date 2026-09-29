@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUILDER_CATALOG } from '@editor/builderCatalog';
+import { BUILDER_CATALOG } from '@ui/builder/catalog';
 import { EN } from '../../src/ui/i18n/en';
 import { PT_BR } from '../../src/ui/i18n/pt-BR';
 
