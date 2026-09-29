@@ -1,13 +1,14 @@
 import { BLUEPRINTS, type Blueprint } from '@world/buildings/blueprints';
 import { FINISHES, type Finish, STYLES } from '@world/buildings/materials';
 import {
-  BUILDER_CATALOG,
   BUILDER_GALLERIES,
+  BUILDER_GROUPS,
   FACADE_SCOPES,
   type BuilderCategoryId,
   type BuilderField,
   type BuilderSelectionInfo,
   categorySpec,
+  groupOfCategory,
 } from './catalog';
 import { FACADE_PATTERNS, ELEMENT_KINDS } from '@world/buildings/types';
 import { t } from '../i18n';
@@ -272,11 +273,17 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const tier2Road = el('div', 'bw-host bw-host-road');
   const tier2Builder = el('div', 'bw-host bw-host-builder');
   const tray = el('div', 'bw-tray');
-  const catsRow = el('div', 'bw-cats');
-  const contextRow = el('div', 'bw-context');
-  tray.append(catsRow, contextRow);
+  // Reading down: what is global, then the three groups, then the tools of the
+  // group in hand, then the entries of the tool. Content comes last, and keeps
+  // the room the commands used to take.
+  const globalsRow = el('div', 'bw-globals');
+  const groupsRow = el('div', 'bw-groups');
   const toolsRow = el('div', 'bw-tools');
-  tier2Builder.append(tray, toolsRow);
+  const familiesRow = el('div', 'bw-families');
+  const contextRow = el('div', 'bw-context');
+  globalsRow.append(contextRow);
+  tray.append(globalsRow, groupsRow, toolsRow, familiesRow);
+  tier2Builder.append(tray);
   tier2.append(tier2Road, tier2Builder);
 
   // The Builder's own controls sit at the end of the category row, and only
@@ -296,7 +303,18 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const hideToggle = el('button', 'bw-chip bw-toggle');
   hideToggle.type = 'button';
   hideToggle.onclick = () => actions.toggleHideOthers();
-  contextRow.append(floorChip, snapChip, gridToggle, viewChip, hideToggle);
+  // Selecting is not one of the three groups: it is the pointer's own tool,
+  // and it sits with the snap and the grid, which are also about the pointer.
+  const selectButton = el('button', 'bw-chip bw-select');
+  selectButton.type = 'button';
+  selectButton.dataset['builderSelect'] = 'select';
+  selectButton.innerHTML = `${builderIconSvg('select', 16)}<span></span>`;
+  (selectButton.querySelector('span') as HTMLElement).textContent = t('builder.category.select');
+  selectButton.onclick = () => {
+    openGallery = null;
+    actions.setCategory('select');
+  };
+  contextRow.append(selectButton, floorChip, snapChip, gridToggle, viewChip, hideToggle);
 
   const tier3 = el('div', 'bw-tier bw-tier3');
   tier3.hidden = true;
@@ -452,40 +470,72 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   };
 
   // ------------------------------------------------------------ the tiers
-  /** The categories: what the Builder can do, across the top of its tray. */
-  function renderCats(state: BuilderState): void {
-    const signature = `${state.category}|${[...state.ready].join(',')}`;
-    if (catsRow.dataset['signature'] === signature) return;
-    catsRow.dataset['signature'] = signature;
-    catsRow.innerHTML = '';
-    const row = el('div', 'bw-row');
-    for (const category of BUILDER_CATALOG) {
-      const on = category.id === state.category;
-      const b = el('button', 'bw-cat' + (on ? ' active' : ''));
-      b.type = 'button';
-      b.dataset['category'] = category.id;
-      b.setAttribute('aria-pressed', String(on));
-      b.innerHTML = `${builderIconSvg(category.id, 18)}<span></span>`;
-      (b.querySelector('span') as HTMLElement).textContent = t(`builder.category.${category.id}`);
-      b.title = t(`builder.category.${category.id}`);
-      b.onclick = () => {
-        openGallery = null;
-        actions.setCategory(category.id);
-      };
-      row.appendChild(b);
-    }
-    catsRow.appendChild(row);
+  /** The one global of the Builder's tray that is a tool: the pointer itself. */
+  function renderGlobals(state: BuilderState): void {
+    const on = state.category === 'select';
+    selectButton.classList.toggle('active', on);
+    selectButton.setAttribute('aria-pressed', String(on));
   }
 
-  /** Under the categories: the tools of the one in hand, and their gallery. */
-  function renderTools(state: BuilderState): void {
-    const spec = categorySpec(state.category);
-    const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${openGallery ?? ''}`;
+  /** The three groups: create, insert, appearance. */
+  function renderGroups(state: BuilderState): void {
+    const active = groupOfCategory(state.category);
+    const signature = `${active ?? 'none'}|${state.category}`;
+    if (groupsRow.dataset['signature'] === signature) return;
+    groupsRow.dataset['signature'] = signature;
+    groupsRow.innerHTML = '';
+    for (const group of BUILDER_GROUPS) {
+      const on = group.id === active;
+      const b = el('button', 'bw-section' + (on ? ' active' : ''));
+      b.type = 'button';
+      b.dataset['builderGroup'] = group.id;
+      b.setAttribute('aria-pressed', String(on));
+      const label = t(`builder.group.${group.id}`);
+      b.innerHTML = `${builderIconSvg(group.id, 18)}<span></span>${chevron()}`;
+      (b.querySelector('span') as HTMLElement).textContent = label;
+      b.title = label;
+      // Opening a group opens its first tool: the row below is never empty.
+      b.onclick = () => {
+        openGallery = null;
+        actions.setCategory(group.categories[0]);
+      };
+      groupsRow.appendChild(b);
+    }
+  }
+
+  /** The tools of the group in hand. */
+  function renderToolTabs(state: BuilderState): void {
+    const group = BUILDER_GROUPS.find((g) => g.id === groupOfCategory(state.category));
+    const signature = `${group?.id ?? 'none'}|${state.category}|${[...state.ready].join(',')}`;
     if (toolsRow.dataset['signature'] === signature) return;
     toolsRow.dataset['signature'] = signature;
     toolsRow.innerHTML = '';
+    for (const id of group?.categories ?? []) {
+      const on = id === state.category;
+      const b = el('button', 'bw-tool' + (on ? ' active' : ''));
+      b.type = 'button';
+      b.dataset['builderCategory'] = id;
+      b.setAttribute('aria-pressed', String(on));
+      b.innerHTML = `${builderIconSvg(id, 16)}<span></span>`;
+      (b.querySelector('span') as HTMLElement).textContent = t(`builder.category.${id}`);
+      b.title = t(`builder.category.${id}`);
+      b.onclick = () => {
+        openGallery = null;
+        actions.setCategory(id);
+      };
+      toolsRow.appendChild(b);
+    }
+  }
+
+  /** Under the tools: what the one in hand can do, and the gallery it opens. */
+  function renderFamilies(state: BuilderState): void {
+    const spec = categorySpec(state.category);
+    const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${openGallery ?? ''}`;
+    if (familiesRow.dataset['signature'] === signature) return;
+    familiesRow.dataset['signature'] = signature;
+    familiesRow.innerHTML = '';
     if (state.planning) {
-      toolsRow.appendChild(planControls(state));
+      familiesRow.appendChild(planControls(state));
       return;
     }
     const row = el('div', 'bw-row');
@@ -515,7 +565,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       };
       row.appendChild(b);
     }
-    toolsRow.appendChild(row);
+    familiesRow.appendChild(row);
   }
 
   /** Tier 3: the gallery of whatever the chosen sub-tool opens. */
@@ -686,8 +736,10 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   function renderDock(state: BuilderState | null): void {
     if (!state) return;
-    renderCats(state);
-    renderTools(state);
+    renderGlobals(state);
+    renderGroups(state);
+    renderToolTabs(state);
+    renderFamilies(state);
     renderTier3(state);
     syncDock();
   }
@@ -838,8 +890,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   const relabel = (): void => {
     inspectorBody.dataset['signature'] = '';
-    catsRow.dataset['signature'] = '';
+    groupsRow.dataset['signature'] = '';
     toolsRow.dataset['signature'] = '';
+    familiesRow.dataset['signature'] = '';
     (simMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.simulation');
     (appMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.app');
     if (lastState) refresh(lastState);

@@ -23,6 +23,26 @@ export const BUILDER_CATEGORIES = [
 ] as const;
 export type BuilderCategoryId = (typeof BUILDER_CATEGORIES)[number];
 
+/**
+ * What the Builder does, in three groups: build the mass, put things on it,
+ * dress it. Nine flat buttons made the player read all of them to find the
+ * one; three say where to start, and the row under them says what is inside.
+ *
+ * `select` is not here: it is a global control, like the snap and the grid.
+ */
+export const BUILDER_GROUPS = [
+  { id: 'create', categories: ['draw', 'mass', 'face'] },
+  { id: 'insert', categories: ['openings', 'structure', 'roof', 'components'] },
+  { id: 'appearance', categories: ['finish'] },
+] as const;
+
+export type BuilderGroupId = (typeof BUILDER_GROUPS)[number]['id'];
+
+export function groupOfCategory(id: BuilderCategoryId): BuilderGroupId | null {
+  const group = BUILDER_GROUPS.find((g) => (g.categories as readonly string[]).includes(id));
+  return group ? group.id : null;
+}
+
 export type BuilderToolKind = 'mode' | 'action' | 'menu';
 
 export interface BuilderToolSpec {

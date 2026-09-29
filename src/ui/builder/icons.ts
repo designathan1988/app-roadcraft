@@ -167,6 +167,11 @@ const P = {
   wallBay: '<path d="M4 6h16v12H4Z"/><path d="M12 6v12" stroke-dasharray="2 2"/><path d="M4 10h8M4 14h8"/>',
   fence: '<path d="M5 20.4V7.6m4.6 12.8V7.6m4.8 12.8V7.6m4.6 12.8V7.6"/><path d="M3.4 12h17.2M3.4 16h17.2"/>',
 
+  // --- the three groups the categories live in
+  create: '<path d="M4 20V7l8-3 8 3v13Z"/><path d="M4 11h16"/><path d="M10 20v-5h4v5"/>',
+  insert: '<path d="M12 3v10"/><path d="m8 9 4 4 4-4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
+  appearance: '<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11Z"/><path d="M9.5 14.5c.5 1.4 1.3 2.1 2.5 2.4"/>',
+
   // --- misc (bottom tray)
   check: '<path d="m5 13 4 4L19 7"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',

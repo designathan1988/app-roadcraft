@@ -174,7 +174,7 @@
 /* The Builder's tray: what it can do on top, what the chosen one offers
    under it, and the model's own switches at the end of the top row. */
 .bw-host-builder { display: grid; gap: 6px; justify-items: center; width: 100%; }
-.bw-tray { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 14px; width: 100%; }
+.bw-tray { display: grid; gap: 7px; justify-items: center; width: 100%; }
 .bw-cats { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
 .bw-context { display: flex; align-items: center; gap: 3px; }
 .bw-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
@@ -198,22 +198,42 @@
 .bw-fold:hover { color: var(--bw-active); border-color: var(--bw-active); }
 #builder[data-dock="folded"] .bw-fold svg { transform: rotate(180deg); }
 
-/* Tier 1: categories */
-.bw-cat {
+/* The Builder's tray, row by row: globals, groups, tools, entries - and the
+   content of the entry taking the room the commands used to. */
+.bw-globals { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; width: 100%; }
+.bw-groups { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; width: 100%; }
+/* Hairlines say where one level ends and the next begins. */
+.bw-tools, .bw-families { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; width: 100%; }
+.bw-tools { padding-top: 7px; border-top: 1px solid color-mix(in srgb, var(--bw-border) 45%, transparent); }
+.bw-families { padding-top: 7px; border-top: 1px solid color-mix(in srgb, var(--bw-border) 35%, transparent); }
+
+/* A group: three of them carry the whole Builder. */
+.bw-section {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 11px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
+  gap: 8px;
+  min-width: 168px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--bw-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bw-bg) 45%, transparent);
   color: var(--bw-muted);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
-.bw-cat:hover { color: var(--bw-text); background: color-mix(in srgb, var(--bw-active) 7%, transparent); }
-.bw-cat.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
+.bw-section span { flex: 1; text-align: left; }
+.bw-section .bw-chevron { opacity: 0.6; }
+.bw-section:hover { color: var(--bw-text); border-color: var(--bw-active); }
+.bw-section.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
+
+/* Selecting is a global like the snap: smaller than the groups. */
+.bw-select { color: var(--bw-text); }
+/* Nothing to build while selecting: the shelf steps aside and the band keeps
+   its globals and its hint. */
+#builder[data-category='select'] .bw-groups,
+#builder[data-category='select'] .bw-tools,
+#builder[data-category='select'] .bw-families { display: none; }
 
 /* Tier 2: sub-tools */
 .bw-tool {
