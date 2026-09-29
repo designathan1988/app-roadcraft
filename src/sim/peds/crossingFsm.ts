@@ -1502,6 +1502,33 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
       y = p.prev.y;
     }
   }
+  // =====================================================================
+  // THE FIREWALL: a body is NEVER carried against its own facing.
+  // =====================================================================
+  //
+  // Everything above computes where the body would go - the path, the place
+  // it holds across the footway, an offset being caught up, a corner's line.
+  // None of that is allowed the last word, because the last word is this: the
+  // step is measured against the way the body is FACING, and if any part of it
+  // would take the body backwards, the step is refused outright. It may turn,
+  // it may step across, it may stand - it does not go back.
+  //
+  // This is a filter at the funnelled end of everything, and it is deliberate
+  // that it sits here rather than in the steering: no matter what the path,
+  // the collision system or a corner vertex computes, a translation against
+  // the body's own chest cannot reach the position. A figure that takes a step
+  // and is dragged two back is the one thing a player reads as broken, and it
+  // does not matter what the reason was.
+  if (!first) {
+    const mx = x - p.x;
+    const my = y - p.y;
+    if (mx * Math.cos(p.heading) + my * Math.sin(p.heading) < 0) {
+      x = p.x;
+      y = p.y;
+      p.offX = 0;
+      p.offY = 0;
+    }
+  }
   p.x = x;
   p.y = y;
   if (first) {

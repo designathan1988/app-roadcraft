@@ -97,9 +97,6 @@ const WIDE_ANGLES = [1.45, -1.45, 1.7, -1.7, 1.92, -1.92];
 const STEP_BACK_BELOW = m(0.4);
 const STEP_BACK = m(0.35);
 
-/** Shares of the pace a held-up walker backs out at, and how far off straight back it may go. */
-const BACK_SHARES = [0.35, 0.6];
-const BACK_ANGLES = [0.4, -0.4];
 /** Headings either side of the way, radians, and shares of the pace: the fan of choices. */
 const ANGLES = [0, 0.1, -0.1, 0.22, -0.22, 0.38, -0.38, 0.58, -0.58, 0.85, -0.85, 1.2, -1.2];
 const SHARES = [1.12, 1, 0.8, 0.55, 0.3];
@@ -112,8 +109,6 @@ const TVY: number[] = [];
 const TR: number[] = [];
 const TW: number[] = [];
 const TONCOMING: boolean[] = [];
-/** Whether a threat is something that cannot move out of the way: furniture, a stopped vehicle. */
-const TSOLID: boolean[] = [];
 /** Oriented boxes for vehicles and benches; their real footprint, not covering circles. */
 const BX: number[] = [], BY: number[] = [];
 const BUX: number[] = [], BUY: number[] = [];
@@ -273,10 +268,10 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     const dx = other.x - hx, dy = other.y - hy;
     // Behind and moving away, or far behind: nothing to plan for.
     if (dx * tx + dy * ty < -m(1.2) && Math.hypot(dx, dy) > m(1.5)) return;
-    const push = (x: number, y: number, vx: number, vy: number, r: number, weight: number, oncoming: boolean,
-      solid: boolean): void => {
+    const push = (x: number, y: number, vx: number, vy: number, r: number, weight: number,
+      oncoming: boolean): void => {
       TX[n] = x; TY[n] = y; TVX[n] = vx; TVY[n] = vy; TR[n] = r; TW[n] = weight;
-      TONCOMING[n] = oncoming; TSOLID[n] = solid; n++;
+      TONCOMING[n] = oncoming; n++;
     };
     if (other.id > 0) {
       const q = w.peds.get(other.id);
@@ -286,7 +281,7 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
       const oncoming = vx * tx + vy * ty < -m(0.2);
       const released = p.stuck >= STUCK_RELEASE;
       push(dx, dy, vx, vy, released ? PERSON_RELEASED_SPACING : friend ? COMPANION_RADIUS * 2 : PERSON * 2 + strangerGap,
-        friend || released ? 0.35 : 1, oncoming, false);
+        friend || released ? 0.35 : 1, oncoming);
       return;
     }
     // The hard clearance uses oriented boxes. Sampling them as overlapping
@@ -304,7 +299,7 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
       boxes++;
       return;
     }
-    push(dx, dy, 0, 0, PERSON + other.radius + FURNITURE_GAP, 1.2, false, true);
+    push(dx, dy, 0, 0, PERSON + other.radius + FURNITURE_GAP, 1.2, false);
   });
 
   // ---- 2. choose
@@ -324,20 +319,6 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   if (p.passSide === 0 && riskyBox >= 0 && closestRisk < HORIZON) {
     const boxLat = BX[riskyBox]! * nx + BY[riskyBox]! * ny + p.lat;
     p.passSide = p.lat >= boxLat ? 1 : -1;
-  }
-  // Something solid the body is already up against: the only thing backing out
-  // is any use against. A queue for a crossing is not that - the way opens by
-  // itself, and a walker who gives ground at every red light slides backwards
-  // off the kerb it just reached.
-  let pressed = false;
-  for (let i = 0; i < n; i++) {
-    if (!TSOLID[i]) continue;
-    if (TX[i]! * TX[i]! + TY[i]! * TY[i]! <= TR[i]! * TR[i]!) { pressed = true; break; }
-  }
-  if (!pressed) {
-    for (let i = 0; i < boxes; i++) {
-      if (boxContactTime(BX[i]!, BY[i]!, 0, 0, BUX[i]!, BUY[i]!, BHL[i]!, BHW[i]!, 1) === 0) { pressed = true; break; }
-    }
   }
   edge.corridor.bounds(p.s, rev, WALLS);
   const committed = p.passSide > 0
@@ -431,33 +412,15 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   }
   // Nearly stopped, a person can also step aside on the spot.
   if (p.v < STEP_BACK_BELOW) { consider(0, STEP_BACK); consider(0, -STEP_BACK); }
-  // Held up, touching something that cannot move, and with nowhere to walk:
-  // a person gives ground. Standing where the way ahead is shut and the way
-  // across is shut is a corner with no way out of it at all, and no amount of
-  // patience gets round it: the only direction that opens is backwards. That
-  // is what the impatience term above is FOR - "standing still grows costlier
-  // until stepping back and round is the better way" - except nothing ever
-  // offered the walker a step back, so the term only ever ran up to its
-  // ceiling of two against a collision course twenty times its size. Measured
-  // on the saved player map: 69.5 s in one spell, one person, against a lamp
-  // column, while it wanted to be walking at 1.4 m/s.
-  //
-  // What stops it is the COST of every way forward, not the gate: against a
-  // lamp column the step itself is allowed and it is the collision energy that
-  // makes standing the cheapest thing to do, so asking the gate whether the
-  // way is open would answer yes and leave the walker there. Asking instead
-  // whether it still wants to walk at a real pace is what separates a deadlock
-  // from a walker waiting its turn, whose pace is capped to stop it at the kerb
-  // and who therefore wants almost nothing.
-  if (escalated && pressed && !intent.holding) {
-    for (const share of BACK_SHARES) {
-      const speed = share * scale;
-      consider(-speed, 0);
-      for (const angle of BACK_ANGLES) consider(-speed * Math.cos(angle), speed * Math.sin(angle));
-    }
-  }
-  bestA = Math.min(bestA, Math.max(want, 0));
-  if (bestA < -BACK_OUT) bestA = -BACK_OUT;
+  // WALKING IS FORWARD. There is no velocity behind a walker among the ones it
+  // may choose: the pace falls to nothing and never below. Every mechanism
+  // that ever moved a body backwards - the step back offered to a walker held
+  // up against something it could not pass, the half step back along an edge
+  // when a step aside was refused, the body put back where it stood last tick
+  // - is gone. A figure that steps forward and is dragged back reads as broken
+  // whatever the reason was, and a walker boxed in is better off standing:
+  // standing is what a person does, and the crowd comes to it.
+  bestA = Math.min(Math.max(bestA, 0), want);
 
   // ---- 3. move, within a walker's acceleration, the clearance as the last guard
   const a = bestA >= p.v ? Math.min(bestA, p.v + ACCEL * DT) : Math.max(bestA, p.v - BRAKE * DT);
@@ -488,8 +451,6 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   p.latV = (p.lat - lat0) / DT;
 }
 
-/** Fastest a walker backs out of a corner it cannot get round, world units a second. */
-const BACK_OUT = m(0.5);
 
 /** First contact of a moving point with an expanded oriented obstacle box. */
 function boxContactTime(dx: number, dy: number, vx: number, vy: number,
