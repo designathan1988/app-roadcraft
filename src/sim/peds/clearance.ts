@@ -275,6 +275,25 @@ export class PedestrianClearance {
     return found;
   }
 
+  /**
+   * Whether a raw world point is inside the clearance kept from street
+   * furniture or a vehicle: a body's radius from it, as the gate keeps. The
+   * companion of `tooCloseToPerson`, for the same job — the catch-up offset in
+   * `settlePose` is a straight line between two positions, and it may no more
+   * be swept through a lamp column than through a person walking past.
+   * Measured on the crossroads fixture: a body's centre drawn 0.23 m from a
+   * column's centre, which is a body drawn inside the column.
+   */
+  tooCloseToFurniture(id: PedId, x: number, y: number): boolean {
+    let found = false;
+    this.visit(x, y, m(2.5), (other) => {
+      if (found || other.id === id || other.id > 0) return;
+      const room = other.halfLength === undefined ? other.radius : 0;
+      if (this.distance(other, x, y) < PERSON + room) found = true;
+    });
+    return found;
+  }
+
   // ------------------------------------------------------------ intentions
   //
   // THE INTENTION TUBE. Each walker publishes, once a tick, the ground it is

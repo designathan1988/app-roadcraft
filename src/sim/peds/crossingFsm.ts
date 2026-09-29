@@ -205,6 +205,15 @@ export function stepPedestrians(w: SimWorld): void {
     settlePose(w, p, false, space, desired > 0.05 && p.state === 'Walking');
     if (settled?.kind === 'walk' && !p.activity) considerActivity(w, p, settled);
     const wantsToMove = p.state !== 'WaitAtKerb' && desired > 0.05;
+    // IN THE ROAD, SLOW IS HELD UP. A pedestrian may not stand in the
+    // carriageway, and being unable to walk there is the same emergency
+    // whether the speed it is managing is nothing or a tenth of what it wants.
+    // The counter below used to need a full stop — a walker crawling past the
+    // queue at a zebra's mouth at 0.14 m/s, under the half metre a second the
+    // road audit counts as progress, never earned the release that would let
+    // it brush by, and it crept for the whole crossing: measured, five seconds
+    // on an empty, straight zebra, and the road invariant firing on it.
+    const crawling = p.state === 'Crossing' && wantsToMove && p.v < desired * ROAD_PROGRESS;
     // Held-up time; a released walker keeps its release until it has
     // actually got clear, about a metre of travel at walking pace.
     // Standing in the queue for one's own crossing is waiting, not being
@@ -217,7 +226,8 @@ export function stepPedestrians(w: SimWorld): void {
     // writer, in the one place that reads it.
     if (p.state === 'WaitAtKerb') {
       // Accumulated in the kerb case itself, only while permitted and boxed in.
-    } else if (wantsToMove && p.v < 0.05 && !queued) p.stuck += DT;
+    } else if (crawling) p.stuck += DT;
+    else if (wantsToMove && p.v < 0.05 && !queued) p.stuck += DT;
     // The release lasts until the walker has actually got clear: while it is
     // still inside the radius that charges it for closing on a piece of
     // furniture, the release it earned must not run out, or the radius closes
@@ -1769,6 +1779,8 @@ function atClosedKerb(w: SimWorld, p: Ped): boolean {
   if (!edge || next?.kind !== 'crossing' || edge.length - p.s > KERB_QUEUE) return false;
   return !mayEnterCrossing(w, p, next);
 }
+/** Share of the pace it wants below which a walker IN THE ROAD counts as held up. */
+const ROAD_PROGRESS = 0.25;
 /** How short of the kerb a walker held up there counts as standing at it. */
 const AT_KERB = m(0.3);
 /** How near the end of a footway a walker bound for a crossing counts as at its kerb. */
@@ -1818,13 +1830,17 @@ function standable(w: SimWorld, edge: SidewalkEdge, x: number, y: number): boole
 
 /**
  * Whether the line from where the body stands to where the catch-up offset
- * would carry it passes within shoulder range of somebody. The offset closes
- * as a straight line, and a straight line is what a body is drawn along.
+ * would carry it passes within shoulder range of somebody, or inside the
+ * clearance of a lamp column or a car. The offset closes as a straight line,
+ * and a straight line is what a body is drawn along: unvetted, it sweeps a
+ * figure through whoever — or whatever — stands between its two ends.
  */
 function sweepBlocked(p: Ped, space: PedestrianClearance, pathX: number, pathY: number): boolean {
   for (let i = 1; i <= SWEEP_SAMPLES; i++) {
     const t = i / SWEEP_SAMPLES;
-    if (space.tooCloseToPerson(p.id, pathX + p.offX * t, pathY + p.offY * t)) return true;
+    const x = pathX + p.offX * t;
+    const y = pathY + p.offY * t;
+    if (space.tooCloseToPerson(p.id, x, y) || space.tooCloseToFurniture(p.id, x, y)) return true;
   }
   return false;
 }
