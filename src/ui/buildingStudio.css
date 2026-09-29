@@ -3,7 +3,7 @@
   top: 86px;
   right: 14px;
   width: 264px;
-  max-height: calc(100dvh - 240px);
+  max-height: calc(100dvh - 160px);
   box-sizing: border-box;
   padding: 18px;
   overflow: hidden auto;
@@ -18,36 +18,31 @@
 .building-creator.hidden, .building-creator[hidden], .inspector-open .building-creator { display: none; }
 .creator-dock[hidden], .creator-rail.hidden, .inspector-open .creator-rail { display: none; }
 .creator-dock [hidden] { display: none !important; }
-.creator-model-palette { display: flex; justify-content: flex-start; gap: 6px; overflow-x: auto; }
-.creator-model-palette button { flex: 0 0 auto; min-width: 78px; min-height: 52px; padding: 5px 9px; border: 1px solid #385749; border-radius: 9px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; }
+.creator-model-palette { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.creator-model-palette button { min-width: 0; min-height: 52px; padding: 5px 9px; border: 1px solid #385749; border-radius: 9px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; font-size: 11px; }
 .creator-model-palette button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .creator-model-palette button[aria-pressed="true"] { border-color: #79e3bf; color: #79e3bf; background: #204637; }
 .creator-dock {
-  position: absolute;
-  z-index: 14;
-  left: 50%;
-  bottom: 44px;
-  transform: translateX(-50%);
-  width: min(620px, calc(100vw - 120px));
+  position: static;
+  width: 100%;
   box-sizing: border-box;
-  padding: 9px 13px;
-  border: 1px solid #426856;
-  border-radius: 16px;
-  background: rgba(9, 30, 24, .96);
-  box-shadow: 0 12px 38px #06140f88;
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid #315044;
+  background: transparent;
   color: #e9f4ed;
 }
 .creator-dock .creator-rail { margin: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .creator-dock .creator-rail button { min-height: 58px; font-size: 12px; font-weight: 650; }
 .creator-dock .creator-rail button svg { width: 24px; height: 24px; }
-.creator-dock-secondary { display: flex; justify-content: center; gap: 6px; overflow-x: auto; scrollbar-width: thin; }
+.creator-dock-secondary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .creator-dock-secondary:not(:empty) { border-top: 1px solid #315044; margin-top: 8px; padding-top: 8px; }
-.creator-dock-secondary button { min-width: 46px; min-height: 48px; padding: 5px 8px; border: 1px solid #385749; border-radius: 8px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; flex: 0 0 auto; }
+.creator-dock-secondary button { min-width: 0; min-height: 48px; padding: 5px 8px; border: 1px solid #385749; border-radius: 8px; background: #143127; color: #d6e8dc; cursor: pointer; display: grid; place-items: center; gap: 2px; }
 .creator-dock-secondary button[aria-pressed="true"] { color: #79e3bf; border-color: #79e3bf; background: #204637; }
 .creator-dock-secondary button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .creator-dock-secondary button span { font-size: 10px; line-height: 1; }
-.creator-dock-secondary input[type="color"] { width: 47px; height: 47px; padding: 3px; border-radius: 8px; border: 1px solid #79e3bf; background: #143127; cursor: pointer; flex: 0 0 auto; }
-.creator-dock-popover { position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%); width: min(420px, calc(100vw - 130px)); box-sizing: border-box; padding: 14px; border: 1px solid #4b7961; border-radius: 12px; background: #10291f; box-shadow: 0 12px 38px #06140faa; }
+.creator-dock-secondary input[type="color"] { width: 100%; height: 48px; padding: 3px; border-radius: 8px; border: 1px solid #79e3bf; background: #143127; cursor: pointer; }
+.creator-dock-popover { position: static; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 10px; border: 1px solid #4b7961; border-radius: 12px; background: #10291f; }
 .creator-dock-popover[hidden] { display: none; }
 .creator-dock-popover-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
 .creator-dock-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -176,14 +171,13 @@
 #app:has(#game[data-tool="building"]) .simulation-controls,
 #app:has(#game[data-tool="building"]) #minimapPanel { display: none; }
 @media (max-width: 780px) {
-  .building-creator { top: 74px; right: 8px; width: min(245px, 56vw); max-height: calc(100dvh - 280px); padding: 11px; }
-  .creator-dock { left: 72px; right: 8px; width: auto; transform: none; bottom: max(96px, calc(env(safe-area-inset-bottom) + 90px)); padding: 6px; }
-  .creator-model-palette { width: 100%; gap: 3px; }
-  .creator-model-palette button { min-width: 66px; width: calc((100% - 15px) / 6); padding: 3px 1px; font-size: 9.5px; line-height: 1.05; }
+  .building-creator { top: 74px; right: 8px; width: min(245px, 56vw); max-height: calc(100dvh - 150px); padding: 11px; }
+  .creator-model-palette { gap: 3px; }
+  .creator-model-palette button { padding: 3px 1px; font-size: 9.5px; line-height: 1.05; }
   .creator-model-palette button svg { width: 18px; height: 18px; }
   .creator-dock .creator-rail button { min-height: 48px; font-size: 9px; }
   .creator-dock .creator-rail button svg { width: 18px; height: 18px; }
-  .creator-dock-popover { max-height: 50dvh; overflow: auto; width: min(360px, calc(100vw - 80px)); }
+  .creator-dock-popover { max-height: 50dvh; overflow: auto; }
   .creator-rail { gap: 3px; margin-bottom: 10px; }
   .creator-rail button { min-height: 44px; padding: 3px 1px; font-size: 9px; }
   .creator-rail button svg { width: 15px; height: 15px; }
@@ -191,14 +185,4 @@
   .creator-shapes { gap: 4px; }
   .creator-shapes button { min-height: 50px; padding: 3px; font-size: 9px; }
   .creator-shapes svg { width: 19px; height: 19px; }
-}
-@media (max-width: 520px) {
-  .building-creator:has(#creatorDrawing:not([hidden])) {
-    top: auto;
-    bottom: 90px;
-    left: 8px;
-    right: 8px;
-    width: auto;
-    max-height: 190px;
-  }
 }

@@ -521,7 +521,6 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
   };
 
   const update = (next: CreatorState): void => {
-    root.hidden = !next.selected || next.drawing !== null;
     rail.hidden = true;
     dockSecondary.hidden = next.drawing === null && next.modelTool !== 'paint' && next.modelTool !== 'openings';
     dockPopover.hidden = true;
@@ -539,7 +538,6 @@ export function initBuildingCreatorPanel(actions: CreatorActions): { refresh(sta
               kind === 'openings' ? 'M3 3h22v22H3zM8 8h12v12H8zM14 8v12' : 'M4 19h16M6 19V9h12v10M12 9V3m-4 4 4-4 4 4'));
       }
     }
-    root.hidden = !next.selected || next.drawing !== null;
     root.dataset['creatorTool'] = next.tool;
     rail.querySelectorAll<HTMLButtonElement>('[data-creator-tool]').forEach((button) => {
       button.setAttribute('aria-pressed', String(button.dataset['creatorTool'] === next.tool));
