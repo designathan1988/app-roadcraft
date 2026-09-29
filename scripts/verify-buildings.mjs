@@ -388,9 +388,16 @@ const SCENARIOS = [
       await wait(900);
       const finishes = [...document.querySelectorAll('.bw-tier3 .bw-tile')];
       if (finishes.filter((t) => t.querySelector('img')).length < 13) return 'the materials are not pictured';
+      // Selecting is a global and leaves the band with its own row and the
+      // hint: the shelf of groups is not a place to stand.
       document.querySelector('.bw-globals .bw-select').click();
       await wait(400);
       if (document.querySelector('.bw-dock').getBoundingClientRect().height > 200) return 'selecting leaves a shelf standing';
+      // Left open on the windows, which is what this panel is for.
+      document.querySelector('.bw-section[data-builder-group="insert"]').click();
+      await wait(250);
+      document.querySelector('.bw-tool[data-builder-tool="openWindows"]').click();
+      await wait(1200);
       return null;
     `,
   },

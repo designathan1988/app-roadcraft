@@ -173,8 +173,10 @@
 .bw-host { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; min-width: 0; }
 /* The Builder's tray: what it can do on top, what the chosen one offers
    under it, and the model's own switches at the end of the top row. */
-.bw-host-builder { display: grid; gap: 6px; justify-items: center; width: 100%; }
-.bw-tray { display: grid; gap: 7px; justify-items: center; width: 100%; }
+.bw-host-builder { display: grid; gap: 6px; justify-items: stretch; width: 100%; }
+/* The tray reads as a form: labels and controls from the left, the pictures
+   owning the whole width under them. */
+.bw-tray { display: grid; gap: 7px; justify-items: start; width: 100%; padding: 0 6px; }
 .bw-cats { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
 .bw-context { display: flex; align-items: center; gap: 3px; }
 .bw-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
@@ -200,10 +202,10 @@
 
 /* The Builder's tray, row by row: globals, groups, tools, entries - and the
    content of the entry taking the room the commands used to. */
-.bw-globals { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; width: 100%; }
-.bw-groups { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; width: 100%; }
+.bw-globals { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; }
+.bw-groups { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; }
 /* Hairlines say where one level ends and the next begins. */
-.bw-tools, .bw-families { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; width: 100%; }
+.bw-tools, .bw-families { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 3px; width: 100%; }
 .bw-tools { padding-top: 7px; border-top: 1px solid color-mix(in srgb, var(--bw-border) 45%, transparent); }
 .bw-families { padding-top: 7px; border-top: 1px solid color-mix(in srgb, var(--bw-border) 35%, transparent); }
 
@@ -425,12 +427,12 @@
    laid at. */
 /* minmax(0, 1fr), not auto: an auto column grows to the widest row's content,
    and a carousel of nine tiles would push the panel past its own edge. */
-.bw-tier2 .road-palette .panel-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: center; width: 100%; }
+.bw-tier2 .road-palette .panel-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: start; width: 100%; }
 .bw-tier2 .palette-section {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 8px 16px;
   width: 100%;
   min-width: 0;
