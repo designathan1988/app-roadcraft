@@ -835,6 +835,11 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     renderTop(state);
     renderRail(state);
     renderPanel(state);
+    // The inspector follows the head's real height: on a phone the status row
+    // wraps and the head grows, and a fixed offset put the two on top of each
+    // other.
+    const headHeight = head.getBoundingClientRect().height;
+    if (headHeight > 0) inspector.style.top = `${Math.round(headHeight + 20)}px`;
     renderInspector(state);
     renderQuick(state);
     hintBase = state.hint;
