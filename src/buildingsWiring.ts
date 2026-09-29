@@ -3,7 +3,7 @@ import { signedArea } from '@core/polygon';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
-import { DEFAULT_PITCH, baysOn, footprintBox, levelElevation, localDirToWorld, topLevel } from '@world/buildings/geometry';
+import { DEFAULT_PITCH, baysOn, footprintBox, levelElevation, localDirToWorld, ridgeAlongX, topLevel } from '@world/buildings/geometry';
 import { type Building, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
 import { METERS_PER_UNIT, m } from '@world/units';
@@ -423,7 +423,53 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       tool.setScope(scope as never);
       host.changed();
     },
-    view: () => tool.focusSelected(),
+    planFinish: () => {
+      tool.finishPlan();
+      host.changed();
+    },
+    planBack: () => {
+      tool.backPoint();
+      host.changed();
+    },
+    planCancel: () => {
+      tool.cancelPlan();
+      host.changed();
+    },
+    roofPitch: (delta) => {
+      const building = tool.selected();
+      const volume = building && tool.selection ? volumeById(building, tool.selection.volume) : undefined;
+      const current = volume?.pitch ?? DEFAULT_PITCH[volume?.roof ?? ''] ?? 30;
+      tool.setRoofShape({ pitch: current + delta });
+      host.changed();
+    },
+    roofRidge: (ridge) => {
+      tool.setRoofShape({ ridge });
+      host.changed();
+    },
+    roofFall: (side) => {
+      tool.setRoofShape({ fall: side as 0 | 1 | 2 | 3 });
+      host.changed();
+    },
+    view: (id) => {
+      const { w, h } = deps.size();
+      switch (id) {
+        case 'frame':
+          tool.focusSelected();
+          break;
+        case 'top':
+          deps.view().rotate(-deps.view().facing, w / 2, h / 2, w, h);
+          break;
+        case 'turnLeft':
+          deps.view().rotate(-1, w / 2, h / 2, w, h);
+          break;
+        case 'turnRight':
+          deps.view().rotate(1, w / 2, h / 2, w, h);
+          break;
+        default:
+          break;
+      }
+      deps.requestDraw();
+    },
   };
 
   const workspace = initBuilderWorkspace(actions);
@@ -580,9 +626,19 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         : null,
       quickBar: quickBar(),
       hint: t(`hint.builder.${hintKey()}`),
+      planning: Array.isArray(tool.planPoints) && !tool.shapeDragStart,
+      planPoints: tool.planPoints?.length ?? 0,
       userBlueprints,
       pattern: building && volume ? (volume.facadePattern ?? null) : null,
       scope: tool.scope,
+      roof: volume
+        ? {
+          pitch: volume.pitch ?? DEFAULT_PITCH[volume.roof] ?? 30,
+          ridge: ridgeAlongX(volume) ? 'x' : 'y',
+          fall: volume.fall ?? 0,
+          pitched: volume.roof !== 'flat' && volume.roof !== 'terrace',
+        }
+        : null,
       material: tool.currentMaterial(),
     };
   };

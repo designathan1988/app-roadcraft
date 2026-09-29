@@ -80,7 +80,7 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
       action('outset'),
       action('flush'),
       menu('patterns'),
-      menu('geometry'),
+      menu('roofShape'),
     ],
   },
   {

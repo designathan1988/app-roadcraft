@@ -48,10 +48,16 @@ export interface BuilderState {
   readonly quickBar: { readonly x: number; readonly y: number } | null;
   /** One sentence on what the active tool does now. */
   readonly hint: string;
+  /** A plan is being drawn: the tray carries Finish, Back and Cancel. */
+  readonly planning: boolean;
+  /** How many points the plan has, for the count beside those controls. */
+  readonly planPoints: number;
   readonly userBlueprints: readonly Blueprint[];
   /** The facade pattern the Face category would apply, and where. */
   readonly pattern: string | null;
   readonly scope: string;
+  /** The selected mass's roof, for the ridge and slope popover. */
+  readonly roof: { readonly pitch: number; readonly ridge: 'x' | 'y'; readonly fall: number; readonly pitched: boolean } | null;
   /** The material the finish tools would paint now. */
   readonly material: { readonly finish: Finish; readonly colour: number } | null;
 }
@@ -79,6 +85,12 @@ export interface BuilderActions {
   choosePattern(pattern: string): void;
   setScope(scope: string): void;
   saveBlueprint(name: string): void;
+  planFinish(): void;
+  planBack(): void;
+  planCancel(): void;
+  roofPitch(delta: number): void;
+  roofRidge(ridge: 'x' | 'y'): void;
+  roofFall(side: number): void;
   /** A view command from the Vista popover: frame | top | turnLeft | turnRight. */
   view(id: string): void;
   /** A preset thumbnail was rendered off screen. */
@@ -425,6 +437,30 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     openPopover('components', anchor, wrap);
   }
 
+  /** Ridge, slope and pitch of the selected mass's roof. */
+  function openRoofShape(anchor: HTMLElement): void {
+    const wrap = popBody();
+    const roof = lastState?.roof ?? null;
+    const pitchRow = el('div', 'bw-pop-row');
+    const pitchLabel = el('span', 'bw-pop-note');
+    pitchLabel.textContent = `${t('builder.field.pitch')}: ${roof?.pitch ?? 30}°`;
+    pitchRow.append(
+      item('− 5°', false, () => actions.roofPitch(-5)),
+      pitchLabel,
+      item('+ 5°', false, () => actions.roofPitch(5)),
+    );
+    const ridgeRow = el('div', 'bw-pop-row');
+    for (const ridge of ['x', 'y'] as const) {
+      ridgeRow.appendChild(item(t(`builder.roof.ridge.${ridge}`), roof?.ridge === ridge, () => actions.roofRidge(ridge)));
+    }
+    const fallRow = el('div', 'bw-pop-row');
+    for (const [side, key] of [[0, 'front'], [1, 'right'], [2, 'back'], [3, 'left']] as const) {
+      fallRow.appendChild(item(t(`builder.roof.side.${key}`), roof?.fall === side, () => actions.roofFall(side)));
+    }
+    wrap.append(pitchRow, ridgeRow, fallRow, note('builder.roofShape.note'));
+    openPopover('roofShape', anchor, wrap);
+  }
+
   /** The facade patterns, applied to a bay, a floor, a face or the volume. */
   function openPatterns(anchor: HTMLElement): void {
     const wrap = popBody();
@@ -603,10 +639,39 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   function renderTray(state: BuilderState): void {
     const spec = categorySpec(state.category);
     tray.classList.toggle('folded', state.busy);
-    const signature = `${state.category}|${state.tool}|${state.armed}|${[...state.ready].join(',')}`;
+    const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${[...state.ready].join(',')}`;
     if (tray.dataset['signature'] === signature) return;
     tray.dataset['signature'] = signature;
     tray.innerHTML = '';
+    // A plan in progress owns the tray: it carries the only three things that
+    // make sense while drawing (finish, step back, cancel).
+    if (state.planning) {
+      const count = el('span', 'bw-plan-count');
+      count.textContent = t('builder.plan.points', { count: state.planPoints });
+      tray.appendChild(count);
+      const finish = el('button', 'bw-tool bw-plan-finish');
+      finish.type = 'button';
+      finish.innerHTML = `${builderIconSvg('check', 15)}<span></span>`;
+      (finish.querySelector('span') as HTMLElement).textContent = t('builder.plan.finish');
+      finish.title = t('builder.plan.finish');
+      finish.disabled = state.planPoints < 3;
+      finish.onclick = () => actions.planFinish();
+      tray.appendChild(finish);
+      for (const [id, key, icon] of [
+        ['back', 'builder.plan.back', 'undo'],
+        ['cancel', 'builder.plan.cancel', 'close'],
+      ] as const) {
+        const b = el('button', 'bw-tool' + (id === 'cancel' ? ' danger' : ''));
+        b.type = 'button';
+        b.dataset['planAction'] = id;
+        b.innerHTML = `${builderIconSvg(icon, 15)}<span></span>`;
+        (b.querySelector('span') as HTMLElement).textContent = t(key);
+        b.title = t(key);
+        b.onclick = () => (id === 'back' ? actions.planBack() : actions.planCancel());
+        tray.appendChild(b);
+      }
+      return;
+    }
     for (const tool of spec.tools) {
       const b = el('button', 'bw-tool' + (tool.danger ? ' danger' : ''));
       b.type = 'button';
@@ -624,6 +689,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
           if (tool.id === 'models') openModels(b);
           else if (tool.id === 'material' || tool.id === 'colour') openFinishes(b);
           else if (tool.id === 'patterns') openPatterns(b);
+          else if (tool.id === 'roofShape') openRoofShape(b);
           else openMoreComponents(b);
           return;
         }
