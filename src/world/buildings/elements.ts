@@ -51,11 +51,16 @@ export const ELEMENT_DEFAULTS: Readonly<Record<ElementKind, readonly [number, nu
   bench: [m(1.6), m(0.5), m(0.45)],
   ac: [m(0.8), m(0.35), m(0.6)],
   planter: [m(1), m(1), m(0.5)],
+  railing: [m(2), m(0.12), m(1.05)],
+  awning: [m(3), m(1.2), m(0.12)],
+  flowers: [m(1.4), m(1.4), m(0.4)],
+  rocks: [m(1.6), m(1.6), m(0.7)],
+  parking: [m(6), m(5), m(0.12)],
 };
 
 /** Whether an element's foot stands on the ground (rather than on a floor, or hung on a wall). */
 /** Parts hung on a facade rather than standing on the ground. */
-export const ON_FACADE: ReadonlySet<ElementKind> = new Set<ElementKind>(['canopy', 'ac']);
+export const ON_FACADE: ReadonlySet<ElementKind> = new Set<ElementKind>(['canopy', 'ac', 'awning']);
 
 /**
  * Parts that dress a lot rather than raise a building. They may stand on the
@@ -190,6 +195,32 @@ export function elementsAgainstBay(b: Building, v: Volume, bay: BayRef, kind: El
       // A deck in front of the bay, at its floor.
       const c = at(along, dd / 2);
       return [{ kind, x: c.x, y: c.y, facing, w: Math.max(width, dw), d: dd, z: Math.max(0, floorZ - dh), h: dh }];
+    }
+    case 'railing': {
+      // A run of railing along the facade, a module out.
+      const run = Math.max(dw, width);
+      const c = at(along, b.module);
+      return [{ kind, x: c.x, y: c.y, facing, w: run, d: Math.max(dd, m(0.12)), z: 0, h: dh }];
+    }
+    case 'awning': {
+      // A canvas over the bay's opening, projecting out from above it.
+      const z = Math.max(floorZ + m(2.4), levelElevation(b, v.base + bay.storey + 1) - m(0.5));
+      const c = at(along, dd / 2);
+      return [{ kind, x: c.x, y: c.y, facing, w: Math.max(width, dw), d: dd, z, h: dh }];
+    }
+    case 'flowers': {
+      const c = at(along, m(1.2));
+      return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: 0, h: dh }];
+    }
+    case 'rocks': {
+      const c = at(along, m(2));
+      return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: 0, h: dh }];
+    }
+    case 'parking': {
+      // A paved apron in front of the bay, wide enough for a car each side.
+      const run = Math.max(dd, m(5));
+      const c = at(along, run / 2);
+      return [{ kind, x: c.x, y: c.y, facing, w: Math.max(width * 2, dw), d: run, z: 0, h: dh }];
     }
     case 'pavement': {
       // A paved apron on the ground in front of the bay: its depth runs out

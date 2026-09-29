@@ -982,6 +982,32 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
     emitTree(e, el, z0, bottom);
     return;
   }
+  if (el.kind === 'railing') {
+    emitFence(e, el, z0, z1, c, true);
+    return;
+  }
+  if (el.kind === 'flowers') {
+    emitFlowers(e, el, z0, zb);
+    return;
+  }
+  if (el.kind === 'rocks') {
+    emitRocks(e, el, z0, zb, c);
+    return;
+  }
+  if (el.kind === 'parking') {
+    emitParking(e, el, z0);
+    return;
+  }
+  if (el.kind === 'awning') {
+    // A canvas falling from the wall to its free edge, with a valance.
+    const drop = el.h;
+    const free = sub2(el, [x0, y0, x1, y1], 0.92, 1);
+    const n = SIDE_NORMAL[el.facing];
+    e.box(x0, y0, x1, y1, z0 - drop * 0.55, z0 + drop * 0.1, shadeOf(el));
+    e.box(free[0], free[1], free[2], free[3], z0 - drop * 0.8, z0 - drop * 0.45, shadeOf(el));
+    void n;
+    return;
+  }
   if (el.kind === 'fence') {
     emitFence(e, el, z0, z1, c);
     return;
@@ -1263,7 +1289,7 @@ function emitTree(e: Emitter, el: BuildingElement, z0: number, bottom: number): 
 }
 
 /** A run of fence: posts and two rails along the box's length. */
-function emitFence(e: Emitter, el: BuildingElement, z0: number, z1: number, c: Paint): void {
+function emitFence(e: Emitter, el: BuildingElement, z0: number, z1: number, c: Paint, light = false): void {
   const half = el.w / 2;
   const at = (u: number, v: number): { x: number; y: number } => {
     const a = el.angle ?? 0;
@@ -1295,15 +1321,84 @@ function emitFence(e: Emitter, el: BuildingElement, z0: number, z1: number, c: P
       c,
     );
   }
-  // Posts every couple of metres, and always at both ends.
-  const spacing = Math.max(m(1.2), m(2));
+  // Posts every couple of metres on a fence, closer together on a railing,
+  // and always at both ends.
+  const spacing = light ? m(0.45) : m(2);
   const posts = Math.max(2, Math.round(el.w / spacing) + 1);
   for (let k = 0; k < posts; k++) {
     const u = -half + (el.w * k) / (posts - 1);
     const p = at(u, 0);
-    const t = m(0.06);
+    const t = light ? m(0.03) : m(0.06);
     e.box(p.x - t, p.y - t, p.x + t, p.y + t, z0, z1 + m(0.05), c);
   }
+}
+
+/** A flower bed: soil in a stone kerb, with a handful of coloured blooms. */
+function emitFlowers(e: Emitter, el: BuildingElement, z0: number, bottom: number): void {
+  const kerb = m(0.12);
+  e.box(el.x - el.w / 2, el.y - el.d / 2, el.x + el.w / 2, el.y + el.d / 2, bottom, z0 + m(0.16), FLOWER_KERB);
+  e.box(el.x - el.w / 2 + kerb, el.y - el.d / 2 + kerb, el.x + el.w / 2 - kerb, el.y + el.d / 2 - kerb, z0 + m(0.1), z0 + m(0.2), PLANTER_SOIL);
+  const blooms = 9;
+  for (let k = 0; k < blooms; k++) {
+    const h = Math.abs(Math.round(Math.sin(el.id * 12.9898 + k * 78.233) * 43758.5453));
+    const fx = el.x + ((h % 100) / 100 - 0.5) * (el.w - m(0.3));
+    const fy = el.y + (((h >> 3) % 100) / 100 - 0.5) * (el.d - m(0.3));
+    const s = m(0.1) + ((h >> 7) % 7) * m(0.012);
+    e.box(fx - s, fy - s, fx + s, fy + s, z0 + m(0.18), z0 + m(0.18) + s * 2.2, el.material ? paint(el.material) : FLOWER_PETALS[k % FLOWER_PETALS.length] as Paint);
+  }
+}
+
+/** Boulders: two or three low prisms, each turned a little. */
+function emitRocks(e: Emitter, el: BuildingElement, z0: number, bottom: number, c: Paint): void {
+  const count = 3;
+  for (let k = 0; k < count; k++) {
+    const h = Math.abs(Math.round(Math.sin(el.id * 3.7 + k * 12.3) * 9127.13));
+    const rx = ((h % 100) / 100 - 0.5) * (el.w - m(0.4));
+    const ry = (((h >> 3) % 100) / 100 - 0.5) * (el.d - m(0.4));
+    const r = m(0.22) + ((h >> 7) % 5) * m(0.05);
+    const top = z0 + el.h * (0.5 + ((h >> 5) % 4) * 0.12);
+    const t = z0 + (el.h - (top - z0)) * 0.3;
+    const p = (dx: number, dy: number, dz: number): V3 => e.L(el.x + rx + dx, el.y + ry + dy, dz);
+    const base: V3[] = [p(-r, -r, bottom), p(r, -r, bottom), p(r, r, bottom), p(-r, r, bottom)];
+    const apex: V3[] = [p(-r * 0.4, -r * 0.35, top), p(r * 0.45, -r * 0.3, top), p(r * 0.35, r * 0.4, top), p(-r * 0.45, r * 0.35, top)];
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      const q = (i + 0.5) * 0.25 * Math.PI * 2;
+      e.shell.face([base[i] as V3, base[j] as V3, apex[j] as V3, apex[i] as V3], e.N(Math.cos(q), Math.sin(q), 0.3), c);
+    }
+    e.shell.face([apex[0] as V3, apex[1] as V3, apex[2] as V3, apex[3] as V3], e.N(0, 0, 1), c);
+    void t;
+  }
+}
+
+/** A parking apron: asphalt and the stall lines painted on it. */
+function emitParking(e: Emitter, el: BuildingElement, z0: number): void {
+  e.box(el.x - el.w / 2, el.y - el.d / 2, el.x + el.w / 2, el.y + el.d / 2, z0 - m(0.02), z0 + el.h, PARKING_ASPHALT);
+  const stalls = Math.max(1, Math.floor(el.w / m(2.5)));
+  const line = m(0.1);
+  const along = el.facing === 0 || el.facing === 2;
+  for (let k = 0; k <= stalls; k++) {
+    const u = -el.w / 2 + (el.w * k) / stalls;
+    const half = m(0.42);
+    if (along) e.box(el.x + u - line / 2, el.y - el.d / 2, el.x + u + line / 2, el.y - el.d / 2 + el.d * 0.72, z0 + el.h, z0 + el.h + m(0.02), PARKING_LINE);
+    else e.box(el.x - el.w / 2, el.y + u - line / 2, el.x - el.w / 2 + el.w * 0.72, el.y + u + line / 2, z0 + el.h, z0 + el.h + m(0.02), PARKING_LINE);
+    void half;
+  }
+}
+
+const FLOWER_KERB: Paint = paint({ finish: 'stone', colour: 0xa9a196 });
+const FLOWER_PETALS: readonly Paint[] = [
+  paint({ finish: 'plaster', colour: 0xd9557a }),
+  paint({ finish: 'plaster', colour: 0xe8c752 }),
+  paint({ finish: 'plaster', colour: 0xd9d3e8 }),
+  paint({ finish: 'plaster', colour: 0xc2472f }),
+];
+const PARKING_ASPHALT: Paint = paint({ finish: 'concrete', colour: 0x4a4d4f });
+const PARKING_LINE: Paint = paint({ finish: 'plaster', colour: 0xe9e6dc });
+
+/** The canvas colour of an awning, from the building's own palette. */
+function shadeOf(el: BuildingElement): Paint {
+  return el.material ? paint(el.material) : paint({ finish: 'plaster', colour: 0xc85a4a });
 }
 
 /** The leaves: a tree keeps one tone per tree, from its own position. */

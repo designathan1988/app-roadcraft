@@ -89,6 +89,9 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
       mode('window'),
       mode('sashWindow'),
       mode('wideWindow'),
+      mode('frenchWindow'),
+      mode('bayWindow'),
+      mode('ribbon'),
       mode('balcony'),
       mode('door'),
       mode('shopfront'),
@@ -109,6 +112,7 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
       mode('wallRun'),
       mode('fenceRun'),
       mode('pavementRun'),
+      mode('railing'),
     ],
   },
   {
@@ -129,6 +133,10 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
       mode('tree'),
       mode('bench'),
       mode('planter'),
+      mode('flowers'),
+      mode('rocks'),
+      mode('parking'),
+      mode('awning'),
       mode('ac'),
       mode('solar'),
       mode('skylight'),
@@ -179,6 +187,9 @@ export const DRAW_SHAPES: Readonly<Record<string, PlanShapeId>> = {
 
 /** The BayComponent an opening tool places. */
 export const OPENING_COMPONENTS: Readonly<Record<string, string>> = {
+  frenchWindow: 'frenchWindow',
+  bayWindow: 'bayWindow',
+  ribbon: 'ribbon',
   window: 'window',
   sashWindow: 'sashWindow',
   wideWindow: 'wideWindow',

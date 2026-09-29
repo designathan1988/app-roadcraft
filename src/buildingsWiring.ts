@@ -106,6 +106,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   };
 
   let dirty = true;
+  let painting = false;
   let inspectorOpen = true;
   let category: BuilderCategoryId = 'select';
   let toolId = 'select';
@@ -277,6 +278,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     if (
       id === 'stair' || id === 'ramp' || id === 'pillar' || id === 'canopy' || id === 'wall'
       || id === 'slab' || id === 'pavement' || id === 'tree' || id === 'bench' || id === 'ac' || id === 'planter'
+      || id === 'railing' || id === 'awning' || id === 'flowers' || id === 'rocks' || id === 'parking'
     ) {
       clearArming('element');
       tool.armElement(id);
@@ -559,7 +561,10 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     const f = footprintBox(building);
     const c = localDirToWorld(building, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
     const top = volume ? levelElevation(building, volume.base + volume.storeys.length) : 0;
-    const s = view.project(building.x + c.x, building.y + c.y, tool.floorOf(building) + top + m(1.2));
+    // Well clear of the roof: the storey chevrons and the height handle live
+    // there, and the bar used to sit right on top of them, swallowing the
+    // clicks meant for the building.
+    const s = view.project(building.x + c.x, building.y + c.y, tool.floorOf(building) + top + m(4.6));
     const { w, h } = deps.size();
     void h;
     return { x: Math.max(60, Math.min(w - 60, s.x)), y: Math.max(78, s.y) };
@@ -711,6 +716,12 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   return {
     tool,
     pointerDown(screen, world, shift) {
+      if (toolId === 'paint') {
+        painting = true;
+        tool.paintStroke(screen);
+        dirty = true;
+        return;
+      }
       const shape = shapeOfTool(toolId);
       if (shape) {
         tool.beginShapeDrag(shape, world);
@@ -732,6 +743,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       dirty = true;
     },
     pointerMove(screen, world, shift) {
+      if (painting) {
+        tool.paintStroke(screen);
+        dirty = true;
+        return;
+      }
       if (tool.shapeDragStart) {
         tool.updateShapeDrag(world);
         dirty = true;
@@ -741,6 +757,12 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       dirty = true;
     },
     pointerUp(cancelled) {
+      if (painting) {
+        painting = false;
+        tool.endPaintStroke();
+        dirty = true;
+        return;
+      }
       if (tool.shapeDragStart) {
         tool.endShapeDrag(cancelled);
         dirty = true;
@@ -860,4 +882,6 @@ const READY: ReadonlySet<string> = new Set([
   'solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire', 'moreComponents',
   'paint', 'material', 'colour', 'copyStyle', 'pavement',
   'wallRun', 'fenceRun', 'pavementRun', 'tree', 'bench', 'planter', 'ac', 'moveMass',
+  'frenchWindow', 'bayWindow', 'ribbon',
+  'railing', 'awning', 'flowers', 'rocks', 'parking',
 ]);

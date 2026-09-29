@@ -858,7 +858,9 @@ body { user-select: none; -webkit-user-select: none; }
   display: flex;
   gap: 2px;
   padding: 3px;
-  transform: translate(-50%, -100%);
+  /* Clear of whatever it is anchored to: the gizmos sit on the object, so the
+     bar floats above them with a gap it cannot swallow. */
+  transform: translate(-50%, calc(-100% - 14px));
   pointer-events: auto;
   background: color-mix(in srgb, var(--bw-panel) 94%, transparent);
   border: 1px solid var(--bw-border);

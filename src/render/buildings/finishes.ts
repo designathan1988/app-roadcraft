@@ -85,6 +85,80 @@ const LOOKS: Readonly<Record<Finish, FinishLook>> = {
       };
     },
   },
+  stucco: {
+    size: 256,
+    worldSize: m(3),
+    // A coarse trowel render: a heavy grain the light catches, and the sweep
+    // of the trowel running across it.
+    relief: 2.2,
+    metalness: 0,
+    envMapIntensity: 0.5,
+    normalScale: 0.5,
+    shade: (size) => {
+      const grain = makeNoise(0x5c31);
+      const sweep = makeNoise(0x77a9);
+      return (x, y, out) => {
+        const g = fbm(grain, (x / size) * 24, (y / size) * 24, 24, 3);
+        const s = fbm(sweep, (x / size) * 3 + y / size * 0.6, (y / size) * 3, 3, 2);
+        grey(out, 0.9 + (g - 0.5) * 0.12 + (s - 0.5) * 0.07);
+        out.h = g * 0.75 + s * 0.25;
+        out.rough = 0.92;
+      };
+    },
+  },
+  panel: {
+    size: 256,
+    worldSize: m(2.4),
+    // Composite cladding: wide panels two courses high, thin open joints, a
+    // touch of tone from panel to panel.
+    relief: 1.2,
+    metalness: 0.15,
+    envMapIntensity: 0.9,
+    normalScale: 0.3,
+    shade: (size) => {
+      const grain = makeNoise(0x1d4b);
+      return (x, y, out) => {
+        const w = size / 2;
+        const h = size / 4;
+        const col = Math.floor(x / w);
+        const row = Math.floor(y / h);
+        const fu = x - col * w;
+        const fv = y - row * h;
+        const joint = Math.min(fu, w - fu, fv, h - fv);
+        const seam = joint < 1.6 ? 0.62 + joint * 0.12 : 1;
+        const g = grain((x / size) * 96, (y / size) * 96, 96);
+        grey(out, (0.9 + cellHash(col, row, 0x9e) * 0.1 + (g - 0.5) * 0.02) * seam);
+        out.h = joint < 1.6 ? 0.7 : 0.55;
+        out.rough = 0.5;
+      };
+    },
+  },
+  slate: {
+    size: 256,
+    worldSize: m(2),
+    // Hanging slates: eight courses, each lapping the one below, every slate
+    // its own shade of grey.
+    relief: 3.5,
+    metalness: 0,
+    envMapIntensity: 0.45,
+    normalScale: 0.6,
+    shade: (size) => {
+      const grain = makeNoise(0x3f88);
+      return (x, y, out) => {
+        const course = size / 8;
+        const row = Math.floor(y / course);
+        const fv = (y - row * course) / course;
+        const w = size / 6;
+        const shifted = x + (row % 2 === 1 ? w / 2 : 0);
+        const col = Math.floor(shifted / w) % 6;
+        const lap = fv < 0.16 ? 0.5 + fv * 2.2 : 1;
+        const g = grain((x / size) * 80, (y / size) * 80, 80);
+        grey(out, (0.42 + cellHash(col, row, 0x5a) * 0.22 + (g - 0.5) * 0.05) * lap);
+        out.h = (1 - fv) * 0.5 + 0.3;
+        out.rough = 0.82;
+      };
+    },
+  },
   plaster: {
     size: 256,
     worldSize: m(4),

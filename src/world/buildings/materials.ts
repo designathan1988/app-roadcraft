@@ -17,7 +17,7 @@ import { volumeSides } from './footprints';
  * ```
  */
 
-export const FINISHES = ['plaster', 'ceramic', 'brick', 'stone', 'concrete', 'wood', 'metal', 'glass', 'tile', 'roofing'] as const;
+export const FINISHES = ['plaster', 'stucco', 'ceramic', 'brick', 'stone', 'concrete', 'wood', 'metal', 'glass', 'tile', 'slate', 'panel', 'roofing'] as const;
 export type Finish = (typeof FINISHES)[number];
 
 export interface MaterialSpec {

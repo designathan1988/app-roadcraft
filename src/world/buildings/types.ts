@@ -30,6 +30,9 @@ export const BAY_COMPONENTS = [
   'wall',
   'window',
   'sashWindow',
+  'frenchWindow',
+  'bayWindow',
+  'ribbon',
   'wideWindow',
   'balcony',
   'door',
@@ -198,6 +201,11 @@ export const ELEMENT_KINDS = [
   'bench',
   'ac',
   'planter',
+  'railing',
+  'awning',
+  'flowers',
+  'rocks',
+  'parking',
 ] as const;
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 
