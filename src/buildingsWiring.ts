@@ -139,7 +139,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       refresh();
       deps.requestDraw();
     },
-    flash: (key) => deps.flash(key),
+    flash: (key) => notify(key),
     focus: () => {
       /* the camera is the player's; a stored edit never moves it */
     },
@@ -287,11 +287,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   function copyStyle(): void {
     const material = tool.currentMaterial();
     if (!material) {
-      deps.flash('building.selectFirst');
+      notify('building.selectFirst');
       return;
     }
     tool.setPaintBrush({ finish: material.finish, colour: material.colour });
-    deps.flash('builder.styleCopied');
+    notify('builder.styleCopied');
   }
 
   const actions: BuilderActions = {
@@ -373,10 +373,10 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
             }
           }
           if (!best) {
-            deps.flash('builder.noGroup');
+            notify('builder.noGroup');
             break;
           }
-          if (tool.groupWith(best.id)) deps.flash('builder.grouped');
+          if (tool.groupWith(best.id)) notify('builder.grouped');
           break;
         }
         case 'delete':
@@ -410,7 +410,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       const building = tool.selected();
       if (building && library.save(name, bodyOf(building))) {
         userBlueprints = library.list();
-        deps.flash('building.blueprintSaved');
+        notify('building.blueprintSaved');
         host.changed();
       }
     },
@@ -491,6 +491,17 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   };
 
   const workspace = initBuilderWorkspace(actions);
+
+  /**
+   * A transient answer to an action, in the workspace's own bar: the game's
+   * hint bar is hidden while the Builder is up, so a message sent there was a
+   * message nobody read.
+   */
+  function notify(key: string, params?: Readonly<Record<string, string | number>>): void {
+    const text = t(key, params);
+    workspace.flash(text);
+    deps.flash(key, params);
+  }
 
   /** One inspector number, applied to the model. */
   function setField(id: string, value: number): void {
@@ -698,7 +709,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       const action = planActionOfTool(toolId);
       if (action) {
         if (!tool.selected()) {
-          deps.flash('building.selectFirst');
+          notify('building.selectFirst');
           dirty = true;
           return;
         }
@@ -735,7 +746,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     key(e) {
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key.toLowerCase() === 'c' && tool.copySelected()) {
-        deps.flash('building.copied');
+        notify('building.copied');
         return true;
       }
       const used = tool.key(e.key, ctrl, e.shiftKey);
@@ -804,7 +815,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       const razed = clearBuildingsOnRoads({ doc, net, groundAt: null });
       if (razed > 0) {
         tool.sync();
-        deps.flash(razed === 1 ? 'building.demolished.one' : 'building.demolished.other', { count: razed });
+        notify(razed === 1 ? 'building.demolished.one' : 'building.demolished.other', { count: razed });
       }
     },
     bulldozeAt(screen) {

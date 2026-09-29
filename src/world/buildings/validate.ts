@@ -120,7 +120,14 @@ export function structuralProblem(b: Building): BuildingProblem | null {
  * The first reason `b` cannot stand, or null. `ignore` is the building being
  * edited, which must not collide with its own previous self.
  */
-export function validateBuilding(ctx: SiteContext, b: Building, ignore?: BuildingId): BuildingProblem | null {
+export function validateBuilding(
+  ctx: SiteContext,
+  b: Building,
+  ignore?: BuildingId | readonly BuildingId[],
+): BuildingProblem | null {
+  // One building (an edit of it) or several (the neighbours a weld is about to
+  // absorb): either way they are not obstacles to what is being checked.
+  const ignored = ignore === undefined ? undefined : Array.isArray(ignore) ? new Set(ignore) : new Set([ignore as BuildingId]);
   const structural = structuralProblem(b);
   if (structural) return structural;
 
@@ -132,7 +139,7 @@ export function validateBuilding(ctx: SiteContext, b: Building, ignore?: Buildin
   if (ctx.net && rects.some((rect) => touchesRoad(ctx.net as Network, rect))) return 'road';
 
   for (const other of ctx.doc.buildings.all()) {
-    if (other.id === b.id || other.id === ignore) continue;
+    if (other.id === b.id || ignored?.has(other.id)) continue;
     const ob = buildingBounds(other);
     if (ob.minX > box.maxX || ob.maxX < box.minX || ob.minY > box.maxY || ob.maxY < box.minY) continue;
     const others = [...footprintRects(other), ...groundProjections(other), ...groundElements(other)];

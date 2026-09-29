@@ -770,6 +770,7 @@ export const PT_BR: Dictionary = {
   'building.element.ac': 'Ar-condicionado',
   'building.element.planter': 'Jardineira',
   'builder.runPlaced': 'Trecho lançado ao longo do traçado',
+  'builder.welded': 'Soldado num só edifício',
   'hint.builder.wallRun': 'Clique em cada canto do traçado · Enter lança o muro ao longo dele',
   'hint.builder.fenceRun': 'Clique em cada canto do traçado · Enter lança a cerca ao longo dele',
   'hint.builder.pavementRun': 'Clique em cada canto · Enter lança a calçada ao longo do traçado',

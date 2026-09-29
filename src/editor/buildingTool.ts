@@ -69,7 +69,7 @@ import {
   replaceBuilding,
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
-import { groupInto } from './buildings';
+import { groupInto, weldInto } from './buildings';
 import { type PlanShape, type UpperMassPlacement, shapeBody, shapePoints, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
 import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
 import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
@@ -1461,8 +1461,11 @@ export class BuildingTool {
       }
     }
     const problem = validateBuilding(this.host.context(), draft, draft.id);
-    this.problem = problem;
-    this.setPreview({ building: draft, valid: problem === null, problem, hides: draft.id, serial: 0 });
+    // A drag that lands on another building welds on release, so the ghost
+    // reads green while the two masses are made one.
+    const blocking = problem === 'building' ? null : problem;
+    this.problem = blocking;
+    this.setPreview({ building: draft, valid: blocking === null, problem: blocking, hides: draft.id, serial: 0 });
     this.host.changed();
   }
 
@@ -1492,7 +1495,17 @@ export class BuildingTool {
       return;
     }
     const draft = preview.building;
-    const result = this.host.commit(() => replaceBuilding(this.host.context(), draft));
+    // Dragged against another building? It welds: the neighbour's masses come
+    // into this record and the overlap is cut away, in the same undo step.
+    const result = this.host.commit(() => {
+      const ctx = this.host.context();
+      const absorbed = weldInto(ctx, draft, []);
+      const stored = replaceBuilding(ctx, draft, absorbed);
+      if (!stored.ok) return stored;
+      for (const id of absorbed) ctx.doc.buildings.remove(id);
+      if (absorbed.length > 0) this.host.flash('builder.welded');
+      return stored;
+    });
     this.report(result);
   }
 
@@ -1589,12 +1602,23 @@ export class BuildingTool {
   private placeHere(): void {
     const preview = this.preview;
     if (!preview) return;
-    if (!preview.valid) {
-      if (preview.problem) this.host.flash(`building.problem.${preview.problem}`);
+    const ctx = this.host.context();
+    const record = cloneBuilding(preview.building) as Building & { id?: BuildingId };
+    const problem = validateBuilding(ctx, record);
+    // Standing on another building is not a refusal any more: the two weld.
+    if (problem && problem !== 'building') {
+      this.host.flash(`building.problem.${problem}`);
       return;
     }
-    const record = cloneBuilding(preview.building) as Building & { id?: BuildingId };
-    const result = this.host.commit(() => addBuildingRecord(this.host.context(), stripId(record)));
+    const result = this.host.commit(() => {
+      const absorbed = weldInto(ctx, record, []);
+      const stored = addBuildingRecord(ctx, stripId(record), absorbed);
+      if (!stored.ok) return stored;
+      for (const id of absorbed) ctx.doc.buildings.remove(id);
+      if (absorbed.length > 0) this.host.flash('builder.welded');
+      return stored;
+    });
+    if (!result.ok && result.problem) this.host.flash(`building.problem.${result.problem}`);
     if (result.ok && result.id !== undefined) {
       this.selection = { building: result.id, volume: record.volumes[0]?.id ?? 1, bay: null };
       this.setPreview(null);
@@ -1613,8 +1637,11 @@ export class BuildingTool {
     const snap = snapPlacement(ctx.doc, ctx.net, size, world, this.rotation);
     const draft = { ...instantiate(this.body, snap.anchor, snap.rotation, this.blueprintKey ?? undefined), id: PREVIEW_ID } as Building;
     const problem = validateBuilding(ctx, draft);
-    this.problem = problem;
-    this.setPreview({ building: draft, valid: problem === null, problem, hides: null, serial: 0 });
+    // Overlapping another building is a weld, not a refusal: the ghost stays
+    // green and the drop fuses the two.
+    const blocking = problem === 'building' ? null : problem;
+    this.problem = blocking;
+    this.setPreview({ building: draft, valid: blocking === null, problem: blocking, hides: null, serial: 0 });
   }
 
   private setPreview(preview: BuildingPreview | null): void {

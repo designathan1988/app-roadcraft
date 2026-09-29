@@ -784,6 +784,7 @@ export const EN: Dictionary = {
   'building.element.ac': 'Air conditioner',
   'building.element.planter': 'Planter',
   'builder.runPlaced': 'Run laid along the path',
+  'builder.welded': 'Welded into one building',
   'hint.builder.wallRun': 'Click each corner of the run · Enter lays the wall along it',
   'hint.builder.fenceRun': 'Click each corner of the run · Enter lays the fence along it',
   'hint.builder.pavementRun': 'Click each corner · Enter lays the footpath along it',

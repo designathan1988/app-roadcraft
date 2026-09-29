@@ -1,6 +1,7 @@
 import type { Vec2 } from '@core/vec2';
 import { edgeFrame, localFootprint, offsetRing, supportedBy, overlapArea, roofDetailRing } from '@world/buildings/footprints';
 import { setVolumePlan } from './buildingPlans';
+
 import { clamp } from '@core/scalar';
 import { METERS_PER_UNIT } from '@world/units';
 import {
@@ -16,6 +17,7 @@ import {
   MIN_SIZE,
   SIDE_NORMAL,
   baysOn,
+  buildingBounds,
   footprintBox,
   footprintCentre,
   footprintRects,
@@ -495,9 +497,13 @@ export function placeBuilding(
 }
 
 /** Stores an already-built record (a preview the tool validated) as a new building. */
-export function addBuildingRecord(ctx: BuildingContext, record: Omit<Building, 'id'>): EditResult {
+export function addBuildingRecord(
+  ctx: BuildingContext,
+  record: Omit<Building, 'id'>,
+  ignore?: BuildingId | readonly BuildingId[],
+): EditResult {
   const draft = { ...record, id: ctx.doc.buildings.nextId } as Building;
-  const problem = validateBuilding(ctx, draft);
+  const problem = validateBuilding(ctx, draft, ignore);
   if (problem) return { ok: false, problem };
   return { ok: true, id: ctx.doc.buildings.add(draft).id };
 }
@@ -518,9 +524,13 @@ export function editBuilding(ctx: BuildingContext, id: BuildingId, op: (draft: B
 }
 
 /** Stores a complete replacement record for a building (the tool's drag result). */
-export function replaceBuilding(ctx: BuildingContext, draft: Building): EditResult {
+export function replaceBuilding(
+  ctx: BuildingContext,
+  draft: Building,
+  ignore?: readonly BuildingId[],
+): EditResult {
   if (!ctx.doc.buildings.has(draft.id)) return FAIL_MISSING;
-  const problem = validateBuilding(ctx, draft, draft.id);
+  const problem = validateBuilding(ctx, draft, ignore === undefined ? draft.id : [draft.id, ...ignore]);
   if (problem) return { ok: false, problem };
   ctx.doc.buildings.put(draft);
   return { ok: true, id: draft.id };
@@ -645,6 +655,198 @@ export function groupInto(ctx: BuildingContext, targetId: BuildingId, sourceId: 
   ctx.doc.buildings.put(draft);
   ctx.doc.buildings.remove(sourceId);
   return { ok: true, id: targetId };
+}
+
+// =============================================================== massing
+
+/**
+ * Fuses a volume with a neighbour it is flush against, when the two make one
+ * rectangle on the same levels. Returns false when there is no such neighbour
+ * (volumes that share a wall already read as one mass, so nothing is lost by
+ * leaving them).
+ */
+export function opUnionVolumes(b: Building, volumeId: number): boolean {
+  const v = volumeById(b, volumeId);
+  if (!v || v.outline) return false;
+  for (const other of [...b.volumes]) {
+    if (other.id === v.id || other.outline) continue;
+    if (other.base !== v.base || other.storeys.length !== v.storeys.length) continue;
+    const sameRow = Math.abs(v.y - other.y) < 1e-6 && Math.abs(v.d - other.d) < 1e-6;
+    const sameColumn = Math.abs(v.x - other.x) < 1e-6 && Math.abs(v.w - other.w) < 1e-6;
+    const flushX = Math.abs(v.x + v.w - other.x) < 1e-6 || Math.abs(other.x + other.w - v.x) < 1e-6;
+    const flushY = Math.abs(v.y + v.d - other.y) < 1e-6 || Math.abs(other.y + other.d - v.y) < 1e-6;
+    if (!((sameRow && flushX) || (sameColumn && flushY))) continue;
+    v.x = Math.min(v.x, other.x);
+    v.y = Math.min(v.y, other.y);
+    v.w = sameRow ? v.w + other.w : v.w;
+    v.d = sameColumn ? v.d + other.d : v.d;
+    if (other.materials && !v.materials) v.materials = other.materials;
+    b.volumes = b.volumes.filter((x) => x.id !== other.id);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Cuts a rectangle out of a volume: what remains is up to four volumes, all
+ * keeping the original's storeys, base and roof. Faces pushed in or out go
+ * with the cut - they are measured in bays that no longer exist.
+ */
+export function opSubtractRect(b: Building, volumeId: number, cut: { x: number; y: number; w: number; d: number }): boolean {
+  const v = volumeById(b, volumeId);
+  if (!v) return false;
+  const x0 = Math.max(v.x, cut.x);
+  const y0 = Math.max(v.y, cut.y);
+  const x1 = Math.min(v.x + v.w, cut.x + cut.w);
+  const y1 = Math.min(v.y + v.d, cut.y + cut.d);
+  if (x1 - x0 < 1e-6 || y1 - y0 < 1e-6) return false;
+  const pieces: { x: number; y: number; w: number; d: number }[] = [];
+  const push = (x: number, y: number, w: number, d: number): void => {
+    if (w >= MIN_SIZE && d >= MIN_SIZE) pieces.push({ x, y, w, d });
+  };
+  push(v.x, v.y, v.w, y0 - v.y);
+  push(v.x, y1, v.w, v.y + v.d - y1);
+  push(v.x, y0, x0 - v.x, y1 - y0);
+  push(x1, y0, v.x + v.w - x1, y1 - y0);
+  if (pieces.length === 0) return false;
+  const template = JSON.parse(JSON.stringify(v)) as Volume;
+  const made: Volume[] = pieces.map((r) => ({
+    ...(JSON.parse(JSON.stringify(template)) as Volume),
+    id: b.nextVolumeId++,
+    x: r.x,
+    y: r.y,
+    w: r.w,
+    d: r.d,
+  }));
+  for (const m of made) {
+    delete m.reliefs;
+    delete m.outline;
+    delete m.facadeGeometry;
+  }
+  b.volumes = b.volumes.filter((x) => x.id !== v.id).concat(made);
+  return true;
+}
+
+// =============================================================== welding
+
+/**
+ * Welds every building the draft touches or overlaps into the draft: the
+ * neighbour's masses are brought into its frame, and the result is fused - an
+ * overlap is cut out of the smaller mass, flush neighbours that make one
+ * rectangle become one block.
+ *
+ * This is what dragging a block against another does. Refusing the drop and
+ * painting the ghost red ("overlaps another building") was the old answer, and
+ * it made building a city a game of leaving gaps.
+ *
+ * Returns the ids to drop from the document once the draft is stored.
+ */
+export function weldInto(ctx: BuildingContext, draft: Building, skip: readonly BuildingId[] = []): BuildingId[] {
+  const absorbed: BuildingId[] = [];
+  const mine = buildingBounds(draft, 0.5);
+  for (const other of [...ctx.doc.buildings.all()]) {
+    if (other.id === draft.id || skip.includes(other.id)) continue;
+    const box = buildingBounds(other, 0.5);
+    if (box.maxX < mine.minX || box.minX > mine.maxX || box.maxY < mine.minY || box.minY > mine.maxY) continue;
+    // Does anything actually touch or overlap? A shared edge counts.
+    let touches = false;
+    for (const rect of footprintRects(draft, 0.02)) {
+      for (const otherRect of footprintRects(other, 0.02)) {
+        const a = polygonBounds(rect);
+        const b = polygonBounds(otherRect);
+        if (a.maxX < b.minX || b.maxX < a.minX || a.maxY < b.minY || b.maxY < a.minY) continue;
+        touches = true;
+        break;
+      }
+      if (touches) break;
+    }
+    if (!touches) continue;
+    for (const v of other.volumes) {
+      const ring = localFootprint(v).map((p) => worldToLocal(draft, localToWorld(other, p.x, p.y)));
+      const volume = JSON.parse(JSON.stringify(v)) as Volume;
+      volume.id = draft.nextVolumeId++;
+      volume.x = polygonBounds(ring).minX;
+      volume.y = polygonBounds(ring).minY;
+      volume.w = Math.max(MIN_SIZE, polygonBounds(ring).maxX - volume.x);
+      volume.d = Math.max(MIN_SIZE, polygonBounds(ring).maxY - volume.y);
+      const plain = ring.length === 4;
+      if (plain) delete volume.outline;
+      else volume.outline = ring.map((p) => ({ x: p.x - volume.x, y: p.y - volume.y }));
+      draft.volumes.push(volume);
+    }
+    for (const el of other.elements ?? []) {
+      const p = worldToLocal(draft, localToWorld(other, el.x, el.y));
+      const element: BuildingElement = JSON.parse(JSON.stringify(el)) as BuildingElement;
+      draft.elements = [...(draft.elements ?? []), { ...element, id: takeElementId(draft), x: p.x, y: p.y }];
+    }
+    absorbed.push(other.id);
+  }
+  if (absorbed.length > 0) fuseVolumes(draft);
+  return absorbed;
+}
+
+function polygonBounds(ring: readonly Vec2[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of ring) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/** Makes the masses of one building disjoint, then fuses what makes a block. */
+export function fuseVolumes(b: Building): void {
+  // 1) An overlap is cut out of the smaller mass, so both survive and the
+  //    union is exact: no gap and no double wall inside.
+  for (let guard = 0; guard < 12; guard++) {
+    let changed = false;
+    outer: for (const a of [...b.volumes]) {
+      for (const c of [...b.volumes]) {
+        if (a.id === c.id) continue;
+        if (a.base !== c.base || a.base + a.storeys.length !== c.base + c.storeys.length) continue;
+        const x0 = Math.max(a.x, c.x);
+        const y0 = Math.max(a.y, c.y);
+        const x1 = Math.min(a.x + a.w, c.x + c.w);
+        const y1 = Math.min(a.y + a.d, c.y + c.d);
+        if (x1 - x0 < 1e-6 || y1 - y0 < 1e-6) continue;
+        const overlap = (x1 - x0) * (y1 - y0);
+        const areaA = a.w * a.d;
+        const areaC = c.w * c.d;
+        if (overlap > areaA - 1e-6 || overlap > areaC - 1e-6) {
+          // One is inside the other: keep the bigger, drop the swallowed one.
+          const doomed = areaA <= areaC ? a : c;
+          const remaining = b.volumes.filter((v) => v.id !== doomed.id);
+          if (remaining.some((v) => v.base === 0)) {
+            b.volumes = remaining;
+            changed = true;
+            break outer;
+          }
+        }
+        const doomed = areaA <= areaC ? a : c;
+        if (opSubtractRect(b, doomed.id, { x: x0, y: y0, w: x1 - x0, d: y1 - y0 })) {
+          changed = true;
+          break outer;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  // 2) Flush neighbours that make one rectangle become one mass.
+  for (let guard = 0; guard < 24; guard++) {
+    let merged = false;
+    for (const v of [...b.volumes]) {
+      if (opUnionVolumes(b, v.id)) {
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) break;
+  }
 }
 
 // =============================================================== faces and roofs
