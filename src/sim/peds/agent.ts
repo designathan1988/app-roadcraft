@@ -205,9 +205,6 @@ const K_CLAIM = 4;
 /** Share of the pace kept while giving way to the walker who owns the ground. */
 const YIELD_SPEED = 0.5;
 
-/** How far a held-up walker may brush into the margin round furniture, world units. */
-const BRUSH = m(0.06);
-
 /** Closest two people's centres may be brought, and the room kept from furniture and vehicles. */
 const CONTACT = m(0.45);
 const HARD = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
@@ -243,14 +240,14 @@ function admissible(p: Ped, edge: SidewalkEdge, s: number, lat: number,
       if (next < contact && next < now - 1e-6) ok = false;
       return;
     }
-    // Furniture or a vehicle: its edge, and a body's radius from it. A walker
-    // held up against it for a while may BRUSH past - a shoulder's width into
-    // the margin - because that is what passing a lamp column on a narrow
-    // footway looks like, and because the alternative is standing in front of
-    // it for ever. The margin never goes below the bodies' own radii, so no
-    // step here can put a body inside anything.
-    const floor = PERSON + (other.halfLength === undefined ? other.radius : 0) -
-      (p.stuck >= STUCK_RELEASE ? BRUSH : 0);
+    // Furniture or a vehicle: its edge, and a body's radius from it. No
+    // brushing, however long a walker has been held up. The gait audit
+    // measures this exact floor, and a body that comes inside it is a body
+    // drawn inside a lamp column: with a shoulder's width of brushing allowed
+    // it read 1.24 % of walking time inside furniture against a budget of
+    // 0.3 %. A guarantee the rest of the team enforces is worth more than the
+    // marginal unstick it buys.
+    const floor = PERSON + (other.halfLength === undefined ? other.radius : 0);
     if (next < floor && next < now - 1e-6) ok = false;
   });
   return ok;
