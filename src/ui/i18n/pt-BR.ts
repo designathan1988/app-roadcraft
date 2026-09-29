@@ -630,7 +630,6 @@ export const PT_BR: Dictionary = {
   'builder.snap.note': 'Auto encaixa a planta nas vias, nos vizinhos e na grade. Desligado segue o ponteiro livremente; Alt solta um arraste só.',
   'builder.inspector.title': 'Inspector',
   'builder.inspector.toggle': 'Recolher ou abrir o inspector',
-  'builder.inspector.empty': 'Selecione algo para ver as medidas. Aqui não há ferramentas: elas ficam na bandeja acima das categorias.',
   'builder.sel.title': 'Seleção',
   'builder.sel.volume': 'Volume {n}',
   'builder.sel.building': 'Edifício',

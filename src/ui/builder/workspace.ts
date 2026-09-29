@@ -180,13 +180,19 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const top = el('div', 'bw-top');
 
   const historyGroup = el('div', 'bw-group');
+  // Drawn here, not only in `refresh`: until the Builder's own state arrived
+  // the bar held two buttons with nothing in them.
   const undo = el('button', 'bw-icon-button');
   undo.type = 'button';
   undo.dataset['i18nTitle'] = 'action.undo';
+  undo.innerHTML = builderIconSvg('undo', 16);
+  undo.disabled = true;
   undo.onclick = () => actions.undo();
   const redo = el('button', 'bw-icon-button');
   redo.type = 'button';
   redo.dataset['i18nTitle'] = 'action.redo';
+  redo.innerHTML = builderIconSvg('redo', 16);
+  redo.disabled = true;
   redo.onclick = () => actions.redo();
   historyGroup.append(undo, redo);
 
@@ -194,6 +200,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const help = el('button', 'bw-icon-button bw-help');
   help.type = 'button';
   help.dataset['i18nTitle'] = 'builder.help';
+  help.innerHTML = builderIconSvg('help', 16);
   help.onclick = () => showMenu('help', help);
 
   // Two menus belong to the whole game and are filled by `main.ts`.
@@ -343,6 +350,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   foot.append(mouse, hint);
 
   const inspector = el('aside', 'bw-inspector');
+  // Hidden until something is selected: it holds measurements, and there are
+  // none while nothing is picked.
+  inspector.hidden = true;
   const inspectorHead = el('div', 'bw-inspector-head');
   const inspectorTitle = el('span', 'bw-inspector-title');
   const inspectorToggle = el('button', 'bw-icon-button bw-collapse');
@@ -780,20 +790,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   // ------------------------------------------------------------ inspector
   function renderInspector(state: BuilderState): void {
+    const info = state.selection;
+    // Nothing selected, nothing shown: an empty panel of numbers over the map
+    // is a box with nothing in it.
+    inspector.hidden = info === null;
     inspector.classList.toggle('collapsed', !state.inspectorOpen);
     inspectorToggle.innerHTML = builderIconSvg(state.inspectorOpen ? 'collapse' : 'expand', 14);
-    const info = state.selection;
-    if (!state.inspectorOpen || !info) {
-      if (inspectorBody.dataset['signature'] !== 'empty') {
-        inspectorBody.dataset['signature'] = 'empty';
-        inspectorBody.innerHTML = '';
-        inspectorTitle.textContent = t('builder.inspector.title');
-        const empty = el('p', 'bw-inspector-empty');
-        empty.textContent = t('builder.inspector.empty');
-        inspectorBody.appendChild(empty);
-      }
-      return;
-    }
+    if (!state.inspectorOpen || !info) return;
     const signature = `${info.titleKey}|${info.name}|${info.fields.map((f) => `${f.id}:${f.text ?? f.value}`).join(',')}`;
     if (inspectorBody.dataset['signature'] === signature) return;
     const focused = document.activeElement;

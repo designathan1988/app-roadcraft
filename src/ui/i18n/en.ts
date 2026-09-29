@@ -644,7 +644,6 @@ export const EN: Dictionary = {
   'builder.snap.note': 'Auto lays the footprint against roads, neighbours and the grid. Off follows the pointer freely; Alt frees a single drag.',
   'builder.inspector.title': 'Inspector',
   'builder.inspector.toggle': 'Collapse or open the inspector',
-  'builder.inspector.empty': 'Select something to see its measurements. No tools live here: the tools are in the tray above the categories.',
   'builder.sel.title': 'Selection',
   'builder.sel.volume': 'Mass {n}',
   'builder.sel.building': 'Building',
