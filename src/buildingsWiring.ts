@@ -166,6 +166,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
    * finish while an opening brush was still armed).
    */
   function clearArming(keep: 'component' | 'element' | 'detail' | 'model' | null): void {
+    tool.massMoveArmed = false;
     if (keep !== 'component') tool.armComponent(null);
     if (keep !== 'element' && tool.armed) tool.armElement(null);
     if (keep !== 'detail' && tool.roofDetailKind) tool.armRoofDetail(null);
@@ -227,6 +228,13 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     if (id === 'wing' || id === 'stack' || id === 'cut') {
       clearArming(null);
       tool.setStage('shape');
+      toolId = id;
+      return;
+    }
+    if (id === 'moveMass') {
+      clearArming('model');
+      if (tool.mode !== 'edit') tool.setMode('edit');
+      tool.massMoveArmed = true;
       toolId = id;
       return;
     }
@@ -848,5 +856,5 @@ const READY: ReadonlySet<string> = new Set([
   'roofFlat', 'roofTerrace', 'roofGable', 'roofHip', 'roofShed', 'roofSawtooth', 'roofShape',
   'solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire', 'moreComponents',
   'paint', 'material', 'colour', 'copyStyle', 'pavement',
-  'wallRun', 'fenceRun', 'pavementRun', 'tree', 'bench', 'planter', 'ac',
+  'wallRun', 'fenceRun', 'pavementRun', 'tree', 'bench', 'planter', 'ac', 'moveMass',
 ]);

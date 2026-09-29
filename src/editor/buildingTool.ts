@@ -69,7 +69,7 @@ import {
   replaceBuilding,
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
-import { groupInto, weldInto } from './buildings';
+import { groupInto, opMoveVolume, weldInto } from './buildings';
 import { type PlanShape, type UpperMassPlacement, shapeBody, shapePoints, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
 import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
 import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
@@ -162,6 +162,7 @@ type Drag =
   | { kind: 'side'; origin: Building; volume: number; side: FaceId; start: Vec2; z: number; dir: Vec2; wing: boolean }
   | { kind: 'offset'; origin: Building; volume: number; start: Vec2; z: number; dir: Vec2 }
   | { kind: 'move'; origin: Building; start: Vec2; z: number }
+  | { kind: 'massMove'; origin: Building; volume: number; start: Vec2; z: number }
   | { kind: 'rotate'; origin: Building; centre: Vec2; z: number; startAngle: number }
   | { kind: 'relief'; origin: Building; volume: number; region: FaceRegion; start: Vec2; z: number; dir: Vec2; depth: number }
   | { kind: 'click'; hit: BuildingHit | null; start: Vec2; moved: boolean; shift: boolean; at: number };
@@ -977,6 +978,9 @@ export class BuildingTool {
    */
   pathKind: ElementKind | null = null;
 
+  /** The Move block tool: the press takes hold of the selected mass itself. */
+  massMoveArmed = false;
+
   startElementRun(kind: ElementKind): void {
     if (!this.selected()) {
       this.host.flash('building.selectFirst');
@@ -1281,6 +1285,22 @@ export class BuildingTool {
       return true;
     }
     if (this.planPoints) this.planCursor = this.pointOnPlan(screen, world, shift || this.free);
+    // Move block: the press takes hold of the selected mass.
+    if (this.massMoveArmed && this.selection) {
+      const building = this.selected();
+      const volume = building && volumeById(building, this.selection.volume);
+      if (building && volume) {
+        const z = this.floorOf(building) + levelElevation(building, volume.base) + m(0.1);
+        this.drag = {
+          kind: 'massMove',
+          origin: cloneBuilding(building),
+          volume: volume.id,
+          start: this.view.planeAt(screen, z),
+          z,
+        };
+        return true;
+      }
+    }
     const selected = this.selected();
     if (this.mode === 'edit' && selected && this.selection) {
       const handle = this.handleAt(screen);
@@ -1440,6 +1460,17 @@ export class BuildingTool {
         const ctx = this.host.context();
         const snap = snapPlacement(ctx.doc, ctx.net, footprintSize(draft), centre, draft.rotation, draft.id);
         placeAt(draft, snap.anchor, snap.rotation);
+        break;
+      }
+      case 'massMove': {
+        // One block of the building, dragged in its own plan: the block goes
+        // where it is put, and the validator says whether it still stands.
+        const p = this.view.planeAt(screen, drag.z);
+        const a = worldToLocal(draft, drag.start);
+        const b = worldToLocal(draft, p);
+        opMoveVolume(draft, drag.volume, b.x - a.x, b.y - a.y, !this.free);
+        const v = volumeById(draft, drag.volume);
+        if (v) this.measure = { kind: 'length', value: v.w, x: p.x, y: p.y, z: drag.z };
         break;
       }
       case 'relief': {

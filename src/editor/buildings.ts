@@ -659,6 +659,19 @@ export function groupInto(ctx: BuildingContext, targetId: BuildingId, sourceId: 
 
 // =============================================================== massing
 
+/** Moves one volume of a building in its own plan: the block, not the building. */
+export function opMoveVolume(b: Building, volumeId: number, dx: number, dy: number, snap = true): boolean {
+  const v = volumeById(b, volumeId);
+  if (!v) return false;
+  const step = snap ? GRID : 0.025;
+  const nx = Math.round((v.x + dx) / step) * step;
+  const ny = Math.round((v.y + dy) / step) * step;
+  if (Math.abs(nx - v.x) < 1e-9 && Math.abs(ny - v.y) < 1e-9) return false;
+  v.x = nx;
+  v.y = ny;
+  return true;
+}
+
 /**
  * Fuses a volume with a neighbour it is flush against, when the two make one
  * rectangle on the same levels. Returns false when there is no such neighbour
