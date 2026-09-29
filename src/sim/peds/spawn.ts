@@ -1,4 +1,7 @@
 import { clamp } from '@core/scalar';
+import { m } from '@world/units';
+import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
+import { signalPosts } from '@world/signalPosts';
 import { DT, PED, PED_CEILING, PED_DENSITY } from '../params';
 import type { SimWorld } from '../world';
 import { PED_BEHAVIOUR, pedHash, preferredLateral } from './behaviour';
@@ -86,6 +89,100 @@ function clearOfOthers(w: SimWorld, edge: SidewalkEdge, from: number, to: number
   const half = (to - from) / 2;
   return w.sidewalks.occupancy.nearestTo(edge, mid) > clearance + half;
 }
+
+/** A disc standing in for one piece of street furniture, at a body's own height. */
+interface Obstacle { readonly x: number; readonly y: number; readonly r: number }
+
+interface Furniture {
+  revision: number;
+  utilities: number;
+  items: Obstacle[];
+}
+const FURNITURE = new WeakMap<SimWorld, Furniture>();
+
+/** The street furniture, signal posts and poles a body cannot be placed inside. */
+function obstacles(w: SimWorld): Obstacle[] {
+  const known = FURNITURE.get(w);
+  if (known && known.revision === w.net.trafficRevision && known.utilities === w.doc.utilityRevision) {
+    return known.items;
+  }
+  const items: Obstacle[] = [];
+  for (const item of streetFurniture(w.net)) {
+    if (!blocksPedestrians(item)) continue;
+    if (item.halfLength !== undefined && item.halfWidth !== undefined) {
+      // A bench or a post box: its long side as a row of discs, as the waiting
+      // areas model it.
+      const count = Math.max(1, Math.ceil(item.halfLength / item.halfWidth));
+      for (let i = 0; i <= count; i++) {
+        const t = -item.halfLength + (2 * item.halfLength * i) / count;
+        items.push({ x: item.x + item.along.x * t, y: item.y + item.along.y * t, r: item.halfWidth });
+      }
+    } else items.push({ x: item.x, y: item.y, r: item.radius });
+  }
+  for (const post of signalPosts(w.net, w.graph)) items.push({ x: post.x, y: post.y, r: SIGNAL_POST });
+  for (const pole of w.doc.poles.values()) items.push({ x: pole.x, y: pole.y, r: POLE });
+  const fresh: Furniture = { revision: w.net.trafficRevision, utilities: w.doc.utilityRevision, items };
+  FURNITURE.set(w, fresh);
+  return items;
+}
+const SIGNAL_POST = m(0.17);
+const POLE = m(0.18);
+/** How far a spawned body keeps from the edge of a piece of street furniture. */
+const SPAWN_CLEAR = m(0.3);
+
+/**
+ * The offset across the footway nearest `wanted` at which a body fits clear of
+ * the street furniture standing there, and of the companions already placed.
+ *
+ * People used to be placed on a preferred line with no thought for what was
+ * drawn on it, so somebody was put inside a lamp column or a tree pit and
+ * could not walk out again: the clearance gate refuses every step that goes
+ * further in, and the column is drawn at the walker's own feet. Measured at
+ * the mixed-lanes junction, a body spent 0.3 s of sixty with its centre
+ * 0.22 m INSIDE a piece of street furniture.
+ */
+function clearLateral(w: SimWorld, edge: SidewalkEdge, s: number, wanted: number, usable: number,
+  placed: readonly Ped[]): number {
+  const frame = w.sidewalks.orientedPath(edge, edge.from).sampleAt(s);
+  const items = obstacles(w);
+  if (!items.length) return wanted;
+  const clear = (lat: number): boolean => {
+    const x = frame.p.x + frame.n.x * lat;
+    const y = frame.p.y + frame.n.y * lat;
+    for (const item of items) if (Math.hypot(item.x - x, item.y - y) < item.r + SPAWN_CLEAR) return false;
+    return true;
+  };
+  // Stepping round the column must not put this one on top of the companion
+  // who spawned a moment before it.
+  const free = (lat: number): boolean => clear(lat) &&
+    placed.every((other) => {
+      const x = frame.p.x + frame.n.x * lat;
+      const y = frame.p.y + frame.n.y * lat;
+      return Math.hypot(other.x - x, other.y - y) >= MEMBER_CLEAR;
+    });
+  if (free(wanted)) return wanted;
+  // A narrow footway can leave no line that both clears the furniture and
+  // keeps the party's own spacing. Furniture wins: a body drawn inside a lamp
+  // column can never walk out of it, and two companions a step too close
+  // together sort themselves out as they walk.
+  let clearOnly: number | null = null;
+  // Outwards from the line the walker wanted, both sides, the nearer first.
+  for (let step = 1; step <= CLEAR_STEPS; step++) {
+    for (const side of [1, -1]) {
+      const lat = wanted + side * step * CLEAR_STEP;
+      if (lat < -usable || lat > usable) continue;
+      if (free(lat)) return lat;
+      if (clearOnly === null && clear(lat)) clearOnly = lat;
+    }
+  }
+  if (clearOnly !== null) return clearOnly;
+  return wanted;
+}
+/** Room kept between two members of a party at the moment they are placed. */
+const MEMBER_CLEAR = PED_BEHAVIOUR.shoulder;
+/** How far, in what increments, a spawned body searches sideways for clear footing. */
+const CLEAR_STEP = m(0.12);
+const CLEAR_STEPS = 14;
 
 /**
  * Age for each member of a new party.
@@ -190,6 +287,7 @@ function spawnParty(w: SimWorld, edge: SidewalkEdge, head: number, size: number)
     const rowShift = (Math.floor(i / 2) - (rows - 1) / 2) *
       PED_BEHAVIOUR.abreastSpacing * 0.48;
     const pairCenter = clamp(base + rowShift, -usable + halfPair, usable - halfPair);
+    const s = Math.max(0, head - (abreast ? Math.floor(i / 2) : i) * PED_BEHAVIOUR.partyStagger);
     const ped = createPed({
       id,
       color,
@@ -201,11 +299,14 @@ function spawnParty(w: SimWorld, edge: SidewalkEdge, head: number, size: number)
       rank: i,
       edge: edge.id,
       entry: edge.from,
-      s: Math.max(0, head - (abreast ? Math.floor(i / 2) : i) * PED_BEHAVIOUR.partyStagger),
+      s,
       // Companions who fit across the footway begin beside each other, with
       // enough room for both bodies. Narrow footways retain single file.
-      lat: abreast ? pairCenter + (i % 2 === 0 ? -halfPair : halfPair)
-        : preferredLateral(id, file, PED.files) * usable,
+      lat: clearLateral(w, edge, s, clamp(
+        abreast ? pairCenter + (i % 2 === 0 ? -halfPair : halfPair)
+          : preferredLateral(id, file, PED.files) * usable,
+        -usable, usable,
+      ), usable, members),
       tick: w.clock.tick,
     });
     const frame = w.sidewalks.orientedPath(edge, edge.from).sampleAt(ped.s);

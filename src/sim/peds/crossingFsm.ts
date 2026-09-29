@@ -266,10 +266,31 @@ function walkAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, spa
     line = space.clearLine(w, p, edge, line, Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin));
     along = Math.min(along, PLAN_CAP.speed);
   }
-  stepAgent(w, p, edge, { along, lat: line }, space);
+  // Walking to a place it holds in a kerb queue, or up to a kerb whose
+  // crossing is shut: standing there is the route's decision, not a blockage.
+  const kerbNext = p.route[0] ? w.sidewalks.edges.get(p.route[0]) : undefined;
+  const toAwait = kerbNext?.kind === 'crossing' && !mayEnterCrossing(w, p, kerbNext);
+  stepAgent(w, p, edge, { along, lat: line, holding: slot || toAwait }, space);
   if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
-  if (slot && Math.abs(SLOT_AT.s - p.s) < SLOT_ARRIVED && Math.abs(SLOT_AT.lat - p.lat) < SLOT_ARRIVED * 2 &&
-    p.v < SLOT_STILL) {
+  // Stopped at a kerb whose crossing is shut: this is waiting, and it has to
+  // be said so. A walker that stops a step or two short of the kerb - the last
+  // stride of a queue, or held off the mouth by the knot at it - stayed in
+  // `Walking`, and the handover to `WaitAtKerb` in `walkTail` asks to be
+  // within a quarter of a metre of the kerb end, which it never reached. Held
+  // there in `Walking`, its `stuck` never rose either, because a queue for a
+  // crossing is excluded from that by design, so nothing in the model knew it
+  // was waiting at all. Measured at a signalised crossroads: five walkers sat
+  // 0.76 m short of the kerb wanting to walk, until the green came round and
+  // the crowd moved off in front of them.
+  if (p.v < SLOT_STILL && edge.length - p.s < KERB_QUEUE && toAwait) {
+    p.v = 0;
+    p.latV = 0;
+    p.waited = 0;
+    p.state = 'WaitAtKerb';
+    return;
+  }
+  if (slot && p.v < SLOT_STILL &&
+    Math.abs(SLOT_AT.s - p.s) < SLOT_ARRIVED && Math.abs(SLOT_AT.lat - p.lat) < SLOT_ARRIVED * 2) {
     p.v = 0;
     p.latV = 0;
     p.waited = 0;
@@ -1249,16 +1270,7 @@ function steer(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: 
   // Blocked sideways: hold the line. Stepping the other way instead, as this
   // used to, made a boxed-in walker zigzag on the spot every tick.
   if (space.canShift(w, p, edge, proposed)) p.lat = proposed;
-  else if (p.stuck > BACK_OFF_AFTER && p.s > BACK_OFF_STEP
-    && space.canShift(w, p, edge, proposed, p.s - BACK_OFF_STEP)) {
-    // Boxed in against something ahead, and the step aside would bring them
-    // closer to it: a person takes half a step back and goes round. A walker
-    // who came down the narrow side of a street tree stood a hand's breadth
-    // from the trunk for good, once furniture could no longer be walked
-    // through - forward was the tree, and so was every step aside.
-    p.s -= BACK_OFF_STEP;
-    p.lat = proposed;
-  } else {
+  else {
     p.lat = held;
     p.latV = 0;
     // Committed side blocked too: take the other one next time.
@@ -1275,10 +1287,6 @@ const PLAN = { target: 0, rate: 0 };
 
 /** Seconds held up before committing to a side. */
 const DODGE_AFTER = 0.6;
-/** Held up this long with every step aside refused, a walker backs off a little to get round. */
-const BACK_OFF_AFTER = 1.2;
-/** How far back, per tick, a boxed-in walker steps while moving aside. */
-const BACK_OFF_STEP = m(0.012);
 /** How close to the edge of the usable width counts as pinned against it. */
 const EDGE_PINNED = m(0.05);
 
