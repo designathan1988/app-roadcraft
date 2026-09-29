@@ -529,6 +529,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       case 'sill': tool.setFacadeGeometry({ sill: value / metres }); return;
       case 'pierWidth': tool.setFacadeGeometry({ pierWidth: value / metres }); return;
       case 'pierDepth': tool.setFacadeGeometry({ pierDepth: value / metres }); return;
+      case 'pierEvery': tool.setFacadeGeometry({ pierEvery: Math.max(1, Math.round(value)) }); return;
       case 'detailHeight': tool.setRoofDetailHeight(value); return;
       default: return;
     }
@@ -598,6 +599,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         { id: 'windowHeight', labelKey: 'builder.field.windowHeight', value: (authored?.windowHeight ?? 0.6) * 100, unit: 'percent', min: 10, max: 100, step: 1 },
         { id: 'sill', labelKey: 'builder.field.sill', value: (authored?.sill ?? m(0.9)) * metres, unit: 'm', min: 0, max: 6, step: 0.05 },
         { id: 'pierWidth', labelKey: 'builder.field.pierWidth', value: (authored?.pierWidth ?? m(0.36)) * metres, unit: 'm', min: 0, max: 4, step: 0.05 },
+        { id: 'pierDepth', labelKey: 'builder.field.pierDepth', value: (authored?.pierDepth ?? 0) * metres, unit: 'm', min: 0, max: 2.4, step: 0.05 },
+        { id: 'pierEvery', labelKey: 'builder.field.pierEvery', value: authored?.pierEvery ?? 1, unit: 'count', min: 1, max: 16, step: 1 },
       );
     }
     const element = tool.selectedElement();

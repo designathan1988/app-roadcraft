@@ -639,6 +639,8 @@ export const PT_BR: Dictionary = {
   'builder.field.windowHeight': 'Altura da janela',
   'builder.field.sill': 'Peitoril',
   'builder.field.pierWidth': 'Largura do pilar',
+  'builder.field.pierDepth': 'Projeção do pilar',
+  'builder.field.pierEvery': 'Um pilar a cada',
   'builder.field.width': 'Largura',
   'builder.field.length': 'Comprimento',
   'builder.field.height': 'Altura',

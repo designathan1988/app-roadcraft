@@ -45,8 +45,8 @@ export const ELEMENT_DEFAULTS: Readonly<Record<ElementKind, readonly [number, nu
   canopy: [m(2.4), m(1.2), m(0.15)],
   wall: [m(4), m(0.25), m(1.8)],
   slab: [m(4), m(4), m(0.25)],
-  pavement: [m(4), m(3), m(0.06)],
-  fence: [m(2), m(0.08), m(1.1)],
+  pavement: [m(4), m(3), m(0.12)],
+  fence: [m(2), m(0.12), m(1.1)],
   tree: [m(3), m(3), m(5)],
   bench: [m(1.6), m(0.5), m(0.45)],
   ac: [m(0.8), m(0.35), m(0.6)],
@@ -56,6 +56,20 @@ export const ELEMENT_DEFAULTS: Readonly<Record<ElementKind, readonly [number, nu
 /** Whether an element's foot stands on the ground (rather than on a floor, or hung on a wall). */
 /** Parts hung on a facade rather than standing on the ground. */
 export const ON_FACADE: ReadonlySet<ElementKind> = new Set<ElementKind>(['canopy', 'ac']);
+
+/**
+ * Parts that dress a lot rather than raise a building. They may stand on the
+ * paving - a footpath beside the kerb, a fence along the frontage, a tree pit
+ * on the pavement - so they are not footprint: the road tests ignore them and
+ * a road drawn over one does not condemn the building.
+ */
+export const GROUND_DRESSING: ReadonlySet<ElementKind> = new Set<ElementKind>([
+  'pavement',
+  'fence',
+  'tree',
+  'bench',
+  'planter',
+]);
 
 export const onGround = (e: BuildingElement): boolean => e.z <= EPS && !ON_FACADE.has(e.kind);
 
@@ -74,7 +88,9 @@ export function elementRing(b: Building, e: BuildingElement, grow = 0): Vec2[] {
 
 /** World rings of the elements that stand on the ground: footprint, for the road and neighbour tests. */
 export const groundElements = (b: Building, grow = 0): Vec2[][] =>
-  (b.elements ?? []).filter(onGround).map((e) => elementRing(b, e, grow));
+  (b.elements ?? [])
+    .filter((e) => onGround(e) && !GROUND_DRESSING.has(e.kind))
+    .map((e) => elementRing(b, e, grow));
 
 /** Steps of a stair: every riser at most `STEP_RISE`. */
 export const stairSteps = (e: BuildingElement): number => Math.max(1, Math.ceil(e.h / STEP_RISE - 1e-9));

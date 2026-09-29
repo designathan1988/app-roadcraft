@@ -1021,7 +1021,7 @@ export class BuildingTool {
         const run = Math.hypot(b.x - a.x, b.y - a.y);
         if (run < m(0.4)) continue;
         // A paving run is a band: its traced length along, its own width across.
-        const across = kind === 'pavement' ? Math.max(dd, m(1.6)) : dd;
+        const across = kind === 'pavement' ? Math.max(dd, m(1.6)) : Math.max(dd, m(0.12));
         const along = kind === 'pavement' || kind === 'wall' || kind === 'slab' ? run : Math.max(dw, run);
         opAddElement(draft, {
           kind,
@@ -1031,7 +1031,7 @@ export class BuildingTool {
           w: along,
           d: across,
           z: 0,
-          h: dh,
+          h: Math.max(dh, m(0.12)),
           angle: Math.atan2(b.y - a.y, b.x - a.x),
         });
         added++;

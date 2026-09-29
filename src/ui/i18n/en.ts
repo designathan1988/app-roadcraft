@@ -653,6 +653,8 @@ export const EN: Dictionary = {
   'builder.field.windowHeight': 'Window height',
   'builder.field.sill': 'Sill',
   'builder.field.pierWidth': 'Pier width',
+  'builder.field.pierDepth': 'Pier projection',
+  'builder.field.pierEvery': 'A pier every',
   'builder.field.width': 'Width',
   'builder.field.length': 'Length',
   'builder.field.height': 'Height',
