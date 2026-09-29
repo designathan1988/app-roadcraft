@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { step } from '@sim/pipeline';
 import { DT } from '@sim/params';
 import { STUCK_RELEASE } from '@sim/peds/clearance';
+import { auditPedestrians, formatAudit } from './support/pedAudit';
 import { fixtureDoc, simOf } from './support/bodies';
 
 /**
@@ -48,5 +49,26 @@ describe('pedestrian flow', () => {
     expect(heldTicks / pedTicks).toBeLessThan(0.05);
     // 200 s of the full crowd: about 20 s alone, past the default timeout when
     // it shares the machine with the rest of the suite under coverage.
+  }, 180_000);
+
+  /**
+   * The check above asks the pedestrian model how it is doing - `Ped.stuck` is
+   * the model's own counter, and a walker that never moves accumulates it at
+   * the same rate whether it is waiting its turn or walled in. This one asks
+   * the DRAWN body: where the figure was two seconds ago against where it is
+   * now (`support/pedAudit.ts`), which is what a player watching the street
+   * sees and what the model cannot have an opinion about.
+   *
+   * Measured on the saved player map before the retreat was offered: one
+   * person stood against a lamp column for 69.5 s of a 90 s scene, and 82.8 s
+   * of the map's pedestrian time was spent standing still. The model's own
+   * counter read 9.4 s at the time, under this suite's ceiling of eight.
+   */
+  it('never leaves a drawn body standing on the open footway', () => {
+    const audit = auditPedestrians(simOf(fixtureDoc(), 3, 2), 90);
+    const report = formatAudit('player map 90 s', audit);
+    expect(audit.walkingSeconds).toBeGreaterThan(3000);
+    expect(audit.longestStuck, report).toBeLessThan(5);
+    expect(audit.stuckSeconds / audit.walkingSeconds, report).toBeLessThan(0.01);
   }, 180_000);
 });

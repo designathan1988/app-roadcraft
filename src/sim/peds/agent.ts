@@ -88,12 +88,12 @@ const WIDE_ANGLES = [1.45, -1.45, 1.7, -1.7, 1.92, -1.92];
 const STEP_BACK_BELOW = m(0.4);
 const STEP_BACK = m(0.35);
 
+/** Shares of the pace a held-up walker backs out at, and how far off straight back it may go. */
+const BACK_SHARES = [0.35, 0.6];
+const BACK_ANGLES = [0.4, -0.4];
 /** Headings either side of the way, radians, and shares of the pace: the fan of choices. */
 const ANGLES = [0, 0.1, -0.1, 0.22, -0.22, 0.38, -0.38, 0.58, -0.58, 0.85, -0.85, 1.2, -1.2];
 const SHARES = [1.12, 1, 0.8, 0.55, 0.3];
-
-/** TEMPORARY diagnostic: which walker's velocity choice is recorded, and the log. */
-export const AGENT_TRACE = { id: -1, log: [] as string[] };
 
 /** Threats seen this tick, as flat arrays: relative position, velocity, combined radius, weight. */
 const TX: number[] = [];
@@ -377,32 +377,58 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     for (const angle of ANGLES) consider(speed * Math.cos(angle), speed * Math.sin(angle));
     if (escalated) for (const angle of WIDE_ANGLES) consider(speed * Math.cos(angle), speed * Math.sin(angle));
   }
-  // Nearly stopped, a person can also step aside on the spot. Never back
-  // along the way: walking is forward, and the planned line takes the
-  // walker round furniture before it is reached.
+  // Nearly stopped, a person can also step aside on the spot.
   if (p.v < STEP_BACK_BELOW) { consider(0, STEP_BACK); consider(0, -STEP_BACK); }
-  bestA = Math.max(0, Math.min(bestA, Math.max(want, 0)));
+  // Held up and still going nowhere, a person gives ground. Standing where the
+  // way ahead is shut and the way across is shut is a corner with no way out
+  // of it at all, and no amount of patience gets round it: the only direction
+  // that opens is backwards. That is what the impatience term above is FOR -
+  // "standing still grows costlier until stepping back and round is the better
+  // way" - except nothing ever offered the walker a step back, so the term
+  // only ever ran up to its ceiling of two against a collision course twenty
+  // times its size. Measured on the saved player map: 69.5 s in one spell, one
+  // person, against a lamp column, while it wanted to be walking at 1.4 m/s.
+  if (escalated) {
+    for (const share of BACK_SHARES) {
+      const speed = share * scale;
+      consider(-speed, 0);
+      for (const angle of BACK_ANGLES) consider(-speed * Math.cos(angle), speed * Math.sin(angle));
+    }
+  }
+  bestA = Math.min(bestA, Math.max(want, 0));
+  if (bestA < -BACK_OUT) bestA = -BACK_OUT;
 
   // ---- 3. move, within a walker's acceleration, the clearance as the last guard
   const a = bestA >= p.v ? Math.min(bestA, p.v + ACCEL * DT) : Math.max(bestA, p.v - BRAKE * DT);
   const l = Math.max(-LAT_STEP, Math.min(LAT_STEP, Math.max(p.latV - LAT_ACCEL * DT, Math.min(p.latV + LAT_ACCEL * DT, bestL))));
-  const s1 = Math.min(edge.length, p.s + a * DT);
+  const s1 = Math.max(0, Math.min(edge.length, p.s + a * DT));
   edge.corridor.bounds(s1, rev, WALLS);
   const lat1 = Math.max(WALLS.lo, Math.min(WALLS.hi, p.lat + l * DT));
   const s0 = p.s, lat0 = p.lat;
-  if (p.id === AGENT_TRACE.id) {
-    AGENT_TRACE.log.push(`agent s=${p.s.toFixed(3)}/${edge.length.toFixed(2)} lat=${p.lat.toFixed(2)} v=${p.v.toFixed(3)}` +
-      ` want=${want.toFixed(3)} prefL=${prefL.toFixed(3)} threats=${n} boxes=${boxes}` +
-      ` bestA=${bestA.toFixed(3)} bestL=${bestL.toFixed(3)} cost=${bestCost.toFixed(3)}` +
-      ` step=(${s1.toFixed(3)},${lat1.toFixed(2)}) okAll=${admissible(p, edge, s1, lat1, space)}` +
-      ` okS=${admissible(p, edge, s1, lat0, space)} okL=${admissible(p, edge, s0, lat1, space)}`);
+  // The choice above is a preference among velocities; the clearance is the
+  // gate, and the two disagree when a body is held off its line. A velocity
+  // the gate refuses is not a choice: the walker goes on believing it is
+  // stepping aside while its body does not move.
+  //
+  // What it keeps, it gives up in the order a person does: the place across
+  // the footway first, then pace, and walking last.
+  if (a > 1e-9 || Math.abs(l) > 1e-9) {
+    if (admissible(p, edge, s1, lat1, space)) { p.s = s1; p.lat = lat1; }
+    else if (a > 1e-9 && admissible(p, edge, s1, lat0, space)) p.s = s1;
+    else if (Math.abs(l) > 1e-9 && admissible(p, edge, s0, lat1, space)) p.lat = lat1;
+    else if (a <= 1e-9 && want > 1e-9) {
+      // Boxed in sideways with the choice to stand: walk on the way it wanted
+      // to, past whatever holds the line, and cross after it.
+      const walked = Math.min(edge.length, s0 + Math.min(want, p.v + ACCEL * DT) * DT);
+      if (admissible(p, edge, walked, lat0, space)) p.s = walked;
+    }
   }
-  if (admissible(p, edge, s1, lat1, space)) { p.s = s1; p.lat = lat1; }
-  else if (admissible(p, edge, s1, lat0, space)) { p.s = s1; }
-  else if (admissible(p, edge, s0, lat1, space)) { p.lat = lat1; }
   p.v = (p.s - s0) / DT;
   p.latV = (p.lat - lat0) / DT;
 }
+
+/** Fastest a walker backs out of a corner it cannot get round, world units a second. */
+const BACK_OUT = m(0.5);
 
 /** First contact of a moving point with an expanded oriented obstacle box. */
 function boxContactTime(dx: number, dy: number, vx: number, vy: number,
