@@ -936,7 +936,11 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     // while a building is being edited, and the game's own HUD stays up.
     setMode(next) {
       root.dataset['mode'] = next;
-      for (const host of root.querySelectorAll<HTMLElement>('.bw-host-road')) host.hidden = next !== 'road';
+      // Only the palettes swap: the game's toolbar is the same row of tools in
+      // every one of them, and hiding it left the Builder with no way back.
+      for (const host of root.querySelectorAll<HTMLElement>('.bw-tier2 > .bw-host-road')) {
+        host.hidden = next !== 'road';
+      }
       for (const host of root.querySelectorAll<HTMLElement>('.bw-host-builder')) host.hidden = next !== 'builder';
       openGallery = null;
       renderDock(lastState);
