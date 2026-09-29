@@ -12,6 +12,7 @@ import {
 import { FACADE_PATTERNS, ELEMENT_KINDS } from '@world/buildings/types';
 import { t } from '../i18n';
 import { builderIconSvg } from './icons';
+import { materialSwatch } from '../materialSwatch';
 import './workspace.css';
 
 export type { BuilderField, BuilderSelectionInfo };
@@ -567,7 +568,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       const grid = el('div', 'bw-tiles');
       for (const finish of FINISHES) {
         const on = state.material?.finish === finish;
-        grid.appendChild(tile('finish', t(`building.finish.${finish}`), on, closeGalleryAnd(() => actions.chooseFinish(finish))));
+        grid.appendChild(tile(
+          'finish',
+          t(`building.finish.${finish}`),
+          on,
+          closeGalleryAnd(() => actions.chooseFinish(finish)),
+          materialSwatch(finish),
+        ));
       }
       const swatches = el('div', 'bw-swatches');
       for (const colour of SWATCHES) {

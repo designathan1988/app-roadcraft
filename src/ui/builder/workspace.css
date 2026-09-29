@@ -167,7 +167,9 @@
 .bw-tier2 { align-items: flex-start; padding: 8px 12px; min-height: 92px; }
 /* A tool with nothing to configure shows the toolbar and the hint, no shelf. */
 #builder:not(.has-tray) .bw-tier2 { display: none; }
-.bw-tier3 { justify-content: center; align-content: flex-start; padding: 8px 12px; max-height: min(34dvh, 320px); overflow-y: auto; scrollbar-width: thin; }
+/* A quarter of the screen at most: a gallery of thirteen materials scrolls
+   rather than covering the building it is being applied to. */
+.bw-tier3 { justify-content: center; align-content: flex-start; padding: 8px 12px; max-height: min(26dvh, 268px); overflow-y: auto; scrollbar-width: thin; }
 .bw-host { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; min-width: 0; }
 /* The Builder's tray: what it can do on top, what the chosen one offers
    under it, and the model's own switches at the end of the top row. */

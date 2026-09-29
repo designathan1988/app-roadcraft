@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { BUILDER_CATALOG, BUILDER_GALLERIES } from '@ui/builder/catalog';
 import { builderIcon } from '@ui/builder/icons';
+import { SNAP_MODES } from '@ui/builder/workspace';
 import { ELEMENT_KINDS } from '@world/buildings/types';
 import { EN } from '../../src/ui/i18n/en';
 import { PT_BR } from '../../src/ui/i18n/pt-BR';
@@ -39,6 +40,20 @@ describe('builder catalogue', () => {
       }
     }
     expect(repeated).toEqual([]);
+  });
+
+  /**
+   * The Snap menu showed five raw keys for weeks: it is built from the mode
+   * list rather than from the catalogue, so nothing was checking it.
+   */
+  it('names every snap mode in both dictionaries', () => {
+    const problems: string[] = [];
+    for (const mode of SNAP_MODES) {
+      const key = `builder.snap.${mode}`;
+      if (!(key in EN)) problems.push(`en ${key}`);
+      if (!(key in PT_BR)) problems.push(`pt ${key}`);
+    }
+    expect(problems).toEqual([]);
   });
 
   /**
