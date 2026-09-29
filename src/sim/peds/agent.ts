@@ -198,6 +198,13 @@ export function plannedLine(_w: SimWorld, p: Ped, edge: SidewalkEdge, wanted: nu
   return line;
 }
 
+/** Seconds ahead a walker looks along a candidate velocity for somebody else's ground. */
+const PROBE_TIME = 0.6;
+/** Weight of walking into ground somebody else has already claimed with priority. */
+const K_CLAIM = 4;
+/** Share of the pace kept while giving way to the walker who owns the ground. */
+const YIELD_SPEED = 0.5;
+
 /** How far a held-up walker may brush into the margin round furniture, world units. */
 const BRUSH = m(0.06);
 
@@ -226,16 +233,14 @@ function admissible(p: Ped, edge: SidewalkEdge, s: number, lat: number,
     const now = space.distanceTo(other, cx, cy);
     if (other.id > 0) {
       // Held up past the release, people may brush shoulder to shoulder -
-      // never through one another - as the clearance has always allowed. Held
-      // up longer still, they may shoulder past: a knot that has stopped
-      // moving does not untie itself by everybody waiting politely, and the
-      // alternative to brushing is standing in it for a minute, which is what
-      // this whole file is trying not to do. The room never goes below the two
-      // bodies' own radii, so no step here can put one inside another.
-      const stuck = p.stuck >= STUCK_RELEASE;
-      const contact = stuck ? PERSON_RELEASED_SPACING : CONTACT;
-      const reach = stuck ? contact - BRUSH : contact;
-      if (next < reach && next < now - 1e-6) ok = false;
+      // never through one another - as the clearance has always allowed. What
+      // they may NOT do is brush FURTHER into one another than that: the
+      // released spacing is already a shoulder's width, and a body that closes
+      // past it is drawn inside the person it is passing. Measured with the
+      // furniture brush applied here too: two drawn bodies 0.24 m apart at the
+      // closest, which is not a crowd, it is a mistake.
+      const contact = p.stuck >= STUCK_RELEASE ? PERSON_RELEASED_SPACING : CONTACT;
+      if (next < contact && next < now - 1e-6) ok = false;
       return;
     }
     // Furniture or a vehicle: its edge, and a body's radius from it. A walker
@@ -323,7 +328,7 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   });
 
   // ---- 2. choose
-  const want = Math.max(0, intent.along);
+  let want = Math.max(0, intent.along);
   const prefA = want;
   let obstacleAhead = false;
   let closestRisk = Infinity;
@@ -341,12 +346,37 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     p.passSide = p.lat >= boxLat ? 1 : -1;
   }
   edge.corridor.bounds(p.s, rev, WALLS);
+  // ---- THE PROTOCOL: whose ground is this, and who gives way
+  //
+  // Priority is how much of this walker's way lies ALONG the street it is on
+  // rather than across it: somebody walking down the pavement owns it, and
+  // somebody cutting over it - out of a doorway, across a zebra, round a
+  // corner - gives way. Then the walker looks a short step ahead of where each
+  // velocity it is considering would put it, and finds out whose intention is
+  // already walking over that ground.
+  const priority = Math.cos(p.heading) * tx + Math.sin(p.heading) * ty;
+  const aheadX = hx + tx * want * PROBE_TIME;
+  const aheadY = hy + ty * want * PROBE_TIME;
+  const yielding = space.claimOf(aheadX, aheadY, p.id, priority) > 0;
+  // Giving way is NOT stopping: somebody who stops in a crowd is an obstacle,
+  // and the queue behind them is a jam. A person who gives way halves their
+  // pace and leans towards the nearest edge of the footway - shoulders in,
+  // shrinking out of the way - and the one who owns the ground walks on.
+  let yieldingSide = 0;
+  if (yielding) {
+    want *= YIELD_SPEED;
+    yieldingSide = WALLS.hi - p.lat <= p.lat - WALLS.lo ? 1 : -1;
+  }
   const committed = p.passSide > 0
     ? Math.max(intent.lat, Math.min(WALLS.hi, Math.max(p.lat, m(0.35))))
     : p.passSide < 0
       ? Math.min(intent.lat, Math.max(WALLS.lo, Math.min(p.lat, -m(0.35))))
       : intent.lat;
-  const prefL = Math.max(-LAT_MAX, Math.min(LAT_MAX, (committed - p.lat) / LAT_RELAX));
+  let prefL = Math.max(-LAT_MAX, Math.min(LAT_MAX, (committed - p.lat) / LAT_RELAX));
+  if (yielding && yieldingSide !== 0) {
+    const room = yieldingSide > 0 ? WALLS.hi : WALLS.lo;
+    prefL = Math.max(-LAT_MAX, Math.min(LAT_MAX, (room - p.lat) / LAT_RELAX));
+  }
   const scale = Math.max(want, m(0.6));
   let bestA = 0, bestL = 0, bestCost = Infinity;
   /**
@@ -401,6 +431,14 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
     const out = Math.max(0, lat1 - WALLS.hi, WALLS.lo - lat1);
     if (out > 0) cost += W_WALL * out / PERSON;
     const vx = tx * ca + nx * cl, vy = ty * ca + ny * cl;
+    // Whose ground would this velocity be walking over a moment from now? A
+    // candidate that carries the walker into a claim on it is dearer than one
+    // that leaves it alone, and the dearest of all is standing in it: a body
+    // that neither goes nor gets out of the way is the one thing that turns a
+    // meeting into a jam. This is what makes a walker lean out of somebody
+    // else's way before they meet, without anybody telling it to.
+    const claim = space.claimOf(hx + vx * PROBE_TIME, hy + vy * PROBE_TIME, p.id, priority);
+    if (claim > 0) cost += K_CLAIM * claim / scale;
     const horizon = ca > 0 ? Math.min(HORIZON, (edge.length - p.s) / ca + DT) : HORIZON;
     for (let i = 0; i < n; i++) {
       const rx = vx - TVX[i]!, ry = vy - TVY[i]!;

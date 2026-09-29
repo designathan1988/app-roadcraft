@@ -59,6 +59,10 @@ export function stepPedestrians(w: SimWorld): void {
   let space = SPACES.get(w);
   if (!space) { space = new PedestrianClearance(); SPACES.set(w, space); }
   space.begin(w);
+  // Everybody's intention for this tick, published before anybody moves: a
+  // walker can then see not only where the others are but where they are
+  // GOING, and give way to it before they meet rather than on contact.
+  space.beginIntentions(w, peds);
   const remove: Ped[] = [];
   // Where each party that has stopped to talk stands, and each member's
   // place in its circle, so they walk to it and turn to face one another.

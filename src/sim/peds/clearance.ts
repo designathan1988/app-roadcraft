@@ -109,6 +109,40 @@ function squeezeOf(p: Ped): number {
 }
 
 /** World-space clearance shared across sidewalk edges and crossing nodes. */
+/** One walker's intention: the ground it is about to want, along its velocity. */
+interface Tube {
+  readonly id: PedId;
+  /** How much of this walker's way lies along its street rather than across it. */
+  readonly priority: number;
+  readonly x: number;
+  readonly y: number;
+  readonly ux: number;
+  readonly uy: number;
+  readonly length: number;
+  readonly saw: number;
+}
+
+/** Seconds of walking a walker publishes ahead of itself. */
+const TUBE_HORIZON = 1.75;
+/** Longest tube, so a running walker claims a corridor and not a street. */
+const TUBE_MAX = m(8);
+/** Speed below which a walker publishes nothing: a standing body walls nothing off. */
+const TUBE_MIN_SPEED = m(0.15);
+/** Half-width of the ground a walker claims: its own shoulders. */
+const TUBE_WIDTH = m(0.42);
+/** How far behind its feet a walker's tube still counts, for somebody alongside. */
+const TUBE_BEHIND = m(0.3);
+/** Spacing of the sample points along the tube. */
+const TUBE_SAMPLE = m(0.5);
+/** Priorities within this of each other count as equal, and go to the lower id. */
+const TUBE_TIE = 0.12;
+
+const TUBE_FRAME = { x: 0, y: 0, tx: 1, ty: 0, nx: 0, ny: 1 };
+/** One cell's worth of the tube grid, as an integer key. */
+const TUBE_CELL = m(1);
+const tubeKey = (x: number, y: number): number =>
+  Math.floor(x / TUBE_CELL) * 100_003 + Math.floor(y / TUBE_CELL);
+
 export class PedestrianClearance {
   private readonly grid = new Map<string, Footprint[]>();
   private readonly people = new Map<number, Footprint>();
@@ -220,6 +254,91 @@ export class PedestrianClearance {
       if (this.distance(other, x, y) < PERSON_RELEASED_SPACING) found = true;
     });
     return found;
+  }
+
+  // ------------------------------------------------------------ intentions
+  //
+  // THE INTENTION TUBE. Each walker publishes, once a tick, the ground it is
+  // about to want: a tube along its own velocity, as long as it will cover in
+  // `TUBE_HORIZON` seconds, weighted from full at its feet to nothing at the
+  // far end. This is what makes the crowd a conversation instead of a set of
+  // blind collisions - a walker can see not only where everybody is but where
+  // everybody is GOING, and give way to it before they meet.
+  //
+  // The length is the whole point, and it is why an earlier attempt at this
+  // stopped the street dead: a fixed radius reserves space in front of a
+  // person who is not moving, so a standing walker walls off the pavement
+  // behind them. Here a walker standing still publishes NOTHING - its tube has
+  // zero length - and the crowd flows round it the way water goes round a
+  // stone. Only the ground somebody is actually walking into is claimed.
+
+  /** Every tube published this tick, and the cells they cross. */
+  private readonly tubes: Tube[] = [];
+  private readonly tubeCells = new Map<number, number[]>();
+
+  /** Publishes the tubes of every walker, before any of them is stepped. */
+  beginIntentions(w: SimWorld, peds: Iterable<Ped>): void {
+    this.tubes.length = 0;
+    this.tubeCells.clear();
+    for (const p of peds) {
+      const edge = w.sidewalks.edges.get(p.edge);
+      if (!edge) continue;
+      const frame = edge.corridor.frame(p.s, p.entry !== edge.from, TUBE_FRAME);
+      const vx = frame.tx * p.v + frame.nx * p.latV;
+      const vy = frame.ty * p.v + frame.ny * p.latV;
+      const speed = Math.hypot(vx, vy);
+      if (speed < TUBE_MIN_SPEED) continue;
+      // Priority: how much of this walker's way lies ALONG the street it is on
+      // rather than across it. Somebody walking down the pavement owns the
+      // pavement; somebody cutting across it, out of a shop or over a zebra,
+      // gives way. Read off the body's own facing against the path tangent,
+      // which is the infrastructure's direction at its feet.
+      const priority = Math.cos(p.heading) * frame.tx + Math.sin(p.heading) * frame.ty;
+      const length = Math.min(speed * TUBE_HORIZON, TUBE_MAX);
+      const ux = vx / speed, uy = vy / speed;
+      const steps = Math.max(1, Math.ceil(length / TUBE_SAMPLE));
+      const tube: Tube = { id: p.id, priority, x: frame.x, y: frame.y, ux, uy, length, saw: steps + 1 };
+      for (let i = 0; i <= steps; i++) {
+        const x = frame.x + ux * ((i / steps) * length);
+        const y = frame.y + uy * ((i / steps) * length);
+        const cell = tubeKey(x, y);
+        const list = this.tubeCells.get(cell);
+        if (list) list.push(this.tubes.length);
+        else this.tubeCells.set(cell, [this.tubes.length]);
+      }
+      this.tubes.push(tube);
+    }
+  }
+
+  /**
+   * The walker whose ground this point is about to be walked over, when that
+   * walker has the PRIORITY over `priority`: the strongest claim on the point,
+   * or null when nobody is coming or everyone who is comes second to us.
+   *
+   * Ties go to the lower id, which is what breaks a head-on meeting between
+   * two people walking the same line at the same speed: one of them has to
+   * have it first, and it has to be the same one every tick or the two of them
+   * swap the right of way for ever.
+   */
+  claimOf(x: number, y: number, id: PedId, priority: number): number {
+    const list = this.tubeCells.get(tubeKey(x, y));
+    if (!list) return 0;
+    let weight = 0;
+    for (const at of list) {
+      const tube = this.tubes[at]!;
+      if (tube.id === id) continue;
+      const ahead = (x - tube.x) * tube.ux + (y - tube.y) * tube.uy;
+      if (ahead < -TUBE_BEHIND || ahead > tube.length) continue;
+      // The other is giving way to us unless it is more along the street, or
+      // equally along and ahead of us in the order.
+      if (tube.priority > priority + TUBE_TIE) continue;
+      if (Math.abs(tube.priority - priority) <= TUBE_TIE && tube.id > id) continue;
+      const lateral = Math.abs((x - tube.x) * -tube.uy + (y - tube.y) * tube.ux);
+      if (lateral > TUBE_WIDTH) continue;
+      const along = tube.length > 1e-6 ? Math.max(0, ahead) / tube.length : 0;
+      weight = Math.max(weight, (1 - along) * (1 - lateral / TUBE_WIDTH));
+    }
+    return weight;
   }
 
   /**
