@@ -352,6 +352,35 @@ const SCENARIOS = [
       return null;
     `,
   },
+  {
+    // The container itself, through its own buttons: three tiers that line up,
+    // nothing clipped, and a gallery of models photographed by the game.
+    name: 'workspace-gallery',
+    run: `
+      clear(); street(); await tool();
+      const id = place('block', 0, 30);
+      if (id === null) return 'the block did not place';
+      const b = D.buildings.get(id);
+      frame(b.x + 8, b.y + 8, 6); await settle();
+      document.querySelector('.bw-cat[data-category="draw"]').click();
+      await wait(120);
+      document.querySelector('.bw-tool[data-builder-tool="models"]').click();
+      await wait(1600);
+      const tiles = [...document.querySelectorAll('.bw-tier3 .bw-tile')];
+      const pictured = tiles.filter((t) => t.querySelector('img')).length;
+      if (tiles.length < 8) return 'only ' + tiles.length + ' model tiles';
+      if (pictured < tiles.length - 1) return pictured + ' of ' + tiles.length + ' tiles have a picture';
+      const clipped = [];
+      for (const tier of document.querySelectorAll('.bw-dock .bw-tier')) {
+        if (tier.scrollHeight > tier.clientHeight + 1) clipped.push(tier.className);
+      }
+      if (clipped.length > 0) return 'clipped: ' + clipped.join(', ');
+      const dock = document.querySelector('.bw-dock').getBoundingClientRect();
+      if (dock.bottom > innerHeight + 1 || dock.right > innerWidth) return 'the band is off screen';
+      window.__focus = { x: b.x, y: b.y };
+      return null;
+    `,
+  },
 ];
 
 function fail(message) {

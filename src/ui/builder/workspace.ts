@@ -163,7 +163,7 @@ const tile = (id: string, label: string, on: boolean, run: () => void, thumb?: s
   b.title = label;
   const art = thumb
     ? `<img class="bw-tile-art" src="${thumb}" alt="" />`
-    : `<span class="bw-tile-art">${builderIconSvg(id, 26)}</span>`;
+    : `<span class="bw-tile-art">${builderIconSvg(id, 32)}</span>`;
   b.innerHTML = `${art}<span class="bw-tile-name"></span>`;
   (b.querySelector('.bw-tile-name') as HTMLElement).textContent = label;
   b.onclick = run;
