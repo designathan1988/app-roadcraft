@@ -871,4 +871,10 @@ export const EN: Dictionary = {
   'building.finish.stucco': 'Stucco',
   'building.finish.panel': 'Panel cladding',
   'building.finish.slate': 'Slate',
+  'builder.tool.doubleDoor': 'Double door',
+  'builder.tool.garageDoor': 'Garage door',
+  'building.component.doubleDoor': 'Double door',
+  'building.component.garageDoor': 'Garage door',
+  'hint.builder.doubleDoor': 'Click facade bays for a two-leaf entrance',
+  'hint.builder.garageDoor': 'Click facade bays for a sectional garage door',
 };

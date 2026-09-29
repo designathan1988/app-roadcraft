@@ -36,6 +36,8 @@ export const BAY_COMPONENTS = [
   'wideWindow',
   'balcony',
   'door',
+  'doubleDoor',
+  'garageDoor',
   'shopfront',
   'loadingDoor',
   'pillar',

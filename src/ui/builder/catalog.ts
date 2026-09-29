@@ -94,6 +94,8 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
       mode('ribbon'),
       mode('balcony'),
       mode('door'),
+      mode('doubleDoor'),
+      mode('garageDoor'),
       mode('shopfront'),
       mode('loadingDoor'),
       mode('pillarBay'),
@@ -187,6 +189,8 @@ export const DRAW_SHAPES: Readonly<Record<string, PlanShapeId>> = {
 
 /** The BayComponent an opening tool places. */
 export const OPENING_COMPONENTS: Readonly<Record<string, string>> = {
+  doubleDoor: 'doubleDoor',
+  garageDoor: 'garageDoor',
   frenchWindow: 'frenchWindow',
   bayWindow: 'bayWindow',
   ribbon: 'ribbon',

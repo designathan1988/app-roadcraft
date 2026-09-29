@@ -883,5 +883,5 @@ const READY: ReadonlySet<string> = new Set([
   'paint', 'material', 'colour', 'copyStyle', 'pavement',
   'wallRun', 'fenceRun', 'pavementRun', 'tree', 'bench', 'planter', 'ac', 'moveMass',
   'frenchWindow', 'bayWindow', 'ribbon',
-  'railing', 'awning', 'flowers', 'rocks', 'parking',
+  'railing', 'awning', 'flowers', 'rocks', 'parking', 'doubleDoor', 'garageDoor',
 ]);

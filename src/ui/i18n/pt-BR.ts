@@ -857,4 +857,10 @@ export const PT_BR: Dictionary = {
   'building.finish.stucco': 'Estuque',
   'building.finish.panel': 'Painel',
   'building.finish.slate': 'Ardósia',
+  'builder.tool.doubleDoor': 'Porta dupla',
+  'builder.tool.garageDoor': 'Porta de garagem',
+  'building.component.doubleDoor': 'Porta dupla',
+  'building.component.garageDoor': 'Porta de garagem',
+  'hint.builder.doubleDoor': 'Clique nos vãos para uma entrada de duas folhas',
+  'hint.builder.garageDoor': 'Clique nos vãos para uma porta de garagem seccionada',
 };
