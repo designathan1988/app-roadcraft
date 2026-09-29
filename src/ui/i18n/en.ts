@@ -759,6 +759,7 @@ export const EN: Dictionary = {
   'hint.builder.roof': 'Choose a roof shape or a detail, then click the roof',
   'hint.builder.extrude': 'PageUp and PageDown add and remove floors · the roof handle drags them too',
   'hint.builder.offset': 'Click a face region, then push or pull the yellow arrow',
+  'hint.builder.pushpull': 'Click a face region, then push or pull the yellow arrow',
   'hint.builder.paint': 'Click faces to paint them with the brush',
   'hint.builder.openings': 'Pick an opening, then click facade bays to place it',
   'hint.builder.stair': 'Point at a facade and click: the stair runs down from that floor',

@@ -745,6 +745,7 @@ export const PT_BR: Dictionary = {
   'hint.builder.roof': 'Escolha a forma da cobertura ou um detalhe, e clique no telhado',
   'hint.builder.extrude': 'PageUp e PageDown somam e tiram pavimentos · o handle do topo também arrasta',
   'hint.builder.offset': 'Clique numa região da face e empurre ou puxe a seta amarela',
+  'hint.builder.pushpull': 'Clique numa região da face e empurre ou puxe a seta amarela',
   'hint.builder.paint': 'Clique nas faces para pintá-las com o pincel',
   'hint.builder.openings': 'Escolha uma abertura e clique nos vãos da fachada para colocá-la',
   'hint.builder.stair': 'Aponte para uma fachada e clique: a escada desce daquele pavimento',
