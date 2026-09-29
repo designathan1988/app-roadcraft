@@ -71,7 +71,6 @@ export interface BuilderState {
 }
 
 export interface BuilderActions {
-  exit(): void;
   undo(): void;
   redo(): void;
   setCategory(id: BuilderCategoryId): void;
@@ -176,14 +175,6 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   // ------------------------------------------------------------ the top bar
   const top = el('div', 'bw-top');
 
-  const exit = el('button', 'bw-button bw-exit');
-  exit.type = 'button';
-  exit.onclick = () => actions.exit();
-  const builderOnly = (node: HTMLElement): HTMLElement => {
-    node.dataset['bwMode'] = 'builder';
-    return node;
-  };
-
   const historyGroup = el('div', 'bw-group');
   const undo = el('button', 'bw-icon-button');
   undo.type = 'button';
@@ -196,21 +187,6 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   historyGroup.append(undo, redo);
 
   const spacer = el('span', 'bw-spacer');
-  const floorChip = el('button', 'bw-chip bw-floor');
-  floorChip.type = 'button';
-  floorChip.onclick = () => showMenu('floor', floorChip);
-  const snapChip = el('button', 'bw-chip bw-snap');
-  snapChip.type = 'button';
-  snapChip.onclick = () => showMenu('snap', snapChip);
-  const gridToggle = el('button', 'bw-chip bw-toggle');
-  gridToggle.type = 'button';
-  gridToggle.onclick = () => actions.toggleGrid();
-  const viewChip = el('button', 'bw-chip');
-  viewChip.type = 'button';
-  viewChip.onclick = () => showMenu('view', viewChip);
-  const hideToggle = el('button', 'bw-chip bw-toggle');
-  hideToggle.type = 'button';
-  hideToggle.onclick = () => actions.toggleHideOthers();
   const help = el('button', 'bw-icon-button bw-help');
   help.type = 'button';
   help.dataset['i18nTitle'] = 'builder.help';
@@ -229,20 +205,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   (appMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.app');
   appMenu.onclick = () => showMenu('app', appMenu);
 
-  top.append(
-    builderOnly(exit),
-    historyGroup,
-    controlsSlot,
-    spacer,
-    builderOnly(floorChip),
-    builderOnly(snapChip),
-    builderOnly(gridToggle),
-    builderOnly(viewChip),
-    builderOnly(hideToggle),
-    simMenu,
-    appMenu,
-    help,
-  );
+  top.append(historyGroup, controlsSlot, spacer, simMenu, appMenu, help);
 
   /**
    * One drop-down below the bar. Three children live in it for good - the
@@ -295,14 +258,45 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   // ------------------------------------------------------------ the dock
   const dock = el('div', 'bw-dock');
+  // Tier 1 is the game's toolbar, and nothing else, in every tool: the band is
+  // the same band whether a road or a wall is being placed.
   const tier1 = el('div', 'bw-tier bw-tier1');
   const tier1Road = el('div', 'bw-host bw-host-road');
-  const tier1Builder = el('div', 'bw-host bw-host-builder');
-  tier1.append(tier1Road, tier1Builder);
+  tier1.append(tier1Road);
+
+  // Tier 2 is the tray of the tool in hand: the road palette, the terrain
+  // palette, or the Builder's categories. The Builder is not a mode - its
+  // categories and their tools live here, where the road classes live.
   const tier2 = el('div', 'bw-tier bw-tier2');
   const tier2Road = el('div', 'bw-host bw-host-road');
   const tier2Builder = el('div', 'bw-host bw-host-builder');
+  const tray = el('div', 'bw-tray');
+  const catsRow = el('div', 'bw-cats');
+  const contextRow = el('div', 'bw-context');
+  tray.append(catsRow, contextRow);
+  const toolsRow = el('div', 'bw-tools');
+  tier2Builder.append(tray, toolsRow);
   tier2.append(tier2Road, tier2Builder);
+
+  // The Builder's own controls sit at the end of the category row, and only
+  // while the building tool is the one in hand.
+  const floorChip = el('button', 'bw-chip bw-floor');
+  floorChip.type = 'button';
+  floorChip.onclick = () => showMenu('floor', floorChip);
+  const snapChip = el('button', 'bw-chip bw-snap');
+  snapChip.type = 'button';
+  snapChip.onclick = () => showMenu('snap', snapChip);
+  const gridToggle = el('button', 'bw-chip bw-toggle');
+  gridToggle.type = 'button';
+  gridToggle.onclick = () => actions.toggleGrid();
+  const viewChip = el('button', 'bw-chip');
+  viewChip.type = 'button';
+  viewChip.onclick = () => showMenu('view', viewChip);
+  const hideToggle = el('button', 'bw-chip bw-toggle');
+  hideToggle.type = 'button';
+  hideToggle.onclick = () => actions.toggleHideOthers();
+  contextRow.append(floorChip, snapChip, gridToggle, viewChip, hideToggle);
+
   const tier3 = el('div', 'bw-tier bw-tier3');
   tier3.hidden = true;
   const foot = el('div', 'bw-foot');
@@ -314,12 +308,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     dock.classList.toggle('folded');
     syncDock();
   };
-  dock.append(tier1, tier2, tier3, fold);
+  // The band reads top down like the panel it is: the tools, the tray of the
+  // one in hand, the gallery it opens, and one line of hint along the bottom.
+  dock.append(tier1, tier2, tier3, foot, fold);
 
   const quick = el('div', 'bw-quick');
   const hint = el('div', 'bw-hint');
   foot.appendChild(hint);
-  dock.appendChild(foot);
 
   const inspector = el('aside', 'bw-inspector');
   const inspectorHead = el('div', 'bw-inspector-head');
@@ -350,7 +345,6 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   }
 
   // ------------------------------------------------------------ state
-  let mode: ChromeMode = 'road';
   let openGallery: string | null = null;
   let lastState: BuilderState | null = null;
   const thumbnails = new Map<string, string>();
@@ -454,12 +448,12 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   };
 
   // ------------------------------------------------------------ the tiers
-  /** Tier 1: the categories, or the road tools `main.ts` mounted here. */
-  function renderTier1(state: BuilderState): void {
+  /** The categories: what the Builder can do, across the top of its tray. */
+  function renderCats(state: BuilderState): void {
     const signature = `${state.category}|${[...state.ready].join(',')}`;
-    if (tier1.dataset['signature'] === signature) return;
-    tier1Builder.dataset['signature'] = signature;
-    tier1Builder.innerHTML = '';
+    if (catsRow.dataset['signature'] === signature) return;
+    catsRow.dataset['signature'] = signature;
+    catsRow.innerHTML = '';
     const row = el('div', 'bw-row');
     for (const category of BUILDER_CATALOG) {
       const on = category.id === state.category;
@@ -476,18 +470,18 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       };
       row.appendChild(b);
     }
-    tier1Builder.appendChild(row);
+    catsRow.appendChild(row);
   }
 
-  /** Tier 2: the sub-tools of the chosen category. */
-  function renderTier2(state: BuilderState): void {
+  /** Under the categories: the tools of the one in hand, and their gallery. */
+  function renderTools(state: BuilderState): void {
     const spec = categorySpec(state.category);
     const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${openGallery ?? ''}`;
-    if (tier2.dataset['signature'] === signature) return;
-    tier2Builder.dataset['signature'] = signature;
-    tier2Builder.innerHTML = '';
+    if (toolsRow.dataset['signature'] === signature) return;
+    toolsRow.dataset['signature'] = signature;
+    toolsRow.innerHTML = '';
     if (state.planning) {
-      tier2Builder.appendChild(planControls(state));
+      toolsRow.appendChild(planControls(state));
       return;
     }
     const row = el('div', 'bw-row');
@@ -517,7 +511,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       };
       row.appendChild(b);
     }
-    tier2Builder.appendChild(row);
+    toolsRow.appendChild(row);
   }
 
   /** Tier 3: the gallery of whatever the chosen sub-tool opens. */
@@ -682,8 +676,8 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   function renderDock(state: BuilderState | null): void {
     if (!state) return;
-    renderTier1(state);
-    renderTier2(state);
+    renderCats(state);
+    renderTools(state);
     renderTier3(state);
     syncDock();
   }
@@ -762,9 +756,6 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   }
 
   const renderTop = (state: BuilderState): void => {
-    exit.innerHTML = `${builderIconSvg('exit', 15)}<span></span>`;
-    (exit.querySelector('span') as HTMLElement).textContent = t('builder.exit');
-    exit.title = t('builder.exit');
     undo.innerHTML = builderIconSvg('undo', 16);
     redo.innerHTML = builderIconSvg('redo', 16);
     undo.disabled = !state.canUndo;
@@ -817,7 +808,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     lastState = state;
     root.dataset['category'] = state.category;
     renderTop(state);
-    if (mode === 'builder') renderDock(state);
+    renderDock(state);
     renderInspector(state);
     renderQuick(state);
     hintBase = state.hint;
@@ -837,34 +828,19 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   const relabel = (): void => {
     inspectorBody.dataset['signature'] = '';
-    tier1.dataset['signature'] = '';
-    tier2.dataset['signature'] = '';
+    catsRow.dataset['signature'] = '';
+    toolsRow.dataset['signature'] = '';
     (simMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.simulation');
     (appMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.app');
     if (lastState) refresh(lastState);
   };
 
-  // The game opens on the road, where nothing of the Builder's is shown: a
-  // chip left in the bar would sit there empty until the Builder was opened
-  // once and closed again.
-  for (const node of root.querySelectorAll<HTMLElement>('[data-bw-mode]')) {
-    node.hidden = node.dataset['bwMode'] !== mode;
-  }
-
   return {
     refresh,
+    // Which tool is in hand: the Builder's tray takes the road palettes' place
+    // while a building is being edited, and the game's own HUD stays up.
     setMode(next) {
-      mode = next;
       root.dataset['mode'] = next;
-      // Tier 1 and 2 belong to whichever half is driving; the other mounts its
-      // own elements there, so only clear the tiers we own.
-      if (next === 'builder') {
-        tier1.dataset['signature'] = '';
-        tier2.dataset['signature'] = '';
-      }
-      root.querySelectorAll<HTMLElement>('[data-bw-mode]').forEach((node) => {
-        node.hidden = node.dataset['bwMode'] !== next;
-      });
       for (const host of root.querySelectorAll<HTMLElement>('.bw-host-road')) host.hidden = next !== 'road';
       for (const host of root.querySelectorAll<HTMLElement>('.bw-host-builder')) host.hidden = next !== 'builder';
       openGallery = null;

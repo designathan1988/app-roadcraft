@@ -5,7 +5,7 @@ import { RoadDoc, fitRoadCurve, type JunctionControl } from '@world/doc';
 import { MIN_LINK_LENGTH } from '@world/approach';
 import { MAX_AUTHORED_GRADE } from '@world/elevation';
 import { Network } from '@world/network';
-import { LAST_UPGRADE_CLASS, ROAD_TYPES, roadType } from '@world/roadTypes';
+import { LAST_UPGRADE_CLASS, ROAD_TYPES, roadProfile, roadType } from '@world/roadTypes';
 import { roadStructure } from '@world/structures';
 import { UNITS_PER_METER } from '@world/units';
 import type { TerrainMode } from '@world/terrain';
@@ -38,6 +38,7 @@ import { Persistence, exportToFile, importFromFile, type SavedSettings } from '@
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
 import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
+import { roadSwatch } from '@ui/roadSwatch';
 import { mountBuildStamp } from '@ui/buildStamp';
 import { mountAbout } from '@ui/about';
 import { LANGUAGES, initLanguage, language, onLanguageChange, setLanguage, t } from '@ui/i18n';
@@ -369,7 +370,6 @@ const buildings = createBuildingWiring({
   scene,
   view: () => view,
   size: () => ({ w: surface.cssW, h: surface.cssH }),
-  exitBuilder: () => setTool('road'),
   undo: () => undoButton.click(),
   redo: () => redoButton.click(),
   focusBuilding(building) {
@@ -1023,7 +1023,7 @@ function commitRoadGesture(d: RoadDraft, chosenEnd?: Anchor): boolean {
   const pieces = piecesForDraft(d, endHeightOffset);
   let result: ReturnType<typeof commitRoadPath> = { committed: false };
   mutate(() => {
-    result = commitRoadPath(doc, net, d.start, end, roadTypeIndex, pieces);
+    result = commitRoadPath(doc, net, d.start, end, roadTypeIndex, pieces, roadLanePreset);
     return result.committed;
   });
   if (!result.committed) {
@@ -1285,42 +1285,158 @@ window.addEventListener('keydown', (e) => {
 
 // -------------------------------------------------------------------- ui
 const roadTypesEl = document.getElementById('roadTypes') as HTMLElement;
+
+/** Every class, drawn: the tile shows the road the class lays. */
 ROAD_TYPES.forEach((rt, i) => {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'road-type' + (i === roadTypeIndex ? ' active' : '');
+  b.dataset['typeIndex'] = String(i);
   b.setAttribute('aria-pressed', String(i === roadTypeIndex));
   b.setAttribute('aria-label', `${roadTypeName(rt)}: ${roadTypeDescription(rt)}`);
-  b.innerHTML =
-    `<span class="road-swatch${rt.markings === 'none' ? ' no-line' : ''}" ` +
-    `style="background:${rt.color};box-shadow:inset 0 0 0 ${Math.min(5, 2 + i)}px ${rt.edge}"></span>` +
-    `<span><strong class="road-type-name"></strong><small class="road-type-sub"></small></span>` +
-    `<span class="shortcut">${i + 1}</span>`;
+  b.innerHTML = `<img class="road-type-art" src="${roadSwatch(rt)}" alt="" /><span class="road-type-name"></span>`;
   b.querySelector('.road-type-name')!.textContent = roadTypeName(rt);
-  b.querySelector('.road-type-sub')!.textContent = roadTypeDescription(rt);
+  b.title = `${roadTypeName(rt)} — ${roadTypeDescription(rt)}`;
   b.onclick = () => selectRoadType(i);
   roadTypesEl.appendChild(b);
 });
 
+/**
+ * What can be done to a road once it is drawn, at the end of the row of
+ * classes: the same gesture a player makes, in the place they are looking.
+ */
+for (const [op, icon] of [
+  ['move', '<path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3m-6 12 3 3 3-3m3-9 3 3-3 3M6 9l-3 3 3 3"/>'],
+  ['split', '<path d="M4 7h16M4 17h16"/><path d="M12 3v18"/><path d="m9 10 3 3 3-3"/>'],
+  ['control', '<rect x="8" y="3" width="8" height="15" rx="2"/><path d="M12 18v3"/><circle cx="12" cy="7" r="1.4"/><circle cx="12" cy="10.6" r="1.4"/><circle cx="12" cy="14.2" r="1.4"/>'],
+] as const) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'road-type road-op';
+  b.dataset['roadOp'] = op;
+  b.setAttribute('aria-pressed', 'false');
+  b.setAttribute('aria-keyshortcuts', t(`tool.${op}`).charAt(0));
+  b.innerHTML = `<span class="road-type-art op"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><span class="road-type-name"></span>`;
+  b.querySelector('.road-type-name')!.textContent = t(`tool.${op}`);
+  b.title = t(`tool.${op}`);
+  roadTypesEl.appendChild(b);
+}
+
+/**
+ * The lanes a road is laid at. The count is stored per segment, so a street
+ * can be four lanes wide while the avenue beside it is six; the last choice
+ * is the class that carries a central reservation.
+ */
+let roadLanePreset: number | null = null;
+const MEDIAN_CLASS = ROAD_TYPES.findIndex((rt) => rt.median > 0);
+const roadLanesEl = document.getElementById('roadLanes') as HTMLElement;
+const LANE_CHOICES: readonly { readonly id: string; readonly lanes: number | null }[] = [
+  { id: '2', lanes: 2 },
+  { id: '4', lanes: 4 },
+  { id: '6', lanes: 6 },
+  { id: 'median', lanes: null },
+];
+for (const choice of LANE_CHOICES) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'road-lane';
+  b.dataset['laneChoice'] = choice.id;
+  b.setAttribute('aria-pressed', 'false');
+  const sample = choice.lanes === null
+    ? roadType(MEDIAN_CLASS)
+    : roadProfile(roadTypeIndex, choice.lanes);
+  const laneLabel = choice.lanes === null ? t('palette.lanes.median') : t('palette.lanes.count', { count: choice.lanes });
+  b.innerHTML = `<img src="${roadSwatch(sample, 74, 38)}" alt="" /><span></span>`;
+  b.querySelector('span')!.textContent = laneLabel;
+  b.title = laneLabel;
+  b.onclick = () => {
+    roadLanePreset = choice.lanes;
+    if (choice.lanes === null) selectRoadType(MEDIAN_CLASS);
+    updateLaneChoices();
+    refreshLaneSwatches();
+    requestDraw();
+  };
+  roadLanesEl.appendChild(b);
+}
+
+function updateLaneChoices(): void {
+  for (const b of roadLanesEl.querySelectorAll<HTMLButtonElement>('.road-lane')) {
+    const id = b.dataset['laneChoice'];
+    const choice = LANE_CHOICES.find((c) => c.id === id);
+    const on = choice !== undefined && (
+      choice.lanes === null ? roadLanePreset === null && roadTypeIndex === MEDIAN_CLASS
+        : roadLanePreset === choice.lanes && roadTypeIndex !== MEDIAN_CLASS
+    );
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+}
+
+/** The pictures redraw against the class in hand, so they read as its widths. */
+function refreshLaneSwatches(): void {
+  for (const b of roadLanesEl.querySelectorAll<HTMLButtonElement>('.road-lane')) {
+    const choice = LANE_CHOICES.find((c) => c.id === b.dataset['laneChoice']);
+    if (!choice) continue;
+    const img = b.querySelector('img');
+    if (!img) continue;
+    const sample = choice.lanes === null ? roadType(MEDIAN_CLASS) : roadProfile(roadTypeIndex, choice.lanes);
+    img.src = roadSwatch(sample, 74, 38);
+    const label = b.querySelector('span');
+    if (label) label.textContent = choice.lanes === null
+      ? t('palette.lanes.median')
+      : t('palette.lanes.count', { count: choice.lanes });
+  }
+}
+
+/**
+ * The classes roll past under the fixed plan. The arrows page the strip; when
+ * every class already fits they fade out rather than disappear, so the row
+ * never changes width under the pointer.
+ */
+const roadCarousel = roadTypesEl.parentElement as HTMLElement;
+function updateCarousel(): void {
+  const room = roadTypesEl.scrollWidth - roadTypesEl.clientWidth;
+  roadCarousel.classList.toggle('scrollable', room > 1);
+  roadCarousel.classList.toggle('at-start', roadTypesEl.scrollLeft <= 1);
+  roadCarousel.classList.toggle('at-end', roadTypesEl.scrollLeft >= room - 1);
+}
+for (const step of document.querySelectorAll<HTMLButtonElement>('.carousel-step')) {
+  step.onclick = () => {
+    const page = Math.max(180, roadTypesEl.clientWidth * 0.75) * Number(step.dataset['carousel'] ?? 1);
+    roadTypesEl.scrollBy({ left: page, behavior: 'smooth' });
+  };
+}
+roadTypesEl.addEventListener('scroll', updateCarousel, { passive: true });
+window.addEventListener('resize', updateCarousel);
+updateCarousel();
+
 /** Re-renders every label the road palette owns, after a language change. */
 function refreshRoadTypeLabels(): void {
-  [...roadTypesEl.children].forEach((child, index) => {
-    const rt = ROAD_TYPES[index];
-    if (!rt) return;
+  for (const child of roadTypesEl.querySelectorAll<HTMLElement>('[data-type-index]')) {
+    const rt = ROAD_TYPES[Number(child.dataset['typeIndex'])];
+    if (!rt) continue;
     child.setAttribute('aria-label', `${roadTypeName(rt)}: ${roadTypeDescription(rt)}`);
+    child.title = `${roadTypeName(rt)} — ${roadTypeDescription(rt)}`;
     const name = child.querySelector('.road-type-name');
-    const sub = child.querySelector('.road-type-sub');
     if (name) name.textContent = roadTypeName(rt);
-    if (sub) sub.textContent = roadTypeDescription(rt);
-  });
+  }
+  for (const op of roadTypesEl.querySelectorAll<HTMLElement>('.road-op')) {
+    const label = op.querySelector('.road-type-name');
+    if (label && op.dataset['roadOp']) label.textContent = t(`tool.${op.dataset['roadOp']}`);
+  }
+  refreshLaneSwatches();
+  updateLaneChoices();
 }
 
 function selectRoadType(i: number): void {
   roadTypeIndex = i;
-  [...roadTypesEl.children].forEach((c, j) => {
-    c.classList.toggle('active', j === i);
-    c.setAttribute('aria-pressed', String(j === i));
-  });
+  for (const child of roadTypesEl.querySelectorAll<HTMLElement>('[data-type-index]')) {
+    const on = Number(child.dataset['typeIndex']) === i;
+    child.classList.toggle('active', on);
+    child.setAttribute('aria-pressed', String(on));
+  }
+  updateLaneChoices();
+  refreshLaneSwatches();
   requestDraw();
 }
 
@@ -1338,6 +1454,11 @@ function setAlignment(next: Alignment): void {
 
 document.querySelectorAll<HTMLButtonElement>('.alignment-mode').forEach((button) => {
   button.onclick = () => setAlignment((button.dataset['alignment'] as Alignment) ?? 'straight');
+});
+
+// The road's own operations, beside its classes: each one takes the pointer.
+document.querySelectorAll<HTMLButtonElement>('.road-op').forEach((button) => {
+  button.onclick = () => setTool((button.dataset['roadOp'] as Tool) ?? 'road');
 });
 
 function updateRoadHeightValue(): void {
@@ -1460,31 +1581,42 @@ function setTool(next: Tool): void {
   poleChain = null;
   endTerrainStroke();
   cancelMove();
-  document.querySelectorAll<HTMLButtonElement>('.tool').forEach((b) => {
-    const on = b.dataset['tool'] === next;
+  // Improving a road, moving its points, splitting a segment and setting up a
+  // junction are things done TO a road, so they are the road's own options and
+  // its button stays lit while one of them is in hand.
+  const roadFamily = next === 'road' || next === 'upgrade' || next === 'split'
+    || next === 'control' || next === 'move';
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.tool')) {
+    const on = b.dataset['tool'] === (roadFamily ? 'road' : next);
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
-  });
+  }
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.road-op')) {
+    const on = b.dataset['roadOp'] === next && next !== 'road';
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
   if (next !== 'inspect') {
     selectedSegment = null;
     selectedNode = null;
     closeInspector();
   }
   canvas.dataset['tool'] = next;
-  // Each palette is shown only with the tool it configures: the road classes
-  // used to stay on screen for upgrade, move, bulldoze and the rest, where
-  // they did nothing but cover the map.
+  // Each palette is shown only with the tools it configures.
   const terrainActive = next === 'terrain';
-  const roadActive = next === 'road';
-  roadPalette?.classList.toggle('hidden', !roadActive);
-  roadPalette?.setAttribute('aria-hidden', String(!roadActive));
+  roadPalette?.classList.toggle('hidden', !roadFamily);
+  roadPalette?.setAttribute('aria-hidden', String(!roadFamily));
+  if (roadFamily) updateCarousel();
   terrainPalette.classList.toggle('hidden', !terrainActive);
   terrainPalette.setAttribute('aria-hidden', String(!terrainActive));
-  // Buildings are their own place now: the whole HUD becomes the Builder
-  // Workspace (`ui/builder/`), and the map keeps the middle of the screen.
+  // A tool with nothing to configure leaves no empty shelf above the toolbar.
+  document.getElementById('builder')?.classList.toggle(
+    'has-tray',
+    roadFamily || terrainActive || next === 'building',
+  );
+  // Buildings are a tool, not a mode: the game's own HUD stays up, and the
+  // band's tray swaps to the Builder's categories while it is the tool in hand.
   const buildingActive = next === 'building';
-  document.getElementById('app')?.classList.toggle('builder-mode', buildingActive);
-  // The container at the bottom drives whichever half of the game is up.
   buildings.workspace.setMode(buildingActive ? 'builder' : 'road');
   if (buildingActive) buildings.activate();
   else buildings.deactivate();

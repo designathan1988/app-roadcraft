@@ -659,16 +659,23 @@ body { user-select: none; -webkit-user-select: none; }
   --bw-radius: 7px;
 }
 
-/* The chrome is the game's own: it is up in both modes, and the old floating
-   top bar steps aside for it. In the Builder the minimap, the status bar and
-   the road hint follow, because the container carries everything they did. */
-.builder-mode .minimap-panel,
-.builder-mode .statusbar,
-.builder-mode .hint,
-.builder-mode .mobile-hint,
-.builder-mode .inspector { display: none !important; }
-/* The old top bar is replaced by the chrome's own bar, in both modes. */
+/* The chrome is the game's own, and the whole HUD is up in every tool: the
+   minimap, the status bar and the hint bar are the game, not a mode's props.
+   The old floating bar steps aside for the chrome's thin one. The class is on
+   the app in the markup, so the old bar never shows for a frame at load. */
 .bw-hide-legacy .topbar { display: none !important; }
+
+/* Everything the band hosts stays hidden until it has been moved into the
+   band. These rules live here, in the stylesheet the document links, and not
+   in the one the workspace module imports: the old toolbar, palettes and hint
+   used to show for as long as the script took to load, and then vanish. */
+.bw-hide-legacy .toolbar:not(.bw-tier .toolbar),
+.bw-hide-legacy .road-palette:not(.bw-tier .road-palette),
+.bw-hide-legacy .terrain-palette:not(.bw-tier .terrain-palette),
+.bw-hide-legacy .simulation-controls:not(.bw-slot .simulation-controls),
+.bw-hide-legacy .top-menu:not(.bw-slot .top-menu),
+.bw-hide-legacy .hint:not(.bw-foot .hint),
+.bw-hide-legacy .mobile-hint:not(.bw-foot .mobile-hint) { display: none !important; }
 
 #builder {
   position: absolute;

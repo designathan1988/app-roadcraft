@@ -44,8 +44,6 @@ export interface BuildingWiringDeps {
   flash(key: string, params?: Readonly<Record<string, string | number>>): void;
   /** The tool's mode changed, so the hint bar's sentence did. */
   hintChanged(): void;
-  /** Leaves the Builder: back to the normal HUD. */
-  exitBuilder(): void;
   undo(): void;
   redo(): void;
 }
@@ -314,7 +312,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   }
 
   const actions: BuilderActions = {
-    exit: () => deps.exitBuilder(),
     undo: () => deps.undo(),
     redo: () => deps.redo(),
     setCategory: (id) => {

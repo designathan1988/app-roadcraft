@@ -148,14 +148,6 @@
   -webkit-backdrop-filter: blur(14px) saturate(120%);
   overflow: hidden;
 }
-/* The status bar is the only thing left under the container, and only on the
-   road: with it out of the way the Builder's band sits on the screen edge,
-   centred, because the minimap is gone with the rest of the road HUD. */
-.builder-mode .bw-dock {
-  left: 50%;
-  bottom: 12px;
-  max-width: min(1120px, calc(100vw - 20px));
-}
 
 .bw-tier {
   display: flex;
@@ -166,25 +158,39 @@
   padding: 6px 10px;
 }
 .bw-tier[hidden] { display: none; }
-.bw-tier1 { background: color-mix(in srgb, var(--bw-bg-2) 72%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent); padding-right: 40px; }
-.bw-tier2 { align-items: flex-start; padding: 8px 12px; }
+.bw-tier1 { background: color-mix(in srgb, var(--bw-bg-2) 72%, transparent); }
+/* One hairline between stacked rows, however many of them are showing. */
+.bw-tier + .bw-tier,
+.bw-tier + .bw-foot { border-top: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent); }
+/* A floor on the tray's height, so swapping tool families swaps the contents
+   without the band sliding up and down the screen. */
+.bw-tier2 { align-items: flex-start; padding: 8px 12px; min-height: 92px; }
+/* A tool with nothing to configure shows the toolbar and the hint, no shelf. */
+#builder:not(.has-tray) .bw-tier2 { display: none; }
 .bw-tier3 { justify-content: flex-start; align-content: flex-start; padding: 8px 12px; max-height: min(34dvh, 320px); overflow-y: auto; scrollbar-width: thin; }
 .bw-host { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; min-width: 0; }
+/* The Builder's tray: what it can do on top, what the chosen one offers
+   under it, and the model's own switches at the end of the top row. */
+.bw-host-builder { display: grid; gap: 6px; justify-items: center; width: 100%; }
+.bw-tray { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 14px; width: 100%; }
+.bw-cats { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
+.bw-context { display: flex; align-items: center; gap: 3px; }
+.bw-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
 .bw-host[hidden] { display: none; }
 .bw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
 
-/* The container folds to its first tier. */
+/* The container folds to its bottom row, in the corner of the hint line. */
 .bw-fold {
   position: absolute;
-  top: 7px;
-  right: 7px;
+  right: 5px;
+  bottom: 5px;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 20px;
   border: 1px solid var(--bw-border);
   border-radius: 6px;
-  background: transparent;
+  background: color-mix(in srgb, var(--bw-bg-2) 80%, transparent);
   color: var(--bw-muted);
 }
 .bw-fold:hover { color: var(--bw-active); border-color: var(--bw-active); }
@@ -275,7 +281,7 @@
   align-items: center;
   gap: 10px;
   min-height: 29px;
-  padding: 6px 12px;
+  padding: 6px 34px 6px 12px;
   border-top: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent);
   background: color-mix(in srgb, var(--bw-bg) 45%, transparent);
   color: var(--bw-muted);
@@ -305,8 +311,12 @@
 .bw-foot .mobile-hint.flash,
 .bw-foot .bw-hint.flash { transform: none; color: var(--bw-active); font-weight: 600; }
 .bw-foot .mobile-hint { display: none; }
+/* Editing a building: the workspace's own line speaks, so the game's stands
+   aside - one sentence in the row, never two. */
 .bw-foot .bw-hint { display: none; }
 #builder[data-mode="builder"] .bw-foot .bw-hint { display: block; }
+#builder[data-mode="builder"] .bw-foot .hint { display: none; }
+#builder[data-mode="builder"] .bw-foot .mobile-hint { display: none; }
 @media (max-width: 780px) {
   .bw-foot .hint { display: none; }
   .bw-foot .mobile-hint { display: block; }
@@ -365,37 +375,141 @@
 .bw-tier2 .panel-title { display: none; }
 .bw-tier2 .road-palette.collapsed > .panel-body,
 .bw-tier2 .terrain-palette.collapsed > .panel-body { display: flex; }
-.bw-tier2 .road-palette .panel-body {
+/* The road panel reads as sections: how it is traced, how high, the classes
+   they are drawn in - each under its own small label - and the width it is
+   laid at. */
+/* minmax(0, 1fr), not auto: an auto column grows to the widest row's content,
+   and a carousel of nine tiles would push the panel past its own edge. */
+.bw-tier2 .road-palette .panel-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: center; width: 100%; }
+.bw-tier2 .palette-section {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  gap: 8px 22px;
+  gap: 8px 16px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
-.bw-tier2 .palette-step { display: grid; gap: 6px; align-content: start; }
-.bw-tier2 .road-step-label {
-  margin: 0;
+.bw-tier2 .palette-section.plan { gap: 10px 44px; }
+.bw-tier2 .palette-group { display: grid; gap: 6px; justify-items: start; }
+.bw-tier2 .palette-label {
   color: var(--bw-muted);
-  font-size: 9.5px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
+}
+.bw-tier2 .road-palette .alignment-modes { display: grid; grid-template-columns: repeat(3, minmax(84px, 1fr)); gap: 5px; margin: 0; }
+.bw-tier2 .road-palette .alignment-mode { padding: 8px 14px; font-size: 11px; }
+.bw-tier2 .road-palette .road-height { grid-template-columns: 34px 96px 34px; gap: 6px; margin: 0; }
+.bw-tier2 .road-palette .road-height-step { font-size: 15px; padding: 6px; }
+.bw-tier2 .road-palette .road-height-context { margin: 0; font-size: 10.5px; }
+
+.bw-tier2 .road-palette .road-carousel { display: flex; align-items: center; gap: 6px; min-width: 0; width: 100%; }
+.bw-tier2 .road-palette .road-types {
+  display: flex;
+  flex: 1 1 0;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.bw-tier2 .road-palette .road-types::-webkit-scrollbar { display: none; }
+/* A class is its picture: the tile shows the road, so the width of the thing
+   is the width of the choice. */
+.bw-tier2 .road-palette .road-type {
+  display: grid;
+  grid-template-columns: 1fr;
+  flex: 0 0 auto;
+  gap: 4px;
+  justify-items: center;
+  width: 150px;
+  padding: 5px;
+  border: 1px solid var(--bw-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bw-bg) 45%, transparent);
+  color: var(--bw-muted);
+  font-size: 11px;
+  scroll-snap-align: center;
+}
+.bw-tier2 .road-palette .road-type:hover { color: var(--bw-text); border-color: var(--bw-active); }
+.bw-tier2 .road-palette .road-type.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 10%, transparent); }
+.bw-tier2 .road-palette .road-type-art {
+  display: block;
+  width: 138px;
+  height: 78px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+.bw-tier2 .road-palette .road-type-art.op { display: grid; place-items: center; height: 46px; color: currentColor; }
+.bw-tier2 .road-palette .road-type-art.op svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.bw-tier2 .road-palette .road-type-name { line-height: 1.2; }
+
+/* Lanes / width: the same road, drawn at each count the class allows. */
+.bw-tier2 .road-palette .road-lanes { display: flex; flex-wrap: wrap; gap: 6px; }
+.bw-tier2 .road-palette .road-lane {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 3px;
+  border: 1px solid var(--bw-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bw-muted);
+  font: inherit;
+  font-size: 11px;
   white-space: nowrap;
 }
-.bw-tier2 .road-palette .road-types { display: grid; grid-template-columns: repeat(3, minmax(118px, 1fr)); gap: 3px; }
-.bw-tier2 .road-palette .road-type { grid-template-columns: 30px 1fr; gap: 7px; padding: 6px 8px; width: auto; border-radius: 8px; }
-/* The class says its own name; the lane count and the speed live in the
-   button's aria-label, and the tooltip carries them for the pointer. */
-.bw-tier2 .road-palette .road-type strong { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bw-tier2 .road-palette .road-type small,
-.bw-tier2 .road-palette .road-type .shortcut { display: none; }
-.bw-tier2 .road-palette .road-swatch { width: 30px; height: 15px; }
-.bw-tier2 .road-palette .alignment-modes { display: grid; grid-template-columns: repeat(3, minmax(60px, 1fr)); gap: 4px; margin: 0; }
-.bw-tier2 .road-palette .road-height { grid-template-columns: 30px 92px 30px; gap: 6px; margin: 0; }
-.bw-tier2 .road-palette .road-height-step { font-size: 15px; padding: 5px; }
-.bw-tier2 .road-palette .road-height-context { margin: 0; }
-/* The same sentence is the band's foot line, one row down. */
-.bw-tier2 .road-palette .road-palette-help { display: none; }
+.bw-tier2 .road-palette .road-lane img { display: block; width: 74px; height: 38px; border-radius: 5px; }
+.bw-tier2 .road-palette .road-lane:hover { color: var(--bw-text); border-color: var(--bw-active); }
+.bw-tier2 .road-palette .road-lane.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
+
+.carousel-step {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 34px;
+  border: 1px solid var(--bw-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--bw-muted);
+}
+.carousel-step svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.carousel-step:hover { color: var(--bw-text); border-color: var(--bw-active); }
+/* Nothing to page: the arrows stay in place and step out of the way. */
+.road-carousel:not(.scrollable) .carousel-step { opacity: 0.28; pointer-events: none; }
+.road-carousel.at-start .carousel-step.prev,
+.road-carousel.at-end .carousel-step.next { opacity: 0.4; }
+
+/* What can be done to a road once it is drawn. */
+.bw-tier2 .road-palette .road-ops {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 16px;
+  border-left: 1px solid color-mix(in srgb, var(--bw-border) 80%, transparent);
+}
+.road-op {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--bw-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--bw-muted);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.road-op svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.road-op:hover { color: var(--bw-text); border-color: var(--bw-active); }
+.road-op.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 13%, transparent); }
 
 .bw-tier2 .terrain-palette .panel-body {
   display: flex;
@@ -486,14 +600,6 @@
 .bw-quick-button:hover { color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
 .bw-quick-button.danger:hover { color: var(--bw-danger); background: color-mix(in srgb, var(--bw-danger) 14%, transparent); }
 
-/* The rest of the HUD steps aside: the container is the only control surface. */
-.bw-hide-legacy .toolbar:not(.bw-tier .toolbar),
-.bw-hide-legacy .road-palette:not(.bw-tier .road-palette),
-.bw-hide-legacy .terrain-palette:not(.bw-tier .terrain-palette),
-.bw-hide-legacy .simulation-controls:not(.bw-slot .simulation-controls) { display: none !important; }
-.builder-mode .topbar,
-.builder-mode .hint,
-.builder-mode .mobile-hint { display: none !important; }
 
 @media (max-width: 780px) {
   /* The phone's own "more" menu is gone with the old bar; the app menu lives

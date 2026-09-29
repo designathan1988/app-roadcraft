@@ -46,6 +46,8 @@ export function commitRoadPath(
   end: Anchor,
   type: number,
   pieces: readonly RoadPathPiece[],
+  /** Lanes for every segment laid, or null for the class's own profile. */
+  lanes: number | null = null,
 ): DraftResult {
   if (!pieces.length || !Number.isInteger(type) || type < 0 || type >= ROAD_TYPES.length) {
     return { committed: false, reason: 'degenerate' };
@@ -78,6 +80,7 @@ export function commitRoadPath(
       work, workNet, from, to, type, shape, 'ground',
       { start: currentHeight, end: nextHeight,
         smoothEnd: i < pieces.length - 1 },
+      lanes,
     );
     if (!result.committed && result.reason !== 'duplicate') return result;
     committed ||= result.committed;
@@ -175,6 +178,7 @@ function commitDraftInPlace(
   curve: CurveShape | null,
   structure: RoadStructure,
   heights?: { readonly start: number; readonly end: number; readonly smoothEnd?: boolean },
+  lanes: number | null = null,
 ): DraftResult {
   const endpoints = materializeEndpoints(doc, net, start, end, heights);
   if (!endpoints || endpoints[0] === endpoints[1]) {
@@ -300,7 +304,7 @@ function commitDraftInPlace(
     const pieceCurve = curveShapeForRange(a, b, curve, fromPoint, toPoint, from.q, to.q);
     if (alreadyJoined(doc, from.node, to.node, pieceCurve, structure)) continue;
     const direction = ROAD_TYPES[type]?.lanes === 1 ? 'aToB' : 'both';
-    if (doc.addSegment(from.node, to.node, type, pieceCurve, from.s, direction, null, structure)) made++;
+    if (doc.addSegment(from.node, to.node, type, pieceCurve, from.s, direction, lanes, structure)) made++;
   }
 
   if (!made) return { committed: false, reason: 'duplicate' };
