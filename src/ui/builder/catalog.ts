@@ -66,6 +66,7 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
       mode('wing'),
       mode('stack'),
       mode('cut'),
+      mode('moveMass'),
       action('split'),
       action('setback'),
       action('vertexAdd'),
