@@ -12,16 +12,23 @@ import {
 import { FACADE_PATTERNS, ELEMENT_KINDS } from '@world/buildings/types';
 import { t } from '../i18n';
 import { builderIconSvg } from './icons';
+import './workspace.css';
 
 export type { BuilderField, BuilderSelectionInfo };
 
 /**
  * The Builder Workspace: the whole interface of the buildings module.
  *
- * Four permanent areas - the top bar (exit, history, floor, snap, grid, view,
- * hide others, help), the bottom toolbar (the nine categories), the contextual
- * tray above it (only the chosen category's tools) and the right inspector
- * (precise numbers of the current selection). The map owns the middle.
+ * The top of the screen carries everything the player picks from: the status
+ * row (exit, history, floor, snap, grid, view, hide, help), the rail of the
+ * nine categories under it, and - dropping below the rail - the panel of the
+ * chosen category. A category opens its tools, a tool with a chevron opens its
+ * variants in that same panel, and the inspector on the right carries the
+ * precise numbers of whatever is selected. The map owns the middle.
+ *
+ * Everything is in the flow of the page, so nothing can be cut off by the edge
+ * of the window; the rail scrolls with its own arrows when the catalogue
+ * outgrows the width.
  *
  * This module only renders state and reports clicks: `buildingsWiring.ts` turns
  * every one of them into a tool command. Nothing here reads the document.
@@ -42,14 +49,14 @@ export interface BuilderState {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly inspectorOpen: boolean;
-  /** True while a gesture is running: the tray folds down to give the map room. */
+  /** True while a gesture is running: the panel folds down to give the map room. */
   readonly busy: boolean;
   readonly selection: BuilderSelectionInfo | null;
   /** Screen position of the selection's quick actions bar, or null. */
   readonly quickBar: { readonly x: number; readonly y: number } | null;
   /** One sentence on what the active tool does now. */
   readonly hint: string;
-  /** A plan is being drawn: the tray carries Finish, Back and Cancel. */
+  /** A plan is being drawn: the panel carries Finish, Back and Cancel. */
   readonly planning: boolean;
   /** How many points the plan has, for the count beside those controls. */
   readonly planPoints: number;
@@ -57,7 +64,7 @@ export interface BuilderState {
   /** The facade pattern the Face category would apply, and where. */
   readonly pattern: string | null;
   readonly scope: string;
-  /** The selected mass's roof, for the ridge and slope popover. */
+  /** The selected mass's roof, for the ridge and slope panel. */
   readonly roof: { readonly pitch: number; readonly ridge: 'x' | 'y'; readonly fall: number; readonly pitched: boolean } | null;
   /** The material the finish tools would paint now. */
   readonly material: { readonly finish: Finish; readonly colour: number } | null;
@@ -92,7 +99,7 @@ export interface BuilderActions {
   roofPitch(delta: number): void;
   roofRidge(ridge: 'x' | 'y'): void;
   roofFall(side: number): void;
-  /** A view command from the Vista popover: frame | top | turnLeft | turnRight. */
+  /** A view command from the Vista panel: frame | top | turnLeft | turnRight. */
   view(id: string): void;
   /** A preset thumbnail was rendered off screen. */
   presetThumbnails(images: ReadonlyMap<string, string>): void;
@@ -130,6 +137,9 @@ const el = <K extends keyof HTMLElementTagNameMap>(
   return node;
 };
 
+const caret = (): string =>
+  '<svg class="bw-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg>';
+
 export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace {
   const root = document.getElementById('builder') as HTMLElement;
 
@@ -153,11 +163,11 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   const floorChip = el('button', 'bw-chip bw-floor');
   floorChip.type = 'button';
-  floorChip.onclick = () => openFloorPopover();
+  floorChip.onclick = () => showPanel('floor');
 
   const snapChip = el('button', 'bw-chip bw-snap');
   snapChip.type = 'button';
-  snapChip.onclick = () => openSnapPopover();
+  snapChip.onclick = () => showPanel('snap');
 
   const gridToggle = el('button', 'bw-chip bw-toggle');
   gridToggle.type = 'button';
@@ -165,7 +175,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   const viewChip = el('button', 'bw-chip');
   viewChip.type = 'button';
-  viewChip.onclick = () => openViewPopover();
+  viewChip.onclick = () => showPanel('view');
 
   const hideToggle = el('button', 'bw-chip bw-toggle');
   hideToggle.type = 'button';
@@ -174,10 +184,49 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const help = el('button', 'bw-icon-button bw-help');
   help.type = 'button';
   help.dataset['i18nTitle'] = 'builder.help';
-  help.onclick = () => openHelp();
+  help.onclick = () => showPanel('help');
 
   const spacer = el('span', 'bw-spacer');
   top.append(exit, historyGroup, spacer, floorChip, snapChip, gridToggle, viewChip, hideToggle, help);
+
+  // ------------------------------------------------------------ rail + panel
+  const head = el('div', 'bw-head');
+  const railWrap = el('div', 'bw-rail-wrap');
+  const rail = el('div', 'bw-rail');
+  const arrow = (dir: -1 | 1): HTMLButtonElement => {
+    const b = el('button', 'bw-rail-arrow');
+    b.type = 'button';
+    b.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir < 0 ? 'M14 6l-6 6 6 6' : 'M10 6l6 6-6 6'}"/></svg>`;
+    b.setAttribute('aria-label', t(dir < 0 ? 'builder.rail.left' : 'builder.rail.right'));
+    b.onclick = () => rail.scrollBy({ left: dir * 200, behavior: 'smooth' });
+    return b;
+  };
+  const railLeft = arrow(-1);
+  const railRight = arrow(1);
+  railWrap.append(railLeft, rail, railRight);
+  const panel = el('div', 'bw-panel');
+  head.append(top, railWrap, panel);
+
+  const quick = el('div', 'bw-quick');
+  const hint = el('div', 'bw-hint');
+
+  for (const category of BUILDER_CATALOG) {
+    const button = el('button', 'bw-cat');
+    button.type = 'button';
+    button.dataset['category'] = category.id;
+    button.onclick = () => {
+      closePanel();
+      actions.setCategory(category.id);
+    };
+    rail.appendChild(button);
+  }
+
+  /** The arrows only show when the rail actually overflows. */
+  const syncRailArrows = (): void => {
+    const over = rail.scrollWidth > rail.clientWidth + 2;
+    railLeft.hidden = !over;
+    railRight.hidden = !over;
+  };
 
   // ------------------------------------------------------------ inspector
   const inspector = el('aside', 'bw-inspector');
@@ -191,26 +240,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const inspectorBody = el('div', 'bw-inspector-body');
   inspector.append(inspectorHead, inspectorBody);
 
-  // ------------------------------------------------------------ bottom
-  const bottom = el('div', 'bw-bottom');
-  const tray = el('div', 'bw-tray');
-  const toolbar = el('div', 'bw-toolbar');
-  bottom.append(tray, toolbar);
-
-  const quick = el('div', 'bw-quick');
-  const hint = el('div', 'bw-hint');
-  const popover = el('div', 'bw-pop');
-  popover.hidden = true;
-
-  root.append(top, inspector, bottom, quick, hint, popover);
-
-  for (const category of BUILDER_CATALOG) {
-    const button = el('button', 'bw-cat');
-    button.type = 'button';
-    button.dataset['category'] = category.id;
-    button.onclick = () => actions.setCategory(category.id);
-    toolbar.appendChild(button);
-  }
+  root.append(head, inspector, quick, hint);
 
   const quickButtons = new Map<string, HTMLButtonElement>();
   for (const [name, icon] of [
@@ -227,96 +257,88 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     quickButtons.set(name, b);
   }
 
-  const closePopover = (): void => {
-    popover.hidden = true;
-    popover.innerHTML = '';
-    popover.dataset['open'] = '';
-  };
-
-  document.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (popover.hidden) return;
-      const target = e.target as Node;
-      if (!popover.contains(target) && !top.contains(target)) closePopover();
-    },
-    true,
-  );
-
-  const openPopover = (name: string, anchor: HTMLElement, content: HTMLElement): void => {
-    if (popover.dataset['open'] === name) {
-      closePopover();
-      return;
-    }
-    closePopover();
-    popover.dataset['open'] = name;
-    popover.appendChild(content);
-    const r = anchor.getBoundingClientRect();
-    popover.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 330))}px`;
-    popover.style.top = `${r.bottom + 6}px`;
-    popover.hidden = false;
-  };
-
-  const isOpen = (name: string): boolean => !popover.hidden && popover.dataset['open'] === name;
-
+  // ------------------------------------------------------------ the panel
+  /** Which panel is open below the rail: a family, a gallery, or nothing. */
+  let panelId: string | null = null;
   let lastState: BuilderState | null = null;
 
-  // ------------------------------------------------------------ popovers
-  const popBody = (): HTMLElement => el('div', 'bw-pop-body');
+  const closePanel = (): void => {
+    panelId = null;
+  };
+
+  const showPanel = (id: string): void => {
+    panelId = panelId === id ? null : id;
+    renderPanel(lastState);
+  };
+
+  const closeAfter = (run: () => void): (() => void) => () => {
+    run();
+    closePanel();
+    renderPanel(lastState);
+  };
 
   const note = (key: string): HTMLElement => {
-    const p = el('p', 'bw-pop-note');
+    const p = el('p', 'bw-panel-note');
     p.dataset['i18n'] = key;
     p.textContent = t(key);
     return p;
   };
 
   const item = (label: string, active: boolean, run: () => void): HTMLButtonElement => {
-    const b = el('button', 'bw-pop-item' + (active ? ' active' : ''));
+    const b = el('button', 'bw-panel-item' + (active ? ' active' : ''));
     b.type = 'button';
     b.textContent = label;
-    b.onclick = () => {
-      run();
-      closePopover();
-    };
+    b.onclick = closeAfter(run);
     return b;
   };
 
-  function openSnapPopover(): void {
-    const wrap = popBody();
-    const grid = el('div', 'bw-pop-grid');
+  /** The panel's own header: a back arrow and the family's name. */
+  const panelHead = (titleKey: string): HTMLElement => {
+    const row = el('div', 'bw-panel-head');
+    const back = el('button', 'bw-panel-back');
+    back.type = 'button';
+    back.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>';
+    back.setAttribute('aria-label', t('builder.panel.back'));
+    back.onclick = closeAfter(() => undefined);
+    const title = el('span', 'bw-panel-title');
+    title.textContent = t(titleKey);
+    row.append(back, title);
+    return row;
+  };
+
+  function panelSnap(): HTMLElement {
+    const wrap = el('div', 'bw-panel-body');
+    const grid = el('div', 'bw-panel-grid');
     for (const mode of SNAP_MODES) {
       grid.appendChild(item(t(`builder.snap.${mode}`), lastState?.snap === mode, () => actions.setSnap(mode)));
     }
     wrap.append(grid, note('builder.snap.note'));
-    openPopover('snap', snapChip, wrap);
+    return wrap;
   }
 
-  function openFloorPopover(): void {
+  function panelFloor(): HTMLElement {
     const state = lastState;
-    const wrap = popBody();
-    const list = el('div', 'bw-pop-grid floors');
+    const wrap = el('div', 'bw-panel-body');
+    const list = el('div', 'bw-panel-grid floors');
     const total = Math.max(1, state?.floor.total ?? 1);
     for (let i = 0; i < total; i++) {
       list.appendChild(item(String(i + 1), state?.floor.active === i, () => actions.setFloor(i)));
     }
-    const commands = el('div', 'bw-pop-row');
+    const commands = el('div', 'bw-panel-row');
     for (const [command, key] of [
       ['duplicate', 'builder.floor.duplicate'],
       ['insertAbove', 'builder.floor.insertAbove'],
       ['insertBelow', 'builder.floor.insertBelow'],
     ] as const) {
-      const b = item(t(key), false, () => actions.floorCommand(command));
-      b.dataset['i18n'] = key;
-      commands.appendChild(b);
+      commands.appendChild(item(t(key), false, () => actions.floorCommand(command)));
     }
     wrap.append(list, commands, note('builder.floor.note'));
-    openPopover('floor', floorChip, wrap);
+    return wrap;
   }
 
-  function openViewPopover(): void {
-    const wrap = popBody();
-    const list = el('div', 'bw-pop-grid');
+  function panelView(): HTMLElement {
+    const wrap = el('div', 'bw-panel-body');
+    const list = el('div', 'bw-panel-grid');
     for (const [id, key] of [
       ['frame', 'builder.view.frame'],
       ['top', 'builder.view.top'],
@@ -326,12 +348,11 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       list.appendChild(item(t(key), false, () => actions.view(id)));
     }
     wrap.appendChild(list);
-    openPopover('view', viewChip, wrap);
+    return wrap;
   }
 
-  function openHelp(): void {
-    const wrap = popBody();
-    wrap.classList.add('bw-help-body');
+  function panelHelp(): HTMLElement {
+    const wrap = el('div', 'bw-panel-body bw-help-body');
     for (const [title, body] of [
       ['builder.help.select', 'builder.help.select.text'],
       ['builder.help.gizmo', 'builder.help.gizmo.text'],
@@ -341,19 +362,17 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     ] as const) {
       const row = el('div', 'bw-help-row');
       const h = el('strong');
-      h.dataset['i18n'] = title;
       h.textContent = t(title);
       const p = el('span');
-      p.dataset['i18n'] = body;
       p.textContent = t(body);
       row.append(h, p);
       wrap.appendChild(row);
     }
-    openPopover('help', help, wrap);
+    return wrap;
   }
 
-  function openModels(anchor: HTMLElement): void {
-    const wrap = popBody();
+  function panelModels(): HTMLElement {
+    const wrap = el('div', 'bw-panel-body');
     const grid = el('div', 'bw-presets');
     grid.id = 'bwPresetGrid';
     for (const bp of BLUEPRINTS) {
@@ -361,34 +380,28 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.type = 'button';
       b.dataset['preset'] = bp.key;
       b.innerHTML = `${builderIconSvg('models', 22)}<span class="bw-preset-name"></span>`;
-      b.onclick = () => {
-        actions.choosePreset(bp.key);
-        closePopover();
-      };
+      b.onclick = closeAfter(() => actions.choosePreset(bp.key));
       grid.appendChild(b);
     }
     const mine = el('div', 'bw-presets');
     mine.dataset['userPresets'] = '';
     wrap.append(grid, mine, note('builder.models.note'));
-    openPopover('models', anchor, wrap);
     if (lastState) {
       renderUserPresets(mine, lastState);
       labelPresets(wrap);
       if (thumbnails.size > 0) paintThumbnails(thumbnails, wrap);
     }
+    return wrap;
   }
 
-  function openFinishes(anchor: HTMLElement): void {
-    const wrap = popBody();
+  function panelFinishes(): HTMLElement {
+    const wrap = el('div', 'bw-panel-body');
     const grid = el('div', 'bw-finishes');
     for (const finish of FINISHES) {
       const b = el('button', 'bw-finish');
       b.type = 'button';
       b.dataset['finish'] = finish;
-      b.onclick = () => {
-        actions.chooseFinish(finish);
-        closePopover();
-      };
+      b.onclick = closeAfter(() => actions.chooseFinish(finish));
       grid.appendChild(b);
     }
     const swatches = el('div', 'bw-swatches');
@@ -398,10 +411,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.dataset['colour'] = String(colour);
       b.style.setProperty('--swatch', hexOf(colour));
       b.setAttribute('aria-label', hexOf(colour));
-      b.onclick = () => {
-        actions.chooseColour(colour);
-        closePopover();
-      };
+      b.onclick = closeAfter(() => actions.chooseColour(colour));
       swatches.appendChild(b);
     }
     const custom = el('input', 'bw-swatch custom');
@@ -416,28 +426,21 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.dataset['style'] = style.key;
       const chip = (c: number): string => `<i style="background:${hexOf(c)}"></i>`;
       b.innerHTML = `<span class="chips">${chip(style.materials.wall.colour)}${chip(style.materials.trim.colour)}${chip(style.materials.roof.colour)}</span><span class="name"></span>`;
-      b.onclick = () => {
-        actions.chooseStyle(style.key);
-        closePopover();
-      };
+      b.onclick = closeAfter(() => actions.chooseStyle(style.key));
       styles.appendChild(b);
     }
     wrap.append(grid, swatches, styles, note('builder.finish.note'));
-    openPopover('finishes', anchor, wrap);
     if (lastState) markFinishes(wrap, lastState);
+    return wrap;
   }
 
-  /**
-   * A family of tools behind one button: the tray keeps the families, and the
-   * variants open here, on the spot.
-   */
-  function openFamily(anchor: HTMLElement, family: string): void {
-    const members = BUILDER_GALLERIES[family];
-    if (!members) return;
-    const wrap = popBody();
-    const grid = el('div', 'bw-pop-grid');
+  /** A family of tools: the rail keeps the families, the variants open here. */
+  function panelFamily(family: string): HTMLElement {
+    const members = BUILDER_GALLERIES[family] ?? [];
+    const wrap = el('div', 'bw-panel-body');
+    const grid = el('div', 'bw-panel-grid');
     for (const id of members) {
-      const b = el('button', 'bw-pop-item bw-family-item');
+      const b = el('button', 'bw-panel-item bw-family-item');
       b.type = 'button';
       b.dataset['familyTool'] = id;
       const on = lastState?.tool === id || lastState?.armed === id;
@@ -445,65 +448,99 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.innerHTML = `${builderIconSvg(id, 16)}<span></span>`;
       (b.querySelector('span') as HTMLElement).textContent = t(`builder.tool.${id}`);
       b.title = t(`builder.tool.${id}`);
-      b.onclick = () => {
-        actions.chooseTool(id);
-        closePopover();
-      };
+      b.onclick = closeAfter(() => actions.chooseTool(id));
       grid.appendChild(b);
     }
     wrap.append(grid, note(`builder.family.${family}`));
-    openPopover(`family-${family}`, anchor, wrap);
+    return wrap;
   }
 
-  /** The "More" gallery: the rest of the free parts a building can carry. */
-  function openMoreComponents(anchor: HTMLElement): void {
-    const wrap = popBody();
-    const grid = el('div', 'bw-pop-grid');
+  function panelMore(): HTMLElement {
+    const wrap = el('div', 'bw-panel-body');
+    const grid = el('div', 'bw-panel-grid');
     for (const kind of ELEMENT_KINDS) {
       grid.appendChild(item(t(`building.element.${kind}`), lastState?.tool === kind, () => actions.chooseTool(kind)));
     }
     wrap.append(grid, note('builder.components.note'));
-    openPopover('components', anchor, wrap);
+    return wrap;
   }
 
   /** Ridge, slope and pitch of the selected mass's roof. */
-  function openRoofShape(anchor: HTMLElement): void {
-    const wrap = popBody();
+  function panelRoofShape(): HTMLElement {
+    const wrap = el('div', 'bw-panel-body');
     const roof = lastState?.roof ?? null;
-    const pitchRow = el('div', 'bw-pop-row');
-    const pitchLabel = el('span', 'bw-pop-note');
+    const pitchRow = el('div', 'bw-panel-row');
+    const pitchLabel = el('span', 'bw-panel-note');
     pitchLabel.textContent = `${t('builder.field.pitch')}: ${roof?.pitch ?? 30}°`;
     pitchRow.append(
       item('− 5°', false, () => actions.roofPitch(-5)),
       pitchLabel,
       item('+ 5°', false, () => actions.roofPitch(5)),
     );
-    const ridgeRow = el('div', 'bw-pop-row');
+    const ridgeRow = el('div', 'bw-panel-row');
     for (const ridge of ['x', 'y'] as const) {
       ridgeRow.appendChild(item(t(`builder.roof.ridge.${ridge}`), roof?.ridge === ridge, () => actions.roofRidge(ridge)));
     }
-    const fallRow = el('div', 'bw-pop-row');
+    const fallRow = el('div', 'bw-panel-row');
     for (const [side, key] of [[0, 'front'], [1, 'right'], [2, 'back'], [3, 'left']] as const) {
       fallRow.appendChild(item(t(`builder.roof.side.${key}`), roof?.fall === side, () => actions.roofFall(side)));
     }
     wrap.append(pitchRow, ridgeRow, fallRow, note('builder.roofShape.note'));
-    openPopover('roofShape', anchor, wrap);
+    return wrap;
   }
 
   /** The facade patterns, applied to a bay, a floor, a face or the volume. */
-  function openPatterns(anchor: HTMLElement): void {
-    const wrap = popBody();
-    const grid = el('div', 'bw-pop-grid');
+  function panelPatterns(): HTMLElement {
+    const wrap = el('div', 'bw-panel-body');
+    const grid = el('div', 'bw-panel-grid');
     for (const pattern of FACADE_PATTERNS) {
       grid.appendChild(item(t(`creator.pattern.${pattern}`), lastState?.pattern === pattern, () => actions.choosePattern(pattern)));
     }
-    const scopes = el('div', 'bw-pop-row');
+    const scopes = el('div', 'bw-panel-row');
     for (const scope of FACADE_SCOPES) {
-      const button = item(t(`creator.dock.scope.${scope}`), lastState?.scope === scope, () => actions.setScope(scope));
-      scopes.appendChild(button);
+      scopes.appendChild(item(t(`creator.dock.scope.${scope}`), lastState?.scope === scope, () => actions.setScope(scope)));
     }
     wrap.append(grid, scopes, note('builder.pattern.note'));
-    openPopover('patterns', anchor, wrap);
+    return wrap;
+  }
+
+  function panelTitleKey(id: string): string | null {
+    if (id.startsWith('family:')) return `builder.tool.${id.slice('family:'.length)}`;
+    if (id === 'more') return 'builder.tool.moreComponents';
+    if (id === 'roofShape') return 'builder.tool.roofShape';
+    if (id === 'patterns') return 'builder.tool.patterns';
+    if (id === 'models') return 'builder.tool.models';
+    if (id === 'finishes') return 'builder.tool.material';
+    if (id === 'help') return 'builder.help';
+    if (id === 'view') return 'builder.view';
+    if (id === 'snap') return 'builder.snap.label';
+    if (id === 'floor') return 'builder.floor.title';
+    return null;
+  }
+
+  /** Finish / Back / Cancel, while a plan is being drawn. */
+  function planControls(state: BuilderState): HTMLElement {
+    const wrap = el('div', 'bw-panel-body bw-plan-body');
+    const count = el('span', 'bw-plan-count');
+    count.textContent = t('builder.plan.points', { count: state.planPoints });
+    const finish = el('button', 'bw-tool bw-plan-finish');
+    finish.type = 'button';
+    finish.innerHTML = `${builderIconSvg('check', 15)}<span></span>`;
+    (finish.querySelector('span') as HTMLElement).textContent = t('builder.plan.finish');
+    finish.disabled = state.planPoints < 3;
+    finish.onclick = () => actions.planFinish();
+    const back = el('button', 'bw-tool');
+    back.type = 'button';
+    back.innerHTML = `${builderIconSvg('undo', 15)}<span></span>`;
+    (back.querySelector('span') as HTMLElement).textContent = t('builder.plan.back');
+    back.onclick = () => actions.planBack();
+    const cancel = el('button', 'bw-tool danger');
+    cancel.type = 'button';
+    cancel.innerHTML = `${builderIconSvg('close', 15)}<span></span>`;
+    (cancel.querySelector('span') as HTMLElement).textContent = t('builder.plan.cancel');
+    cancel.onclick = () => actions.planCancel();
+    wrap.append(count, finish, back, cancel);
+    return wrap;
   }
 
   // ------------------------------------------------------------ rendering
@@ -513,7 +550,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     container.dataset['signature'] = signature;
     container.innerHTML = '';
     if (state.userBlueprints.length === 0) return;
-    const heading = el('div', 'bw-pop-heading');
+    const heading = el('div', 'bw-panel-heading');
     heading.textContent = t('building.myBlueprints');
     container.appendChild(heading);
     for (const bp of state.userBlueprints) {
@@ -521,10 +558,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.type = 'button';
       b.innerHTML = `${builderIconSvg('models', 20)}<span class="bw-preset-name"></span><span class="remove">×</span>`;
       (b.querySelector('.bw-preset-name') as HTMLElement).textContent = bp.name ?? bp.key;
-      b.onclick = () => {
-        actions.chooseUserBlueprint(bp.key);
-        closePopover();
-      };
+      b.onclick = closeAfter(() => actions.chooseUserBlueprint(bp.key));
       (b.querySelector('.remove') as HTMLElement).onclick = (e) => {
         e.stopPropagation();
         actions.removeUserBlueprint(bp.key);
@@ -532,7 +566,6 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       container.appendChild(b);
     }
   }
-
 
   function labelPresets(wrap: HTMLElement): void {
     wrap.querySelectorAll<HTMLButtonElement>('.bw-preset[data-preset]').forEach((b) => {
@@ -545,7 +578,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     });
   }
 
-  function paintThumbnails(images: ReadonlyMap<string, string>, scope: ParentNode = root): void {
+  function paintThumbnails(images: ReadonlyMap<string, string>, scope: ParentNode = panel): void {
     scope.querySelectorAll<HTMLButtonElement>('.bw-preset[data-preset]').forEach((b) => {
       const url = images.get(b.dataset['preset'] ?? '');
       if (!url) return;
@@ -568,6 +601,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.classList.toggle('active', b.dataset['finish'] === finish);
       const span = b.querySelector('span');
       if (span) span.textContent = t(`building.finish.${b.dataset['finish']}`);
+      b.title = t(`building.finish.${b.dataset['finish']}`);
     });
     scope.querySelectorAll<HTMLButtonElement>('.bw-swatch[data-colour]').forEach((b) => {
       b.classList.toggle('active', b.dataset['colour'] === colour);
@@ -575,9 +609,6 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     scope.querySelectorAll<HTMLButtonElement>('.bw-style').forEach((b) => {
       const name = b.querySelector('.name');
       if (name) name.textContent = t(`building.style.${b.dataset['style']}`);
-    });
-    scope.querySelectorAll<HTMLButtonElement>('.bw-finish').forEach((b) => {
-      b.title = t(`building.finish.${b.dataset['finish']}`);
     });
   }
 
@@ -653,8 +684,8 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     }
   }
 
-  function renderToolbar(state: BuilderState): void {
-    toolbar.querySelectorAll<HTMLButtonElement>('.bw-cat').forEach((b) => {
+  function renderRail(state: BuilderState): void {
+    rail.querySelectorAll<HTMLButtonElement>('.bw-cat').forEach((b) => {
       const id = b.dataset['category'] as BuilderCategoryId;
       const on = id === state.category;
       b.classList.toggle('active', on);
@@ -663,44 +694,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       (b.querySelector('span') as HTMLElement).textContent = t(`builder.category.${id}`);
       b.title = t(`builder.category.${id}`);
     });
+    syncRailArrows();
   }
 
-  function renderTray(state: BuilderState): void {
+  /** The tools of the chosen category, in the row below the rail. */
+  function toolsRow(state: BuilderState): HTMLElement {
     const spec = categorySpec(state.category);
-    tray.classList.toggle('folded', state.busy);
-    const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${[...state.ready].join(',')}`;
-    if (tray.dataset['signature'] === signature) return;
-    tray.dataset['signature'] = signature;
-    tray.innerHTML = '';
-    // A plan in progress owns the tray: it carries the only three things that
-    // make sense while drawing (finish, step back, cancel).
-    if (state.planning) {
-      const count = el('span', 'bw-plan-count');
-      count.textContent = t('builder.plan.points', { count: state.planPoints });
-      tray.appendChild(count);
-      const finish = el('button', 'bw-tool bw-plan-finish');
-      finish.type = 'button';
-      finish.innerHTML = `${builderIconSvg('check', 15)}<span></span>`;
-      (finish.querySelector('span') as HTMLElement).textContent = t('builder.plan.finish');
-      finish.title = t('builder.plan.finish');
-      finish.disabled = state.planPoints < 3;
-      finish.onclick = () => actions.planFinish();
-      tray.appendChild(finish);
-      for (const [id, key, icon] of [
-        ['back', 'builder.plan.back', 'undo'],
-        ['cancel', 'builder.plan.cancel', 'close'],
-      ] as const) {
-        const b = el('button', 'bw-tool' + (id === 'cancel' ? ' danger' : ''));
-        b.type = 'button';
-        b.dataset['planAction'] = id;
-        b.innerHTML = `${builderIconSvg(icon, 15)}<span></span>`;
-        (b.querySelector('span') as HTMLElement).textContent = t(key);
-        b.title = t(key);
-        b.onclick = () => (id === 'back' ? actions.planBack() : actions.planCancel());
-        tray.appendChild(b);
-      }
-      return;
-    }
+    const row = el('div', 'bw-panel-row bw-tools');
     for (const tool of spec.tools) {
       const b = el('button', 'bw-tool' + (tool.danger ? ' danger' : ''));
       b.type = 'button';
@@ -710,23 +710,68 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.disabled = !state.ready.has(tool.id);
       b.setAttribute('aria-pressed', String(on));
       const label = t(`builder.tool.${tool.id}`);
-      b.innerHTML = `${builderIconSvg(tool.id, 16)}<span></span>`;
+      const family = tool.kind === 'menu' && BUILDER_GALLERIES[tool.id] ? `family:${tool.id}` : null;
+      b.innerHTML = `${builderIconSvg(tool.id, 16)}<span></span>${tool.kind === 'menu' ? caret() : ''}`;
       (b.querySelector('span') as HTMLElement).textContent = label;
       b.title = label;
+      b.classList.toggle('open', family !== null && panelId === family);
       b.onclick = () => {
         if (tool.kind === 'menu') {
-          if (BUILDER_GALLERIES[tool.id]) openFamily(b, tool.id);
-          else if (tool.id === 'models') openModels(b);
-          else if (tool.id === 'material' || tool.id === 'colour') openFinishes(b);
-          else if (tool.id === 'patterns') openPatterns(b);
-          else if (tool.id === 'roofShape') openRoofShape(b);
-          else openMoreComponents(b);
+          if (family) showPanel(family);
+          else if (tool.id === 'models') showPanel('models');
+          else if (tool.id === 'material' || tool.id === 'colour') showPanel('finishes');
+          else if (tool.id === 'patterns') showPanel('patterns');
+          else if (tool.id === 'roofShape') showPanel('roofShape');
+          else showPanel('more');
           return;
         }
+        closePanel();
         actions.chooseTool(tool.id);
+        renderPanel(lastState);
       };
-      tray.appendChild(b);
+      row.appendChild(b);
     }
+    return row;
+  }
+
+  /**
+   * The drop-down under the rail: the tools of the chosen category, and - when
+   * one is open - the panel of the chosen family or gallery below them.
+   */
+  function renderPanel(state: BuilderState | null): void {
+    if (!state) return;
+    const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${panelId ?? ''}|${[...state.ready].join(',')}`;
+    if (panel.dataset['signature'] === signature) return;
+    panel.dataset['signature'] = signature;
+    panel.innerHTML = '';
+    panel.hidden = false;
+    if (state.planning) {
+      panel.appendChild(planControls(state));
+      return;
+    }
+    panel.appendChild(toolsRow(state));
+    if (!panelId) return;
+    const body = panelBody(panelId);
+    if (!body) return;
+    const wrap = el('div', 'bw-panel-drop');
+    const titleKey = panelTitleKey(panelId);
+    if (titleKey) wrap.appendChild(panelHead(titleKey));
+    wrap.appendChild(body);
+    panel.appendChild(wrap);
+  }
+
+  function panelBody(id: string): HTMLElement | null {
+    if (id === 'snap') return panelSnap();
+    if (id === 'floor') return panelFloor();
+    if (id === 'view') return panelView();
+    if (id === 'help') return panelHelp();
+    if (id === 'models') return panelModels();
+    if (id === 'finishes') return panelFinishes();
+    if (id === 'more') return panelMore();
+    if (id === 'roofShape') return panelRoofShape();
+    if (id === 'patterns') return panelPatterns();
+    if (id.startsWith('family:')) return panelFamily(id.slice('family:'.length));
+    return null;
   }
 
   function renderTop(state: BuilderState): void {
@@ -788,15 +833,12 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     lastState = state;
     root.dataset['category'] = state.category;
     renderTop(state);
-    renderToolbar(state);
-    renderTray(state);
+    renderRail(state);
+    renderPanel(state);
     renderInspector(state);
     renderQuick(state);
     hintBase = state.hint;
     if (flashTimer === null) hint.textContent = hintBase;
-    if (isOpen('snap')) openSnapPopover();
-    if (isOpen('floor')) openFloorPopover();
-    if (isOpen('models') && lastState) labelPresets(popover);
   };
 
   const flash = (text: string): void => {
@@ -812,9 +854,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   const relabel = (): void => {
     inspectorBody.dataset['signature'] = '';
-    tray.dataset['signature'] = '';
-    toolbar.dataset['signature'] = '';
-    closePopover();
+    panel.dataset['signature'] = '';
     if (lastState) refresh(lastState);
   };
 
@@ -825,7 +865,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     root,
     setPresetThumbnails(images) {
       for (const [key, url] of images) thumbnails.set(key, url);
-      paintThumbnails(images, popover);
+      paintThumbnails(images, panel);
     },
   };
 }
