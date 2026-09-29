@@ -185,7 +185,20 @@ export interface Volume {
 }
 
 /** Free parts a building can be given besides its volumes. See docs/buildings.md, "Elements". */
-export const ELEMENT_KINDS = ['stair', 'ramp', 'pillar', 'canopy', 'wall', 'slab'] as const;
+export const ELEMENT_KINDS = [
+  'stair',
+  'ramp',
+  'pillar',
+  'canopy',
+  'wall',
+  'slab',
+  'pavement',
+  'fence',
+  'tree',
+  'bench',
+  'ac',
+  'planter',
+] as const;
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 
 /**
@@ -207,6 +220,13 @@ export interface BuildingElement {
   d: number;
   z: number;
   h: number;
+  /**
+   * Rotation of the box about its own centre, radians in the building's local
+   * frame. Absent (0) means the box is aligned with `facing`, which is what
+   * every hand-placed part is; a run drawn along a path sets it so a fence or
+   * a wall follows the line it was traced on.
+   */
+  angle?: number;
   material?: MaterialSpec;
 }
 

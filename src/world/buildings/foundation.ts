@@ -253,8 +253,38 @@ export function foundationOf(
     highest,
     bottom: lowest - PLINTH_BURY,
     spread: highest - lowest,
-    entrances,
+    entrances: mergeEntrances(entrances),
   };
+}
+
+/**
+ * Side-by-side ways in become ONE wide flight.
+ *
+ * Two doors on neighbouring bays used to be two narrow flights with a strip of
+ * bare wall between them - a chasm a person could not use and nobody would
+ * build. Every run of contiguous bays that share a way in (same volume, same
+ * side, same component, same flight geometry) is a single entrance, as wide as
+ * the run.
+ */
+function mergeEntrances(list: readonly Entrance[]): Entrance[] {
+  const out: Entrance[] = [];
+  for (const entrance of list) {
+    const last = out[out.length - 1];
+    if (last && adjacentEntrance(last, entrance)) {
+      out[out.length - 1] = { ...last, width: last.width + entrance.width };
+      continue;
+    }
+    out.push(entrance);
+  }
+  return out;
+}
+
+function adjacentEntrance(a: Entrance, b: Entrance): boolean {
+  if (a.volume !== b.volume || a.side !== b.side || a.component !== b.component) return false;
+  if (Math.abs(a.ground - b.ground) > 1e-6 || a.steps !== b.steps || a.recess !== b.recess || a.threshold !== b.threshold) return false;
+  // One bay further along the same side: the two runs touch.
+  const bays = a.width > 1e-6 ? Math.round(a.width / Math.max(1e-6, b.width)) : 1;
+  return b.index === a.index + Math.max(1, bays);
 }
 
 /**

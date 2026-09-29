@@ -237,8 +237,7 @@ function drawGizmoHandle(
   ctx.lineWidth = hot ? 2.4 : 1.8;
 
   switch (handle.kind) {
-    case 'side':
-    case 'storeys': {
+    case 'side': {
       // Resize: a square you drag, with the direction it grows towards.
       ctx.fillStyle = INK;
       ctx.strokeStyle = hot ? '#ffffff' : ACTIVE;
@@ -246,17 +245,7 @@ function drawGizmoHandle(
       ctx.rect(p.x - size, p.y - size, size * 2, size * 2);
       ctx.fill();
       ctx.stroke();
-      if (handle.kind === 'storeys') {
-        const up = project(handle.x, handle.y, handle.z + m(1.6));
-        const dx = up.x - p.x;
-        const dy = up.y - p.y;
-        const len = Math.hypot(dx, dy) || 1;
-        ctx.strokeStyle = hot ? '#ffffff' : ACTIVE;
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(p.x + (dx / len) * 14, p.y + (dy / len) * 14);
-        ctx.stroke();
-      } else {
+      {
         const out = project(handle.x + handle.dx * m(1.2), handle.y + handle.dy * m(1.2), handle.z);
         const dx = out.x - p.x;
         const dy = out.y - p.y;

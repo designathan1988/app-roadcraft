@@ -906,6 +906,14 @@ function elementPaint(b: Building, kind: BuildingElement['kind']): Paint {
   switch (kind) {
     case 'canopy': return ELEMENT_CONCRETE;
     case 'wall': return paint(paletteOf(b).wall);
+    case 'stair':
+    case 'ramp':
+    case 'pavement': return PAVING;
+    case 'fence': return paint({ finish: 'metal', colour: 0x4b5153 });
+    case 'tree': return TRUNK;
+    case 'bench': return paint({ finish: 'wood', colour: 0x8a6a45 });
+    case 'ac': return paint({ finish: 'metal', colour: 0xd7dade });
+    case 'planter': return paint({ finish: 'concrete', colour: 0xb9b3a8 });
     default: return ELEMENT_CONCRETE;
   }
 }
@@ -939,6 +947,9 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
           const [a0, b0, a1, b1] = sub(k * tread, (k + 1) * tread);
           e.box(a0, b0, a1, b1, zb, z0 + ((k + 1) * el.h) / n, c);
         }
+        // Three steps up to a door without a rail read as a heap of blocks:
+        // a flight taller than a kerb carries its handrail too.
+        if (el.h > m(0.5)) emitStairRails(e, el, [x0, y0, x1, y1], z0);
         return;
       }
       emitOpenStair(e, el, [x0, y0, x1, y1], z0, zb, c);
@@ -965,6 +976,38 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
     cheek(1, t);
     e.shell.face([[footPts[0][0], footPts[0][1], zb], [footPts[1][0], footPts[1][1], zb], footPts[1], footPts[0]], e.N(nf.x, nf.y), c);
     e.shell.face([[headPts[0][0], headPts[0][1], zb], [headPts[1][0], headPts[1][1], zb], headPts[1], headPts[0]], e.N(-nf.x, -nf.y), c);
+    return;
+  }
+  if (el.kind === 'tree') {
+    emitTree(e, el, z0, bottom);
+    return;
+  }
+  if (el.kind === 'fence') {
+    emitFence(e, el, z0, z1, c);
+    return;
+  }
+  if (el.kind === 'bench') {
+    // A seat on two legs and a back, facing the way it faces.
+    e.box(x0, y0, x1, y1, z0 + m(0.35), z0 + m(0.45), c);
+    const back = sub2(el, [x0, y0, x1, y1], 0, 0.12);
+    e.box(back[0], back[1], back[2], back[3], z0 + m(0.45), z0 + m(0.95), c);
+    for (const u of [0.15, 0.85]) {
+      const leg = sub2(el, [x0, y0, x1, y1], u - 0.06, u + 0.06);
+      e.box(leg[0], leg[1], leg[2], leg[3], zb, z0 + m(0.35), shaded(c, 0.85));
+    }
+    return;
+  }
+  if (el.kind === 'ac') {
+    // A wall unit: the case, and a grille plate on the side it faces.
+    e.box(x0, y0, x1, y1, z0, z1, c);
+    const g = sub2(el, [x0, y0, x1, y1], 0, 0.09);
+    e.box(g[0], g[1], g[2], g[3], z0 + m(0.1), z1 - m(0.06), RAIL);
+    return;
+  }
+  if (el.kind === 'planter') {
+    e.box(x0, y0, x1, y1, zb, z1, c);
+    const soil = m(0.06);
+    e.box(x0 + soil, y0 + soil, x1 - soil, y1 - soil, z1 - m(0.05), z1 + m(0.02), PLANTER_SOIL);
     return;
   }
   if (el.kind === 'canopy') {
@@ -1121,7 +1164,36 @@ function emitOpenStair(
   const slope = el.h / el.d;
   const soffit = (u: number): number => Math.max(zb, z0 + slope * u - WAIST);
   e.shell.face([P(0, 0, soffit(0)), P(0, w, soffit(0)), P(el.d, w, soffit(el.d)), P(el.d, 0, soffit(el.d))], e.N(-nf.x * slope, -nf.y * slope, -1), c);
-  // Handrails: a slim rail over each edge, at a constant height above the nosings.
+  emitStairRails(e, el, [x0, y0, x1, y1], z0);
+}
+
+/**
+ * The handrail of a flight: a slim rail over each edge, at a constant height
+ * above the nosings, on posts every couple of steps. Shared by the open
+ * flights and the short solid ones.
+ */
+function emitStairRails(
+  e: Emitter,
+  el: BuildingElement,
+  [x0, y0, x1, y1]: [number, number, number, number],
+  z0: number,
+): void {
+  const n = stairSteps(el);
+  const tread = el.d / n;
+  const riser = el.h / n;
+  const P = (u: number, a: number, z: number): V3 => {
+    switch (el.facing) {
+      case 0: return e.L(x0 + a, y0 + u, z);
+      case 2: return e.L(x0 + a, y1 - u, z);
+      case 3: return e.L(x0 + u, y0 + a, z);
+      default: return e.L(x1 - u, y0 + a, z);
+    }
+  };
+  const nf = SIDE_NORMAL[el.facing];
+  const slope = el.h / el.d;
+  const across = el.facing === 0 || el.facing === 2 ? e.N(1, 0) : e.N(0, 1);
+  const back: V3 = [-across[0], -across[1], 0];
+  const w = el.w;
   const rail = m(0.05);
   for (const a of [rail, w - rail]) {
     const r0 = z0 + riser + HANDRAIL;
@@ -1129,7 +1201,6 @@ function emitOpenStair(
     e.shell.face([P(0, a - rail, r0), P(0, a + rail, r0), P(el.d, a + rail, r1), P(el.d, a - rail, r1)], e.N(nf.x * slope, nf.y * slope, 1), RAIL);
     e.shell.face([P(0, a + rail, r0 - rail * 2), P(el.d, a + rail, r1 - rail * 2), P(el.d, a + rail, r1), P(0, a + rail, r0)], across, RAIL);
     e.shell.face([P(el.d, a - rail, r1 - rail * 2), P(0, a - rail, r0 - rail * 2), P(0, a - rail, r0), P(el.d, a - rail, r1)], back, RAIL);
-    // Posts at the foot and the head, and one between every few steps.
     const every = Math.max(1, Math.round(m(1.2) / tread));
     for (let k = 0; k < n; k += every) postAt(e, P, k * tread + tread / 2, a, z0 + (k + 1) * riser, HANDRAIL);
     postAt(e, P, el.d - tread / 2, a, z0 + el.h, HANDRAIL);
@@ -1137,6 +1208,111 @@ function emitOpenStair(
 }
 
 const RAIL: Paint = paint({ finish: 'metal', colour: 0x3a3f42 });
+const PLANTER_SOIL: Paint = paint({ finish: 'wood', colour: 0x3d2f22 });
+const TRUNK: Paint = paint({ finish: 'wood', colour: 0x5a4632 });
+
+/**
+ * A rectangle inside an element's plan, as fractions of the axis its `d`
+ * runs on: 0 at the edge it faces, 1 at its back.
+ */
+function sub2(
+  el: BuildingElement,
+  [x0, y0, x1, y1]: [number, number, number, number],
+  u0: number,
+  u1: number,
+): [number, number, number, number] {
+  if (el.facing === 0 || el.facing === 2) {
+    const a = y0 + (y1 - y0) * u0;
+    const b = y0 + (y1 - y0) * u1;
+    return [x0, Math.min(a, b), x1, Math.max(a, b)];
+  }
+  const a = x0 + (x1 - x0) * u0;
+  const b = x0 + (x1 - x0) * u1;
+  return [Math.min(a, b), y0, Math.max(a, b), y1];
+}
+
+/** A tree: a trunk, a tapered crown, and a shadow-quiet collar at its foot. */
+function emitTree(e: Emitter, el: BuildingElement, z0: number, bottom: number): void {
+  const trunk = m(0.22);
+  const cx = el.x;
+  const cy = el.y;
+  const crown = leafPaint(el);
+  e.box(cx - trunk / 2, cy - trunk / 2, cx + trunk / 2, cy + trunk / 2, bottom, z0 + el.h * 0.45, TRUNK);
+  // The crown: an eight-sided cone from the trunk up to the tip, in two tiers.
+  const r = Math.min(el.w, el.d) / 2;
+  const tiers: readonly [number, number, number][] = [
+    [z0 + el.h * 0.32, r, z0 + el.h * 0.62],
+    [z0 + el.h * 0.55, r * 0.78, z0 + el.h],
+  ];
+  const sides = 8;
+  for (const [base, radius, top] of tiers) {
+    const ring = (radiusAt: number, z: number): V3[] =>
+      Array.from({ length: sides }, (_, i) => {
+        const a = (i / sides) * Math.PI * 2;
+        return e.L(cx + Math.cos(a) * radiusAt, cy + Math.sin(a) * radiusAt, z);
+      });
+    const low = ring(radius, base);
+    const high = ring(radius * 0.45, top);
+    for (let i = 0; i < sides; i++) {
+      const j = (i + 1) % sides;
+      const a = (i + 0.5) / sides * Math.PI * 2;
+      e.shell.face([low[i] as V3, low[j] as V3, high[j] as V3, high[i] as V3], e.N(Math.cos(a), Math.sin(a), 0.35), crown);
+    }
+    e.shell.face([high[0] as V3, high[1] as V3, high[2] as V3, high[3] as V3], e.N(0, 0, 1), crown);
+  }
+}
+
+/** A run of fence: posts and two rails along the box's length. */
+function emitFence(e: Emitter, el: BuildingElement, z0: number, z1: number, c: Paint): void {
+  const half = el.w / 2;
+  const at = (u: number, v: number): { x: number; y: number } => {
+    const a = el.angle ?? 0;
+    const across = el.facing === 0 || el.facing === 2 ? { x: 1, y: 0 } : { x: 0, y: 1 };
+    const ux = across.x * Math.cos(a) - across.y * Math.sin(a);
+    const uy = across.x * Math.sin(a) + across.y * Math.cos(a);
+    const vx = -uy;
+    const vy = ux;
+    return { x: el.x + ux * u + vx * v, y: el.y + uy * u + vy * v };
+  };
+  const railTop = z0 + el.h;
+  const railMid = z0 + el.h * 0.45;
+  for (const [z, tall] of [[railMid, m(0.06)], [railTop, m(0.07)]] as const) {
+    const a = at(-half, 0);
+    const b = at(half, 0);
+    const n = { x: -(b.y - a.y), y: b.x - a.x };
+    const len = Math.hypot(n.x, n.y) || 1;
+    const t = m(0.03);
+    const nx = (n.x / len) * t;
+    const ny = (n.y / len) * t;
+    e.shell.face(
+      [e.L(a.x - nx, a.y - ny, z), e.L(b.x - nx, b.y - ny, z), e.L(b.x + nx, b.y + ny, z), e.L(a.x + nx, a.y + ny, z)],
+      e.N(n.x / len, n.y / len, 0),
+      c,
+    );
+    e.shell.face(
+      [e.L(a.x - nx, a.y - ny, z + tall), e.L(b.x - nx, b.y - ny, z + tall), e.L(b.x + nx, b.y + ny, z + tall), e.L(a.x + nx, a.y + ny, z + tall)],
+      e.N(0, 0, 1),
+      c,
+    );
+  }
+  // Posts every couple of metres, and always at both ends.
+  const spacing = Math.max(m(1.2), m(2));
+  const posts = Math.max(2, Math.round(el.w / spacing) + 1);
+  for (let k = 0; k < posts; k++) {
+    const u = -half + (el.w * k) / (posts - 1);
+    const p = at(u, 0);
+    const t = m(0.06);
+    e.box(p.x - t, p.y - t, p.x + t, p.y + t, z0, z1 + m(0.05), c);
+  }
+}
+
+/** The leaves: a tree keeps one tone per tree, from its own position. */
+function leafPaint(el: BuildingElement): Paint {
+  if (el.material) return paint(el.material);
+  const greens = [0x4d6b3a, 0x577a41, 0x43603a, 0x5f7f4a];
+  const pick = greens[Math.abs(Math.round(el.id * 2654435761)) % greens.length] as number;
+  return paint({ finish: 'wood', colour: pick });
+}
 
 /** A slim square post of the handrail, from a tread up to the rail. */
 function postAt(e: Emitter, P: (u: number, a: number, z: number) => V3, u: number, a: number, z: number, h: number): void {

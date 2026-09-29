@@ -105,6 +105,9 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
       mode('canopy'),
       mode('wall'),
       mode('slab'),
+      mode('wallRun'),
+      mode('fenceRun'),
+      mode('pavementRun'),
     ],
   },
   {
@@ -122,6 +125,10 @@ export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
   {
     id: 'components',
     tools: [
+      mode('tree'),
+      mode('bench'),
+      mode('planter'),
+      mode('ac'),
       mode('solar'),
       mode('skylight'),
       mode('vent'),

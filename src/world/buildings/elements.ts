@@ -45,10 +45,19 @@ export const ELEMENT_DEFAULTS: Readonly<Record<ElementKind, readonly [number, nu
   canopy: [m(2.4), m(1.2), m(0.15)],
   wall: [m(4), m(0.25), m(1.8)],
   slab: [m(4), m(4), m(0.25)],
+  pavement: [m(4), m(3), m(0.06)],
+  fence: [m(2), m(0.08), m(1.1)],
+  tree: [m(3), m(3), m(5)],
+  bench: [m(1.6), m(0.5), m(0.45)],
+  ac: [m(0.8), m(0.35), m(0.6)],
+  planter: [m(1), m(1), m(0.5)],
 };
 
 /** Whether an element's foot stands on the ground (rather than on a floor, or hung on a wall). */
-export const onGround = (e: BuildingElement): boolean => e.z <= EPS && e.kind !== 'canopy';
+/** Parts hung on a facade rather than standing on the ground. */
+export const ON_FACADE: ReadonlySet<ElementKind> = new Set<ElementKind>(['canopy', 'ac']);
+
+export const onGround = (e: BuildingElement): boolean => e.z <= EPS && !ON_FACADE.has(e.kind);
 
 export { elementRect };
 
@@ -165,6 +174,39 @@ export function elementsAgainstBay(b: Building, v: Volume, bay: BayRef, kind: El
       // A deck in front of the bay, at its floor.
       const c = at(along, dd / 2);
       return [{ kind, x: c.x, y: c.y, facing, w: Math.max(width, dw), d: dd, z: Math.max(0, floorZ - dh), h: dh }];
+    }
+    case 'pavement': {
+      // A paved apron on the ground in front of the bay: its depth runs out
+      // from the wall, its width along it.
+      const run = Math.max(dd, m(3));
+      const c = at(along, run / 2);
+      return [{ kind, x: c.x, y: c.y, facing, w: Math.max(width, dw), d: run, z: 0, h: dh }];
+    }
+    case 'fence': {
+      // A run of fence parallel to the face, a module out.
+      const run = Math.max(dw, width);
+      const c = at(along, b.module);
+      return [{ kind, x: c.x, y: c.y, facing, w: run, d: dd, z: 0, h: dh }];
+    }
+    case 'tree': {
+      // On the ground in front of the bay, clear of the flight.
+      const c = at(along, m(2.2));
+      return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: 0, h: dh }];
+    }
+    case 'bench': {
+      // On the ground, facing out from the wall.
+      const c = at(along, m(1.4));
+      return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: 0, h: dh }];
+    }
+    case 'planter': {
+      const c = at(along, m(1.1));
+      return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: 0, h: dh }];
+    }
+    case 'ac': {
+      // Hung on the facade, a metre above the storey's floor.
+      const c = at(along, dd / 2 + m(0.05));
+      const z = floorZ + Math.min(m(1.1), Math.max(0, (levelElevation(b, v.base + bay.storey + 1) - floorZ) / 2));
+      return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z, h: dh }];
     }
   }
 }

@@ -92,6 +92,9 @@ const STEP_BACK = m(0.35);
 const ANGLES = [0, 0.1, -0.1, 0.22, -0.22, 0.38, -0.38, 0.58, -0.58, 0.85, -0.85, 1.2, -1.2];
 const SHARES = [1.12, 1, 0.8, 0.55, 0.3];
 
+/** TEMPORARY diagnostic: which walker's velocity choice is recorded, and the log. */
+export const AGENT_TRACE = { id: -1, log: [] as string[] };
+
 /** Threats seen this tick, as flat arrays: relative position, velocity, combined radius, weight. */
 const TX: number[] = [];
 const TY: number[] = [];
@@ -387,6 +390,13 @@ export function stepAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, intent: Agent
   edge.corridor.bounds(s1, rev, WALLS);
   const lat1 = Math.max(WALLS.lo, Math.min(WALLS.hi, p.lat + l * DT));
   const s0 = p.s, lat0 = p.lat;
+  if (p.id === AGENT_TRACE.id) {
+    AGENT_TRACE.log.push(`agent s=${p.s.toFixed(3)}/${edge.length.toFixed(2)} lat=${p.lat.toFixed(2)} v=${p.v.toFixed(3)}` +
+      ` want=${want.toFixed(3)} prefL=${prefL.toFixed(3)} threats=${n} boxes=${boxes}` +
+      ` bestA=${bestA.toFixed(3)} bestL=${bestL.toFixed(3)} cost=${bestCost.toFixed(3)}` +
+      ` step=(${s1.toFixed(3)},${lat1.toFixed(2)}) okAll=${admissible(p, edge, s1, lat1, space)}` +
+      ` okS=${admissible(p, edge, s1, lat0, space)} okL=${admissible(p, edge, s0, lat1, space)}`);
+  }
   if (admissible(p, edge, s1, lat1, space)) { p.s = s1; p.lat = lat1; }
   else if (admissible(p, edge, s1, lat0, space)) { p.s = s1; }
   else if (admissible(p, edge, s0, lat1, space)) { p.lat = lat1; }

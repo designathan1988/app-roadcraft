@@ -36,6 +36,9 @@ import {
 
 const SPACES = new WeakMap<SimWorld, PedestrianClearance>();
 
+/** TEMPORARY diagnostic: which walker's decisions are recorded, and the log. */
+export const PED_TRACE = { id: -1, log: [] as string[] };
+
 /**
  * The pedestrian crossing state machine.
  *
@@ -250,6 +253,7 @@ function walkAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, spa
   // A crossing ahead that may not be entered yet: walk to a place of one's
   // own in its waiting area and stop there (`waitArea.ts`).
   const slot = waitingPlace(w, p, edge);
+  if (p.id === PED_TRACE.id) PED_TRACE.log.push(`walkAgent desired=${desired.toFixed(2)} toEnd=${toEnd.toFixed(2)} slot=${slot} sAt=${slot ? SLOT_AT.s.toFixed(2) : '-'} lineAt=${line} entered=${mayEnterCrossing(w, p, p.route[0] ? w.sidewalks.edges.get(p.route[0])! : edge)} pause=${p.pause.toFixed(2)} activity=${p.activity ? p.activity.kind + ':' + p.activity.phase : 'none'} party=${p.party.size} companions=${companionCount} v=${p.v.toFixed(2)}`);
   if (slot) {
     along = Math.min(along, stopWithin(Math.max(0, SLOT_AT.s - p.s)));
     line = SLOT_AT.lat;
@@ -266,7 +270,9 @@ function walkAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, spa
     line = space.clearLine(w, p, edge, line, Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin));
     along = Math.min(along, PLAN_CAP.speed);
   }
+  const sBefore = p.s;
   stepAgent(w, p, edge, { along, lat: line }, space);
+  if (p.id === PED_TRACE.id) PED_TRACE.log.push(`  -> along=${along.toFixed(2)} line=${line.toFixed(2)} s ${sBefore.toFixed(2)}->${p.s.toFixed(2)} v=${p.v.toFixed(3)}`);
   if (p.v * DT > 0.01) p.lastMovedTick = w.clock.tick;
   if (slot && Math.abs(SLOT_AT.s - p.s) < SLOT_ARRIVED && Math.abs(SLOT_AT.lat - p.lat) < SLOT_ARRIVED * 2 &&
     p.v < SLOT_STILL) {

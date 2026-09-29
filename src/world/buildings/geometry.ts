@@ -141,7 +141,14 @@ export function elementRect(e: BuildingElement): [number, number, number, number
   const alongY = e.facing === 0 || e.facing === 2;
   const sx = alongY ? e.w : e.d;
   const sy = alongY ? e.d : e.w;
-  return [e.x - sx / 2, e.y - sy / 2, e.x + sx / 2, e.y + sy / 2];
+  if (!e.angle) return [e.x - sx / 2, e.y - sy / 2, e.x + sx / 2, e.y + sy / 2];
+  // A turned box (a run drawn along a path): its own bounding rectangle, which
+  // is what collisions and picking can answer exactly.
+  const cs = Math.abs(Math.cos(e.angle));
+  const sn = Math.abs(Math.sin(e.angle));
+  const hx = (sx * cs + sy * sn) / 2;
+  const hy = (sx * sn + sy * cs) / 2;
+  return [e.x - hx, e.y - hy, e.x + hx, e.y + hy];
 }
 
 /** World bounding box of a building: its volumes and its elements. */

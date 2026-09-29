@@ -7,7 +7,7 @@ import {
   type BuilderField,
   type BuilderSelectionInfo,
   categorySpec,
-} from '@editor/builderCatalog';
+} from './catalog';
 import { FACADE_PATTERNS, ELEMENT_KINDS } from '@world/buildings/types';
 import { t } from '../i18n';
 import { builderIconSvg } from './icons';

@@ -16,7 +16,7 @@ import { MIN_SIZE, baysOn, footprintBox, levelElevation, levelHeight, localDirTo
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
 import { type MaterialSpec, type MaterialTarget, applyMaterial, applyStyle, materialAt } from '@world/buildings/materials';
-import { elementAt, elementsAgainstBay } from '@world/buildings/elements';
+import { ELEMENT_DEFAULTS, elementAt, elementsAgainstBay } from '@world/buildings/elements';
 import { type BuildingProblem, validateBuilding } from '@world/buildings/validate';
 import {
   type BayComponent,
@@ -301,6 +301,7 @@ export class BuildingTool {
    * rest follow the stage or the tool the model palette has armed.
    */
   builderHintKey(): string {
+    if (this.pathKind) return `run.${this.pathKind}`;
     if (this.planPoints) return `draw.${this.stage === 'sketch' ? 'sketch' : this.planAction}`;
     if (this.armed) return this.armed;
     if (this.roofDetailKind) return this.roofDetailKind;
@@ -511,11 +512,14 @@ export class BuildingTool {
   }
 
   cancelPlan(): void {
+    const wasRun = this.pathKind !== null;
+    this.pathKind = null;
     this.planPoints = null;
     this.planCursor = null;
     this.problem = null;
     this.setPreview(null);
-    if (this.planAction === 'new') {
+    if (wasRun) this.mode = 'edit';
+    else if (this.planAction === 'new') {
       if (this.lastWorld) this.hoverPlace(this.lastWorld);
     } else this.mode = 'edit';
     this.host.changed();
@@ -529,6 +533,10 @@ export class BuildingTool {
 
   /** Validates the actual building on the terrain, then commits one undo step. */
   finishPlan(): void {
+    if (this.pathKind) {
+      if (this.planPoints && this.planPoints.length >= 2) this.finishElementRun();
+      return;
+    }
     if (!this.planPoints || this.planPoints.length < 3) return;
     const draft = this.planBuilding();
     if (!draft) { this.problem = this.planAction === 'cut' ? 'cut' : 'outline'; this.host.changed(); return; }
@@ -960,6 +968,82 @@ export class BuildingTool {
     }
     this.setPreview(null);
     this.host.changed();
+  }
+
+  /**
+   * A run of fence, wall or paving, traced as a path: the points are clicked
+   * like a plan's, and finishing lays one part per segment, end to end - the
+   * way a road is drawn, not a part at a time.
+   */
+  pathKind: ElementKind | null = null;
+
+  startElementRun(kind: ElementKind): void {
+    if (!this.selected()) {
+      this.host.flash('building.selectFirst');
+      return;
+    }
+    this.clearArmingFor('path');
+    this.pathKind = kind;
+    this.planAction = 'new';
+    this.planPoints = [];
+    this.planCursor = null;
+    this.stage = 'shape';
+    this.mode = 'place';
+    this.problem = null;
+    this.setPreview(null);
+    this.host.changed();
+  }
+
+  /** Straightens the run while the pointer moves, so a path follows the hand. */
+  private finishElementRun(): void {
+    const points = this.planPoints ?? [];
+    const kind = this.pathKind;
+    this.pathKind = null;
+    this.planPoints = null;
+    this.planCursor = null;
+    const building = this.selected();
+    if (!kind || !building || points.length < 2) {
+      this.setPreview(null);
+      this.host.changed();
+      return;
+    }
+    const local = points.map((p) => worldToLocal(building, p));
+    const result = this.host.commit(() => editBuilding(this.host.context(), building.id, (draft) => {
+      let added = 0;
+      const [dw, dd, dh] = ELEMENT_DEFAULTS[kind];
+      for (let i = 1; i < local.length; i++) {
+        const a = local[i - 1] as Vec2;
+        const b = local[i] as Vec2;
+        const run = Math.hypot(b.x - a.x, b.y - a.y);
+        if (run < m(0.4)) continue;
+        // A paving run is a band: its traced length along, its own width across.
+        const across = kind === 'pavement' ? Math.max(dd, m(1.6)) : dd;
+        const along = kind === 'pavement' || kind === 'wall' || kind === 'slab' ? run : Math.max(dw, run);
+        opAddElement(draft, {
+          kind,
+          x: (a.x + b.x) / 2,
+          y: (a.y + b.y) / 2,
+          facing: 0,
+          w: along,
+          d: across,
+          z: 0,
+          h: dh,
+          angle: Math.atan2(b.y - a.y, b.x - a.x),
+        });
+        added++;
+      }
+      return added > 0;
+    }));
+    if (result.ok) this.host.flash('builder.runPlaced');
+    this.report(result);
+  }
+
+  private clearArmingFor(keep: 'path'): void {
+    void keep;
+    this.armed = null;
+    this.roofDetailKind = null;
+    this.component = null;
+    this.activeModelTool = null;
   }
 
   /** The selected free element, if one is. */

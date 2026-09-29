@@ -12,7 +12,7 @@ import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool
 import type { PlanShape } from '@editor/buildingPlans';
 import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
-import { DRAW_SHAPES, OPENING_COMPONENTS, categorySpec, type BuilderCategoryId, type BuilderField } from '@editor/builderCatalog';
+import { DRAW_SHAPES, OPENING_COMPONENTS, categorySpec, type BuilderCategoryId, type BuilderField } from '@ui/builder/catalog';
 import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
@@ -256,8 +256,20 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       toolId = id;
       return;
     }
-    // The free parts (stairs, ramps, pillars, canopies, walls, slabs).
-    if (id === 'stair' || id === 'ramp' || id === 'pillar' || id === 'canopy' || id === 'wall' || id === 'slab') {
+    // Runs traced as a path: fence, wall and paving follow the line drawn,
+    // one part per segment, end to end.
+    if (id === 'wallRun' || id === 'fenceRun' || id === 'pavementRun') {
+      const kind = id === 'wallRun' ? 'wall' : id === 'fenceRun' ? 'fence' : 'pavement';
+      tool.startElementRun(kind);
+      toolId = id;
+      return;
+    }
+    // The free parts (stairs, ramps, pillars, canopies, walls, slabs, paving,
+    // and the things that decorate a lot: trees, benches, planters, units).
+    if (
+      id === 'stair' || id === 'ramp' || id === 'pillar' || id === 'canopy' || id === 'wall'
+      || id === 'slab' || id === 'pavement' || id === 'tree' || id === 'bench' || id === 'ac' || id === 'planter'
+    ) {
       clearArming('element');
       tool.armElement(id);
       toolId = id;
@@ -402,12 +414,18 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         host.changed();
       }
     },
+    // The finish tools paint the selected free part when there is one (a
+    // stair, a pavement, a canopy), and the model's surface otherwise.
     chooseFinish: (finish) => {
-      tool.paint({ finish });
+      const element = tool.selectedElement();
+      if (element) tool.updateElement({ material: { ...(element.material ?? { colour: 0xcfc9bd }), finish } });
+      else tool.paint({ finish });
       host.changed();
     },
     chooseColour: (colour) => {
-      tool.paint({ colour });
+      const element = tool.selectedElement();
+      if (element) tool.updateElement({ material: { ...(element.material ?? { finish: 'concrete' as const }), colour } });
+      else tool.paint({ colour });
       host.changed();
     },
     chooseStyle: (key) => {
@@ -818,5 +836,6 @@ const READY: ReadonlySet<string> = new Set([
   'stair', 'ramp', 'pillar', 'canopy', 'wall', 'slab',
   'roofFlat', 'roofTerrace', 'roofGable', 'roofHip', 'roofShed', 'roofSawtooth', 'roofShape',
   'solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire', 'moreComponents',
-  'paint', 'material', 'colour', 'copyStyle',
+  'paint', 'material', 'colour', 'copyStyle', 'pavement',
+  'wallRun', 'fenceRun', 'pavementRun', 'tree', 'bench', 'planter', 'ac',
 ]);
