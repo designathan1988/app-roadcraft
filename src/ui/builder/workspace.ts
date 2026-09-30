@@ -381,6 +381,8 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   }
 
   // ------------------------------------------------------------ state
+  /** What the tray shows while the pointer's own tool is the one in hand. */
+  let shownCategory: BuilderCategoryId = 'draw';
   let openGallery: string | null = null;
   let lastState: BuilderState | null = null;
   const thumbnails = new Map<string, string>();
@@ -519,7 +521,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   /** The tools of the group in hand. */
   function renderToolTabs(state: BuilderState): void {
-    const group = BUILDER_GROUPS.find((g) => g.id === groupOfCategory(state.category));
+    const group = BUILDER_GROUPS.find((g) => g.id === groupOfCategory(shownCategory));
     const signature = `${group?.id ?? 'none'}|${state.category}|${[...state.ready].join(',')}`;
     if (toolsRow.dataset['signature'] === signature) return;
     toolsRow.dataset['signature'] = signature;
@@ -543,8 +545,8 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   /** Under the tools: what the one in hand can do, and the gallery it opens. */
   function renderFamilies(state: BuilderState): void {
-    const spec = categorySpec(state.category);
-    const signature = `${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${openGallery ?? ''}`;
+    const spec = categorySpec(shownCategory);
+    const signature = `${shownCategory}|${state.category}|${state.tool}|${state.armed}|${state.planning}|${state.planPoints}|${openGallery ?? ''}`;
     if (familiesRow.dataset['signature'] === signature) return;
     familiesRow.dataset['signature'] = signature;
     familiesRow.innerHTML = '';
@@ -568,6 +570,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       b.title = label;
       b.classList.toggle('open', gallery && openGallery === tool.id);
       b.onclick = () => {
+        // Choosing an entry while the pointer's tool is in hand also leaves
+        // that tool: the tray is not a place to stand, it is a way back in.
+        if (state.category === 'select') actions.setCategory(shownCategory);
         if (gallery) {
           openGallery = openGallery === tool.id ? null : tool.id;
           renderDock(lastState);
@@ -780,12 +785,14 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   function renderDock(state: BuilderState | null): void {
     if (!state) return;
+    if (state.category !== 'select') shownCategory = state.category;
     renderGlobals(state);
     renderGroups(state);
     renderToolTabs(state);
     renderFamilies(state);
     renderTier3(state);
     syncDock();
+    updateHintText();
   }
 
   // ------------------------------------------------------------ inspector
@@ -901,6 +908,17 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     }
   };
 
+  /**
+   * The sentence in the foot. Opening a family's pictures is a statement about
+   * that family, not about whatever tool was last taken up: the hint used to
+   * keep saying "balconies" while the windows were on screen.
+   */
+  const updateHintText = (): void => {
+    if (!lastState) return;
+    hintBase = openGallery === null ? lastState.hint : t(`hint.builder.${openGallery}`);
+    if (flashTimer === null) hint.textContent = hintBase;
+  };
+
   const refresh = (state: BuilderState): void => {
     lastState = state;
     root.dataset['category'] = state.category;
@@ -908,8 +926,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     renderDock(state);
     renderInspector(state);
     renderQuick(state);
-    hintBase = state.hint;
-    if (flashTimer === null) hint.textContent = hintBase;
+    updateHintText();
   };
 
   const flash = (text: string): void => {

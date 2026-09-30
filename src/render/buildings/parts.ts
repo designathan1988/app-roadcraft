@@ -138,11 +138,15 @@ export function renderPartThumbnails(
         scene.add(meshes.group);
         const box = buildingBounds(sample);
         const height = Math.max(buildingHeight(sample), 3);
-        const span = Math.max(box.maxX - box.minX, box.maxY - box.minY, height * 0.9) + 4;
+        // An element on its own stands on nothing: it is framed round itself,
+        // or the camera looks over its head and the picture clips its feet.
+        const alone = sample.volumes.length === 0;
+        const span = Math.max(box.maxX - box.minX, box.maxY - box.minY, height * 0.9) + (alone ? 2 : 4);
         const focus = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
-        const distance = span * 1.7;
-        camera.position.set(focus.x + distance * 0.55, height + distance * 0.6, focus.y + distance * 0.55);
-        camera.lookAt(focus.x, height * 0.45, focus.y);
+        const look = alone ? Math.max(0.5, height * 0.35) : height * 0.45;
+        const distance = span * (alone ? 1.5 : 1.7);
+        camera.position.set(focus.x + distance * 0.55, look + distance * 0.6, focus.y + distance * 0.55);
+        camera.lookAt(focus.x, look, focus.y);
         camera.updateProjectionMatrix();
         renderer.render(scene, camera);
         out.set(id, renderer.domElement.toDataURL('image/png'));

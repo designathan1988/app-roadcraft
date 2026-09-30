@@ -443,7 +443,7 @@ export const PT_BR: Dictionary = {
   'creator.dock.paint': 'Materiais',
   'creator.dock.back': 'Voltar',
   'creator.dock.scope': 'Aplicar aberturas em',
-  'creator.dock.scope.bay': 'Uma janela',
+  'creator.dock.scope.bay': 'Um vão',
   'creator.dock.scope.storey': 'Este andar',
   'creator.dock.scope.side': 'Toda a face',
   'creator.dock.scope.volume': 'Toda a massa',

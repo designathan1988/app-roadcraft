@@ -227,11 +227,8 @@
 
 /* Selecting is a global like the snap: smaller than the groups. */
 .bw-select { color: var(--bw-text); }
-/* Nothing to build while selecting: the shelf steps aside and the band keeps
-   its globals and its hint. */
-#builder[data-category='select'] .bw-groups,
-#builder[data-category='select'] .bw-tools,
-#builder[data-category='select'] .bw-families { display: none; }
+/* The groups never leave the tray, not even while selecting: hiding them left
+   the panel empty with no way back to the building tools. */
 
 /* Tier 2: sub-tools */
 .bw-tool {
@@ -274,7 +271,7 @@
 .bw-tile.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
 .bw-tile-art { display: grid; place-items: center; width: 56px; height: 56px; }
 .bw-tile-art img { width: 56px; height: 56px; object-fit: contain; }
-.bw-tile-name { line-height: 1.25; }
+.bw-tile-name { line-height: 1.25; overflow-wrap: anywhere; }
 .bw-tile .chips { display: inline-flex; border-radius: 3px; overflow: hidden; }
 .bw-tile .chips i { display: block; width: 12px; height: 34px; }
 
