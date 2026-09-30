@@ -388,11 +388,21 @@ const SCENARIOS = [
       await wait(900);
       const finishes = [...document.querySelectorAll('.bw-tier3 .bw-tile')];
       if (finishes.filter((t) => t.querySelector('img')).length < 13) return 'the materials are not pictured';
-      // Selecting is a global and leaves the band with its own row and the
-      // hint: the shelf of groups is not a place to stand.
+      // Selecting is a global, and the way back to the building tools stays
+      // where it was: the shelf is never taken away under the player.
       document.querySelector('.bw-globals .bw-select').click();
       await wait(400);
-      if (document.querySelector('.bw-dock').getBoundingClientRect().height > 200) return 'selecting leaves a shelf standing';
+      if (document.querySelectorAll('.bw-section').length < 3) return 'selecting hides the groups, and the way back with them';
+      if (document.querySelector('.bw-dock').getBoundingClientRect().height > 300) return 'selecting grew the band';
+      // And the entry the player picked keeps its shelf open, marked.
+      document.querySelector('.bw-section[data-builder-group="insert"]').click();
+      await wait(250);
+      document.querySelector('.bw-tool[data-builder-tool="openWindows"]').click();
+      await wait(1500);
+      document.querySelectorAll('.bw-tier3 .bw-tile')[2].click();
+      await wait(400);
+      if (!document.querySelector('.bw-families button.open')) return 'choosing a window closed the family it was chosen from';
+      if (!document.querySelector('.bw-tier3 .bw-tile.active')) return 'the chosen window is not marked';
       // Left open on the windows, which is what this panel is for.
       document.querySelector('.bw-section[data-builder-group="insert"]').click();
       await wait(250);
