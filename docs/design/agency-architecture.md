@@ -8,8 +8,11 @@ crossing permission shared with the old model. Measured on the saved map
 (`tests/sim/people/motion.spec.ts`): no backward, sideways, jumping or
 popping motion, no standstill over 5 s. NOT yet in it: parties walking
 together, benches/phone/talk, people entering and leaving buildings,
-vehicles picking people up at the kerb, incremental mesh rebuild. Drive v2 and
-the Person model are NOT implemented; vehicles still run the old model.
+vehicles picking people up at the kerb, incremental mesh rebuild. Drive v2 is live
+and the default for its first layer (operational: adaptive cruise control
+with jerk limits, `?drive=v1` for the old one); its perception, tactical,
+strategic and negotiation layers are NOT implemented yet. The Person model
+is NOT implemented.
 Update this line whenever a step goes live.**
 
  This replaces the pedestrian model in `src/sim/peds/*`,

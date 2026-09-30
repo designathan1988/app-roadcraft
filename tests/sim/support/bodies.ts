@@ -187,6 +187,8 @@ export function simOf(doc: RoadDoc, seed: number, intensity = 2): SimWorld {
   sim.trafficIntensity = intensity;
   sim.demandMultiplier = intensity;
   sim.clock.paused = false;
+  // DRIVE=v2 runs the suite against Drive v2 as it replaces the legacy model.
+  if (process.env.DRIVE === 'v2') sim.driveModel = 'v2';
   return sim;
 }
 

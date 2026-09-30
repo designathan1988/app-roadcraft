@@ -152,8 +152,9 @@ sim.rebuildTopology();
 // Pedestrians are navmesh agents (the People engine); `?peds=legacy` runs the
 // old sidewalk-graph model instead, for comparison while it is retired.
 if (new URLSearchParams(location.search).get('peds') !== 'legacy') sim.usePedestrianEngine(createPeopleEngine());
-// `?drive=v2`: vehicles driven by Drive v2 where it has replaced a layer.
-if (new URLSearchParams(location.search).get('drive') === 'v2') sim.driveModel = 'v2';
+// Vehicles are driven by Drive v2 where it has replaced a layer of the
+// legacy model; `?drive=v1` runs the legacy model throughout, for comparison.
+if (new URLSearchParams(location.search).get('drive') !== 'v1') sim.driveModel = 'v2';
 sim.auditEnabled = true;
 sim.auditLevel = 'cheap';
 /** The simulation never reads the screen; the screen's size is handed to it. */

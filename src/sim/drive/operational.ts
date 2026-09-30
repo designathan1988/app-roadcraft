@@ -47,7 +47,10 @@ function iidm(p: DriverParams, v: number, v0: number, o: Obstacle | null): numbe
 
 /** The Constant-Acceleration Heuristic: braking needed if the obstacle keeps its acceleration. */
 function cah(p: DriverParams, v: number, o: Obstacle): number {
-  const al = Math.min(o.accel ?? 0, p.a);
+  // What the car ahead is doing, as a driver can read it: never harder than
+  // an emergency stop. Read raw, a leader cut to a stop by the safe-speed cap
+  // passed a 60 m/s² "braking" down the queue behind it.
+  const al = clamp(o.accel ?? 0, -p.bEmergency, p.a);
   const vl = o.speed;
   const s = Math.max(o.gap, 0.05);
   if (vl * (v - vl) <= -2 * s * al) return (v * v * al) / Math.max(vl * vl - 2 * s * al, 1e-6);
@@ -74,17 +77,25 @@ export function accAccel(p: DriverParams, v: number, v0: number, o: Obstacle): n
 export function nextSpeed(p: DriverParams, v: number, v0: number, lastAccel: number,
   obstacles: readonly Obstacle[], dt: number): { v: number; a: number } {
   let target = iidm(p, v, v0, null);
-  // The wanted speed is reached, and a lower limit ahead eased down to, by
-  // the free-road term; only what is physically ahead is a hard cap. Capped
-  // at the wanted speed as well, a car entering a slower stretch (a turn)
-  // lost its excess in a single tick.
-  let cap = Infinity;
+  // Above the wanted speed (a slower stretch just entered, a turn), it is
+  // shed at a comfortable deceleration, never in one tick as a hard cap at
+  // the wanted speed did; what is physically ahead is the hard cap.
+  let cap = Math.max(v0, v - p.b * dt);
   for (const o of obstacles) {
     target = Math.min(target, accAccel(p, v, v0, o));
     if (o.hard !== false) cap = Math.min(cap, safeSpeed(p, o, dt));
   }
   target = clamp(target, -p.bEmergency, p.a);
-  const a = clamp(target, lastAccel - JERK_DOWN * dt, lastAccel + JERK_UP * dt);
-  const next = clamp(v + a * dt, 0, Math.max(0, Number.isFinite(cap) ? cap : v + a * dt));
+  // From what the driver's foot was doing, which is never harder than an
+  // emergency stop: a speed the safe-speed cap cut last tick is not a pedal
+  // position, and starting the jerk window there kept a car braking at
+  // 60 m/s² for a second after one sudden obstacle.
+  const foot = clamp(lastAccel, -p.bEmergency, p.a);
+  // Easing on, and ordinary braking, change at a driver's pace; braking
+  // beyond comfortable is not held back: a jerk limit there only delayed
+  // the response and then needed harder braking later.
+  const a = target < -p.b ? Math.min(target, foot + JERK_UP * dt)
+    : clamp(target, foot - JERK_DOWN * dt, foot + JERK_UP * dt);
+  const next = clamp(v + a * dt, 0, Math.max(0, cap));
   return { v: next, a: (next - v) / dt };
 }
