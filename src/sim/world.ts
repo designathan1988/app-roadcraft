@@ -69,7 +69,7 @@ export class SimWorld {
   readonly vehicles = new Map<VehicleId, Vehicle>();
   readonly peds = new Map<PedId, Ped>();
   /** What moves the people (`people/engine.ts`); everything else reaches them through it. */
-  readonly pedEngine: PedestrianEngine = legacyPedestrians;
+  pedEngine: PedestrianEngine = legacyPedestrians;
   readonly runtime = new Map<LaneletId, LaneletRuntime>();
   readonly controllers = new Map<NodeId, SignalController>();
 
@@ -122,6 +122,8 @@ export class SimWorld {
     readonly pedParams: Rng;
     readonly courtesy: Rng;
     readonly signalOffsets: Rng;
+    /** The People engine's own stream (`people/people.ts`). */
+    readonly people: Rng;
     readonly occupancy: Rng;
   };
 
@@ -183,6 +185,7 @@ export class SimWorld {
       courtesy: root.fork('courtesy'),
       signalOffsets: root.fork('signalOffsets'),
       occupancy: root.fork('occupancy'),
+      people: root.fork('people'),
     };
   }
 
@@ -196,6 +199,21 @@ export class SimWorld {
    * volumes and trip counts across. Undo and redo keep rebinding: they edit
    * the same map. Seeds and settings are kept; the clock is not rewound.
    */
+  /**
+   * Switches the model that moves the people. Everybody walking is dropped:
+   * the two engines share no state, only what they publish.
+   */
+  usePedestrianEngine(engine: PedestrianEngine): void {
+    this.peds.clear();
+    this.pedOccupancy.clear();
+    this.pedWaiting.clear();
+    this.crossingStates.clear();
+    this.pedViews.length = 0;
+    this.pedViewById.clear();
+    this.pedEngine = engine;
+    engine.rebind(this);
+  }
+
   reset(): void {
     this.vehicles.clear();
     this.peds.clear();
@@ -221,6 +239,7 @@ export class SimWorld {
     this.buildingAccessRevision = -1;
     this.accessUtilityRevision = -1;
     this.accessSignature = '';
+    this.pedEngine.reset(this);
   }
 
   // ------------------------------------------------------------- accessors

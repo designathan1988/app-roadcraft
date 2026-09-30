@@ -26,6 +26,8 @@ export const legacyPedestrians: PedestrianEngine = {
   rebind: rebindPeds,
   publish: publishPedViews,
   audit: auditPedestrians,
+  // `SimWorld.reset` clears everything this model keeps.
+  reset() {},
   bridge: {
     hailable,
     board(w, id, door, reach) {

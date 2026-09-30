@@ -27,6 +27,8 @@ export interface PedestrianEngine {
   publish(w: SimWorld): void;
   /** The model's own invariants, for `runAudit`. */
   audit(w: SimWorld, out: AuditIssue[]): void;
+  /** Everybody leaves (a new map, an opened file); the engine starts over on the map as it is. */
+  reset(w: SimWorld): void;
   readonly bridge: PeopleBridge;
 }
 

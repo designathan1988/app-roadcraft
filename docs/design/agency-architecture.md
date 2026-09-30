@@ -1,10 +1,16 @@
 # Agency architecture: people, vehicles and the citizens they are
 
-Status: adopted 2026-09-30. **Implementation state (2026-09-30): only People P0
-(behaviour-neutral seams) is on master. The People engine, Drive v2 and the
-Person model are NOT implemented; the game still runs the legacy pedestrian
-and vehicle models, with their visible defects (sliding, popping, being
-dragged back at crossings). Update this line whenever a step goes live.**
+Status: adopted 2026-09-30. **Implementation state (2026-09-30): the People
+engine is LIVE and the game's default (`?peds=legacy` runs the old model):
+walkable navmesh (constrained Delaunay, zebras as gates), A* + per-tick
+corridor string pulling, time-to-collision avoidance, a forward-only body,
+crossing permission shared with the old model. Measured on the saved map
+(`tests/sim/people/motion.spec.ts`): no backward, sideways, jumping or
+popping motion, no standstill over 5 s. NOT yet in it: parties walking
+together, benches/phone/talk, people entering and leaving buildings,
+vehicles picking people up at the kerb, incremental mesh rebuild. Drive v2 and
+the Person model are NOT implemented; vehicles still run the old model.
+Update this line whenever a step goes live.**
 
  This replaces the pedestrian model in `src/sim/peds/*`,
 the vehicle decision layers in `src/sim/vehicles/*`, `src/sim/routing/*` and

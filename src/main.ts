@@ -25,6 +25,7 @@ import { createSceneRenderer, type SceneHandle } from '@render/renderer';
 import { isoZoomBounds } from '@render/isoViewport';
 
 import { SimWorld } from '@sim/world';
+import { createPeopleEngine } from '@sim/people/people';
 import { rebindAgents, rebindPeds, rebindVehicles, step } from '@sim/pipeline';
 import { DT, NARROW_SCREEN_SHARE, NARROW_SCREEN_WIDTH } from '@sim/params';
 import { summarize } from '@sim/audit';
@@ -148,6 +149,9 @@ if (saved) {
 
 const sim = new SimWorld(doc, net, 0x2024);
 sim.rebuildTopology();
+// Pedestrians are navmesh agents (the People engine); `?peds=legacy` runs the
+// old sidewalk-graph model instead, for comparison while it is retired.
+if (new URLSearchParams(location.search).get('peds') !== 'legacy') sim.usePedestrianEngine(createPeopleEngine());
 sim.auditEnabled = true;
 sim.auditLevel = 'cheap';
 /** The simulation never reads the screen; the screen's size is handed to it. */
