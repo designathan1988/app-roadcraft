@@ -166,6 +166,40 @@ export class SimWorld {
     };
   }
 
+  /**
+   * Forgets every agent and everything learned about the previous map.
+   *
+   * For loading a DIFFERENT document (open, import, new map). Lanelet and
+   * footway ids are built from small integers and coincide between maps, so
+   * rebinding after a load kept old vehicles - with their routes, claims and
+   * kerb stops - on unrelated roads of the new map, and carried issues,
+   * volumes and trip counts across. Undo and redo keep rebinding: they edit
+   * the same map. Seeds and settings are kept; the clock is not rewound.
+   */
+  reset(): void {
+    this.vehicles.clear();
+    this.peds.clear();
+    this.runtime.clear();
+    this.claims.clear();
+    this.controllers.clear();
+    this.pedOccupancy.clear();
+    this.pedWaiting.clear();
+    this.lastAdmission.clear();
+    this.mergeTurn.clear();
+    this.segmentVolume.clear();
+    this.entryDemand.clear();
+    this.entryDemandLost = 0;
+    this.completedTrips = 0;
+    this.vehicleSpawnClock = 0;
+    this.pedSpawnClock = 0;
+    this.issues.length = 0;
+    this.topologyRevision = -1;
+    this.vehicleTopologyRevision = -1;
+    this.buildingAccessRevision = -1;
+    this.accessUtilityRevision = -1;
+    this.accessSignature = '';
+  }
+
   // ------------------------------------------------------------- accessors
 
   lanelet(id: LaneletId): Lanelet | undefined {

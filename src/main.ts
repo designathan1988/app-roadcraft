@@ -484,8 +484,13 @@ function applySnapshot(data: ReturnType<RoadDoc['toJSON']> | null, source: 'snap
   roadChain = null;
   chainPreview = null;
   curvePending = null;
-  if (source === 'import') restoreInto(doc, data, net);
-  else restoreSnapshot(doc, data, net);
+  if (source === 'import') {
+    restoreInto(doc, data, net);
+    // A different map: nothing of the old simulation may carry over.
+    sim.reset();
+  } else {
+    restoreSnapshot(doc, data, net);
+  }
   rebuildSimulationTopology();
   buildings.restored();
   selectedSegment = null;
@@ -1755,7 +1760,7 @@ mountAbout();
   // this did not, which left Ctrl+Z unable to recover a map cleared by mistake.
   history.record(doc);
   // A new map is empty.
-  applySnapshot(new RoadDoc().toJSON());
+  applySnapshot(new RoadDoc().toJSON(), 'import');
   roadHeightOffset = 0;
   roadHeightEdited = false;
   updateRoadHeightValue();
