@@ -134,6 +134,9 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
     for (const i of runAudit(w, w.auditLevel)) w.report(i);
   }
   lap('8 audit');
+
+  // 9. time: the only writer of the clock. Everything above read this tick.
+  w.clock.tick++;
 }
 
 /** Re-binds agents to the rebuilt topology after a live edit. */

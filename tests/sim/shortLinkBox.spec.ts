@@ -40,7 +40,6 @@ describe('two signalised junctions a car length apart', () => {
     const still = new Map<number, number>();
     for (let i = 0; i < Math.round(300 / DT); i++) {
       step(sim, { traffic: true, pedestrians: true });
-      sim.clock.tick++;
       for (const v of sim.vehicles.values()) {
         const inBox = sim.lanelet(v.lanelet)?.kind === 'connector';
         const held = inBox && v.v < 0.2 ? (still.get(v.id) ?? 0) + DT : 0;

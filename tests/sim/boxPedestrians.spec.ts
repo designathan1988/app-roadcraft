@@ -51,7 +51,6 @@ describe('pedestrians and turning traffic on a grid of streets', () => {
     let stalls = 0;
     for (let i = 0; i < Math.round(240 / DT); i++) {
       step(sim, { traffic: true, pedestrians: true });
-      sim.clock.tick++;
       for (const v of sim.vehicles.values()) {
         const inBox = sim.lanelet(v.lanelet)?.kind === 'connector';
         const forPedestrian = v.constraints.obstacles.some((o) => o.kind === 'pedestrian');

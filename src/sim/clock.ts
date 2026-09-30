@@ -20,6 +20,13 @@ import { DT, MAX_FRAME, MAX_SUBSTEPS } from './params';
  *     limb of the stale-reservation defect (2.7).
  */
 export class SimClock {
+  /**
+   * Written ONLY at the end of `pipeline.step`, so a step driven directly (as
+   * every spec does) advances time exactly as the game's `advance` does. It
+   * used to move here, in `advance` and `run`, and every behaviour keyed on
+   * the clock - signal starvation, admission FIFO, the stall watchdogs -
+   * silently never happened in the suite.
+   */
   tick = 0;
   paused = false;
   speed = 1;
@@ -46,7 +53,6 @@ export class SimClock {
     let n = 0;
     while (this.acc >= DT && n < MAX_SUBSTEPS) {
       step();
-      this.tick++;
       this.acc -= DT;
       n++;
     }
@@ -60,10 +66,7 @@ export class SimClock {
 
   /** Runs exactly `n` steps, for tests and scenarios. */
   run(n: number, step: () => void): void {
-    for (let i = 0; i < n; i++) {
-      step();
-      this.tick++;
-    }
+    for (let i = 0; i < n; i++) step();
   }
 
   /** Seconds elapsed since a recorded tick. */

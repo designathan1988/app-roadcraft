@@ -38,7 +38,6 @@ describe('two priority junctions close together', () => {
       let stalls = 0;
       for (let i = 0; i < Math.round(300 / DT); i++) {
         step(sim, { traffic: true, pedestrians: true });
-        sim.clock.tick++;
         for (const v of sim.vehicles.values()) {
           const inBox = sim.lanelet(v.lanelet)?.kind === 'connector';
           const behindCar = v.constraints.obstacles.some((o) => o.kind === 'vehicle' && o.gap < 8 && o.speed < 0.5);

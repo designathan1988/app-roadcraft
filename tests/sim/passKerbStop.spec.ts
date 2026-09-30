@@ -46,7 +46,6 @@ function stallsAcross(sim: SimWorld, seconds: number): number {
   let stalls = 0;
   for (let i = 0; i < Math.round(seconds / DT); i++) {
     step(sim, { traffic: true, pedestrians: true });
-    sim.clock.tick++;
     for (const v of sim.vehicles.values()) {
       const stuck = (Math.abs(v.lateral) > 0.05 || v.shadow !== null) && v.v < 0.2;
       const t = stuck ? (across.get(v.id) ?? 0) + DT : 0;

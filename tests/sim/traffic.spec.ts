@@ -103,11 +103,11 @@ describe('traffic', () => {
    *
    * Two things are required to make them mean anything:
    *
-   *   - the clock has to be DRIVEN (`clock.run`), because `clock.tick` and
-   *     `clock.time` advance nowhere else, and every wedge detector, the FIFO
-   *     fairness order and the signal starvation promotion are all keyed on
-   *     them. Calling `step` directly leaves them frozen at zero and the
-   *     whole diagnostic layer becomes unreachable;
+   *   - the clock has to move, because every wedge detector, the FIFO
+   *     fairness order and the signal starvation promotion are keyed on it.
+   *     `step` itself now advances `clock.tick` (it used to move only inside
+   *     `clock.run`/`advance`, and specs that called `step` directly left the
+   *     whole diagnostic layer unreachable);
    *   - the audit has to be ENABLED, because `runAudit` is gated on
    *     `auditEnabled` and nothing but `main.ts` ever set it. No test in this
    *     repository had ever run it.

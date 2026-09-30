@@ -193,7 +193,6 @@ export function runLab(scene: LabScene, seconds: number): LabResult {
   for (const p of walkers) start.set(p.id, { x: p.x, y: p.y });
   for (let t = 0; t < Math.round(seconds / DT); t++) {
     step(sim, { traffic: scene.traffic ?? false, pedestrians: true });
-    sim.clock.tick++;
     if (everybody) walkers = [...sim.peds.values()];
     const waiting = walkers.filter((q) => q.state === 'WaitAtKerb');
     for (const q of waiting) {

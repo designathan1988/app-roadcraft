@@ -40,7 +40,6 @@ describe('a long vehicle turning off a short link', () => {
       let overlaps = 0;
       for (let i = 0; i < Math.round(300 / DT); i++) {
         step(sim, { traffic: true, pedestrians: true });
-        sim.clock.tick++;
         if (i % 5 === 0) overlaps += collisions(sim).length;
       }
       expect(overlaps).toBe(0);
