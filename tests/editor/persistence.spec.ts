@@ -86,3 +86,16 @@ describe('loaded settings', () => {
     expect(settings.demandMultiplier).toBe(1.55);
   });
 });
+
+describe('buildings from a file', () => {
+  it('are pulled onto the map and their base kept below the top storey', () => {
+    const doc = RoadDoc.fromJSON({ ...base(), buildings: [{
+      schema: 2, id: 1, x: 1e12, y: -5, rotation: 0, use: 'residential', module: 7.5, groundHeight: 9, storeyHeight: 7.75,
+      palette: 0, volumes: [{ id: 1, x: 0, y: 0, w: 20, d: 20, base: 99_999, roof: 'flat', storeys: [{ facade: { fill: 'window' } }] }],
+      cores: [], nextVolumeId: 2,
+    }] } as never);
+    const building = [...doc.buildings.all()][0]!;
+    expect(building.x).toBeLessThanOrEqual(MAP_HALF);
+    expect(building.volumes[0]!.base).toBeLessThan(60);
+  });
+});

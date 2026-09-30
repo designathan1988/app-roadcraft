@@ -2,6 +2,7 @@ import { validOutline, roofPartFits } from './footprints';
 import type { Vec2 } from '@core/vec2';
 import { clamp } from '@core/scalar';
 import { m } from '@world/units';
+import { MAP_HALF } from '@world/bounds';
 import {
   type BayComponent,
   type Building,
@@ -140,7 +141,8 @@ function migrateStorey(raw: unknown, scale: Scale): Storey {
 
 function migrateVolume(raw: unknown, scale: Scale): Volume | null {
   if (!isRecord(raw) || !Array.isArray(raw.storeys) || raw.storeys.length === 0) return null;
-  const base = Math.max(0, int(raw.base, 0));
+  // A base past the top storey looped `levelElevation` that many times.
+  const base = Math.min(MAX_STOREYS - 1, Math.max(0, int(raw.base, 0)));
   const storeys = raw.storeys.slice(0, Math.max(1, MAX_STOREYS - base)).map((s) => migrateStorey(s, scale));
   const materials = migrateVolumeMaterials(raw.materials);
   const volume: Volume = {
@@ -313,8 +315,9 @@ export function migrateBuilding(raw: unknown): Building | null {
     ...raw,
     id: asBuildingId(raw.id),
     schema: BUILDING_SCHEMA,
-    x: raw.x,
-    y: raw.y,
+    // A file can put a building anywhere; the map cannot. Unchanged when on it.
+    x: clamp(raw.x as number, -MAP_HALF, MAP_HALF),
+    y: clamp(raw.y as number, -MAP_HALF, MAP_HALF),
     rotation: finite(raw.rotation) ? raw.rotation : 0,
     use: isBuildingUse(raw.use) ? raw.use : 'residential',
     module,
