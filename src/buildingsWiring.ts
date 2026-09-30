@@ -130,7 +130,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       const before = doc.toJSON();
       const result = edit();
       if (!result.ok) return result;
-      history.record(RoadDoc.fromJSON(before));
+      history.record(RoadDoc.fromJSON(before, { repair: false }));
       // The camera stays where the player put it: placing a building used to
       // re-frame it, which threw the view across the map mid-gesture.
       deps.afterEdit();

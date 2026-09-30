@@ -6,7 +6,6 @@ import { MIN_LINK_LENGTH } from '@world/approach';
 import { MAX_AUTHORED_GRADE } from '@world/elevation';
 import { Network } from '@world/network';
 import { LAST_UPGRADE_CLASS, ROAD_TYPES, roadProfile, roadType } from '@world/roadTypes';
-import { roadStructure } from '@world/structures';
 import { UNITS_PER_METER } from '@world/units';
 import type { TerrainMode } from '@world/terrain';
 import type { NodeId, SegmentId } from '@world/ids';
@@ -30,11 +29,13 @@ import { rebindAgents, rebindPeds, rebindVehicles, step } from '@sim/pipeline';
 import { DT, NARROW_SCREEN_SHARE, NARROW_SCREEN_WIDTH } from '@sim/params';
 import { summarize } from '@sim/audit';
 
-import { type Anchor, findAnchor, snapRoadEndpoint, type SnapResult } from '@editor/snap';
+import {
+  type Anchor, anchorForHeight as anchorAtHeight, anchorHeightOffset as anchorHeightAt, findAnchor, snapRoadEndpoint, type SnapResult,
+} from '@editor/snap';
 import { commitRoadPath, duplicateSegment, joinSegments, splitSegment } from '@editor/commit';
 import { roadPathFromGesture, type RoadPathPiece, type RoadPathPoint } from '@editor/roadPath';
-import { History, restoreInto } from '@editor/history';
-import { Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
+import { History, restoreInto, restoreSnapshot } from '@editor/history';
+import { type ImportResult, Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
 import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
@@ -127,8 +128,20 @@ const savedSession = persistence.loadSession();
 const saved = savedSession?.document && !isUntouchedStarter(savedSession.document)
   ? savedSession.document
   : null;
+// A saved map that validates and still fails to load must not take the game
+// down with it - on every reload. It is set aside (never deleted) and the game
+// opens empty, saying so.
+let bootFailed = false;
 if (saved) {
-  restoreInto(doc, saved, net);
+  try {
+    restoreInto(doc, saved, net);
+  } catch (error) {
+    console.error('The saved map could not be loaded; it was set aside.', error);
+    persistence.quarantineStored();
+    doc.replaceWith(new RoadDoc());
+    net.rebuild();
+    bootFailed = true;
+  }
 } else {
   net.rebuild();
 }
@@ -444,7 +457,7 @@ function mutate(fn: () => boolean): void {
 function mutateBuilt(fn: () => boolean): boolean {
   const before = doc.toJSON();
   if (!fn()) return false;
-  history.record(RoadDoc.fromJSON(before));
+  history.record(RoadDoc.fromJSON(before, { repair: false }));
   // A pole or a wire moves `doc.utilityRevision`, not `doc.revision`: the
   // network is unchanged, and rebuilding it (and, behind it, the simulation
   // topology) cost about 330 ms per pole on a large map.
@@ -461,13 +474,18 @@ function mutateBuilt(fn: () => boolean): boolean {
   return true;
 }
 
-function applySnapshot(data: ReturnType<RoadDoc['toJSON']> | null): void {
+/**
+ * `snapshot`: the model's own undo/redo state, restored exactly. `import`:
+ * data from outside (a file, the debug surface), where legacy repairs apply.
+ */
+function applySnapshot(data: ReturnType<RoadDoc['toJSON']> | null, source: 'snapshot' | 'import' = 'snapshot'): void {
   if (!data) return;
   draft = null;
   roadChain = null;
   chainPreview = null;
   curvePending = null;
-  restoreInto(doc, data, net);
+  if (source === 'import') restoreInto(doc, data, net);
+  else restoreSnapshot(doc, data, net);
   rebuildSimulationTopology();
   buildings.restored();
   selectedSegment = null;
@@ -566,28 +584,14 @@ function cancelMove(): void {
   rebuildSimulationTopology();
 }
 
-/** Height of an authored connection, relative to the designed ground. */
+/** Height of an authored connection; open ground takes the height being drawn at. */
 function anchorHeightOffset(anchor: Anchor): number {
-  if (anchor.kind === 'node' && anchor.node !== undefined) {
-    return doc.node(anchor.node)?.heightOffset ?? 0;
-  }
-  if (anchor.kind === 'segment' && anchor.segment !== undefined) {
-    const segment = doc.segment(anchor.segment);
-    if (!segment) return 0;
-    const length = net.polylines.get(doc, segment.id).length;
-    const t = Math.max(0, Math.min(1, (anchor.s ?? 0) / Math.max(1e-6, length)));
-    const a = doc.node(segment.a)?.heightOffset ?? 0;
-    const b = doc.node(segment.b)?.heightOffset ?? 0;
-    return a + (b - a) * t + roadStructure(segment.structure).clearance;
-  }
-  return roadHeightOffset;
+  return anchorHeightAt(doc, net, anchor, roadHeightOffset);
 }
 
 /** A nearby road at another height is a crossing, not an accidental junction. */
 function anchorForHeight(anchor: Anchor, heightOffset: number): Anchor {
-  return anchor.kind !== 'free' && Math.abs(anchorHeightOffset(anchor) - heightOffset) > 0.75
-    ? { kind: 'free', at: anchor.at }
-    : anchor;
+  return anchorAtHeight(doc, net, anchor, heightOffset);
 }
 
 /**
@@ -1756,13 +1760,34 @@ mountAbout();
   exportToFile(doc, sessionSettings());
   flashHint('hint.saved');
 };
-(document.getElementById('openMap') as HTMLButtonElement).onclick = async () => {
-  const imported = await importFromFile();
-  if (!imported) return;
-  history.record(doc);
-  applySnapshot(imported.document);
-  restoreSettings(imported.settings);
+/**
+ * Loads a picked map. The undo entry is recorded only once the map has
+ * actually loaded: recording first left a bogus step (and cleared redo) when
+ * the file then failed.
+ */
+function openImported(result: ImportResult): boolean {
+  if (result.status === 'cancelled') return false;
+  if (result.status === 'invalid') {
+    flashHint('hint.openFailed');
+    return false;
+  }
+  const before = doc.toJSON();
+  try {
+    applySnapshot(result.session.document, 'import');
+  } catch (error) {
+    console.error('The map could not be loaded.', error);
+    applySnapshot(before);
+    flashHint('hint.openFailed');
+    return false;
+  }
+  history.record(RoadDoc.fromJSON(before, { repair: false }));
+  updateHistoryButtons();
+  restoreSettings(result.session.settings);
   flashHint('hint.opened');
+  return true;
+}
+(document.getElementById('openMap') as HTMLButtonElement).onclick = async () => {
+  openImported(await importFromFile());
 };
 
 (document.getElementById('resetView') as HTMLButtonElement).onclick = () => {
@@ -1938,6 +1963,7 @@ function updateHint(): void {
   }
 }
 updateHint();
+if (bootFailed) flashHint('hint.bootFailed');
 
 // ------------------------------------------------------------- minimap
 minimapCanvas.addEventListener('pointerdown', (e) => {
@@ -2919,14 +2945,7 @@ qualitySelect.onchange = () => {
   surface,
   DT,
   exportMap: () => exportToFile(doc, sessionSettings()),
-  importMap: async () => {
-    const imported = await importFromFile();
-    if (!imported) return false;
-    history.record(doc);
-    applySnapshot(imported.document);
-    restoreSettings(imported.settings);
-    return true;
-  },
+  importMap: async () => openImported(await importFromFile()),
   setTraffic: (enabled: boolean) => {
     if (traffic !== enabled) trafficButton.click();
   },
@@ -2939,7 +2958,7 @@ qualitySelect.onchange = () => {
   /** Replaces the map as loading a file does: document, network and simulation topology. */
   loadDoc: (data: ReturnType<RoadDoc['toJSON']>) => {
     history.record(doc);
-    applySnapshot(data);
+    applySnapshot(data, 'import');
   },
   /**
    * Centres the play camera on a world point, so the next frame builds what

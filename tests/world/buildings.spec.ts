@@ -291,6 +291,22 @@ describe('serialisation', () => {
     expect(next.id).toBe(BLUEPRINTS.length + 1);
   });
 
+  it('keeps a traced run turned along its path through clone and reload', () => {
+    const doc = new RoadDoc();
+    const body = generateBody('residential', bays(3), bays(3), 1);
+    const run = { id: 1, kind: 'wall', x: 4, y: -6, facing: 0, w: 5, d: 0.5, z: 0, h: 2, angle: 0.7 };
+    doc.buildings.add({ ...body, elements: [run], nextElementId: 2, x: 0, y: 0, rotation: 0 } as unknown as Building);
+    const angleOf = (d: RoadDoc): number | undefined => [...d.buildings.all()][0]?.elements?.[0]?.angle;
+    // `clone` is what every road draw does, and the history snapshot and the
+    // autosave go through the same migration.
+    expect(angleOf(doc.clone())).toBe(0.7);
+    expect(angleOf(RoadDoc.fromJSON(JSON.parse(JSON.stringify(doc.toJSON()))))).toBe(0.7);
+    // And an unchanged record reads as unchanged: no rebuild on every clone.
+    const revision = doc.buildings.revision;
+    doc.buildings.replaceWith(doc.clone().buildings);
+    expect(doc.buildings.revision).toBe(revision);
+  });
+
   it('loads a map saved before buildings existed', () => {
     const old = { version: 1, nodes: [{ id: 1, x: 0, y: 0 }, { id: 2, x: 100, y: 0 }], segments: [{ id: 1, a: 1, b: 2, type: 1, curve: null }] };
     expect(isSerializedDoc(old)).toBe(true);

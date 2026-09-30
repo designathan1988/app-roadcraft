@@ -240,6 +240,13 @@ function migrateElement(raw: unknown): BuildingElement | null {
     z: Math.max(0, raw.z as number),
     h: Math.max(0.1, raw.h as number),
   };
+  // A traced run (wall, fence, paving, stair) lies along its path at `angle`.
+  // This migrator listed fields rather than keeping them, dropped it, and
+  // every road draw, undo and reload - all of which pass records through here -
+  // turned every traced run back onto the building's axis.
+  // Kept exactly as stored: `BuildingStore.replaceWith` compares records, and a
+  // normalised copy would read as an edit on every clone.
+  if (finite(raw.angle) && raw.angle !== 0) element.angle = raw.angle as number;
   const material = migrateMaterial(raw.material);
   if (material) element.material = material;
   return element;
@@ -334,7 +341,10 @@ export function migrateBuilding(raw: unknown): Building | null {
       seenIds.add(e.id);
     }
     building.elements = elements;
-    building.nextElementId = Math.max(int(raw.nextElementId, 1), ...seenIds) + 1;
+    // The next free id: past every id in use, and never below the stored one.
+    // It used to add one to the stored value on every migration, so each clone
+    // (every road draw) changed every building with elements and rebuilt them.
+    building.nextElementId = Math.max(int(raw.nextElementId, 1), Math.max(...seenIds) + 1);
   } else {
     delete building.elements;
     delete building.nextElementId;

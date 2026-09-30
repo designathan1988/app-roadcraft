@@ -527,7 +527,7 @@ export class RoadDoc {
    * clone so a failed operation never mutates the live document.
    */
   clone(): RoadDoc {
-    const copy = RoadDoc.fromJSON(this.toJSON());
+    const copy = RoadDoc.fromJSON(this.toJSON(), { repair: false });
     copy.nodeIds = new IdAllocator(this.nodeIds.peek);
     copy.segIds = new IdAllocator(this.segIds.peek);
     copy.poleIds = new IdAllocator(this.poleIds.peek);
@@ -548,8 +548,8 @@ export class RoadDoc {
   }
 
   /** Replaces this instance in place while restoring allocator invariants. */
-  replaceFromJSON(data: SerializedDoc): void {
-    const restored = RoadDoc.fromJSON(data);
+  replaceFromJSON(data: SerializedDoc, options: { readonly repair?: boolean } = {}): void {
+    const restored = RoadDoc.fromJSON(data, options);
     this.replaceWith(restored);
   }
 
@@ -639,7 +639,17 @@ export class RoadDoc {
     };
   }
 
-  static fromJSON(data: SerializedDoc): RoadDoc {
+  /**
+   * Builds a document from its serialized form.
+   *
+   * `repair` (the default) is for data entering the model from outside - an
+   * autosave, an imported file: coincident nodes are merged and positions are
+   * clamped onto the map. A clone or an undo snapshot is the model's own state
+   * and must come back EXACTLY (`repair: false`): merging there deleted a road
+   * the player could see the next time they drew, undid or reloaded.
+   */
+  static fromJSON(data: SerializedDoc, options: { readonly repair?: boolean } = {}): RoadDoc {
+    const repair = options.repair ?? true;
     const doc = new RoadDoc();
     const canonicalNode = new Map<number, NodeId>();
     const nodeAt = new Map<string, RoadNode>();
@@ -653,7 +663,7 @@ export class RoadDoc {
       doc.nodeIds.reserve(n.id);
       const heightOffset = Number.isFinite(n.heightOffset) ? (n.heightOffset as number) : 0;
       const key = `${coordinateKey(n.x, n.y)}\u0000${heightOffset}`;
-      const existing = nodeAt.get(key);
+      const existing = repair ? nodeAt.get(key) : undefined;
       if (existing) {
         canonicalNode.set(n.id, existing.id);
         if (existing.control === 'auto' && n.control && n.control !== 'auto') {
@@ -665,8 +675,10 @@ export class RoadDoc {
         continue;
       }
       const id = asNodeId(n.id);
+      // Nothing may leave the map (`addNode`/`moveNode` clamp); a file can.
+      const at = repair ? clampToMap(n) : n;
       const node: RoadNode = {
-        id, x: n.x, y: n.y, heightOffset, smooth: n.smooth ?? false,
+        id, x: at.x, y: at.y, heightOffset, smooth: n.smooth ?? false,
         incident: [], control: n.control ?? 'auto',
         blockedMovements: n.blockedMovements ? [...n.blockedMovements] : [],
       };
@@ -705,7 +717,8 @@ export class RoadDoc {
     // existed simply has no such key, and must load exactly as it did before.
     for (const p of data.poles ?? []) {
       const id = asPoleId(p.id);
-      doc.poles.set(id, { id, x: p.x, y: p.y, lamp: p.lamp ?? false });
+      const at = repair ? clampToMap(p) : p;
+      doc.poles.set(id, { id, x: at.x, y: at.y, lamp: p.lamp ?? false });
       doc.poleIds.reserve(p.id);
     }
     for (const s of data.poleSpans ?? []) {

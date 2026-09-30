@@ -6,8 +6,9 @@ import type { NodeId, SegmentId } from '@world/ids';
 import { MIN_LINK_LENGTH } from '@world/approach';
 import { ROAD_TYPES } from '@world/roadTypes';
 import type { RoadStructure } from '@world/structures';
-import { commitDraft, joinSegments, splitSegment } from '@editor/commit';
-import { findAnchor, snapEndpoint, type Anchor } from '@editor/snap';
+import { commitDraft, commitRoadPath, joinSegments, splitSegment } from '@editor/commit';
+import { anchorForHeight, anchorHeightOffset, findAnchor, snapEndpoint, snapRoadEndpoint, type Anchor } from '@editor/snap';
+import { fitRoadCurve } from '@world/doc';
 
 /**
  * One editor gesture, as plain JSON.
@@ -21,6 +22,14 @@ export type FuzzOp =
   | { readonly op: 'draw'; readonly a: readonly [number, number]; readonly b: readonly [number, number];
     readonly type: number; readonly curve: { readonly t: number; readonly h: number } | null;
     readonly structure: RoadStructure }
+  /**
+   * A road drawn the way the road tool draws it today: `commitRoadPath` with
+   * authored heights (`h0`/`h1`, units above the designed ground). `draw` is
+   * the older `commitDraft` path, kept so the shrunk fixtures still replay.
+   */
+  | { readonly op: 'path'; readonly a: readonly [number, number]; readonly b: readonly [number, number];
+    readonly type: number; readonly curve: { readonly t: number; readonly h: number } | null;
+    readonly h0: number; readonly h1: number }
   | { readonly op: 'split'; readonly pick: number; readonly at: number }
   | { readonly op: 'join'; readonly pick: number }
   | { readonly op: 'move'; readonly pick: number; readonly dx: number; readonly dy: number }
@@ -99,6 +108,25 @@ export function applyOp(state: FuzzState, op: FuzzOp): boolean {
             detail: 'commitDraft left a network marked current without the new road' });
         }
       }
+      break;
+    }
+    case 'path': {
+      // `main.ts` pointerdown + commitRoadGesture: the start is whatever is under
+      // the pointer, the end is snapped at the height being drawn, and an anchor
+      // at another height is open ground (a crossing, not a junction).
+      const start = findAnchor(doc, net, { x: op.a[0], y: op.a[1] }, 1);
+      const startHeight = start.kind === 'free' ? op.h0 : anchorHeightOffset(doc, net, start, op.h0);
+      const snapped = snapRoadEndpoint(doc, net, start, { x: op.b[0], y: op.b[1] }, 1, op.h1).at;
+      const endAnchor = anchorForHeight(doc, net, findAnchor(doc, net, snapped, 1, undefined, op.h1), op.h1);
+      const end: Anchor = endAnchor.kind === 'free' ? { kind: 'free', at: snapped } : endAnchor;
+      const endHeight = end.kind === 'free' ? op.h1 : anchorHeightOffset(doc, net, end, op.h1);
+      if (Math.hypot(start.at.x - end.at.x, start.at.y - end.at.y) < 1e-6) return false;
+      const curve = op.curve ? fitRoadCurve(start.at, end.at, op.curve, op.type) : null;
+      changed = commitRoadPath(doc, net, start, end, op.type, [{
+        start: { at: start.at, heightOffset: startHeight },
+        end: { at: end.at, heightOffset: endHeight },
+        curve,
+      }]).committed;
       break;
     }
     case 'split': {
@@ -253,6 +281,12 @@ function drawOp(rng: Rng, state: FuzzState): FuzzOp {
   }
   const chord = Math.hypot(b[0] - a[0], b[1] - a[1]);
   const shaped = curve ? { t: curve.t, h: round((rng.float() < 0.5 ? 1 : -1) * rng.range(0.1, 0.35) * chord) } : null;
+  // Most roads go through the tool's own path: authored heights, no legacy
+  // structure. A share keeps the old `commitDraft` structures in play.
+  if (rng.float() < 0.7) {
+    const height = (): number => rng.float() < 0.6 ? 0 : round((rng.float() < 0.75 ? 1 : -1) * rng.range(2.5, 30));
+    return { op: 'path', a, b, type, curve: shaped, h0: height(), h1: height() };
+  }
   return { op: 'draw', a, b, type, curve: shaped, structure };
 }
 

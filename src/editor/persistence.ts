@@ -137,6 +137,22 @@ export class Persistence {
     return null;
   }
 
+  /**
+   * Sets the stored map aside after it passed validation but failed to load
+   * (the loader threw). Without this a map that validates and then crashes
+   * `fromJSON` was re-read, and crashed the boot, on every reload.
+   */
+  quarantineStored(): void {
+    this.rejected = true;
+    let raw: string | null;
+    try {
+      raw = localStorage.getItem(this.storageKey);
+    } catch {
+      return;
+    }
+    quarantine(raw, this.storageKey, this.storageKey === KEY ? QUARANTINE_KEY : `${this.storageKey}.unreadable`);
+  }
+
   clear(): void {
     try {
       localStorage.removeItem(this.storageKey);
@@ -215,14 +231,24 @@ export function exportToFile(
   URL.revokeObjectURL(url);
 }
 
-/** Reads a map file chosen by the user. */
-export async function importFromFile(): Promise<SavedSession | null> {
+/** What a file pick came to: a map, nothing chosen, or a file that is not one. */
+export type ImportResult =
+  | { readonly status: 'ok'; readonly session: SavedSession }
+  | { readonly status: 'cancelled' }
+  | { readonly status: 'invalid' };
+
+/**
+ * Reads a map file chosen by the user. A bad file and a cancelled dialog used
+ * to both come back as `null`, so a file that was not a map did nothing at
+ * all, with no word to the player.
+ */
+export async function importFromFile(): Promise<ImportResult> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/json,.json';
     let settled = false;
-    const finish = (value: SavedSession | null): void => {
+    const finish = (value: ImportResult): void => {
       if (settled) return;
       settled = true;
       resolve(value);
@@ -230,17 +256,23 @@ export async function importFromFile(): Promise<SavedSession | null> {
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) {
-        finish(null);
+        finish({ status: 'cancelled' });
         return;
       }
       try {
         const parsed: unknown = JSON.parse(await file.text());
-        finish(readImportedSession(parsed));
+        const session = readImportedSession(parsed);
+        finish(session ? { status: 'ok', session } : { status: 'invalid' });
       } catch {
-        finish(null);
+        finish({ status: 'invalid' });
       }
     };
-    input.oncancel = () => finish(null);
+    input.oncancel = () => finish({ status: 'cancelled' });
+    // Browsers without a `cancel` event: the window regains focus when the
+    // dialog closes; a pick that has not arrived shortly after is a cancel.
+    window.addEventListener('focus', () => {
+      setTimeout(() => { if (!input.files?.length) finish({ status: 'cancelled' }); }, 1000);
+    }, { once: true });
     input.click();
   });
 }
@@ -301,10 +333,36 @@ export function isSerializedDoc(value: unknown): value is SerializedDoc {
     for (const stamp of value.terrain) {
       if (!isRecord(stamp) || !isId(stamp.id) || terrainIds.has(stamp.id)) return false;
       if (!isFiniteNumber(stamp.x) || !isFiniteNumber(stamp.y) ||
-        !isFiniteNumber(stamp.radius) || stamp.radius <= 0 ||
+        !isFiniteNumber(stamp.radius) || stamp.radius <= 0 || stamp.radius > MAX_STAMP_RADIUS ||
+        (stamp.level !== undefined && !isFiniteNumber(stamp.level)) ||
         !isFiniteNumber(stamp.strength) || stamp.strength < 0 ||
         !isTerrainMode(stamp.mode)) return false;
       terrainIds.add(stamp.id);
+    }
+  }
+
+  // Poles and spans. Never checked before: `poles: {}` passed, then threw
+  // 'not iterable' in `fromJSON` - at boot, at module top level, after the
+  // entry had already been accepted, so it was never quarantined and every
+  // reload crashed the same way.
+  const poleIds = new Set<number>();
+  if (value.poles !== undefined) {
+    if (!Array.isArray(value.poles)) return false;
+    for (const pole of value.poles) {
+      if (!isRecord(pole) || !isId(pole.id) || poleIds.has(pole.id)) return false;
+      if (!isFiniteNumber(pole.x) || !isFiniteNumber(pole.y)) return false;
+      if (pole.lamp !== undefined && typeof pole.lamp !== 'boolean') return false;
+      poleIds.add(pole.id);
+    }
+  }
+  if (value.poleSpans !== undefined) {
+    if (!Array.isArray(value.poleSpans)) return false;
+    const spanIds = new Set<number>();
+    for (const span of value.poleSpans) {
+      if (!isRecord(span) || !isId(span.id) || spanIds.has(span.id)) return false;
+      if (!isId(span.a) || !isId(span.b) || span.a === span.b) return false;
+      if (!poleIds.has(span.a) || !poleIds.has(span.b)) return false;
+      spanIds.add(span.id);
     }
   }
 
@@ -332,8 +390,16 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/**
+ * Ids stay far below 2^53: an allocator reserved past it stops counting
+ * (2^53 + 1 === 2^53) and every new node overwrites the last one.
+ */
+const MAX_ID = 2 ** 31;
+/** The terrain brush's own ceiling (the Radius slider's max). */
+const MAX_STAMP_RADIUS = 180;
+
 function isId(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) > 0;
+  return Number.isInteger(value) && (value as number) > 0 && (value as number) <= MAX_ID;
 }
 
 export { RoadDoc };

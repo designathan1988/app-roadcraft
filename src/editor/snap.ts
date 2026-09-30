@@ -341,3 +341,31 @@ export function snapEndpoint(
     length,
   };
 }
+
+/**
+ * Height of an authored connection, relative to the designed ground, or
+ * `fallback` for open ground. Shared by the road tool and the fuzzer, so the
+ * defect detector draws roads the way the player does.
+ */
+export function anchorHeightOffset(doc: RoadDoc, net: Network, anchor: Anchor, fallback: number): number {
+  if (anchor.kind === 'node' && anchor.node !== undefined) {
+    return doc.node(anchor.node)?.heightOffset ?? 0;
+  }
+  if (anchor.kind === 'segment' && anchor.segment !== undefined) {
+    const segment = doc.segment(anchor.segment);
+    if (!segment) return 0;
+    const length = net.polylines.get(doc, segment.id).length;
+    const t = Math.max(0, Math.min(1, (anchor.s ?? 0) / Math.max(1e-6, length)));
+    const a = doc.node(segment.a)?.heightOffset ?? 0;
+    const b = doc.node(segment.b)?.heightOffset ?? 0;
+    return a + (b - a) * t + roadStructure(segment.structure).clearance;
+  }
+  return fallback;
+}
+
+/** A nearby road at another height is a crossing, not an accidental junction. */
+export function anchorForHeight(doc: RoadDoc, net: Network, anchor: Anchor, heightOffset: number): Anchor {
+  return anchor.kind !== 'free' && Math.abs(anchorHeightOffset(doc, net, anchor, heightOffset) - heightOffset) > 0.75
+    ? { kind: 'free', at: anchor.at }
+    : anchor;
+}

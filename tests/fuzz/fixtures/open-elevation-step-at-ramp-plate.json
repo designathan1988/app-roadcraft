@@ -1,0 +1,39 @@
+{
+ "name": "open-elevation-step-at-ramp-plate",
+ "category": "elevationStep",
+ "detail": "jump 0.47 at s=199.25",
+ "sim": null,
+ "ops": [
+  {
+   "op": "path",
+   "a": [
+    46.68,
+    613.76
+   ],
+   "b": [
+    -48.83,
+    700
+   ],
+   "type": 0,
+   "curve": null,
+   "h0": 0,
+   "h1": 11.44
+  },
+  {
+   "op": "path",
+   "a": [
+    188.05,
+    612.69
+   ],
+   "b": [
+    -198.42,
+    700
+   ],
+   "type": 0,
+   "curve": null,
+   "h0": 14.98,
+   "h1": -21.97
+  }
+ ],
+ "open": "A road drawn at an authored height steps where its ramp meets a junction plate. solveVariable (world/elevation.ts) eases height between the plate edges with a smoothstep whose peak grade is 1.5x its average, caps it with slopeLimit(RAMP_GRADE) without fixed samples, then pinPlates puts the plates back: what the limiter could not absorb returns as a step at the plate edge. The editor checks grade against the chord (commit.ts) and the preview uses a third curve. Fixed by the single vertical-profile solver (plan Lote R, step R2)."
+}

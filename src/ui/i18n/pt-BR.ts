@@ -220,6 +220,8 @@ export const PT_BR: Dictionary = {
   'hint.redone': 'Refeito',
   'hint.saved': 'Mapa salvo em arquivo',
   'hint.opened': 'Mapa aberto',
+  'hint.openFailed': 'Esse arquivo não é um mapa do Roadcraft ou está danificado. Nada foi alterado',
+  'hint.bootFailed': 'O mapa salvo não pôde ser carregado. Ele foi guardado à parte e um mapa novo foi aberto',
   'hint.newMap': 'Novo mapa iniciado · o anterior volta com Ctrl+Z',
 
   'hint.mobile.road': 'Toque no início, ajuste +/− e toque no fim · 2 dedos: câmera',

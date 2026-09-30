@@ -51,9 +51,24 @@ export class History {
   }
 }
 
-/** Replaces a document's contents in place from a snapshot. */
+/**
+ * Loads data from OUTSIDE the running model - the autosave at boot, an
+ * imported file: legacy repairs apply (coincident nodes merged, dead ends
+ * left inside another road joined to it).
+ */
 export function restoreInto(target: RoadDoc, data: SerializedDoc, net: Network): void {
   target.replaceFromJSON(data);
   net.rebuild();
   repairNearConnections(target, net);
+}
+
+/**
+ * Restores one of the model's own snapshots - undo, redo - exactly. Running
+ * the legacy repair here made undo edit the map: a dead end the Move tool had
+ * left inside a road was split into a junction the player never drew, and
+ * undo and redo stopped being inverses.
+ */
+export function restoreSnapshot(target: RoadDoc, data: SerializedDoc, net: Network): void {
+  target.replaceFromJSON(data, { repair: false });
+  net.rebuild();
 }
