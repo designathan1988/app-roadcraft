@@ -70,6 +70,8 @@ export class SimWorld {
   readonly peds = new Map<PedId, Ped>();
   /** What moves the people (`people/engine.ts`); everything else reaches them through it. */
   pedEngine: PedestrianEngine = legacyPedestrians;
+  /** Which vehicle model drives: the legacy one, or Drive v2 (`drive/*`) as it replaces it layer by layer. */
+  driveModel: 'v1' | 'v2' = 'v1';
   readonly runtime = new Map<LaneletId, LaneletRuntime>();
   readonly controllers = new Map<NodeId, SignalController>();
 

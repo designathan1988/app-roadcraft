@@ -21,6 +21,8 @@ export interface Obstacle {
   readonly kind: ObstacleKind;
   /** Excluded from the hard safe-speed cap when false. */
   readonly hard?: boolean;
+  /** Its acceleration, when it is a vehicle: what it is doing, not just how fast. */
+  readonly accel?: number;
 }
 
 export type ObstacleKind =

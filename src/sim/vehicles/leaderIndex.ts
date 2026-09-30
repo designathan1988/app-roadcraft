@@ -45,12 +45,13 @@ export function findLeader(w: SimWorld, v: Vehicle): Obstacle | null {
       consider({
         gap: lead.s - lead.archetype.length - v.s - Math.max(0, standing - Math.max(v.driver.s0, 0)),
         speed: lead.v,
+        accel: lead.accel,
         kind: 'vehicle',
       });
     }
   }
   for (const shadow of shadowsAhead(w, v.lanelet, v.s, v.id)) {
-    consider({ gap: shadow.rear - v.s, speed: shadow.vehicle.v, kind: 'vehicle' });
+    consider({ gap: shadow.rear - v.s, speed: shadow.vehicle.v, accel: shadow.vehicle.accel, kind: 'vehicle' });
   }
   if (best) return best;
 
@@ -74,11 +75,12 @@ export function findLeader(w: SimWorld, v: Vehicle): Obstacle | null {
       consider({
         gap: dist + tail.s - tail.archetype.length,
         speed: tail.v,
+        accel: tail.accel,
         kind: 'vehicle',
       });
     }
     for (const shadow of shadowsAhead(w, nextId, -Infinity, v.id)) {
-      consider({ gap: dist + shadow.rear, speed: shadow.vehicle.v, kind: 'vehicle' });
+      consider({ gap: dist + shadow.rear, speed: shadow.vehicle.v, accel: shadow.vehicle.accel, kind: 'vehicle' });
     }
     if (best) return best;
     const lanelet = w.lanelet(nextId);

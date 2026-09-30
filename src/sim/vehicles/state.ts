@@ -43,6 +43,8 @@ export interface Vehicle {
   lanelet: LaneletId;
   s: number;
   v: number;
+  /** Acceleration applied last tick, u/s². Written only by the integrator. */
+  accel: number;
   /** Lateral render offset. Current lanelets keep this at zero. */
   lateral: number;
   /**
@@ -244,6 +246,7 @@ export function createVehicle(
     lanelet,
     s: 0,
     v: 0,
+    accel: 0,
     lateral: 0,
     lateralStart: 0,
     lateralTravelled: 0,
