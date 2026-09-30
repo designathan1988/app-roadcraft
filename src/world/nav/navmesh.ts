@@ -21,6 +21,8 @@ import type { MultiPoly } from '@core/clipper';
 
 /** A body's radius: how far the mesh keeps a person's centre from any wall, u. */
 export const NAV_RADIUS = 0.625; // 0.25 m
+/** Half the narrowest passage the mesh keeps open for body centres, u (so passages under 0.4 m between walls close). */
+export const NAV_PINCH = 0.5; // 0.2 m
 
 export interface NavObstacle {
   readonly x: number;
@@ -47,6 +49,11 @@ export interface NavInput {
    * a ramp their edges coincide and a portal joins them.
    */
   readonly layers: readonly MultiPoly[];
+  /**
+   * The kerb stone beside each deck's footway: walkable, but a route keeps
+   * off it (`KERB`) - walkers only step onto it to get past somebody.
+   */
+  readonly kerbs?: readonly MultiPoly[];
   /** The deck each zebra lies on, an index into `layers`. */
   readonly crossingLayers: readonly number[];
   /** The road surface a zebra may cover: carriageway plus kerb. */
@@ -71,6 +78,7 @@ export interface NavStrip {
 /** A triangle's region: footway, open ground, or the zebra with this index in `NavMesh.crossings`. */
 export const FOOTWAY = -1;
 export const OPEN = -2;
+export const KERB = -3;
 /** Whether a region is a zebra: a gate that has to be granted. */
 export const isZebra = (region: number): boolean => region >= 0;
 
@@ -170,10 +178,15 @@ export class NavMesh {
     const o = t * 6;
     const ax = this.tri[o]!, ay = this.tri[o + 1]!, bx = this.tri[o + 2]!, by = this.tri[o + 3]!;
     const cx = this.tri[o + 4]!, cy = this.tri[o + 5]!;
-    const d1 = ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / (Math.hypot(bx - ax, by - ay) || 1);
-    const d2 = ((cx - bx) * (y - by) - (cy - by) * (x - bx)) / (Math.hypot(cx - bx, cy - by) || 1);
-    const d3 = ((ax - cx) * (y - cy) - (ay - cy) * (x - cx)) / (Math.hypot(ax - cx, ay - cy) || 1);
-    return d1 >= -eps && d2 >= -eps && d3 >= -eps;
+    const d1 = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
+    const d2 = (cx - bx) * (y - by) - (cy - by) * (x - bx);
+    const d3 = (ax - cx) * (y - cy) - (ay - cy) * (x - cx);
+    if (d1 >= 0 && d2 >= 0 && d3 >= 0) return true;
+    // Outside: near enough only if near the triangle itself. Measured against
+    // the lines of its edges instead, a thin triangle took in points far out
+    // past its sharp ends, and a body stepping there was pulled back 1 m.
+    const q = closestOnTriangle(this.tri, t, x, y);
+    return (q.x - x) ** 2 + (q.y - y) ** 2 <= eps * eps;
   }
 
   /** The triangle under a point anywhere on the mesh, or -1. */
@@ -652,18 +665,30 @@ export function buildNavMesh(input: NavInput): NavMesh {
   // mesh was shrunk by a body's radius, a gap nobody could step across -
   // measured, 24 of 55 zebras joined to the footway at one end only.
   const strips = (input.paths ?? []).map((s) => rect({ id: '', ...s }, 0));
-  const walk = unionD([...input.layers.flatMap(toPaths), ...crossings.map((c) => rect(c, INTO_FOOTWAY)), ...strips], [], FillRule.NonZero, PRECISION);
+  const kerbs = (input.kerbs ?? []).map((k) => unionD(toPaths(k), [], FillRule.NonZero, PRECISION));
+  const walk = unionD([...input.layers.flatMap(toPaths), ...kerbs.flat(), ...crossings.map((c) => rect(c, INTO_FOOTWAY)), ...strips], [], FillRule.NonZero, PRECISION);
   const blocked: PathsD = [
     ...input.obstacles.map((o) => disc(o.x, o.y, o.r)),
     ...input.solids.map((ring) => ccw(ring.map((p) => ({ x: p.x, y: p.y })))),
   ];
   const open = blocked.length ? differenceD(walk, unionD(blocked, [], FillRule.NonZero, PRECISION), FillRule.NonZero, PRECISION) : walk;
-  const eroded = inflatePathsD(open, -NAV_RADIUS, JoinType.Round, EndType.Polygon, 2, PRECISION, 0.05);
+  // Shrunk by a body's radius, and then by a little more and grown back by
+  // that little (a morphological opening): any passage narrower than a body
+  // can walk is closed. Without it a hair-wide gap was left between a street
+  // tree and the kerb, routes squeezed through it, and walkers stuck there
+  // jerking to get out.
+  const shrunk = inflatePathsD(open, -(NAV_RADIUS + NAV_PINCH), JoinType.Round, EndType.Polygon, 2, PRECISION, 0.05);
+  const eroded = inflatePathsD(shrunk, NAV_PINCH, JoinType.Round, EndType.Polygon, 2, PRECISION, 0.05);
 
   const tris: Tri[] = [];
   let polyId = 0;
   nextVertex = 0;
-  const footway = differenceD(eroded, allZebras, FillRule.NonZero, PRECISION);
+  const allKerbs = kerbs.length ? unionD(kerbs.flat(), [], FillRule.NonZero, PRECISION) : [];
+  const onFoot = differenceD(eroded, allZebras, FillRule.NonZero, PRECISION);
+  const footway = allKerbs.length ? differenceD(onFoot, allKerbs, FillRule.NonZero, PRECISION) : onFoot;
+  kerbs.forEach((kerb, layer) => {
+    for (const poly of polygons(intersectD(onFoot, kerb, FillRule.NonZero, PRECISION))) triangulate(poly, KERB, layer, polyId++, tris);
+  });
   input.layers.forEach((deck, layer) => {
     // One deck is the whole footway; only with several is each cut out.
     const part = input.layers.length === 1 ? footway

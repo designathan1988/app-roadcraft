@@ -1,5 +1,5 @@
 import { m } from '@world/units';
-import { FOOTWAY, NAV_RADIUS, OPEN, closestOnSegment, isZebra } from '@world/nav/navmesh';
+import { FOOTWAY, KERB, NAV_RADIUS, OPEN, closestOnSegment, isZebra } from '@world/nav/navmesh';
 import { findPath, funnel, type NavPath } from '@world/nav/path';
 import type { SidewalkEdge } from '../peds/sidewalk';
 import { DT, PED, PED_CEILING, PED_DENSITY } from '../params';
@@ -8,7 +8,7 @@ import { indexReservations, mayEnterCrossing } from '../crossings/permission';
 import type { SimWorld } from '../world';
 import type { Boarder, PedestrianEngine } from './engine';
 import { buildWorldNav, type WorldNav } from './nav';
-import { PARTY_ARCHETYPES, type PartyView, type PedView, type PersonAgeClass, type PersonGender } from './view';
+import { PARTY_ARCHETYPES, SIT_DOWN_SECONDS, STAND_UP_SECONDS, type GestureView, type PartyView, type PedView, type PersonAgeClass, type PersonGender } from './view';
 import { planParty } from './party';
 
 /**
@@ -54,6 +54,16 @@ interface Person {
   waitingForParty: number;
   /** Seconds other people have kept this body from getting on. */
   held: number;
+  /** What it wanted last tick, for diagnosis. */
+  intent: { want: number; face: number | null; tx: number; ty: number; speed: number; limit: number; tick: number } | null;
+  /** Seconds standing in the queue for a zebra, behind somebody at its kerb, and which. */
+  queued: number;
+  queuedFor: number;
+  /** Seconds standing still with its party, and the talk it has struck up. */
+  stoodTogether: number;
+  talk: GestureView | null;
+  /** A bench seat it is going to or sitting on. */
+  sit: Sit | null;
   goalX: number;
   goalY: number;
   goalTri: number;
@@ -76,6 +86,21 @@ interface Person {
   view: PedView;
 }
 
+/** Going to a bench and sitting on it: the phases the renderer plays. */
+interface Sit {
+  readonly key: string;
+  readonly face: number;
+  /** In front of the seat, and the point of the mesh it is reached from. */
+  readonly x: number;
+  readonly y: number;
+  readonly mx: number;
+  readonly my: number;
+  phase: 'approach' | 'step' | 'turn' | 'sitDown' | 'seated' | 'standUp' | 'leave';
+  /** Seconds to stay seated. */
+  readonly hold: number;
+  readonly gesture: GestureView;
+}
+
 /** Everything the engine keeps for one world. */
 interface State {
   nav: WorldNav | null;
@@ -86,6 +111,8 @@ interface State {
   /** Footway triangles and their cumulative areas, for picking places. */
   footTris: number[];
   footArea: number[];
+  /** Bench seats taken, by key, to the person on them. */
+  taken: Map<string, number>;
 }
 
 const STATES = new WeakMap<SimWorld, State>();
@@ -93,7 +120,7 @@ const STATES = new WeakMap<SimWorld, State>();
 function stateOf(w: SimWorld): State {
   let s = STATES.get(w);
   if (!s) {
-    s = { nav: null, people: [], byId: new Map(), nextId: 1, spawnClock: 0, footTris: [], footArea: [] };
+    s = { nav: null, people: [], byId: new Map(), nextId: 1, spawnClock: 0, footTris: [], footArea: [], taken: new Map() };
     STATES.set(w, s);
   }
   return s;
@@ -118,6 +145,12 @@ const CORNER_ON = 0.05;
 const KERB_STOP = m(0.3);
 /** Nearer than this to the kerb, a person asks to cross; if refused, waits, u. */
 const ASK_AT = m(2.5);
+/** Share of a zebra's half-width to its right that somebody waiting stands aside by. */
+const WAIT_ASIDE = 0.45;
+/** Nearer than this to a zebra's kerb, standing still is queueing for it, u. */
+const QUEUE_REACH = m(3);
+/** Extra cost of walking along the kerb stone, per unit walked: routes keep to the footway. */
+const KERB_COST = 2;
 /** Planned wait at a zebra, as extra walking distance, u. */
 const CROSS_COST = m(12);
 const NEIGHBOUR_REACH = m(5);
@@ -151,6 +184,21 @@ const WALL_HUG = m(0.15);
 const RELAX = 0.54;
 const SPAWN_INTERVAL = 0.5;
 const MIN_TRIP = m(40);
+/** Chance, by age, that somebody alone goes to sit on a free bench nearby when it gets somewhere. */
+const BENCH_CHANCE = { child: 0, adult: 0.16, elder: 0.45 } as const;
+/** Ticks between a walker's glances for a free bench, the reach of the glance, and the chance, by age, it sits. */
+const BENCH_LOOK = 60;
+const BENCH_PASS_REACH = m(8);
+const BENCH_PASS = { child: 0, adult: 0.05, elder: 0.2 } as const;
+/** Pace of the few steps between the footway and a seat, u/s. */
+const STEP_PACE = m(0.75);
+/** Farthest a bench is walked to, u; and how long people sit, s. */
+const BENCH_REACH = m(60);
+const SIT_RANGE = [14, 48] as const;
+/** Seconds a party stands together before it talks. */
+const TALK_AFTER = 1.5;
+/** Farthest from a lane's centre somebody on the footway can be hailed, u. */
+const HAIL_REACH = m(8);
 /** Ticks between a follower re-aiming at its place beside its leader. */
 const FOLLOW_EVERY = 15;
 /** How much faster than its leader a follower walks per unit it is behind its place, 1/s. */
@@ -196,7 +244,24 @@ export function createPeopleEngine(): PedestrianEngine {
     // so rebuilds the mesh); here everybody simply leaves.
     reset(w) { STATES.delete(w); },
     bridge: {
-      hailable: () => null,
+      // Somebody a car could stop for: alone, not a child, walking on the
+      // footway along that side of the lane, nearest the front first.
+      hailable(w, lanelet, s0, s1, exclude = new Set()) {
+        const s = stateOf(w);
+        const lane = w.lanelet(lanelet);
+        if (!lane || !s.nav) return null;
+        let best: { id: number; s: number } | null = null;
+        for (const p of s.people) {
+          if (p.mode !== 'walk' || p.party.size !== 1 || p.ageClass === 'child' || exclude.has(p.id)) continue;
+          if (isZebra(s.nav.mesh.region[p.tri]!) || s.nav.segment[p.tri] !== lane.segment) continue;
+          const hit = lane.centre.closestPoint({ x: p.x, y: p.y });
+          if (hit.s < s0 || hit.s > s1 || hit.distance > HAIL_REACH) continue;
+          const f = lane.centre.sampleAt(hit.s);
+          if ((p.x - f.p.x) * f.t.y - (p.y - f.p.y) * f.t.x <= 0) continue;
+          if (!best || hit.s < best.s) best = { id: p.id, s: hit.s };
+        }
+        return best;
+      },
       board(w, id, door, reach) {
         const s = stateOf(w);
         const p = s.byId.get(id);
@@ -255,7 +320,7 @@ function create(w: SimWorld, s: State, id: number, x: number, y: number, tri: nu
   };
   const p: Person = {
     id, x, y, heading, v: 0, turnV: 0, prevX: x, prevY: y, prevHeading: heading, age: 0, tri,
-    pace, ageClass: cls, gender: sex, party, rank, leader: traits.leader ?? null, waitingForParty: 0, held: 0,
+    pace, ageClass: cls, gender: sex, party, rank, leader: traits.leader ?? null, waitingForParty: 0, held: 0, intent: null, queued: 0, queuedFor: -1, stoodTogether: 0, talk: null, sit: null,
     goalX: x, goalY: y, goalTri: tri, leaving: false, path: null, ci: 0,
     mode: 'walk', crossing: -1, waited: 0, stuck: 0, atKerb: false, yielding: 0, view,
   };
@@ -267,6 +332,7 @@ function create(w: SimWorld, s: State, id: number, x: number, y: number, tri: nu
 }
 
 function remove(s: State, p: Person): void {
+  standUp(s, p);
   s.byId.delete(p.id);
   const i = s.people.indexOf(p);
   if (i >= 0) s.people.splice(i, 1);
@@ -341,6 +407,7 @@ function spawn(w: SimWorld, s: State, anywhere = false): void {
  * none was found.
  */
 function pickGoal(w: SimWorld, s: State, p: Person): boolean {
+  standUp(s, p);
   const sources = s.nav?.sources ?? [];
   for (let attempt = 0; attempt < 6; attempt++) {
     const leave = sources.length > 0 && w.rng.people.float() < LEAVE_SHARE;
@@ -356,7 +423,8 @@ function pickGoal(w: SimWorld, s: State, p: Person): boolean {
 function plan(s: State, p: Person): boolean {
   const mesh = s.nav!.mesh;
   const path = findPath(mesh, p.x, p.y, p.tri, p.goalX, p.goalY, p.goalTri,
-    (from, to) => (isZebra(mesh.region[to]!) && mesh.region[from] !== mesh.region[to] ? CROSS_COST : 0));
+    (from, to, length) => (isZebra(mesh.region[to]!) && mesh.region[from] !== mesh.region[to] ? CROSS_COST : 0) +
+      (mesh.region[to] === KERB ? length * KERB_COST : 0));
   p.path = path;
   p.ci = 0;
   return path !== null;
@@ -446,6 +514,14 @@ function step(w: SimWorld, s: State): void {
 
   for (const p of s.people) {
     p.age += DT;
+    // On a bench, or turning to sit on one: the body stays where it stands.
+    if (p.sit && p.sit.phase !== 'approach') {
+      if (sitStep(w, s, p)) arrived.push(p);
+      continue;
+    }
+    // Passing a free bench, somebody alone may sit down on it for a while.
+    if (!p.sit && !p.leader && p.party.size === 1 && p.mode === 'walk' && (p.id + w.clock.tick) % BENCH_LOOK === 0 &&
+        benchNearby(s, p) && w.rng.people.float() < BENCH_PASS[p.ageClass]) pickSeat(w, s, p, true);
     // A follower's goal is its place beside its leader, re-aimed a few times a second.
     if (p.leader && !s.byId.has(p.leader.id)) p.leader = null;
     const lead = p.leader;
@@ -467,7 +543,11 @@ function step(w: SimWorld, s: State): void {
     if (Math.hypot(target.x - p.x, target.y - p.y) < CORNER_ON && corners[1]) target = corners[1];
     const toGoal = Math.hypot(p.goalX - p.x, p.goalY - p.y);
     const lastLeg = target.x === p.goalX && target.y === p.goalY;
-    if (!lead && lastLeg && toGoal < m(0.4)) { arrived.push(p); continue; }
+    if (!lead && lastLeg && toGoal < m(0.4)) {
+      if (p.sit?.phase === 'approach') { p.sit.phase = 'step'; p.sit.gesture.t = 0; continue; }
+      arrived.push(p);
+      continue;
+    }
 
     // --- the next zebra on the route, and whether it may be stepped onto
     let limit = Infinity;
@@ -488,7 +568,11 @@ function step(w: SimWorld, s: State): void {
           face = gate.across;
         }
       }
-      if (p.mode !== 'cross') limit = Math.sqrt(2 * DECEL * Math.max(0, d - KERB_STOP));
+      if (p.mode === 'wait') {
+        // Walk to the place to wait at, and stop there.
+        target = { x: gate.wx, y: gate.wy, tri: target.tri };
+        limit = Math.sqrt(2 * DECEL * Math.max(0, Math.hypot(gate.wx - p.x, gate.wy - p.y) - m(0.05)));
+      } else if (p.mode !== 'cross') limit = Math.sqrt(2 * DECEL * Math.max(0, d - KERB_STOP));
     }
 
     // --- the velocity it would like: towards the corner, at its pace
@@ -512,8 +596,10 @@ function step(w: SimWorld, s: State): void {
           if (!plan(s, q)) q.path = null;
         }
         p.waitingForParty = 0;
-      } else if (lag > PARTY_WAIT) pace = 0;
-      else if (lag > PARTY_SLOW) pace *= 0.5;
+      } else if (lag > PARTY_SLOW) {
+        // Slows to a stroll for them - never stops dead on the pavement.
+        pace *= 0.45;
+      }
     }
     const speed = Math.min(pace, limit, lead ? Infinity : slow);
     const prefX = (dx / dist) * speed, prefY = (dy / dist) * speed;
@@ -590,10 +676,14 @@ function step(w: SimWorld, s: State): void {
     // cross; it used to swing between the zebra and the way it came as its
     // wanted speed hovered round the threshold for turning to it.
     if (p.mode !== 'wait') p.atKerb = false;
-    else if (gate && p.v < m(0.05) && Math.hypot(gate.x - p.x, gate.y - p.y) < KERB_STOP + m(0.3)) p.atKerb = true;
+    else if (gate && p.v < m(0.05) && Math.hypot(gate.wx - p.x, gate.wy - p.y) < m(0.3)) p.atKerb = true;
     // In its place beside a leader who has stopped, a companion stops too and
     // looks the same way: at the zebra they are waiting for, or wherever.
     const besideStoppedLead = !!lead && toGoal < m(0.3) && lead.v < m(0.1);
+    // Standing in the queue behind somebody waiting at the kerb is waiting too.
+    if (p.mode !== 'wait' && gate && p.v < m(0.1) && Math.hypot(gate.x - p.x, gate.y - p.y) < QUEUE_REACH) {
+      p.queued += DT; p.queuedFor = gate.crossing;
+    } else { p.queued = 0; p.queuedFor = -1; }
     if (p.atKerb && gate) { face = gate.across; wantX = 0; wantY = 0; }
     else if (besideStoppedLead) { face = lead!.heading; wantX = 0; wantY = 0; }
     else if (p.yielding > 0) {
@@ -602,6 +692,9 @@ function step(w: SimWorld, s: State): void {
       wantX = 0; wantY = 0;
     } else if (wantSpeed > m(0.08)) face = Math.atan2(wantY, wantX);
     wantSpeed = Math.min(Math.hypot(wantX, wantY), vmax);
+    const intent = p.intent ??= { want: 0, face: null, tx: 0, ty: 0, speed: 0, limit: 0, tick: 0 };
+    intent.want = wantSpeed; intent.face = face; intent.tx = target.x; intent.ty = target.y;
+    intent.speed = speed; intent.limit = limit; intent.tick = w.clock.tick;
     turn(p, face);
     const off = face === null ? 0 : wrap(face - p.heading);
     // Walk only as fast as the heading lines up: a place behind is turned to first.
@@ -650,7 +743,7 @@ function step(w: SimWorld, s: State): void {
   // Arrived: through the door or off the map, or on to somewhere else. When
   // a party's leader goes in, the rest follow it to the same place.
   for (const p of arrived) {
-    if (!p.leaving && pickGoal(w, s, p)) continue;
+    if (!p.leaving && (pickSeat(w, s, p) || pickGoal(w, s, p))) continue;
     for (const q of s.people) {
       if (q.leader !== p) continue;
       q.leader = null;
@@ -664,9 +757,8 @@ function step(w: SimWorld, s: State): void {
 
 /**
  * Keeps the corridor in step with the body: finds its triangle a little
- * ahead or behind in the route, or, when avoidance took it into a triangle
- * beside the route, puts that triangle at the front. False when the body is
- * somewhere the route can not be joined from.
+ * ahead or behind in the route. False when the body has strayed off it, and
+ * needs a fresh route.
  */
 function follow(mesh: WorldNav['mesh'], p: Person): boolean {
   const path = p.path;
@@ -675,11 +767,12 @@ function follow(mesh: WorldNav['mesh'], p: Person): boolean {
   if (tris[p.ci] === p.tri) return true;
   for (let k = p.ci + 1; k < Math.min(tris.length, p.ci + 16); k++) if (tris[k] === p.tri) { p.ci = k; return true; }
   for (let k = p.ci - 1; k >= Math.max(0, p.ci - 6); k--) if (tris[k] === p.tri) { p.ci = k; return true; }
-  const back = mesh.portals[p.tri]!.find((q) => q.to === tris[p.ci]);
-  if (!back) return false;
-  tris.splice(p.ci, 0, p.tri);
-  path.portals.splice(p.ci, 0, back);
-  return true;
+  // Off the corridor (it stepped aside for somebody): a fresh route from
+  // here. Splicing the triangle it strayed into onto the front of the old
+  // route let a body on the line between two triangles grow a corridor that
+  // visited one twice, and it turned back and forth between the two ways on.
+  void mesh;
+  return false;
 }
 
 /**
@@ -688,6 +781,14 @@ function follow(mesh: WorldNav['mesh'], p: Person): boolean {
  */
 function slotBeside(mesh: WorldNav['mesh'], lead: Person, p: Person, crowded: boolean): { x: number; y: number; t: number } {
   const hx = Math.cos(lead.heading), hy = Math.sin(lead.heading);
+  // Waiting at a kerb, a party lines up along it, to the leader's right (the
+  // leader stands to the right of the zebra's mouth): the footway behind and
+  // the way off the zebra both stay clear for everybody else.
+  if (lead.mode === 'wait') {
+    const along = m(0.62) * p.rank;
+    const kerb = mesh.nearest(lead.x + hy * along, lead.y - hx * along, m(0.6));
+    if (kerb && !isZebra(mesh.region[kerb.t]!)) return kerb;
+  }
   // Meeting people coming the other way, a party falls into file behind its
   // leader, and spreads out again once they are past.
   if (crowded) {
@@ -695,7 +796,11 @@ function slotBeside(mesh: WorldNav['mesh'], lead: Person, p: Person, crowded: bo
     if (back) return back;
   }
   const spacing = Math.max(MIN_GAP * 1.1, m(0.62) * (p.party.hasChild ? 0.9 : 1));
-  const side = (p.rank % 2 ? 1 : -1) * spacing * Math.ceil(p.rank / 2);
+  // The side it is already on: a place on the far side meant walking into
+  // its own leader to get there, and giving way to it for ever.
+  const lat = -(p.x - lead.x) * hy + (p.y - lead.y) * hx;
+  const sign = lat > m(0.1) ? 1 : lat < -m(0.1) ? -1 : (p.rank % 2 ? 1 : -1);
+  const side = sign * spacing * Math.ceil(p.rank / 2);
   const ax = lead.x - hy * side - hx * m(0.2), ay = lead.y + hx * side - hy * m(0.2);
   const abreast = mesh.nearest(ax, ay, m(0.1));
   if (abreast && isZebra(mesh.region[abreast.t]!) === isZebra(mesh.region[lead.tri]!)) return abreast;
@@ -716,6 +821,103 @@ function oncoming(g: Map<number, Person[]>, p: Person, ux: number, uy: number, r
     const qx = Math.cos(q.heading), qy = Math.sin(q.heading);
     if (q.v > m(0.2) && qx * ux + qy * uy < -0.5) return true;
   }
+  return false;
+}
+
+/**
+ * Somebody alone, having got where they were going, may go and sit on a free
+ * bench nearby - the old more often than the young.
+ */
+function pickSeat(w: SimWorld, s: State, p: Person, decided = false): boolean {
+  if (p.party.size !== 1 || p.leader || !s.nav) return false;
+  if (!decided && w.rng.people.float() >= BENCH_CHANCE[p.ageClass]) return false;
+  let best: WorldNav['seats'][number] | null = null;
+  let bestD = decided ? BENCH_PASS_REACH : BENCH_REACH;
+  for (const seat of s.nav.seats) {
+    if (s.taken.has(seat.key)) continue;
+    const d = Math.hypot(seat.x - p.x, seat.y - p.y);
+    if (d < bestD) { bestD = d; best = seat; }
+  }
+  if (!best) return false;
+  standUp(s, p);
+  p.goalX = best.mx; p.goalY = best.my; p.goalTri = best.t; p.leaving = false;
+  if (!plan(s, p)) return false;
+  const hold = SIT_RANGE[0] + w.rng.people.float() * (SIT_RANGE[1] - SIT_RANGE[0]);
+  p.sit = {
+    key: best.key, face: best.face, x: best.x, y: best.y, mx: best.mx, my: best.my,
+    phase: 'approach', hold, gesture: { kind: 'bench', phase: 'approach', t: 0 },
+  };
+  s.taken.set(best.key, p.id);
+  return true;
+}
+
+/** Whether a free seat is within a glance. */
+function benchNearby(s: State, p: Person): boolean {
+  for (const seat of s.nav?.seats ?? []) {
+    if (!s.taken.has(seat.key) && Math.hypot(seat.mx - p.x, seat.my - p.y) < BENCH_PASS_REACH) return true;
+  }
+  return false;
+}
+
+/** Leaves the bench seat it holds, if any. */
+function standUp(s: State, p: Person): void {
+  if (!p.sit) return;
+  if (s.taken.get(p.sit.key) === p.id) s.taken.delete(p.sit.key);
+  p.sit = null;
+}
+
+/**
+ * One tick at a bench: turn to face the footway, sit down, sit, stand up.
+ * True when done sitting and the person should go on.
+ */
+function sitStep(w: SimWorld, s: State, p: Person): boolean {
+  const sit = p.sit!;
+  const g = sit.gesture;
+  g.t += DT;
+  switch (sit.phase) {
+    case 'step':
+    case 'leave': {
+      // The few steps between the footway and the seat: turned to first,
+      // then walked, forward, at an unhurried pace.
+      const tx = sit.phase === 'step' ? sit.x : sit.mx, ty = sit.phase === 'step' ? sit.y : sit.my;
+      const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
+      if (d < m(0.03)) {
+        p.v = 0;
+        if (sit.phase === 'step') { sit.phase = 'turn'; g.t = 0; break; }
+        standUp(s, p);
+        return !pickGoal(w, s, p);
+      }
+      const want = Math.atan2(dy, dx);
+      turn(p, want);
+      const off = Math.abs(wrap(want - p.heading));
+      p.v = off < 0.3 ? Math.min(STEP_PACE, d / DT) : Math.max(0, p.v - HARD_DECEL * DT);
+      const step = Math.min(p.v * DT, d) * Math.max(0, Math.cos(off));
+      p.x += Math.cos(p.heading) * step;
+      p.y += Math.sin(p.heading) * step;
+      break;
+    }
+    case 'turn':
+      p.v = 0;
+      turn(p, sit.face);
+      if (Math.abs(wrap(sit.face - p.heading)) < 0.06 && Math.abs(p.turnV) < 0.25) { sit.phase = 'sitDown'; g.t = 0; }
+      break;
+    case 'sitDown':
+      turn(p, sit.face);
+      if (g.t >= SIT_DOWN_SECONDS[p.gender]) { sit.phase = 'seated'; g.t = 0; }
+      break;
+    case 'seated':
+      turn(p, sit.face);
+      if (g.t >= sit.hold) { sit.phase = 'standUp'; g.t = 0; }
+      break;
+    case 'standUp':
+      turn(p, sit.face);
+      if (g.t >= STAND_UP_SECONDS[p.gender]) { sit.phase = 'leave'; g.t = 0; }
+      break;
+    default:
+      break;
+  }
+  g.phase = sit.phase;
+  void w;
   return false;
 }
 
@@ -797,7 +999,7 @@ function ttcForce(p: Person, q: Person): [number, number] {
 
 /** The next place on the route where it steps from footway onto a zebra. */
 function nextGate(mesh: WorldNav['mesh'], p: Person, path: NavPath):
-  { crossing: number; x: number; y: number; across: number; index: number } | null {
+  { crossing: number; x: number; y: number; across: number; index: number; wx: number; wy: number } | null {
   const from = path.tris[p.ci] === p.tri ? p.ci : Math.max(0, path.tris.indexOf(p.tri));
   for (let i = from; i < path.portals.length && i < from + 60; i++) {
     const a = path.tris[i]!, b = path.tris[i + 1]!;
@@ -807,7 +1009,21 @@ function nextGate(mesh: WorldNav['mesh'], p: Person, path: NavPath):
       const c = mesh.crossings[mesh.region[b]!]!;
       const toA = Math.hypot(q.x - c.ax, q.y - c.ay), toB = Math.hypot(q.x - c.bx, q.y - c.by);
       const across = toA < toB ? Math.atan2(c.by - c.ay, c.bx - c.ax) : Math.atan2(c.ay - c.by, c.ax - c.bx);
-      return { crossing: mesh.region[b]!, x: q.x, y: q.y, across, index: i + 1 };
+      // Where to wait: at the kerb, on the right-hand side of the zebra's
+      // mouth as one faces across it, so people coming off it the other way
+      // pass on the other side instead of meeting somebody standing in the
+      // middle of the way out.
+      const ux = Math.cos(across), uy = Math.sin(across);
+      const nx = toA < toB ? c.ax : c.bx, ny = toA < toB ? c.ay : c.by;
+      const along = (q.x - nx) * ux + (q.y - ny) * uy - KERB_STOP;
+      const aside = Math.max(0, c.halfWidth - NAV_RADIUS) * WAIT_ASIDE;
+      const wantX = nx + ux * along + uy * aside, wantY = ny + uy * along - ux * aside;
+      const spot = mesh.nearest(wantX, wantY, m(0.4));
+      const ok = spot && !isZebra(mesh.region[spot.t]!);
+      return {
+        crossing: mesh.region[b]!, x: q.x, y: q.y, across, index: i + 1,
+        wx: ok ? spot.x : q.x - ux * KERB_STOP, wy: ok ? spot.y : q.y - uy * KERB_STOP,
+      };
     }
   }
   return null;
@@ -863,16 +1079,47 @@ function publishViews(w: SimWorld, s: State): void {
     v.prev.x = p.prevX; v.prev.y = p.prevY; v.prev.heading = p.prevHeading;
     v.v = p.v; v.turnV = p.turnV; v.age = p.age;
     v.party = p.party; v.rank = p.rank;
+    // A party standing together talks: one speaks at a time (the renderer
+    // passes the turn round), whoever waits for whatever.
+    // Only while waiting at a kerb together: standing about on a pavement
+    // talking read, to a player, as people frozen in place.
+    const kerbParty = p.mode === 'wait' || p.leader?.mode === 'wait';
+    const together = p.party.size > 1 && p.v < m(0.1) && kerbParty &&
+      (p.leader ? p.leader.v < m(0.1) && Math.hypot(p.leader.x - p.x, p.leader.y - p.y) < m(2) : true);
+    if (together) {
+      p.stoodTogether += DT;
+      if (p.stoodTogether > TALK_AFTER) {
+        p.talk ??= { kind: 'talk', phase: 'hold', t: 0 };
+        p.talk.t += DT;
+      }
+    } else { p.stoodTogether = 0; p.talk = null; }
+    v.gesture = p.sit && p.sit.phase !== 'approach' ? p.sit.gesture : p.talk;
     const region = nav && p.tri >= 0 ? nav.mesh.region[p.tri]! : FOOTWAY;
     v.ground = isZebra(region) ? 'crossing' : region === OPEN ? 'open' : 'footway';
     const seg = nav && p.tri >= 0 ? nav.segment[p.tri]! : -1;
     v.segment = seg >= 0 ? (seg as never) : undefined;
-    v.walking = p.mode !== 'wait' && p.v > m(0.1);
+    v.walking = p.mode !== 'wait' && p.v > m(0.1) && !(p.sit && p.sit.phase !== 'approach');
     // A companion standing by a leader who waits at a kerb is waiting too.
     const waiter = p.mode === 'wait' ? p : p.leader && p.leader.mode === 'wait' && p.v < m(0.1) ? p.leader : null;
-    v.kerbWait = waiter ? waiter.waited : 0;
-    v.waitingFor = waiter && nav ? nav.crossingIds[waiter.crossing] ?? null : null;
+    v.kerbWait = waiter ? waiter.waited : p.queued;
+    v.waitingFor = waiter && nav ? nav.crossingIds[waiter.crossing] ?? null
+      : p.queued > 0 && nav ? nav.crossingIds[p.queuedFor] ?? null : null;
     views.push(v);
     byId.set(p.id, v);
   }
+}
+
+/**
+ * A read-only look at the engine's people, for tests and diagnosis: what the
+ * published views do not say (mode, leader, why a body stands).
+ */
+export function inspectPeople(w: SimWorld): readonly {
+  readonly id: number; readonly x: number; readonly y: number; readonly mode: string; readonly leader: number | null;
+  readonly yielding: number; readonly held: number; readonly stuck: number; readonly sit: string | null; readonly tri: number;
+  readonly intent: Person['intent'];
+}[] {
+  return stateOf(w).people.map((p) => ({
+    id: p.id, x: p.x, y: p.y, mode: p.mode, leader: p.leader?.id ?? null, yielding: p.yielding, held: p.held,
+    stuck: p.stuck, sit: p.sit?.phase ?? null, tri: p.tri, intent: p.intent,
+  }));
 }

@@ -24,6 +24,7 @@ function measure(sim: SimWorld, seconds: number) {
     const headings = new Map<number, { t: number; h: number }[]>();
     const still = new Map<number, number>();
     let back = 0, side = 0, jump = 0, flip = 0, spin = 0, longest = 0, closest = Infinity, personSeconds = 0;
+    const sitters = new Set<number>();
     for (let i = 0; i < Math.round(seconds / DT); i++) {
       step(sim, { traffic: true, pedestrians: true });
       const views = sim.pedViews;
@@ -39,14 +40,15 @@ function measure(sim: SimWorld, seconds: number) {
       for (const id of [...last.keys()]) if (!alive.has(id)) last.delete(id);
       for (const v of views) {
         personSeconds += DT;
-        // Standing, not waiting at a kerb: how long.
-        if (v.v < m(0.1) && v.kerbWait === 0) {
+        if (v.gesture?.kind === 'bench' && v.gesture.phase === 'seated') sitters.add(v.id);
+        // Standing, not waiting at a kerb nor sitting or talking: how long.
+        if (v.v < m(0.1) && v.kerbWait === 0 && v.gesture === null) {
           const t = (still.get(v.id) ?? 0) + DT;
           still.set(v.id, t);
           longest = Math.max(longest, t);
         } else still.delete(v.id);
         // Turning on the spot: over a quarter turn back and forth in a second.
-        if (v.v < m(0.2)) {
+        if (v.v < m(0.2) && v.gesture === null) {
           const hs = headings.get(v.id) ?? [];
           hs.push({ t: sim.clock.tick, h: v.heading });
           while (hs.length && sim.clock.tick - hs[0]!.t > 60) hs.shift();
@@ -70,13 +72,14 @@ function measure(sim: SimWorld, seconds: number) {
         prev.x = v.x; prev.y = v.y; prev.lat = Math.abs(lat) > 0.15 ? lat : prev.lat;
       }
     }
-    return { back, side, jump, flip, spins: spin / personSeconds * 60, longest, closest, people: sim.pedViews.length };
+    return { back, side, jump, flip, spins: spin / personSeconds * 60, longest, closest, people: sim.pedViews.length, sat: sitters.size };
 }
 
 function expectClean(r: ReturnType<typeof measure>): void {
   expect({ back: r.back, side: r.side, jump: r.jump, flip: r.flip }).toEqual({ back: 0, side: 0, jump: 0, flip: 0 });
-  expect(r.spins).toBeLessThan(0.15);
-  expect(r.longest).toBeLessThan(5);
+  expect(r.spins).toBeLessThan(0.1);
+  // Nobody stands about on a pavement: only a kerb wait or a bench stops anyone.
+  expect(r.longest).toBeLessThan(2);
   // Bodies are 0.5 m across; held up a while, people squeeze past shoulder
   // to shoulder (0.45 m apart), and never closer.
   expect(r.closest).toBeGreaterThanOrEqual(0.44);

@@ -2,7 +2,7 @@ import type { MultiPoly } from '@core/clipper';
 import { CROSSWALK_DEPTH } from '@world/approach';
 import { footprintRects } from '@world/buildings/geometry';
 import type { SegmentId } from '@world/ids';
-import { buildNavMesh, FOOTWAY, isZebra, type NavCrossingInput, type NavInput, type NavMesh, type NavObstacle, type NavStrip } from '@world/nav/navmesh';
+import { buildNavMesh, FOOTWAY, KERB, isZebra, type NavCrossingInput, type NavInput, type NavMesh, type NavObstacle, type NavStrip } from '@world/nav/navmesh';
 import { Level, halfWidth } from '@world/roadTypes';
 import { m } from '@world/units';
 import { signalPosts, SIGNAL_POST_RADIUS } from '@world/signalPosts';
@@ -30,6 +30,21 @@ export interface WorldNav {
    * else once the city is populated.
    */
   readonly sources: readonly { readonly x: number; readonly y: number; readonly t: number; readonly door: boolean }[];
+  /**
+   * Every bench seat: where a sitter stands in front of it (on the mesh),
+   * the way they face (the footway, back to the backrest) and a key.
+   */
+  readonly seats: readonly {
+    readonly key: string;
+    /** Where the sitter stands, just in front of the seat (off the mesh: benches stand at its edge). */
+    readonly x: number;
+    readonly y: number;
+    /** The nearest point of the mesh, walked to first, and its triangle. */
+    readonly mx: number;
+    readonly my: number;
+    readonly t: number;
+    readonly face: number;
+  }[];
   /** When it was built. */
   readonly trafficRevision: number;
   readonly buildingsRevision: number;
@@ -37,24 +52,29 @@ export interface WorldNav {
 }
 
 const DECKS: readonly RoadStructure[] = ['ground', 'elevated', 'bridge', 'tunnel'];
+/** Seats either side of a bench's centre, and how far in front of the seat a sitter stands. */
+const SEAT_OFFSET = m(0.45);
+const STAND_IN_FRONT = m(0.48);
+/** Farthest a seat may be from the walkable mesh, u. */
+const SEAT_REACH = m(1.5);
 
 /** Builds the walkable mesh from the map as it stands. */
 export function buildWorldNav(w: SimWorld): WorldNav {
   const net = w.net;
   const structureOf = (id: SegmentId): RoadStructure => net.doc.segment(id)?.structure ?? 'ground';
   const layers: MultiPoly[] = [];
+  const kerbs: MultiPoly[] = [];
   const layerOf = new Map<RoadStructure, number>();
   for (const deck of DECKS) {
     let any = false;
     for (const id of net.ribbons.keys()) if (structureOf(id) === deck) { any = true; break; }
     if (!any) continue;
     layerOf.set(deck, layers.length);
-    // The footway and the kerb stone: people walk on the kerb too, and without
-    // it a local street's pavement was too narrow for two to pass (1.0 u for
-    // body centres, against the 1.25 u two bodies need) and counterflow
-    // jammed solid.
+    // The footway proper: the kerb stone is not walked along (a player reads
+    // a walker on it, squeezed between a street tree and the road, as lost).
     const deckSurfaces = surfaces(net, (id) => structureOf(id) === deck);
-    layers.push(difference(deckSurfaces.sidewalk, deckSurfaces.asphalt));
+    layers.push(difference(deckSurfaces.sidewalk, deckSurfaces.curb));
+    kerbs.push(difference(deckSurfaces.curb, deckSurfaces.asphalt));
   }
 
   const crossings: NavCrossingInput[] = [];
@@ -75,7 +95,15 @@ export function buildWorldNav(w: SimWorld): WorldNav {
   }
 
   const obstacles: NavObstacle[] = [];
+  const benches: { x: number; y: number; face: number; key: string }[] = [];
   for (const item of streetFurniture(net)) {
+    if (item.kind === 'bench' && blocksPedestrians(item)) {
+      const face = Math.atan2(-item.outward.y, -item.outward.x);
+      for (const k of [-1, 1]) {
+        const sx = item.x + item.along.x * SEAT_OFFSET * k, sy = item.y + item.along.y * SEAT_OFFSET * k;
+        benches.push({ x: sx + Math.cos(face) * STAND_IN_FRONT, y: sy + Math.sin(face) * STAND_IN_FRONT, face, key: `${Math.round(item.x * 10)}:${Math.round(item.y * 10)}:${k}` });
+      }
+    }
     if (!blocksPedestrians(item)) continue;
     if (item.halfLength !== undefined && item.halfWidth !== undefined) {
       const count = Math.max(1, Math.ceil(item.halfLength / item.halfWidth));
@@ -121,6 +149,7 @@ export function buildWorldNav(w: SimWorld): WorldNav {
     layers,
     crossingLayers,
     road: surfaces(net).asphalt,
+    kerbs,
     crossings,
     obstacles,
     solids,
@@ -153,7 +182,7 @@ export function buildWorldNav(w: SimWorld): WorldNav {
   for (let t = 0; t < mesh.count; t++) {
     const region = mesh.region[t]!;
     if (isZebra(region)) { segment[t] = crossingSegment[region]!; continue; }
-    if (region !== FOOTWAY) continue;
+    if (region !== FOOTWAY && region !== KERB) continue;
     const deck = decks.find(([, i]) => i === mesh.layer[t])?.[0] ?? 'ground';
     const c = mesh.centroid(t);
     let best = -1;
@@ -166,6 +195,11 @@ export function buildWorldNav(w: SimWorld): WorldNav {
     segment[t] = best;
   }
 
+  const seats: { key: string; x: number; y: number; mx: number; my: number; t: number; face: number }[] = [];
+  for (const b of benches) {
+    const at = mesh.nearest(b.x, b.y, SEAT_REACH);
+    if (at && mesh.region[at.t] === FOOTWAY) seats.push({ key: b.key, x: b.x, y: b.y, mx: at.x, my: at.y, t: at.t, face: b.face });
+  }
   const sources: { x: number; y: number; t: number; door: boolean }[] = [];
   for (const [list, door] of [[doors, true], [ends, false]] as const) {
     for (const p of list) {
@@ -175,7 +209,7 @@ export function buildWorldNav(w: SimWorld): WorldNav {
   }
 
   return {
-    mesh, segment, sources, crossingIds, crossingNode, crossingSegment,
+    mesh, segment, sources, seats, crossingIds, crossingNode, crossingSegment,
     trafficRevision: net.trafficRevision,
     buildingsRevision: w.doc.buildings.revision,
     utilityRevision: w.doc.utilityRevision,

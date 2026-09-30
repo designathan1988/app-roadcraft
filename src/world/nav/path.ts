@@ -17,7 +17,7 @@ export interface NavPath {
  * Extra cost of stepping into triangle `to` from `from`, in world units: how
  * the planner is told that a zebra means a wait. Return 0 for none.
  */
-export type NavCost = (from: number, to: number) => number;
+export type NavCost = (from: number, to: number, length: number) => number;
 
 /** Shortest route between two points of the mesh, or null when none joins them. */
 export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: number, gy: number, gt: number,
@@ -50,7 +50,8 @@ export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: 
       if (closed.has(u)) continue;
       const mx = u === gt ? gx : (portal.lx + portal.rx) / 2;
       const my = u === gt ? gy : (portal.ly + portal.ry) / 2;
-      const ng = tg + Math.hypot(mx - tx, my - ty) + cost(t, u);
+      const step = Math.hypot(mx - tx, my - ty);
+      const ng = tg + step + cost(t, u, step);
       if (ng < (g.get(u) ?? Infinity)) {
         g.set(u, ng);
         px.set(u, mx);
