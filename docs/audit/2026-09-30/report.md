@@ -482,16 +482,16 @@ Format: **ID · title** — location — current → expected · cause · fix �
 - **P2-35 · A third finger runs the tool (Bulldoze deletes a road)** — `main.ts:707` · `pointers.size >= 2` — **fixed ea12b58**.
 - **P2-36 · Letter/digit shortcuts fire with Ctrl/Alt/Meta** — `main.ts:1261-1283` · ignore with modifiers — **open** (Lot U).
 - **P2-37 · Keys 1–4 in the editor change a hidden legacy "stage"; 5–6 leave the editor** — `buildingTool.ts:468-475, 1778-1779` — **open** (Lot U).
-- **P2-38 · The editor help documents wrong shortcuts; help exists only for buildings** [E2E] — says "R rotates 15° (Shift: 90°)" while the code does the reverse; "Ctrl+G groups" does not exist · per-tool contextual help with every shortcut — **open** (Lot U).
-- **P2-39 · Operation tiles announce the wrong shortcut; shortcuts appear nowhere** — `aria-keyshortcuts` is the first letter of the translated name ("Dividir" = D, the key is X) · a fixed `data-key`; title "Name (K)" — **open** (Lot U).
-- **P2-40 · Relief and height are imperceptible; out-of-range values are clamped silently** [E2E] — "Road height" 9999 → 5.7 m with no notice; a junction at +5.7 m looks flat from above · show the limit; relief shading or an optional camera tilt — **open** (Lots C, R).
+- **P2-38 · The editor help documents wrong shortcuts; help exists only for buildings** [E2E] — says "R rotates 15° (Shift: 90°)" while the code does the reverse; "Ctrl+G groups" does not exist · per-tool contextual help with every shortcut — **partly fixed 83c45b0** (Bulldoze, Poles and Inspect show a help card with their keys and the camera's in the side panel); the builder's help text is still open.
+- **P2-39 · Operation tiles announce the wrong shortcut; shortcuts appear nowhere** — `aria-keyshortcuts` is the first letter of the translated name ("Dividir" = D, the key is X) · a fixed `data-key`; title "Name (K)" — **partly fixed 83c45b0** (the rail's tools carry "Name (K)" and show the key); the road operation tiles are still open.
+- **P2-40 · Relief and height are imperceptible; out-of-range values are clamped silently** [E2E] — "Road height" 9999 → 5.7 m with no notice; a junction at +5.7 m looks flat from above · show the limit; relief shading or an optional camera tilt — **partly fixed 603400c** (free camera tilt from 30° to straight down, and free turning); the silent clamp is still open.
 - **P2-41 · Bulldoze does not highlight what it will remove on hover** [E2E] — **open** (Lot U).
 - **P2-42 · The "Allowed movements" list is unreadable** [E2E] — repeats "Local road — Local road (straight)" · label by leg (N/S/E/W or bearing) and highlight on hover — **open** (Lot U).
 - **P2-43 · Control (C) and other tools show the road tray** [E2E] — a tray per tool — **open** (Lot U).
 - **P2-44 · A language change leaves parts in the old language** [E2E] — "Select" stays Portuguese; operation titles; lanes; an open menu — **open** (Lot U).
 - **P2-45 · The status bar shows raw audit codes to the player** — see P1-33 — **open**.
 - **P2-46 · Two hint systems; the one describing the canvas is dead in the editor; hints cut to one line on phones** — one hint source per mode — **open** (Lot U).
-- **P2-47 · Feedback is not announced to screen readers; the road inspector floods `aria-live` every 0.4 s** — one `role=status` region for flashes; remove `aria-live` from `#inspector` — **open** (Lot U).
+- **P2-47 · Feedback is not announced to screen readers; the road inspector floods `aria-live` every 0.4 s** — one `role=status` region for flashes; remove `aria-live` from `#inspector` — **partly fixed 83c45b0** (`aria-live` removed from the inspector); the status region is still open.
 - **P2-48 · Unlabelled controls and small touch targets** — collapse 24×20, quick buttons 26, chips 28 · i18n labels; ≥ 24 px always, ~40 px with `(pointer:coarse)` — **open** (Lot U).
 - **P2-49 · Actions that need a selection fail silently** — `needsSelection` → disabled, or a notice — **open** (Lot B).
 - **P2-50 · Saved templates cannot be deleted; saving fails silently; `window.prompt`** — a delete button with confirmation; thumbnails; an input in the tray — **open** (Lot B).
