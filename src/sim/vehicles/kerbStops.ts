@@ -225,6 +225,16 @@ export function stepKerbStops(w: SimWorld): void {
       else finishDoors(v, stop);
       continue;
     }
+    // No phase but the transfer itself may last for ever. A delivery's 'hold'
+    // is planned to take `hold` seconds, and gets them on top. A stop that
+    // runs out its time drives on - shutting its doors first if any is open -
+    // instead of standing in the lane for good (audit P1-26).
+    if (stop.phase !== 'approach' && stop.phase !== 'transfer' && stop.phase !== 'close' &&
+        stop.t > GIVE_UP + (stop.phase === 'hold' ? stop.hold : 0)) {
+      if (v.doors.some((open) => open > 0)) finishDoors(v, stop);
+      else abandon(v);
+      continue;
+    }
     switch (stop.phase) {
       case 'approach':
         if (v.v < 0.05 && stop.at - v.s < m(1)) enter(stop, 'halt');
@@ -240,8 +250,11 @@ export function stepKerbStops(w: SimWorld): void {
         }
         break;
       case 'hold':
-        // Away with the load; then back to the door.
-        if (stop.t >= stop.hold && stop.person) {
+        // Away with the load; then back to the door. Nobody out there to come
+        // back (the person left the world): the doors shut and the car goes.
+        if (stop.t >= stop.hold && !stop.person) {
+          finishDoors(v, stop);
+        } else if (stop.t >= stop.hold && stop.person) {
           const { door } = doorPlaces(w, v, stop);
           stop.fetchTime = Math.hypot(stop.person.footX - door.x, stop.person.footY - door.y) / KERB_PACE;
           stop.walked = 0;

@@ -1,4 +1,4 @@
-import { DT, STUCK_SECONDS } from './params';
+import { DT, JAM_GAP, STUCK_SECONDS } from './params';
 import type { SimWorld } from './world';
 import { stepController } from './signals/fsm';
 import { longitudinalConstraints } from './vehicles/obstacles';
@@ -11,7 +11,7 @@ import { integrateAll } from './vehicles/integrate';
 import { stepDespawn, stepDispatch } from './vehicles/spawn';
 import { stepLaneChange } from './vehicles/laneChange';
 import { stepKerbStops } from './vehicles/kerbStops';
-import { planFrom, reconsiderRoute, repairRoute } from './routing/router';
+import { extend, planFrom, reconsiderRoute, repairRoute } from './routing/router';
 import { snapshot, type Vehicle } from './vehicles/state';
 import { runAudit } from './invariants';
 import { signalStateFor } from './signals/query';
@@ -346,6 +346,20 @@ function ensureVehicleRoutes(w: SimWorld): void {
     if (v.route.length <= 1 && w.graph.exitsOf(lane.id).some((id) =>
       (w.connector(id)?.maxBodyClass ?? -1) >= bodyClassOfArchetype(v.archetype))) {
       planFrom(w, v);
+      continue;
+    }
+
+    // A route that ends on a link too short to stop on (audit P1-46).
+    // Admission only lets a car into a junction when there is somewhere to
+    // stand beyond it, so it asks for the movement after the short link - and
+    // a route that ends there has none. The car waited at the line for ever,
+    // and the route never ran out because the car never moved. It is grown
+    // past the short link instead.
+    const tail = w.lanelet(v.route[v.route.length - 1] ?? '');
+    if (tail && tail.kind === 'link' && tail.id !== v.destination && tail.id !== lane.id &&
+        tail.length < v.archetype.length + Math.max(JAM_GAP, v.driver.s0) &&
+        w.graph.exitsOf(tail.id).length > 0) {
+      extend(w, v);
     }
   }
 }

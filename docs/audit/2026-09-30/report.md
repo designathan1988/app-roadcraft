@@ -279,7 +279,7 @@ Details in section 8.
 - **Location:** `sim/vehicles/spawn.ts:56-58, 76-94`.
 - **Fix:** keep the rate per entry and rescale the remaining wait; infinite at 0, redrawn on the first positive value; bound the backlog.
 
-**P1-21 · Right turns and continuations at a two-leg node pass one car at a time [code] — `open` (Drive v2, negotiation layer)**
+**P1-21 · Right turns and continuations at a two-leg node pass one car at a time [code] — `fixed` by construction (`movement:` tokens are shareable; not reproduced on the test maps, where the deadlock test refused nothing in 120 s; regression test `tests/sim/drive/convoy.spec.ts`)**
 - **Location:** `sim/intersections/admission.ts:680-697, 790-795, 834-835`.
 - **Cause:** `bankerSafeAfterGrant` sees two owners of `movement:C` and denies; `sharedConvoyResource` only accepts `point:`.
 - **Fix:** `sharedConvoyResource` true for `movement:`; a test of two cars turning right on green.
@@ -298,7 +298,7 @@ Details in section 8.
 **P1-25 · The pedestrian population only grows; alightings pierce `PED_CEILING` and are invisible [code] — `replaced 7ec1994, eaa3a6c`**
 - **Now:** people come and go through doors and the map's edges; the population is held at its target.
 
-**P1-26 · A delivery stop can stand in the lane for ever [code] — `open` (Drive v2, stop tasks)**
+**P1-26 · A delivery stop can stand in the lane for ever [code] — `fixed` (a give-up time in every phase but the transfer, a delivery hold that ends with no person; test in `tests/sim/kerbStops.spec.ts`)**
 - **Location:** `sim/vehicles/kerbStops.ts:252-259, 277-287, 525-530`.
 - **Fix:** give up after `GIVE_UP` in every phase but 'transfer'; `abandon()` when there is no footway; finish 'hold' with no person.
 
@@ -395,7 +395,7 @@ Details in section 8.
 - **Current:** with demand on one side only, each 34 s of green costs ~15 s of amber, all-red and empty minimum green; a lone car arriving just after waits ~10 s at an empty junction.
 - **Fix:** end green only for competing demand (at max-out too).
 
-**P1-46 · A vehicle whose route ends on a short link stays at the stop line for ever [code] — `open` (Drive v2, strategic layer)**
+**P1-46 · A vehicle whose route ends on a short link stays at the stop line for ever [code] — `fixed` (the route is grown past a short tail in `ensureVehicleRoutes`; test `tests/sim/drive/shortTail.spec.ts`, fails before, passes after, v1 and v2)**
 - **Location:** `admission.ts:504-505`; `pipeline.ts:379-382`; `router.ts:91-118`.
 - **Fix:** extend the route when the last link is shorter than the vehicle plus margin, or fewer than 2 links remain.
 

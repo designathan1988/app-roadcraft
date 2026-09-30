@@ -74,3 +74,30 @@ describe('kerb stops', () => {
     // alone, three under a machine busy with other builds.
   }, 300_000);
 });
+
+describe('a kerb stop always ends (P1-26)', () => {
+  it('drives on when the stop cannot finish: an empty delivery hold, a door that waits for nobody', () => {
+    const sim = simOf(fixtureDoc(), 0x51de, 1);
+    sim.trafficIntensity = 1;
+    for (let i = 0; i < Math.round(20 / DT) && sim.vehicles.size < 2; i++) step(sim, { traffic: true, pedestrians: false });
+    sim.trafficIntensity = 0;
+    const [a, b] = [...sim.vehicles.values()];
+    expect(a && b).toBeTruthy();
+    const stuck = (phase: 'hold' | 'open', lanelet: string) => ({
+      kind: phase === 'hold' ? 'drop' as const : 'pick' as const, lanelet, at: 0, door: 0, seat: 0, phase, t: 0, elapsed: 0,
+      pedId: null, person: null, transferTime: 1, fetchTime: 1e9, walked: 0, keep: true, hold: 7, seatStage: true,
+    });
+    a!.kerbStop = stuck('hold', a!.lanelet);
+    b!.kerbStop = stuck('open', b!.lanelet);
+    b!.doors = [1];
+    let longest = 0;
+    for (let i = 0; i < Math.round(60 / DT); i++) {
+      step(sim, { traffic: true, pedestrians: false });
+      for (const v of [a!, b!]) if (v.kerbStop) longest = Math.max(longest, v.kerbStop.elapsed);
+    }
+    expect(a!.kerbStop).toBeNull();
+    expect(b!.kerbStop).toBeNull();
+    expect(b!.doors.every((open) => open === 0)).toBe(true);
+    expect(longest).toBeLessThan(45);
+  });
+});

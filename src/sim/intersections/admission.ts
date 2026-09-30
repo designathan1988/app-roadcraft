@@ -832,6 +832,12 @@ function bankerSafeAfterGrant(
  * one of them already out of it.
  */
 function sharedConvoyResource(w: SimWorld, resource: ResourceKey): boolean {
+  // A `movement:` token stands for a connector that crosses nothing (the way
+  // on at a bend, a right turn clear of every other path). Its holders can
+  // only be cars on that one path, one behind the other, kept apart by
+  // following: counting them as rival owners let the queue through one car
+  // at a time (audit P1-21).
+  if (resource.startsWith('movement:')) return true;
   if (!resource.startsWith('point:')) return false;
   const id = Number(resource.slice('point:'.length));
   const point = w.conflicts.points[id];
