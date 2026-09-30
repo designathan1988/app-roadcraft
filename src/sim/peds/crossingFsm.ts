@@ -224,10 +224,20 @@ export function stepPedestrians(w: SimWorld): void {
     // stride before the kerb, holds it through the wait and clears it as soon
     // as the walker is walking somewhere that is not that crossing — one
     // writer, in the one place that reads it.
+    // ON THE FOOTWAY, CREEPING IS STILL HELD UP. Once a walker has been held,
+    // the escape it is given moves it at a few centimetres a second - its first
+    // step is ACCEL·DT, under the full-stop threshold, the next one over it -
+    // and the old counter paid that second step back at twice the rate it
+    // charged the first. The count sat pinned at the escalation threshold, the
+    // walker crept into the clearance floor beside a hydrant and stood there
+    // for 9.4 s without ever earning its release. A walker already held counts
+    // on until it is moving at a real fraction of its pace again.
+    const creeping = p.stuck > 0 && wantsToMove && !queued && p.v < desired * ROAD_PROGRESS;
     if (p.state === 'WaitAtKerb') {
       // Accumulated in the kerb case itself, only while permitted and boxed in.
     } else if (crawling) p.stuck += DT;
     else if (wantsToMove && p.v < 0.05 && !queued) p.stuck += DT;
+    else if (creeping) p.stuck += DT;
     // The release lasts until the walker has actually got clear: while it is
     // still inside the radius that charges it for closing on a piece of
     // furniture, the release it earned must not run out, or the radius closes

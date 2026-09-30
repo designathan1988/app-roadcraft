@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { pointInPolygon } from '@core/polygon';
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
+import { streetFurniture } from '@world/streetFurniture';
 import { Level } from '@world/roadTypes';
 import { m } from '@world/units';
 import { SimWorld } from '@sim/world';
@@ -304,18 +305,14 @@ describe('pedestrians', () => {
 
   it('walks around streetlight columns', () => {
     const fixture = crossroads();
-    const columns: { x: number; y: number }[] = [];
-    for (const ribbon of fixture.net.ribbons.values()) {
-      const length = ribbon.full.length;
-      const start = Math.min(36, length * 0.24);
-      for (let s = start; s < length - start; s += 88) {
-        const frame = ribbon.full.sampleAt(s);
-        const side = (Math.floor(s / 88) + ribbon.id) % 2 === 0 ? -1 : 1;
-        const out = ribbon.road.width / 2 + ribbon.road.sidewalk * 0.95;
-        columns.push({ x: frame.p.x + frame.n.x * out * side,
-          y: frame.p.y + frame.n.y * out * side });
-      }
-    }
+    // The columns the world actually stands up: the list the renderer draws
+    // and the clearance grid avoids. Re-deriving them from the placement
+    // formula measured against a column the layout drops from a crossing's
+    // landing - a walker stepping onto the zebra came 0.23 m from a lamp that
+    // is not there.
+    const columns = streetFurniture(fixture.net)
+      .filter((item) => item.kind === 'lamp')
+      .map((item) => ({ x: item.x, y: item.y }));
     let minimum = Infinity;
     run(fixture, 90, (sim) => {
       for (const ped of sim.pedsInIdOrder()) {
