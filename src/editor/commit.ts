@@ -457,10 +457,16 @@ export function joinSegments(doc: RoadDoc, nodeId: NodeId): boolean {
   const b = second.a === nodeId ? second.b : second.a;
   if (a === b || first.structure !== second.structure || alreadyJoined(doc, a, b, null, first.structure)) return false;
   const dashOrigin = Math.min(first.dashOrigin, second.dashOrigin);
+  const bansAtA = [...(doc.node(a)?.blockedMovements ?? [])];
+  const bansAtB = [...(doc.node(b)?.blockedMovements ?? [])];
   doc.removeSegment(first.id);
   doc.removeSegment(second.id);
   doc.removeNode(nodeId);
-  return doc.addSegment(a, b, first.type, null, dashOrigin, 'both', first.lanes, first.structure) !== null;
+  const joined = doc.addSegment(a, b, first.type, null, dashOrigin, 'both', first.lanes, first.structure);
+  if (!joined) return false;
+  doc.carryMovements(a, bansAtA, first.id, joined.id);
+  doc.carryMovements(b, bansAtB, second.id, joined.id);
+  return true;
 }
 
 /**
@@ -582,6 +588,10 @@ function splitSegmentAtCuts<Tag>(
   const arcs = [0, ...interior.map((cut) => cut.s), pl.length];
   const type = seg.type;
   const dashOrigin = seg.dashOrigin;
+  // The bans at the two ends name this segment; they move to the end pieces.
+  const bansAtA = [...(doc.node(seg.a)?.blockedMovements ?? [])];
+  const bansAtB = [...(doc.node(seg.b)?.blockedMovements ?? [])];
+  const pieces: SegmentId[] = [];
 
   doc.removeSegment(id);
   for (let i = 0; i + 1 < nodeIds.length; i++) {
@@ -594,7 +604,7 @@ function splitSegmentAtCuts<Tag>(
       params[i] as number,
       params[i + 1] as number,
     );
-    doc.addSegment(
+    const piece = doc.addSegment(
       nodeIds[i] as NodeId,
       nodeIds[i + 1] as NodeId,
       type,
@@ -604,7 +614,12 @@ function splitSegmentAtCuts<Tag>(
       seg.lanes,
       seg.structure,
     );
+    if (piece) pieces.push(piece.id);
   }
+  const first = pieces[0];
+  const last = pieces[pieces.length - 1];
+  if (first !== undefined) doc.carryMovements(seg.a, bansAtA, id, first);
+  if (last !== undefined) doc.carryMovements(seg.b, bansAtB, id, last);
 
   return result;
 }

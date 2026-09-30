@@ -38,6 +38,13 @@ export type JunctionControl = 'auto' | 'signal' | 'stop' | 'yield' | 'priority' 
 /** Stable segment-pair key for a movement through a junction. */
 export const movementKey = (from: SegmentId, to: SegmentId): string => `${from}>${to}`;
 
+/** Whether a movement key names segment `id` as its entry or its exit. */
+export function movementMentions(key: string, id: SegmentId): boolean {
+  const cut = key.indexOf('>');
+  const text = String(id);
+  return key.slice(0, cut) === text || key.slice(cut + 1) === text;
+}
+
 export interface RoadNode {
   readonly id: NodeId;
   x: number;
@@ -268,7 +275,35 @@ export class RoadDoc {
     this.markSegment(id);
     detach(this.nodes.get(s.a), id);
     detach(this.nodes.get(s.b), id);
+    // A turn ban naming a road that is gone bans nothing - until the id is
+    // handed out again and it silently bans a movement onto an unrelated road.
+    for (const end of [s.a, s.b]) {
+      const n = this.nodes.get(end);
+      if (!n) continue;
+      for (let i = n.blockedMovements.length - 1; i >= 0; i--) {
+        if (movementMentions(n.blockedMovements[i] as string, id)) n.blockedMovements.splice(i, 1);
+      }
+    }
     this.segments.delete(id);
+  }
+
+  /**
+   * Re-applies the turn bans `saved` at `node` that named segment `from`, naming
+   * `to` instead. Splitting a road (which happens whenever a new road crosses
+   * it) and joining two replace its segment ids; the player's bans used to be
+   * left naming the old id, so they silently stopped applying.
+   */
+  carryMovements(node: NodeId, saved: readonly string[], from: SegmentId, to: SegmentId): void {
+    const n = this.nodes.get(node);
+    if (!n) return;
+    for (const key of saved) {
+      if (!movementMentions(key, from)) continue;
+      const [a, b] = key.split('>') as [string, string];
+      const moved = `${a === String(from) ? to : a}>${b === String(from) ? to : b}`;
+      if (!n.blockedMovements.includes(moved)) n.blockedMovements.push(moved);
+    }
+    this.dirtyNodes.add(node);
+    this.trafficRevision++;
   }
 
   removeNode(id: NodeId): void {

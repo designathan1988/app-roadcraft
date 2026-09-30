@@ -230,6 +230,13 @@ export class Network {
     this.impossible.clear();
     for (const [node, gap] of other.impossible) this.impossible.set(node, gap);
     this.polylines.adopt(other.polylines);
+    // The crossing caches belong to the geometry just replaced. `rebuild` clears
+    // them; this second way in did not, and after every road drawn the zebras,
+    // stop lines, lanelets and footway furniture read crossing distances of the
+    // network before the edit (a highway joined to a junction still had its
+    // zebras) until some later edit happened to rebuild.
+    this.crossingWalkable = null;
+    this.crossingDistances.clear();
     this.revision = this.doc.revision;
     this.trafficRevision = this.doc.trafficRevision;
     this.doc.clearDirty();
