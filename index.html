@@ -80,6 +80,26 @@
       </div>
     </div>
 
+    <!-- The free camera, for a hand without a middle button: turn, tilt, and
+         a needle that always points north (a click puts the camera back). -->
+    <div id="cameraControls" class="camera-controls glass" role="group" data-i18n-label="camera.label" aria-label="Camera">
+      <button type="button" class="icon-button" data-camera="turnLeft" data-i18n-title="camera.turnLeft" data-i18n-label="camera.turnLeft" title="Turn left (Q)" aria-label="Turn left (Q)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v4h4"/></svg>
+      </button>
+      <button type="button" class="icon-button" data-camera="tiltDown" data-i18n-title="camera.tiltDown" data-i18n-label="camera.tiltDown" title="Lower the camera" aria-label="Lower the camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><path d="M5 20 20 13"/><path d="m16.2 11.9 3.8 1.1-2.2 3.2"/></svg>
+      </button>
+      <button type="button" class="icon-button camera-north" data-camera="north" data-i18n-title="camera.north" data-i18n-label="camera.north" title="North up, default view" aria-label="North up, default view">
+        <svg class="camera-needle" viewBox="0 0 24 24" aria-hidden="true"><path class="needle-n" d="M12 3 15 12H9Z"/><path class="needle-s" d="M12 21 9 12h6Z"/></svg>
+      </button>
+      <button type="button" class="icon-button" data-camera="tiltUp" data-i18n-title="camera.tiltUp" data-i18n-label="camera.tiltUp" title="Raise the camera" aria-label="Raise the camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><path d="M7 20 14 4"/><path d="m10.6 6.4 3.4-2.4 1.1 4"/></svg>
+      </button>
+      <button type="button" class="icon-button" data-camera="turnRight" data-i18n-title="camera.turnRight" data-i18n-label="camera.turnRight" title="Turn right (E)" aria-label="Turn right (E)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4h-4"/></svg>
+      </button>
+    </div>
+
     <section class="toolbar glass" role="toolbar" data-i18n-label="tools.label" aria-label="Editing tools">
       <button class="tool active" data-tool="road" data-key="R" aria-keyshortcuts="R" aria-pressed="true"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M7 20 10 4h4l3 16"/><path d="M12 7v2m0 3v2m0 3v2"/></svg></span><span data-i18n="tool.road">Road</span></button>
       <button class="tool" data-tool="terrain" data-key="T" aria-keyshortcuts="T" aria-pressed="false"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="m3 18 6-9 4 6 3-4 5 7Z"/><path d="M3 21h18"/></svg></span><span data-i18n="tool.terrain">Terrain</span></button>

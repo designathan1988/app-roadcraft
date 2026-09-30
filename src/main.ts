@@ -22,7 +22,7 @@ import { type Viewport, flatViewport } from '@view/viewport';
 import { CanvasSurface } from '@ui/overlay/surface';
 import { INVALID, SELECTION, HOVER } from '@ui/overlay/palette';
 import { createSceneRenderer, type SceneHandle } from '@render/renderer';
-import { isoZoomBounds } from '@render/isoViewport';
+import { DEFAULT_AZIMUTH, DEFAULT_ELEVATION, isoZoomBounds } from '@render/isoViewport';
 
 import { SimWorld } from '@sim/world';
 import { createPeopleEngine } from '@sim/people/people';
@@ -256,7 +256,7 @@ sim.demandMultiplier = savedSession?.settings.demandMultiplier ?? 1;
 function sessionSettings(): SavedSettings {
   const centre = view.centre;
   return {
-    camera: { x: centre.x, y: centre.y, zoom: view.zoom },
+    camera: { x: centre.x, y: centre.y, zoom: view.zoom, azimuth: view.azimuth, elevation: view.elevation },
     paused: sim.clock.paused,
     speed: sim.clock.speed,
     trafficIntensity: sim.trafficIntensity,
@@ -296,7 +296,29 @@ let selectedNode: NodeId | null = null;
  * straight down. Storing the grabbed point means one rule, tested once, and no
  * branch here at all.
  */
-let panning: { id: number; grabbed: Vec2 } | null = null;
+let panning: {
+  id: number;
+  grabbed: Vec2;
+  /** Where a right press began, CSS px, and whether it has since become a drag. */
+  pressed?: Vec2;
+  moved?: boolean;
+  /** A right click that stays a click cancels the gesture in progress. */
+  cancelOnClick?: boolean;
+} | null = null;
+/** Camera turn and tilt per CSS pixel of an orbit drag, rad: a full turn in ~1000 px. */
+const ORBIT_PER_PX = 0.0063;
+/**
+ * Which way a twist of two fingers turns the camera, so the map turns with
+ * them: a positive orbit turns the map anticlockwise on screen, and a
+ * clockwise twist grows the angle between the fingers.
+ */
+const TWIST_SIGN = -1;
+/** How far a right press may travel, CSS px, and still be a click rather than a pan. */
+const CLICK_SLOP = 5;
+/** Camera turn per Q/E press, rad. */
+const KEY_TURN = Math.PI / 12;
+/** A camera orbit in progress: the pointer and where it last was, CSS px. */
+let orbiting: { id: number; last: Vec2 } | null = null;
 /**
  * A node being dragged, with the document as it was when the drag began. The
  * live preview edits the document, and each step through a spot where an
@@ -323,7 +345,7 @@ let terrainStroke: {
 } | null = null;
 /** Drives the held-still repeat, so holding the button keeps digging. */
 let terrainRepeat: ReturnType<typeof setInterval> | null = null;
-let pinch: { d0: number; zoom0: number; world: Vec2 } | null = null;
+let pinch: { d0: number; zoom0: number; world: Vec2; angle: number } | null = null;
 const pointers = new Map<number, Vec2>();
 canvas.dataset['tool'] = tool;
 
@@ -375,6 +397,7 @@ canvas3d.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;displ
 canvas.parentElement?.insertBefore(canvas3d, canvas);
 const scene: SceneHandle = createSceneRenderer(canvas3d, { x: camera.x, y: camera.y }, camera.zoom, 'auto', requestDraw);
 view = scene.viewport;
+restoreOrbit(savedSession?.settings.camera);
 canvas.style.opacity = '0';
 
 overlayCanvas.id = 'game-overlay';
@@ -436,6 +459,17 @@ const buildings = createBuildingWiring({
   flash: (key, params) => flashHint(key, params),
   hintChanged: () => updateHint(),
 });
+
+/** The ground the camera sees: the screen's four corners, on the ground. */
+function viewFootprint(): Vec2[] {
+  const { cssW: w, cssH: h } = surface;
+  return [[0, 0], [w, 0], [w, h], [0, h]].map(([x, y]) => view.toWorld(x!, y!, w, h));
+}
+
+/** Puts the camera back at a saved bearing and tilt; a save without one gets the default view. */
+function restoreOrbit(saved: SavedSettings['camera'] | undefined): void {
+  view.setOrbit(saved?.azimuth ?? DEFAULT_AZIMUTH, saved?.elevation ?? DEFAULT_ELEVATION);
+}
 
 function syncViewFromFlatCamera(): void {
   view.moveTo({ x: camera.x, y: camera.y });
@@ -618,6 +652,7 @@ function cancelGestures(): void {
   endTerrainStroke();
   cancelMove();
   panning = null;
+  orbiting = null;
   if (tool === 'building') buildings.pointerUp(true);
   requestDraw();
 }
@@ -637,6 +672,7 @@ function releaseHeld(): void {
   endTerrainStroke();
   cancelMove();
   panning = null;
+  orbiting = null;
   pointers.clear();
   pinch = null;
 }
@@ -793,22 +829,29 @@ canvas.addEventListener('pointerdown', (e) => {
       d0: Math.hypot(a.x - b.x, a.y - b.y),
       zoom0: view.zoom,
       world: panAnchor(mid.x, mid.y),
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
     };
     return;
   }
 
-  if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2)) {
-    // The right button cancels whatever is in progress, in every tool; with
-    // nothing in progress it pans.
-    if (e.button === 2 && gestureInProgress()) {
-      cancelGestures();
-      return;
-    }
-    if (e.button === 2 && tool === 'building' && buildings.cancelOperation()) {
+  // The middle button - or Shift with the right one, for a trackpad - swings
+  // the camera round and over the centre of the view, in every tool.
+  if (e.pointerType === 'mouse' && (e.button === 1 || (e.button === 2 && e.shiftKey))) {
+    orbiting = { id: e.pointerId, last: { x: e.clientX - r.left, y: e.clientY - r.top } };
+    return;
+  }
+
+  if (e.pointerType === 'mouse' && e.button === 2) {
+    // The right button pans when dragged. A right CLICK - pressed and let go
+    // without moving - cancels whatever is in progress, in every tool. The
+    // cancel waits for the release so a road half placed can still be panned
+    // along: the middle button, which used to do that, now orbits.
+    if (tool === 'building' && buildings.cancelOperation()) {
       requestDraw();
       return;
     }
-    panning = { id: e.pointerId, grabbed: panAnchor(e.clientX - r.left, e.clientY - r.top) };
+    const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+    panning = { id: e.pointerId, grabbed: panAnchor(at.x, at.y), pressed: at, moved: false, cancelOnClick: gestureInProgress() };
     return;
   }
 
@@ -1004,13 +1047,35 @@ canvas.addEventListener('pointermove', (e) => {
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const limits = view.zoomBounds;
     const targetZoom = clamp((pinch.zoom0 * d) / Math.max(1, pinch.d0), limits.min, limits.max);
+    // A twist of the two fingers turns the camera with them; the pan below
+    // then keeps the ground between the fingers where it was.
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    const twist = Math.atan2(Math.sin(angle - pinch.angle), Math.cos(angle - pinch.angle));
+    pinch.angle = angle;
+    if (d > 40) view.orbit(TWIST_SIGN * twist, 0);
     view.zoomAt(mid.x, mid.y, targetZoom / Math.max(0.001, view.zoom), surface.cssW, surface.cssH);
     view.panTo(pinch.world, mid.x, mid.y, surface.cssW, surface.cssH);
     requestDraw();
     return;
   }
 
+  if (orbiting && orbiting.id === e.pointerId) {
+    const dx = screen.x - orbiting.last.x;
+    const dy = screen.y - orbiting.last.y;
+    orbiting.last = screen;
+    // A turntable: the near side of the map follows the hand; dragging down
+    // lifts the camera towards a plan view.
+    view.orbit(dx * ORBIT_PER_PX, dy * ORBIT_PER_PX);
+    persistence.saveSettingsSoon(sessionSettings);
+    requestDraw();
+    return;
+  }
+
   if (panning && panning.id === e.pointerId) {
+    if (panning.pressed && !panning.moved) {
+      if (Math.hypot(screen.x - panning.pressed.x, screen.y - panning.pressed.y) < CLICK_SLOP) return;
+      panning.moved = true;
+    }
     view.panTo(panning.grabbed, screen.x, screen.y, surface.cssW, surface.cssH);
     requestDraw();
     return;
@@ -1137,7 +1202,15 @@ function endPointer(e: PointerEvent): void {
   const wasPinching = pinch !== null;
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinch = null;
-  if (panning?.id === e.pointerId) panning = null;
+  if (panning?.id === e.pointerId) {
+    const click = panning.cancelOnClick && !panning.moved;
+    panning = null;
+    if (click && !cancelled) {
+      cancelGestures();
+      return;
+    }
+  }
+  if (orbiting?.id === e.pointerId) orbiting = null;
   if (terrainStroke?.pointer === e.pointerId) endTerrainStroke();
   if (tool === 'building') buildings.pointerUp(cancelled || wasPinching);
 
@@ -1289,9 +1362,11 @@ window.addEventListener('keydown', (e) => {
 
   // Turning the view is only offered where there is something to turn. The flat
   // viewport answers `rotate` with nothing rather than pretending.
+  // Q/E turn the camera by 15 degrees, Shift by a quarter turn. Home (below,
+  // with the arrows) puts it back where the game starts and frames the map.
   if (!meta && (e.key === 'q' || e.key === 'Q' || e.key === 'e' || e.key === 'E')) {
-    const turns = e.key.toLowerCase() === 'q' ? -1 : 1;
-    view.rotate(turns, surface.cssW / 2, surface.cssH / 2, surface.cssW, surface.cssH);
+    const sign = e.key.toLowerCase() === 'q' ? -1 : 1;
+    view.orbit(sign * (e.shiftKey ? Math.PI / 2 : KEY_TURN), 0);
     persistence.saveSettingsSoon(sessionSettings);
     requestDraw();
     return;
@@ -1877,7 +1952,40 @@ function openImported(result: ImportResult): boolean {
   openImported(await importFromFile());
 };
 
+// The camera's own buttons: a step per press, and the needle keeps north.
+const cameraNeedle = document.querySelector<SVGElement>('#cameraControls .camera-needle');
+const TILT_STEP = Math.PI / 18;
+for (const button of document.querySelectorAll<HTMLButtonElement>('#cameraControls [data-camera]')) {
+  button.addEventListener('click', () => {
+    switch (button.dataset['camera']) {
+      case 'turnLeft': view.orbit(-KEY_TURN, 0); break;
+      case 'turnRight': view.orbit(KEY_TURN, 0); break;
+      case 'tiltUp': view.orbit(0, TILT_STEP); break;
+      case 'tiltDown': view.orbit(0, -TILT_STEP); break;
+      case 'north': view.setOrbit(DEFAULT_AZIMUTH, DEFAULT_ELEVATION); break;
+    }
+    persistence.saveSettingsSoon(sessionSettings);
+    requestDraw();
+  });
+}
+// A flat view has nothing to turn or tilt.
+if (view.kind === '2d') (document.getElementById('cameraControls') as HTMLElement).style.display = 'none';
+let needleAngle = NaN;
+/** Points the needle where north lies on screen. */
+function updateCameraNeedle(): void {
+  if (!cameraNeedle) return;
+  const { cssW: w, cssH: h } = surface;
+  const c = view.centre;
+  const a = view.toScreen(c, w, h);
+  const b = view.toScreen({ x: c.x, y: c.y - 10 }, w, h);
+  const angle = Math.round((Math.atan2(b.x - a.x, a.y - b.y) * 180) / Math.PI);
+  if (angle === needleAngle) return;
+  needleAngle = angle;
+  cameraNeedle.style.transform = `rotate(${angle}deg)`;
+}
+
 (document.getElementById('resetView') as HTMLButtonElement).onclick = () => {
+  view.setOrbit(DEFAULT_AZIMUTH, DEFAULT_ELEVATION);
   fitView();
   persistence.saveSettingsSoon(sessionSettings);
   requestDraw();
@@ -1916,6 +2024,7 @@ function restoreSettings(settings: SavedSettings): void {
   const limits = view.zoomBounds;
   camera.zoom = clamp(settings.camera.zoom, limits.min, limits.max);
   syncViewFromFlatCamera();
+  restoreOrbit(settings.camera);
   sim.clock.speed = settings.speed;
   setPaused(settings.paused);
   trafficIntensity.value = String(Math.round(settings.trafficIntensity * 100));
@@ -2099,14 +2208,19 @@ const arrowPan = (e: KeyboardEvent): void => {
     }
     return;
   }
-  const amount = (e.shiftKey ? 120 : 40) / Math.max(0.0001, view.zoom);
-  const c = view.centre;
-  if (e.key === 'ArrowLeft') view.moveTo({ x: c.x - amount, y: c.y });
-  else if (e.key === 'ArrowRight') view.moveTo({ x: c.x + amount, y: c.y });
-  else if (e.key === 'ArrowUp') view.moveTo({ x: c.x, y: c.y - amount });
-  else if (e.key === 'ArrowDown') view.moveTo({ x: c.x, y: c.y + amount });
-  else if (e.key === 'Home') fitView();
-  else return;
+  // Along the SCREEN's axes: with the camera turned, "up" is wherever the
+  // camera faces, not the map's north.
+  const step = e.shiftKey ? 120 : 40;
+  const { cssW: w, cssH: h } = surface;
+  const along = (dx: number, dy: number): void => view.moveTo(view.toWorld(w / 2 + dx, h / 2 + dy, w, h));
+  if (e.key === 'ArrowLeft') along(-step, 0);
+  else if (e.key === 'ArrowRight') along(step, 0);
+  else if (e.key === 'ArrowUp') along(0, -step);
+  else if (e.key === 'ArrowDown') along(0, step);
+  else if (e.key === 'Home') {
+    view.setOrbit(DEFAULT_AZIMUTH, DEFAULT_ELEVATION);
+    fitView();
+  } else return;
   e.preventDefault();
   requestDraw();
 };
@@ -2204,6 +2318,7 @@ function frame(now: number): void {
   buildings.beforeDraw(tool === 'building');
   scene.draw(net, sim, alpha, wall, { holdRoads: terrainStroke !== null });
   drawOverlayScreen();
+  updateCameraNeedle();
   if (topologyAfterDraw) {
     topologyAfterDraw = false;
     requestDraw();
@@ -2225,7 +2340,7 @@ function frame(now: number): void {
   if (minimapClock >= 0.1) {
     minimapClock = 0;
     syncFlatCameraFromView();
-    drawMinimap(minimapCanvas, doc, net, sim, camera, surface);
+    drawMinimap(minimapCanvas, doc, net, sim, camera, surface, viewFootprint());
   }
 
   uiClock += wall;
@@ -2238,7 +2353,7 @@ function frame(now: number): void {
   }
 
   // Keep animating while anything is moving; otherwise settle.
-  if (!document.hidden && (traffic || draft || moving || panning || pinch)) requestDraw();
+  if (!document.hidden && (traffic || draft || moving || panning || orbiting || pinch)) requestDraw();
 }
 
 /**
@@ -2979,7 +3094,7 @@ requestDraw();
 // never resized from its default 300x150.
 updateStatus();
 syncFlatCameraFromView();
-drawMinimap(minimapCanvas, doc, net, sim, camera, surface);
+drawMinimap(minimapCanvas, doc, net, sim, camera, surface, viewFootprint());
 
 // ------------------------------------------------------------- language & quality
 

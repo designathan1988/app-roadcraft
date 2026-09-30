@@ -16,7 +16,14 @@ const DEBOUNCE_MS = 700;
 const SETTINGS_KEY = 'roadcraft.settings.v1';
 
 export interface SavedSettings {
-  readonly camera: { readonly x: number; readonly y: number; readonly zoom: number };
+  readonly camera: {
+    readonly x: number;
+    readonly y: number;
+    readonly zoom: number;
+    /** The free camera's bearing and tilt, rad. Absent in saves older than the orbit. */
+    readonly azimuth?: number;
+    readonly elevation?: number;
+  };
   readonly paused: boolean;
   readonly speed: number;
   readonly trafficIntensity: number;
@@ -303,6 +310,8 @@ function isSavedSettings(settings: unknown): settings is SavedSettings {
   if (!isRecord(settings)) return false;
   const camera = settings.camera;
   return isRecord(camera) && isFiniteNumber(camera.x) && isFiniteNumber(camera.y) && isFiniteNumber(camera.zoom) &&
+    (camera.azimuth === undefined || isFiniteNumber(camera.azimuth)) &&
+    (camera.elevation === undefined || isFiniteNumber(camera.elevation)) &&
     typeof settings.paused === 'boolean' && isFiniteNumber(settings.speed) && isFiniteNumber(settings.trafficIntensity) &&
     isFiniteNumber(settings.pedestrianIntensity) && (settings.demandMultiplier === undefined || isFiniteNumber(settings.demandMultiplier)) &&
     typeof settings.congestionOverlay === 'boolean';

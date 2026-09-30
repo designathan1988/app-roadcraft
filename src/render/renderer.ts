@@ -503,7 +503,10 @@ export function createSceneRenderer(
       target.copy(rig.target);
       const halfHeight = canvas.clientHeight / Math.max(0.001, rig.viewport.zoom * 2);
       const halfWidth = (halfHeight * canvas.clientWidth) / Math.max(1, canvas.clientHeight);
-      environment.follow(target, halfWidth, halfHeight);
+      // The screen's height covers more ground the lower the camera looks: the
+      // shadows are fitted to the ground seen, not to the screen.
+      const groundHalfDepth = halfHeight / Math.max(0.3, Math.sin(rig.viewport.elevation));
+      environment.follow(target, halfWidth, groundHalfDepth);
 
       renderer.shadowMap.needsUpdate = true;
       // Cheap (a few hundred objects), and it follows meshes a rebuild or an

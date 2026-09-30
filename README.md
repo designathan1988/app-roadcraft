@@ -1,6 +1,6 @@
 # Roadcraft
 
-A 3D isometric road-building and traffic-simulation game that runs in the
+A 3D road-building and traffic-simulation game that runs in the
 browser. Draw a road network onto terrain you can sculpt, and watch a continuous
 traffic simulation adapt to every edit.
 
@@ -33,7 +33,7 @@ Requires Node 22 or newer and a browser with WebGL 2.
 | **Build up or down** | Click the road point to build from, aim the next endpoint, then press Page Up/Page Down or the palette `+`/`−` buttons for 1 m steps. The live preview shows the resulting height and grade before the endpoint click. Repeat from an existing point to create ramps, elevated spans, cuttings and tunnels. |
 | **Control a junction** | `Control` (`c`): click a junction to cycle automatic → signal → priority → stop → give way → uncontrolled. Shift-click goes back. While the tool is up, every junction shows its current mode. |
 | **Adjust** | `Upgrade` (`u`) raises a road's class · `Move` (`m`) drags a node · `Split` (`x`) cuts a road · `Bulldoze` (`b`) removes one · `Inspect` (`i`) opens the panel. |
-| **Camera** | Wheel to zoom, middle button to pan while placing a road, `Q`/`E` to rotate in quarter turns, arrow keys to pan. Right-click cancels a pending road; otherwise it pans. |
+| **Camera** | Free orbit: middle-drag (or Shift + right-drag) turns the camera round and tilts it from 30° to straight down; `Q`/`E` turn 15° (Shift: 90°); the camera buttons at the top right turn, tilt and put north back up. Wheel zooms, right-drag pans (also while placing a road), arrow keys pan along the screen, `Home` resets and frames the map. A right click without dragging cancels a pending road. On touch, two fingers pan, pinch and twist. |
 | **Traffic** | Pause, 1×, 2×, 4×. Sliders set vehicle and pedestrian density; *Demand* sets the overall level. |
 
 Everything is saved to the browser automatically. **Save map** / **Open map**

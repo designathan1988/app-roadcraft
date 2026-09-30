@@ -79,6 +79,21 @@ body { user-select: none; -webkit-user-select: none; }
   /* Above the panels, so the phone's "more" menu opens over the palette. */
   z-index: 3;
 }
+.camera-controls {
+  position: absolute;
+  top: 82px;
+  right: 14px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 12px;
+}
+.camera-controls .icon-button { width: 34px; height: 34px; }
+.camera-controls .icon-button svg { width: 18px; height: 18px; }
+.camera-needle { transition: transform 0.08s linear; }
+.camera-needle .needle-n { fill: #ff7a6b; stroke: #ff7a6b; stroke-width: 1; }
+.camera-needle .needle-s { fill: none; stroke: currentColor; stroke-width: 1.4; }
 .top-actions { position: relative; display: flex; align-items: center; gap: 10px; pointer-events: auto; }
 .top-menu { display: flex; align-items: center; gap: 8px; }
 .button-group { display: flex; align-items: center; gap: 5px; }

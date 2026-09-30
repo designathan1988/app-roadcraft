@@ -54,6 +54,17 @@ export interface Viewport {
   /** Turns the view. A no-op where there is nothing to turn. */
   rotate(quarterTurns: number, px: number, py: number, cssW: number, cssH: number): void;
   /**
+   * Swings the camera round (`dAzimuth`, rad) and over (`dElevation`, rad) the
+   * centre of the view. Free: any bearing, any tilt the view allows.
+   */
+  orbit(dAzimuth: number, dElevation: number): void;
+  /** Puts the camera at an exact bearing and tilt about the centre of the view. */
+  setOrbit(azimuth: number, elevation: number): void;
+  /** Bearing the camera looks from, rad, measured as the rig measures it. */
+  readonly azimuth: number;
+  /** Angle the camera looks down at, rad: PI/2 is straight down. */
+  readonly elevation: number;
+  /**
    * World point at the centre of the view, and the only way to move it there.
    *
    * Every other way of centring the view — the arrow keys, a tap on the
@@ -98,6 +109,14 @@ export function flatViewport(camera: Camera): Viewport {
     rotate() {
       // A top-down view has one orientation. Offering three that do nothing
       // would be worse than not offering them.
+    },
+    orbit() {},
+    setOrbit() {},
+    get azimuth() {
+      return 0;
+    },
+    get elevation() {
+      return Math.PI / 2;
     },
     get centre() {
       return { x: camera.x, y: camera.y };

@@ -506,7 +506,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           tool.focusSelected();
           break;
         case 'top':
-          deps.view().rotate(-deps.view().facing, w / 2, h / 2, w, h);
+          // A true plan view: straight down, keeping the bearing.
+          deps.view().setOrbit(deps.view().azimuth, Math.PI / 2);
           break;
         case 'turnLeft':
           deps.view().rotate(-1, w / 2, h / 2, w, h);

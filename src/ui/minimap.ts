@@ -47,6 +47,7 @@ export function drawMinimap(
   sim: SimWorld,
   camera: Camera,
   surface: CanvasSurface,
+  footprint?: readonly Vec2[],
 ): void {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const rect = canvas.getBoundingClientRect();
@@ -132,11 +133,20 @@ export function drawMinimap(
     ctx.fillRect(p.x - dot / 2, p.y - dot / 2, dot, dot);
   }
 
-  // Viewport rectangle.
-  const view = camera.viewBounds(surface.cssW, surface.cssH);
+  // What the camera sees, on the ground. A turned or tilted camera sees a
+  // turned trapezoid, not the screen's rectangle; the flat camera's rectangle
+  // is the fallback where no footprint is given.
   ctx.strokeStyle = SELECTION;
   ctx.lineWidth = Math.max(1.5 / scale, 1);
-  ctx.strokeRect(view.minX, view.minY, spanX(view), spanY(view));
+  if (footprint && footprint.length >= 3) {
+    ctx.beginPath();
+    footprint.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.stroke();
+  } else {
+    const view = camera.viewBounds(surface.cssW, surface.cssH);
+    ctx.strokeRect(view.minX, view.minY, spanX(view), spanY(view));
+  }
 }
 
 /** Converts a click on the minimap back to a world position. */
