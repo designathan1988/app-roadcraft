@@ -681,7 +681,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     if (openGallery === 'patterns') {
       const grid = el('div', 'bw-tiles');
       for (const pattern of FACADE_PATTERNS) {
-        grid.appendChild(tile(pattern, t(`creator.pattern.${pattern}`), state.pattern === pattern, closeGalleryAnd(() => actions.choosePattern(pattern))));
+        grid.appendChild(tile(
+          pattern,
+          t(`creator.pattern.${pattern}`),
+          state.pattern === pattern,
+          closeGalleryAnd(() => actions.choosePattern(pattern)),
+          thumbnails.get(pattern),
+        ));
       }
       box.append(grid, scopeRow(state), menuNote('builder.pattern.note'));
       tier3.appendChild(box);
@@ -706,7 +712,13 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     if (openGallery === 'moreComponents') {
       const grid = el('div', 'bw-tiles');
       for (const kind of ELEMENT_KINDS) {
-        grid.appendChild(tile(kind, t(`building.element.${kind}`), state.tool === kind, closeGalleryAnd(() => actions.chooseTool(kind))));
+        grid.appendChild(tile(
+          kind,
+          t(`building.element.${kind}`),
+          state.tool === kind,
+          closeGalleryAnd(() => actions.chooseTool(kind)),
+          thumbnails.get(kind),
+        ));
       }
       box.append(grid, menuNote('builder.components.note'));
       tier3.appendChild(box);

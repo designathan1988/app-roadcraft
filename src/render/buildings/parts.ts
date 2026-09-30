@@ -4,6 +4,8 @@ import {
   BAY_COMPONENTS,
   type Building,
   type ElementKind,
+  FACADE_PATTERNS,
+  type FacadePattern,
   ROOF_KINDS,
   type RoofKind,
   type BayComponent,
@@ -51,6 +53,7 @@ const RUN_PARTS: Readonly<Record<string, ElementKind>> = {
 export const PART_IDS: readonly string[] = [
   ...Object.keys(WALL_PARTS),
   ...Object.keys(ROOF_PARTS),
+  ...FACADE_PATTERNS,
   'roofShape',
   ...ELEMENT_PARTS,
   ...Object.keys(RUN_PARTS),
@@ -79,6 +82,14 @@ export function partSample(id: string): Building | null {
     const storey = volume.storeys[0];
     if (!storey) return null;
     volume.storeys = [{ facade: { fill: component } }];
+    return sample;
+  }
+
+  // A composition is photographed on the wall it composes.
+  if ((FACADE_PATTERNS as readonly string[]).includes(id)) {
+    for (const storey of volume.storeys) {
+      storey.facade = { ...storey.facade, pattern: id as FacadePattern };
+    }
     return sample;
   }
 
