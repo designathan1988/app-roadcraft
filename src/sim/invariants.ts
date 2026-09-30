@@ -5,7 +5,6 @@ import { anyGreen, signalStateFor } from './signals/query';
 import type { SignalController } from './signals/fsm';
 import { COARSE_EPS } from '@core/scalar';
 import { pedestrianAffectsSpan, reservationCoversCrossing } from './intersections/crossingSpans';
-import { occupantOf } from './peds/publish';
 
 /**
  * Runtime invariant checks.
@@ -212,27 +211,17 @@ export function runAudit(w: SimWorld, level: 'cheap' | 'full'): AuditIssue[] {
   }
 
   // ---- pedestrians ------------------------------------------------------
-  for (const p of w.peds.values()) {
-    const edge = w.sidewalks.edges.get(p.edge);
-    if (!edge) continue;
+  w.pedEngine.audit(w, out);
 
-    if (p.state === 'Crossing' && w.clock.since(p.lastMovedTick) > 3) {
-      out.push(issue('pedInRoadStalled', tick, p.id, 'no progress while crossing'));
-    }
-
-    if (p.state === 'WaitAtKerb' && p.waited > 2 * maxCycle(w)) {
-      out.push(issue('pedFrozen', tick, p.id, `waited ${p.waited.toFixed(1)}s`));
-    }
-
-    // A pedestrian may only be inside a junction while on a crossing edge.
-    if (edge.kind !== 'crossing' && p.state === 'Crossing') {
-      out.push(issue('pedOutsideSidewalk', tick, p.id, 'crossing state off a crossing edge'));
-    }
-
-    if (p.occupying) {
-      const split = p.occupying.indexOf(':');
-      const node = Number(p.occupying.slice(0, split));
-      const segment = Number(p.occupying.slice(split + 1));
+  // Nobody the pedestrian engine has put on a crossing may be inside the
+  // stretch a vehicle's reservation still protects. Read from what vehicles
+  // themselves read (`crossingStates`), whichever engine published it.
+  for (const [crossing, state] of w.crossingStates) {
+    if (!state.occupants.length) continue;
+    const split = crossing.indexOf(':');
+    const node = Number(crossing.slice(0, split));
+    const segment = Number(crossing.slice(split + 1));
+    for (const occupant of state.occupants) {
       for (const v of w.vehicles.values()) {
         const lane = w.lanelet(v.lanelet);
         const connectorIds = new Set(v.clearingConnectors.map((token) => token.connector));
@@ -241,15 +230,15 @@ export function runAudit(w: SimWorld, level: 'cheap' | 'full'): AuditIssue[] {
         for (const connectorId of connectorIds) {
           const connector = w.connector(connectorId);
           if (connector?.node === node) {
-            const span = w.crossingSpans.span(connector.id, p.occupying);
-            if (span === null || (span && !pedestrianAffectsSpan(occupantOf(p, edge), span))) continue;
+            const span = w.crossingSpans.span(connector.id, crossing);
+            if (span === null || (span && !pedestrianAffectsSpan(occupant, span))) continue;
             if (!reservationCoversCrossing(w, v, connector, segment, span)) continue;
             out.push(
               issue(
                 'pedSignalContradiction',
                 tick,
-                `${p.id}/${v.id}`,
-                `crossing ${p.occupying} overlaps reserved connector ${connector.id}`,
+                `${occupant.id}/${v.id}`,
+                `crossing ${crossing} overlaps reserved connector ${connector.id}`,
               ),
             );
           }
@@ -269,7 +258,7 @@ function junctionIsStuck(w: SimWorld, node: number | undefined, limit: number): 
   return w.clock.since(last) > limit;
 }
 
-function maxCycle(w: SimWorld): number {
+export function maxCycle(w: SimWorld): number {
   let max = 30;
   for (const c of w.controllers.values()) max = Math.max(max, c.plan.cycle);
   return Math.min(max, 200);

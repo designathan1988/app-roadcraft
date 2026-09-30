@@ -1,11 +1,10 @@
 import type { LaneletId } from '@world/lanelets';
 import { m } from '@world/units';
-import { DT, PED } from '../params';
+import { DT } from '../params';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
-import { createPed, pedSnapshot, type Ped, type PedAgeClass, type PedGender } from '../peds/state';
-import type { SidewalkEdge } from '../peds/sidewalk';
-import { pedHash } from '../peds/behaviour';
+import type { Boarder } from '../people/engine';
+import { personHash, type PersonAgeClass, type PersonGender } from '../people/view';
 
 /**
  * Somebody getting out of a car at the kerb, or getting in.
@@ -48,16 +47,7 @@ export type TaskKind = 'drop' | 'pick';
 export type KerbStopPhase = 'approach' | 'halt' | 'hold' | 'fetch' | 'open' | 'transfer' | 'close';
 
 /** The person moving between the seat and the footway. */
-export interface KerbPerson {
-  readonly seed: number;
-  readonly gender: PedGender;
-  readonly ageClass: PedAgeClass;
-  /** Where they stand on the footway (drop) or come from (pick), world units. */
-  readonly footX: number;
-  readonly footY: number;
-  /** Heading they face while standing on the footway. */
-  readonly footHeading: number;
-}
+export type KerbPerson = Boarder;
 
 export interface KerbStop {
   readonly kind: TaskKind;
@@ -134,11 +124,11 @@ const PERSON_BASE = 1 << 24;
  * created at the kerb takes this id, so the person who walks off is the one
  * who was sitting there. Somebody picked up keeps their pedestrian id.
  */
-export function seatPerson(v: Vehicle, seat: number): { seed: number; gender: PedGender; ageClass: PedAgeClass } {
+export function seatPerson(v: Vehicle, seat: number): { seed: number; gender: PersonGender; ageClass: PersonAgeClass } {
   const picked = v.people[seat];
   const seed = picked ?? PERSON_BASE + v.id * 8 + seat;
-  const hash = pedHash(seed);
-  const gender: PedGender = (hash >>> 3) & 1 ? 'f' : 'm';
+  const hash = personHash(seed);
+  const gender: PersonGender = (hash >>> 3) & 1 ? 'f' : 'm';
   if (picked !== undefined) return { seed, gender, ageClass: v.peopleAge[seat] ?? 'adult' };
   // A family car: about one back seat in four carries a child, and never the
   // driver's seat or the front passenger's.
@@ -376,12 +366,12 @@ function plan(w: SimWorld, v: Vehicle): void {
     v.errand = null;
     return;
   }
-  const person = walkerBeside(w, lane.id, earliest, Math.min(latest, earliest + PICK_REACH));
+  const person = w.pedEngine.bridge.hailable(w, lane.id, earliest, Math.min(latest, earliest + PICK_REACH));
   if (!person) return;
   const at = Math.min(latest, Math.max(earliest, person.s + doorAlongFromFront(v, seat)));
   if (queuedAhead(w, v, at)) return;
   const stop = newStop('pick', lane.id, at, seat);
-  stop.pedId = person.ped.id;
+  stop.pedId = person.id;
   v.kerbStop = stop;
 }
 
@@ -410,11 +400,11 @@ function planBusStop(w: SimWorld, v: Vehicle, lanelet: LaneletId, earliest: numb
     // Anybody walking alone along this side of the block may be waiting for
     // the bus; they walk up to it when it calls (`hail`).
     const doorAt = at - doorAlongFromFront(v, 0);
-    const walker = walkerBeside(w, lanelet, doorAt - BUS_FETCH * 0.7, doorAt + BUS_FETCH * 0.7, taken);
+    const walker = w.pedEngine.bridge.hailable(w, lanelet, doorAt - BUS_FETCH * 0.7, doorAt + BUS_FETCH * 0.7, taken);
     if (!walker) break;
-    taken.add(walker.ped.id);
+    taken.add(walker.id);
     const task = newStop('pick', lanelet, at, free[i]!, 0);
-    task.pedId = walker.ped.id;
+    task.pedId = walker.id;
     task.seatStage = false;
     tasks.push(task);
   }
@@ -468,27 +458,6 @@ function footwayBeside(w: SimWorld, lanelet: LaneletId, s: number): { x: number;
   return best;
 }
 
-/** A pedestrian walking alone on the kerb-side footway between `s0` and `s1` of the lane. */
-function walkerBeside(w: SimWorld, lanelet: LaneletId, s0: number, s1: number,
-  exclude: ReadonlySet<number> = new Set()): { ped: Ped; s: number } | null {
-  const lane = w.lanelet(lanelet);
-  if (!lane) return null;
-  let best: { ped: Ped; s: number } | null = null;
-  for (const ped of w.pedsInIdOrder()) {
-    if (ped.state !== 'Walking' || ped.party.size !== 1 || ped.ageClass === 'child' || ped.activity) continue;
-    // Somebody another member of a party is pacing would be left behind.
-    if (ped.trailing !== null || exclude.has(ped.id)) continue;
-    const edge = w.sidewalks.edges.get(ped.edge);
-    if (edge?.kind !== 'walk' || edge.segment !== lane.segment) continue;
-    const hit = lane.centre.closestPoint({ x: ped.x, y: ped.y });
-    if (hit.s < s0 || hit.s > s1) continue;
-    const f = lane.centre.sampleAt(hit.s);
-    if ((ped.x - f.p.x) * f.t.y - (ped.y - f.p.y) * f.t.x <= 0) continue;
-    if (!best || hit.s < best.s) best = { ped, s: hit.s };
-  }
-  return best;
-}
-
 /** World position of a kerb-side door's opening and of the spot beside it on the footway. */
 function doorPlaces(w: SimWorld, v: Vehicle, stop: KerbStop) {
   const lane = w.lanelet(v.lanelet)!;
@@ -505,11 +474,9 @@ function doorPlaces(w: SimWorld, v: Vehicle, stop: KerbStop) {
 function roomToOpen(w: SimWorld, v: Vehicle, stop: KerbStop): boolean {
   const { door, foot } = doorPlaces(w, v, stop);
   if (!foot) return false;
-  for (const ped of w.peds.values()) {
-    if (ped.id === stop.pedId) continue;
-    if (Math.hypot(ped.x - door.x, ped.y - door.y) < DOOR_CLEAR) return false;
-    if (stop.kind === 'drop' && Math.hypot(ped.x - foot.x, ped.y - foot.y) < m(0.9)) return false;
-  }
+  const people = w.pedEngine.bridge;
+  if (people.anyoneWithin(w, door.x, door.y, DOOR_CLEAR, stop.pedId)) return false;
+  if (stop.kind === 'drop' && people.anyoneWithin(w, foot.x, foot.y, m(0.9), stop.pedId)) return false;
   // Nothing in the lane beside the door either: a cyclist or a motorcycle
   // squeezing past on the kerb side would ride into it.
   for (const other of w.vehicles.values()) {
@@ -556,23 +523,14 @@ function beginTransfer(w: SimWorld, v: Vehicle, stop: KerbStop): void {
  */
 function hail(w: SimWorld, v: Vehicle, stop: KerbStop): void {
   const { door } = doorPlaces(w, v, stop);
-  const ped = stop.pedId !== null ? w.peds.get(stop.pedId) : undefined;
   const reach = v.archetype.shape === 'bus' ? BUS_FETCH : PICK_FETCH;
-  if (!ped || ped.state !== 'Walking' || ped.activity || ped.trailing !== null ||
-      Math.hypot(ped.x - door.x, ped.y - door.y) > reach) {
+  const person = stop.pedId !== null ? w.pedEngine.bridge.board(w, stop.pedId, door, reach) : null;
+  if (!person) {
     abandon(v);
     return;
   }
-  stop.person = {
-    seed: ped.id,
-    gender: ped.gender,
-    ageClass: ped.ageClass,
-    footX: ped.x,
-    footY: ped.y,
-    footHeading: ped.heading,
-  };
-  w.peds.delete(ped.id);
-  stop.fetchTime = Math.hypot(ped.x - door.x, ped.y - door.y) / KERB_PACE;
+  stop.person = person;
+  stop.fetchTime = Math.hypot(person.footX - door.x, person.footY - door.y) / KERB_PACE;
   stop.walked = 0;
   enter(stop, 'fetch');
 }
@@ -580,7 +538,7 @@ function hail(w: SimWorld, v: Vehicle, stop: KerbStop): void {
 function completeTransfer(w: SimWorld, v: Vehicle, stop: KerbStop): void {
   if (stop.kind === 'drop') {
     v.seats &= ~(1 << stop.seat);
-    if (stop.person && !stop.keep) spawnAlighted(w, stop.person);
+    if (stop.person && !stop.keep) w.pedEngine.bridge.alight(w, stop.person);
     if (!stop.keep) {
       delete v.people[stop.seat];
       delete v.peopleAge[stop.seat];
@@ -603,51 +561,6 @@ function completeTransfer(w: SimWorld, v: Vehicle, stop: KerbStop): void {
   }
   if (!next && v.errand !== 'service') v.errand = null;
   enter(stop, 'close');
-}
-
-/** The dropped-off passenger, as a pedestrian standing where they got out. */
-function spawnAlighted(w: SimWorld, person: KerbPerson): void {
-  let edge: SidewalkEdge | undefined;
-  let s = 0;
-  let lat = 0;
-  let best = Infinity;
-  for (const candidate of w.sidewalks.edges.values()) {
-    if (candidate.kind !== 'walk') continue;
-    const hit = candidate.path.closestPoint({ x: person.footX, y: person.footY });
-    if (hit.distance < best) {
-      best = hit.distance;
-      edge = candidate;
-      s = hit.s;
-      const f = candidate.path.sampleAt(hit.s);
-      lat = (person.footX - f.p.x) * f.n.x + (person.footY - f.p.y) * f.n.y;
-    }
-  }
-  // The person keeps the id they had in the seat (`seatPerson`), unless
-  // somebody of that id is already walking about.
-  if (!edge || w.peds.has(person.seed)) return;
-  const id = person.seed;
-  const speed = PED.meanSpeed;
-  const ped = createPed({
-    id,
-    color: '#5d6b7a',
-    speed,
-    file: id % PED.files,
-    ageClass: person.ageClass,
-    gender: person.gender,
-    party: { id, size: 1, archetype: 'solo', pace: speed, hasChild: false, goal: null, trip: 0 },
-    rank: 0,
-    edge: edge.id,
-    entry: edge.from,
-    s,
-    lat: Math.max(-edge.halfWidth * 0.8, Math.min(edge.halfWidth * 0.8, lat)),
-    tick: w.clock.tick,
-  });
-  ped.x = person.footX;
-  ped.y = person.footY;
-  ped.heading = person.footHeading;
-  ped.v = 0;
-  ped.prev = pedSnapshot(ped);
-  w.peds.set(id, ped);
 }
 
 /**

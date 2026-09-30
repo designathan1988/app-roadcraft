@@ -3,7 +3,7 @@ import type { Archetype } from './archetypes';
 import type { Driver } from './driver';
 import { type ConstraintSet, emptyConstraints } from './idm';
 import type { ErrandKind, KerbStop } from './kerbStops';
-import type { PedAgeClass } from '../peds/state';
+import type { PersonAgeClass } from '../people/view';
 
 export type VehicleId = number;
 
@@ -193,7 +193,7 @@ export interface Vehicle {
   /** Pedestrian ids of people picked up, by seat; others are `seatPerson`'s default. */
   people: number[];
   /** Age class of the people in `people`, by seat. */
-  peopleAge: PedAgeClass[];
+  peopleAge: PersonAgeClass[];
   /** What this trip stops for at a kerb, if anything (`kerbStops.ts`). */
   errand: ErrandKind | null;
   /** The kerb stop under way, from choosing the place to pulling away. */

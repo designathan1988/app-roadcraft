@@ -108,6 +108,25 @@ acceptance and waiting, sociability -> talking and parties.
 - **CrossingState** per crossing (occupants, waiting, demand, longest wait)
   replaces `pedOccupancy`/`pedWaiting`; **VehicleBodyView** + `predict(t)`
   gives people the vehicles' committed trajectories.
+- Until people walk to doors themselves (P5) the bridge answers at once, in
+  the kerb-stop stage (`PeopleBridge.hailable/board/alight/anyoneWithin`):
+  the same order of events as before, so P0 changes no behaviour. P5 turns
+  it into the two-way mailbox above.
+
+### Seams in place (P0)
+
+| Seam | Where | Read by |
+|---|---|---|
+| `CrossingState` | `sim/crossings/state.ts`, `SimWorld.crossingStates` | admission, crossing spans, signal demand, invariants |
+| `PedView` | `sim/people/view.ts`, `SimWorld.pedViews` | citizen renderer, gait, social cues, `pedPose`, counters |
+| `PedestrianEngine` + `PeopleBridge` | `sim/people/engine.ts`, `SimWorld.pedEngine` | pipeline stages, kerb stops, `runAudit` |
+
+Outside `sim/peds/*` only the walkable geometry is still read from the
+legacy sidewalk graph (crossing spans, the footway beside a kerb stop); P1
+replaces it with `world/crossings.ts` and the navmesh. The spatial
+`PeopleIndex` lands with its first consumer, the locomotion neighbour query
+(P2), and the pedestrian audit is rebuilt on `PedView`/`CrossingState` with
+the acceptance metrics, so both engines are measured the same way (P2, P6).
 
 ## 6. Person model (`src/world/people/*`, `src/render/people/*`, `scripts/import-makehuman.mjs`)
 
@@ -152,7 +171,7 @@ Flags: `?peds=legacy|people`, `?drive=v1|v2`.
 
 | Track | Steps |
 |---|---|
-| People | P0 seams (PedView, CrossingState, PeopleIndex, PeopleBridge, engine interface; no behaviour change) -> P1 crossings + navmesh -> P2 planner + locomotion -> P3 affordances -> P4 minds, doors, building occupancy -> P5 vehicle doors and bus stops -> P6 parity and switch -> P7 delete the old model -> P8 authored places |
+| People | P0 seams (PedView, CrossingState, PeopleBridge, engine interface; no behaviour change) -> P1 crossings + navmesh -> P2 planner + locomotion, PeopleIndex, neutral pedestrian metrics -> P3 affordances -> P4 minds, doors, building occupancy -> P5 vehicle doors and bus stops -> P6 parity and switch -> P7 delete the old model -> P8 authored places |
 | Drive | V0 metrics, scenarios, 1200-vehicle bench, RenderableVehicle, digest test -> V1 lane graph -> V2 perception -> V3 operational -> V4 tactical -> V5 strategic -> V6 negotiation -> V7 stop tasks + mailbox -> V8 parking + driveways -> V9 trips from buildings -> V10 buses, deliveries -> V11 off-tracking, decks, node templates -> V12 switch and delete v1 |
 | Person | H0 CC0 import script + licence manifest -> H1 morph engine (worker) validated against MPFB2 exports -> H2 skeleton fit + offline clip retarget + IK re-solve -> H3 clothes, hair via mhclo -> H4 crowd prototypes in the citizen renderer -> H5 Person Creator mode (new UI shell) -> H6 traits wiring -> H7 Rocketbox GLBs removed |
 

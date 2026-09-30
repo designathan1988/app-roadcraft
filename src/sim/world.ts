@@ -20,6 +20,8 @@ import { ACCESS_COMPONENTS } from '@world/buildings/foundation';
 import type { CrossingStates } from './crossings/state';
 import { publishCrossingStates, publishPedViews } from './peds/publish';
 import type { PedView } from './people/view';
+import type { PedestrianEngine } from './people/engine';
+import { legacyPedestrians } from './peds/engine';
 /** The body class a signal plan is protected for: an ordinary car. */const CAR_CLASS: BodyClass = 1;
 
 /** A queue is counted this far back from the stop line. */
@@ -66,6 +68,8 @@ export class SimWorld {
 
   readonly vehicles = new Map<VehicleId, Vehicle>();
   readonly peds = new Map<PedId, Ped>();
+  /** What moves the people (`people/engine.ts`); everything else reaches them through it. */
+  readonly pedEngine: PedestrianEngine = legacyPedestrians;
   readonly runtime = new Map<LaneletId, LaneletRuntime>();
   readonly controllers = new Map<NodeId, SignalController>();
 
