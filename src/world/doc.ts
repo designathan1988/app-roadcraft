@@ -562,6 +562,13 @@ export class RoadDoc {
     // the rivers on every road drawn, for ground that had not changed.
     const landMoved = !sameStamps(this.terrainStamps, source.terrainStamps);
     const nextTerrainRevision = landMoved ? this.terrainRevision + 1 : this.terrainRevision;
+    // Likewise the roads and the utility network: undoing a storey or a
+    // brush dab replaced the whole document and moved both revisions, which
+    // rebuilt every road mesh, the lanelets and the simulation topology for a
+    // network that had not changed (AGENTS.md: a building edit never moves
+    // `doc.revision`).
+    const roadsChanged = !sameRoads(this, source);
+    const utilitiesChanged = !samePoles(this, source);
 
     this.nodes.clear();
     this.segments.clear();
@@ -581,7 +588,7 @@ export class RoadDoc {
     this.poles.clear();
     this.poleSpans.clear();
     for (const [id, pole] of source.poles) this.poles.set(id, { ...pole });
-    this.utilityRevision++;
+    if (utilitiesChanged) this.utilityRevision++;
     for (const [id, span] of source.poleSpans) this.poleSpans.set(id, { ...span });
     // Moves `buildings.revision` only if the buildings differ.
     this.buildings.replaceWith(source.buildings);
@@ -597,6 +604,7 @@ export class RoadDoc {
     this.spanIds = new IdAllocator(source.spanIds.peek);
     this.nextTerrainId = source.nextTerrainId;
     this.terrainRevision = nextTerrainRevision;
+    if (!roadsChanged) return;
     this.clearDirty();
     for (const id of this.nodes.keys()) this.dirtyNodes.add(id);
     for (const id of this.segments.keys()) this.dirtySegments.add(id);
@@ -796,6 +804,41 @@ function normaliseLaneCount(lanes: number | null, direction: SegmentDirection): 
 }
 
 /** Whether two stamp lists describe the same land, field for field. */
+/** Whether two documents hold the same nodes and segments, field for field. */
+function sameRoads(a: RoadDoc, b: RoadDoc): boolean {
+  if (a.nodes.size !== b.nodes.size || a.segments.size !== b.segments.size) return false;
+  for (const [id, p] of a.nodes) {
+    const q = b.nodes.get(id);
+    if (!q || p.x !== q.x || p.y !== q.y || p.heightOffset !== q.heightOffset || p.smooth !== q.smooth ||
+      p.control !== q.control || !sameList(p.incident, q.incident) || !sameList(p.blockedMovements, q.blockedMovements)) return false;
+  }
+  for (const [id, p] of a.segments) {
+    const q = b.segments.get(id);
+    if (!q || p.a !== q.a || p.b !== q.b || p.type !== q.type || p.dashOrigin !== q.dashOrigin ||
+      p.direction !== q.direction || p.lanes !== q.lanes || p.structure !== q.structure ||
+      (p.curve?.t ?? null) !== (q.curve?.t ?? null) || (p.curve?.h ?? null) !== (q.curve?.h ?? null)) return false;
+  }
+  return true;
+}
+
+/** Whether two documents hold the same poles and spans. */
+function samePoles(a: RoadDoc, b: RoadDoc): boolean {
+  if (a.poles.size !== b.poles.size || a.poleSpans.size !== b.poleSpans.size) return false;
+  for (const [id, p] of a.poles) {
+    const q = b.poles.get(id);
+    if (!q || p.x !== q.x || p.y !== q.y || p.lamp !== q.lamp) return false;
+  }
+  for (const [id, p] of a.poleSpans) {
+    const q = b.poleSpans.get(id);
+    if (!q || p.a !== q.a || p.b !== q.b) return false;
+  }
+  return true;
+}
+
+function sameList<T>(a: readonly T[], b: readonly T[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
+
 function sameStamps(a: readonly TerrainStamp[], b: readonly TerrainStamp[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {

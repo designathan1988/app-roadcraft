@@ -491,7 +491,8 @@ function applySnapshot(data: ReturnType<RoadDoc['toJSON']> | null, source: 'snap
   } else {
     restoreSnapshot(doc, data, net);
   }
-  rebuildSimulationTopology();
+  // Only when the road plan the simulation runs on actually changed.
+  if (sim.topologyRevision !== net.trafficRevision) rebuildSimulationTopology();
   buildings.restored();
   selectedSegment = null;
   selectedNode = null;

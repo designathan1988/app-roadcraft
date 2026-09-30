@@ -70,5 +70,7 @@ export function restoreInto(target: RoadDoc, data: SerializedDoc, net: Network):
  */
 export function restoreSnapshot(target: RoadDoc, data: SerializedDoc, net: Network): void {
   target.replaceFromJSON(data, { repair: false });
-  net.rebuild();
+  // `replaceWith` moves `revision` only when the roads differ: undoing a storey,
+  // a pole or a brush dab leaves the network, and everything built on it, alone.
+  if (net.revision !== target.revision) net.rebuild();
 }
