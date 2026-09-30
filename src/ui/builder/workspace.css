@@ -1,11 +1,11 @@
-/* The game's chrome, one paradigm: a thin bar at the top for global state and
-   an expanding container at the bottom that grows upward in three tiers -
-   categories, sub-tools, and a gallery of what can be placed - with one line
-   of hint along its foot. The map owns the middle of the screen, always.
+/* The game's chrome: a thin bar at the top for global state, a rail of tools
+   down the left edge, and beside it a panel for the tool in hand - its name,
+   its hint, its tray and its gallery. The map owns the rest of the screen.
 
-   The same container drives the road and the Builder: in road mode it hosts
-   the game's own toolbar and palettes (moved in by main.ts), so nothing floats
-   over the map and there is one place to look for anything. */
+   The same panel serves the road and the Builder: it hosts the game's own
+   toolbar and palettes (moved in by main.ts), so there is one place to look
+   for anything. On a phone the rail runs along the bottom and the panel is a
+   sheet standing on it. */
 
 /* --- the top bar */
 .bw-top {
@@ -121,24 +121,19 @@
 .bw-slot .top-menu .select-chip { height: 32px; width: 100%; }
 .bw-slot .select-chip select { flex: 1; max-width: none; text-align-last: right; }
 
-/* --- the bottom container: one glass band, tiers stacked inside it ----------
-   Its width tracks the content between a floor and a ceiling, so the band is
-   the same width in every mode and never grows a covering rectangle. */
+/* --- the side panel: the tool in hand, beside the rail ----------------------
+   The bottom band it replaces grew upward over the middle of the map and its
+   tiers fought for one strip of screen. The panel stands at the left edge,
+   next to the tools, the full height between the bars: its content scrolls
+   inside it, and the map keeps the whole centre. */
 .bw-dock {
   position: absolute;
-  /* Centred on the map that is left once the minimap keeps its corner: a band
-     centred on the window would sit under it on every screen below 1600 px. */
-  left: calc(50% - 110px);
-  bottom: 52px;
-  transform: translateX(-50%);
+  left: 94px;
+  top: 64px;
+  width: 340px;
+  max-height: calc(100dvh - 64px - 58px);
   display: flex;
   flex-direction: column;
-  /* One width for every tool: the band must not breathe in and out as the
-     crew changes the shelf it is standing in front of. */
-  width: min(1120px, calc(100vw - 260px));
-  /* The map is the game. Half the screen of controls is not an interface, it
-     is a wall: the band is capped and its galleries scroll inside it. */
-  max-height: min(42dvh, 380px);
   pointer-events: auto;
   background: color-mix(in srgb, var(--bw-panel) 95%, transparent);
   border: 1px solid var(--bw-border);
@@ -148,6 +143,33 @@
   -webkit-backdrop-filter: blur(14px) saturate(120%);
   overflow: hidden;
 }
+/* The head: which tool, what it wants from the pointer now, and the fold. */
+.bw-panel-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 10px 9px 14px;
+  background: color-mix(in srgb, var(--bw-bg-2) 72%, transparent);
+}
+.bw-dock:not(.folded) .bw-panel-head { border-bottom: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent); }
+.bw-panel-text { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.bw-panel-title {
+  margin: 0;
+  color: var(--bw-text);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+/* The body scrolls; the rows in it keep their height. */
+.bw-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.bw-panel-body[hidden] { display: none; }
 
 .bw-tier {
   display: flex;
@@ -155,57 +177,30 @@
   justify-content: flex-start;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 6px 14px;
+  padding: 10px 14px;
 }
-/* With the band capped, the rows keep their height and the GALLERY is the one
-   that gives: shrinking the rows made the entries row draw over the tiles. */
-.bw-tier1, .bw-tier2, .bw-foot { flex: 0 0 auto; }
-.bw-tier3 { flex: 1 1 auto; min-height: 0; }
 .bw-tier[hidden] { display: none; }
-.bw-tier1 { background: color-mix(in srgb, var(--bw-bg-2) 72%, transparent); }
-/* One hairline between stacked rows, however many of them are showing. */
-.bw-tier + .bw-tier,
-.bw-tier + .bw-foot { border-top: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent); }
-/* A floor on the tray's height, so swapping tool families swaps the contents
-   without the band sliding up and down the screen. */
-.bw-tier2 { align-items: flex-start; padding: 8px 12px; min-height: 92px; }
-/* A tool with nothing to configure shows the toolbar and the hint, no shelf. */
-#builder:not(.has-tray) .bw-tier2 { display: none; }
-/* A quarter of the screen at most: a gallery of thirteen materials scrolls
-   rather than covering the building it is being applied to. */
-/* The gallery is the band's one scrolling part: faded at the foot so the
-   row that is cut reads as "there is more", not as a broken tile. */
-.bw-tier3 {
-  justify-content: flex-start;
-  align-content: flex-start;
-  padding: 10px 14px 14px;
-  max-height: min(22dvh, 186px);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 14px), transparent 100%);
-  mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 14px), transparent 100%);
-}
-.bw-host { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; min-width: 0; }
+.bw-tier + .bw-tier { border-top: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent); }
+.bw-tier2 { align-items: flex-start; }
+/* The gallery sits under the tray and scrolls with the rest of the panel. */
+.bw-tier3 { justify-content: flex-start; align-content: flex-start; padding: 10px 14px 14px; }
+.bw-host { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 3px; min-width: 0; width: 100%; }
 /* The Builder's tray: what it can do on top, what the chosen one offers
    under it, and the model's own switches at the end of the top row. */
 .bw-host-builder { display: grid; gap: 6px; justify-items: stretch; width: 100%; }
-/* The tray reads as a form: labels and controls from the left, the pictures
-   owning the whole width under them. */
-.bw-tray { display: grid; gap: 6px; justify-items: start; width: 100%; padding: 0 6px; }
-.bw-context { display: flex; align-items: center; gap: 3px; }
-.bw-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
+.bw-tray { display: grid; gap: 8px; justify-items: start; width: 100%; }
+.bw-context { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.bw-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 3px; }
 .bw-host[hidden] { display: none; }
 .bw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
 
-/* The container folds to its bottom row, in the corner of the hint line. */
+/* Folds the panel to its head, and opens it again. */
 .bw-fold {
-  position: absolute;
-  right: 5px;
-  bottom: 5px;
+  flex: none;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 20px;
+  width: 28px;
+  height: 26px;
   border: 1px solid var(--bw-border);
   border-radius: 6px;
   background: color-mix(in srgb, var(--bw-bg-2) 80%, transparent);
@@ -213,6 +208,68 @@
 }
 .bw-fold:hover { color: var(--bw-active); border-color: var(--bw-active); }
 #builder[data-dock="folded"] .bw-fold svg { transform: rotate(180deg); }
+
+/* What Inspect picked, in the panel: the tool's card stands aside for it. */
+.bw-tier2 .inspector {
+  position: static;
+  width: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  transform: none;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.bw-tier2 .inspector.hidden { display: none; }
+/* Its own title row stays: it carries the close button, the way back. */
+.bw-tier2 .inspector .panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--bw-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+.inspector-open .tool-help { display: none; }
+/* The inspector no longer needs the minimap's corner. */
+#app.inspector-open .minimap-panel { display: block; }
+
+/* The help card of a tool with nothing to set: what it does, and its keys. */
+.tool-help { display: grid; gap: 12px; width: 100%; }
+.tool-help[hidden] { display: none; }
+.tool-help-what { margin: 0; color: var(--bw-text); font-size: 12px; line-height: 1.5; }
+.tool-help-keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; align-items: baseline; }
+.tool-help-section {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  color: var(--bw-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.tool-help-keys dt { margin: 0; }
+.tool-help-keys dd { margin: 0; color: var(--bw-muted); font-size: 11.5px; line-height: 1.4; }
+.tool-help-keys kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--bw-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bw-bg) 70%, transparent);
+  color: var(--bw-text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
 
 /* The Builder's tray, row by row: globals, groups, tools, entries - and the
    content of the entry taking the room the commands used to.
@@ -334,23 +391,19 @@
 .bw-help-row strong { font-size: 11.5px; color: var(--bw-text); }
 .bw-help-row span { font-size: 11px; color: var(--bw-muted); line-height: 1.4; }
 
-/* --- the foot: one line of hint, inside the band ---------------------------
-   The hint used to float over the map at exactly the height of the panel's own
-   last line, so the two texts drew on top of each other. It is now the band's
-   bottom line: the game's bar on the road, the Builder's on the sites. */
+/* --- the hint: one line under the panel's title -----------------------------
+   It says what the pointer will do now, so it stays on screen with the panel
+   folded: the head is never folded away. */
 .bw-foot {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 29px;
-  padding: 6px 34px 6px 12px;
-  border-top: 1px solid color-mix(in srgb, var(--bw-border) 70%, transparent);
-  background: color-mix(in srgb, var(--bw-bg) 45%, transparent);
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
   color: var(--bw-muted);
   font-size: 11px;
 }
-.bw-mouse { display: grid; place-items: center; flex: none; color: var(--bw-muted); opacity: 0.8; }
-.bw-mouse svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.bw-mouse { display: grid; place-items: center; flex: none; color: var(--bw-muted); opacity: 0.8; padding-top: 1px; }
+.bw-mouse svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 .bw-foot .hint,
 .bw-foot .mobile-hint,
 .bw-foot .bw-hint {
@@ -366,9 +419,8 @@
   -webkit-backdrop-filter: none;
   color: var(--bw-muted);
   font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.45;
+  white-space: normal;
   pointer-events: none;
 }
 .bw-foot .hint.flash,
@@ -376,7 +428,7 @@
 .bw-foot .bw-hint.flash { transform: none; color: var(--bw-active); font-weight: 600; }
 .bw-foot .mobile-hint { display: none; }
 /* Editing a building: the workspace's own line speaks, so the game's stands
-   aside - one sentence in the row, never two. */
+   aside - one sentence, never two. */
 .bw-foot .bw-hint { display: none; }
 #builder[data-mode="builder"] .bw-foot .bw-hint { display: block; }
 #builder[data-mode="builder"] .bw-foot .hint { display: none; }
@@ -386,40 +438,83 @@
   .bw-foot .mobile-hint { display: block; }
 }
 
-/* --- the game's own toolbar and palettes, hosted by the container ---------- */
-/* The toolbar becomes a row of icon-and-label pills: as a column of 62 px
-   tiles it overflowed the tier and its labels were clipped away. */
-.bw-tier1 .toolbar {
+/* --- the rail: the game's tools, a column down the left edge --------------- */
+.bw-rail {
+  position: absolute;
+  left: 10px;
+  top: 64px;
+  width: 76px;
+  max-height: calc(100dvh - 64px - 58px);
+  overflow-y: auto;
+  scrollbar-width: none;
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--bw-panel) 95%, transparent);
+  border: 1px solid var(--bw-border);
+  border-radius: 10px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+}
+.bw-rail::-webkit-scrollbar { display: none; }
+.bw-rail .bw-tier1 { padding: 6px; }
+.bw-rail .toolbar {
   position: static;
-  width: auto;
+  width: 100%;
   max-width: 100%;
   height: auto;
   margin: 0;
   padding: 0;
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 3px;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 4px;
   border: 0;
   background: none;
   box-shadow: none;
+  overflow: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.bw-tier1 .toolbar .tool {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.bw-rail .toolbar .tool {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  flex: none;
+  width: 100%;
   min-height: 0;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  white-space: nowrap;
+  height: 58px;
+  padding: 6px 2px 5px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
 }
-.bw-tier1 .toolbar .tool-icon svg { width: 16px; height: 16px; }
-.bw-tier1 .toolbar .tool[data-key]::after { display: none; }
+.bw-rail .toolbar .tool-icon svg { width: 21px; height: 21px; }
+/* The key letter in the corner, where a keyboard is. */
+.bw-rail .toolbar .tool[data-key]::after { top: 4px; right: 5px; }
+/* A short screen (a phone on its side, a small laptop window): six labelled
+   tiles do not fit between the bars, and a rail that scrolls hides the tools
+   past its edge with nothing to say they are there. The tiles go icon-only -
+   the name stays for screen readers and in the tooltip - and all six fit. */
+@media (min-width: 781px) and (max-height: 560px) {
+  .bw-rail { width: 50px; }
+  .bw-rail .bw-tier1 { padding: 4px; }
+  .bw-rail .toolbar { gap: 2px; }
+  .bw-rail .toolbar .tool { height: 34px; padding: 0; }
+  .bw-rail .toolbar .tool > span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .bw-rail .toolbar .tool[data-key]::after { display: none; }
+  .bw-dock { left: 68px; }
+}
 
 /* The road palette reads as three columns - road, path, height - so the band
    stays wide and short instead of standing 300 px tall over the map. */
@@ -557,13 +652,11 @@
 .road-carousel.at-end .carousel-step.next { opacity: 0.4; }
 
 .bw-tier2 .terrain-palette .panel-body {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 10px 20px;
+  display: grid;
+  justify-items: start;
+  gap: 12px;
 }
-.bw-tier2 .terrain-palette .terrain-modes { display: grid; grid-template-columns: repeat(4, minmax(78px, 1fr)); gap: 4px; }
+.bw-tier2 .terrain-palette .terrain-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .bw-tier2 .terrain-palette .terrain-mode { padding: 8px 5px; }
 .bw-tier2 .terrain-palette .terrain-control { display: grid; grid-template-columns: 58px 130px 40px; margin: 0; }
 .bw-tier2 .terrain-palette .terrain-control input { width: auto; min-width: 0; }
@@ -572,10 +665,11 @@
 /* --- inspector */
 .bw-inspector {
   position: absolute;
-  top: 64px;
+  /* Under the camera's controls, which own the top right corner. */
+  top: 138px;
   right: 10px;
   width: 268px;
-  max-height: calc(100dvh - 190px);
+  max-height: calc(100dvh - 138px - 60px);
   overflow-y: auto;
   scrollbar-width: thin;
   pointer-events: auto;
@@ -653,22 +747,33 @@
   .bw-top { height: auto; min-height: 44px; flex-wrap: wrap; padding: 6px; }
   .bw-chip span { display: none; }
   .bw-chip { padding: 0 8px; }
-  .bw-inspector { width: min(230px, calc(60vw - 12px)); top: 110px; max-height: calc(100dvh - 230px); }
+  .bw-inspector { width: min(230px, calc(60vw - 12px)); top: 136px; max-height: calc(100dvh - 330px); }
+  /* A phone: the rail lies along the bottom as a row of icons a thumb can
+     reach, and the panel is a sheet standing on it. */
+  .bw-rail {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 46px;
+    width: auto;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .bw-rail .bw-tier1 { padding: 4px; }
+  .bw-rail .toolbar { flex-direction: row; gap: 2px; }
+  /* Six tools share the width a phone has: none of them is left over the edge. */
+  .bw-rail .toolbar .tool { flex: 1 1 0; min-width: 0; width: auto; height: 54px; padding: 6px 0 5px; font-size: 9.5px; }
+  .bw-rail .toolbar .tool > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bw-rail .toolbar .tool[data-key]::after { display: none; }
   .bw-dock {
     left: 8px;
     right: 8px;
-    bottom: 46px;
-    transform: none;
+    top: auto;
+    bottom: 112px;
     width: auto;
-    min-width: 0;
-    max-width: none;
+    max-height: 42dvh;
   }
-  .bw-tier { flex-wrap: wrap; }
-  /* A phone has no room for the whole palette: the tray scrolls instead of
-     covering the map it is editing. */
-  .bw-tier2 { max-height: 38dvh; overflow-y: auto; scrollbar-width: thin; }
-  .bw-tier1 { padding-right: 40px; }
   .bw-tile { width: 72px; }
   .bw-tile-art, .bw-tile-art img { width: 44px; height: 44px; }
-  .bw-tier2 .road-palette .road-types { grid-template-columns: repeat(2, minmax(104px, 1fr)); }
 }

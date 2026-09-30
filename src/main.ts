@@ -1779,11 +1779,10 @@ function setTool(next: Tool): void {
   if (roadFamily) updateCarousel();
   terrainPalette.classList.toggle('hidden', !terrainActive);
   terrainPalette.setAttribute('aria-hidden', String(!terrainActive));
-  // A tool with nothing to configure leaves no empty shelf above the toolbar.
-  document.getElementById('builder')?.classList.toggle(
-    'has-tray',
-    roadFamily || terrainActive || next === 'building',
-  );
+  // A tool with nothing to configure still fills its panel: with what it does
+  // and every key it answers to. An empty shelf is a defect, not minimalism.
+  renderToolHelp(roadFamily || terrainActive || next === 'building' ? null : next);
+  renderPanelTitle();
   // Buildings are a tool, not a mode: the game's own HUD stays up, and the
   // band's tray swaps to the Builder's categories while it is the tool in hand.
   const buildingActive = next === 'building';
@@ -1792,6 +1791,60 @@ function setTool(next: Tool): void {
   else buildings.deactivate();
   updateHint();
   requestDraw();
+}
+
+/** The panel's help card, for the tools that have nothing else to show. */
+const toolHelp = document.createElement('div');
+toolHelp.className = 'tool-help';
+toolHelp.hidden = true;
+let toolHelpFor: Tool | null = null;
+/** Every tool's card ends with the camera, which works the same in all of them. */
+const CAMERA_KEYS = [
+  ['help.key.middleDrag', 'help.do.orbit'],
+  ['help.key.rightDrag', 'help.do.pan'],
+  ['help.key.wheel', 'help.do.zoom'],
+  ['help.key.qe', 'help.do.turn'],
+  ['help.key.home', 'help.do.resetView'],
+] as const;
+const TOOL_KEYS: Partial<Record<Tool, readonly (readonly [string, string])[]>> = {
+  bulldoze: [['help.key.click', 'help.do.remove'], ['help.key.undo', 'help.do.undo']],
+  pole: [['help.key.click', 'help.do.pole'], ['help.key.shiftClick', 'help.do.removePole'], ['help.key.esc', 'help.do.endLine']],
+  inspect: [['help.key.click', 'help.do.pick'], ['help.key.pageUpDown', 'help.do.nodeHeight'], ['help.key.esc', 'help.do.close']],
+};
+function renderToolHelp(forTool: Tool | null): void {
+  toolHelpFor = forTool;
+  toolHelp.hidden = forTool === null;
+  toolHelp.replaceChildren();
+  if (forTool === null) return;
+  const what = document.createElement('p');
+  what.className = 'tool-help-what';
+  what.textContent = t(`help.tool.${forTool}`);
+  const list = document.createElement('dl');
+  list.className = 'tool-help-keys';
+  const section = (key: string): void => {
+    const h = document.createElement('div');
+    h.className = 'tool-help-section';
+    h.textContent = t(key);
+    list.appendChild(h);
+  };
+  const row = ([key, action]: readonly [string, string]): void => {
+    const dt = document.createElement('dt');
+    const kbd = document.createElement('kbd');
+    kbd.textContent = t(key);
+    dt.appendChild(kbd);
+    const dd = document.createElement('dd');
+    dd.textContent = t(action);
+    list.append(dt, dd);
+  };
+  section('help.section.tool');
+  (TOOL_KEYS[forTool] ?? []).forEach(row);
+  section('help.section.camera');
+  CAMERA_KEYS.forEach(row);
+  toolHelp.append(what, list);
+}
+/** The name over the panel: the tool in hand, or the road's own option. */
+function renderPanelTitle(): void {
+  buildings.workspace.hosts.title.textContent = t(`tool.${tool}`);
 }
 
 /**
@@ -1811,6 +1864,12 @@ function mountUnifiedChrome(): void {
   move(document.querySelector('.toolbar'), hosts.level1);
   move(document.querySelector('.road-palette'), hosts.level2);
   move(document.getElementById('terrainPalette'), hosts.level2);
+  // What Inspect picked is shown in the panel, where the tool's card is: the
+  // right-hand column belongs to the camera and the minimap.
+  move(document.getElementById('inspector'), hosts.level2);
+  move(toolHelp, hosts.level2);
+  renderToolHelp(toolHelpFor);
+  renderPanelTitle();
   move(document.querySelector('.simulation-controls'), hosts.simMenu);
   move(document.getElementById('topMenu'), hosts.appMenu);
   // Pausing is a speed, and every speed is inside the simulation menu: the
@@ -1830,6 +1889,14 @@ setTimeout(mountUnifiedChrome, 0);
 document.querySelectorAll<HTMLButtonElement>('.tool').forEach((b) => {
   b.addEventListener('click', () => setTool((b.dataset['tool'] as Tool) ?? 'road'));
 });
+/** "Road (R)": each tool's name and key, as its tooltip - the only label a compact rail shows. */
+function labelTools(): void {
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.tool')) {
+    const name = t(`tool.${b.dataset['tool'] ?? 'road'}`);
+    b.title = b.dataset['key'] ? `${name} (${b.dataset['key']})` : name;
+  }
+}
+labelTools();
 
 const trafficButton = document.getElementById('trafficToggle') as HTMLButtonElement;
 function setPaused(paused: boolean): void {
@@ -2204,6 +2271,10 @@ const arrowPan = (e: KeyboardEvent): void => {
   if (e.key === 'Escape') {
     if (gestureInProgress()) {
       cancelGestures();
+      e.preventDefault();
+    } else if (selectedSegment !== null || selectedNode !== null) {
+      // With nothing being drawn, Escape puts down what Inspect picked up.
+      (document.getElementById('closeInspector') as HTMLButtonElement).click();
       e.preventDefault();
     }
     return;
@@ -3116,6 +3187,9 @@ languageSelect.onchange = () => {
 // carry a key, and these were built by hand.
 onLanguageChange(() => {
   refreshRoadTypeLabels();
+  labelTools();
+  renderToolHelp(toolHelpFor);
+  renderPanelTitle();
   buildings.languageChanged();
   updateHint();
   updateStatus();

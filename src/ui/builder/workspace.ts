@@ -21,14 +21,16 @@ import './workspace.css';
 export type { BuilderField, BuilderSelectionInfo };
 
 /**
- * The game's chrome, in one paradigm: a thin bar at the top for global state,
- * and an expanding container at the bottom that grows upward in three tiers -
- * the categories, the sub-tools of the chosen one, and a visual gallery of
- * what can be placed. The centre of the screen belongs to the map, always.
+ * The game's chrome: a thin bar at the top for global state, a rail of tools
+ * down the left edge, and beside it a panel for the tool in hand - its name
+ * and hint in the head, then its tray and the gallery the tray opens, in a
+ * body that scrolls. On a phone the rail runs along the bottom and the panel
+ * is a sheet standing on it. The rest of the screen belongs to the map.
  *
- * The same container drives the whole game: on the road it carries the road
- * tools and their palettes (which `main.ts` mounts into the tier hosts), and
- * in the Builder it carries the building categories, their tools and their
+ * The same panel drives the whole game: on the road it carries the road
+ * palette, the terrain brush, a help card for the tools with nothing to set,
+ * and what Inspect picked (all mounted by `main.ts` into the hosts); in the
+ * Builder it carries the building categories, their tools and their
  * galleries. The right side stays a thin inspector of nothing but numbers.
  *
  * This module only renders state and reports clicks: `buildingsWiring.ts` and
@@ -128,8 +130,10 @@ export interface BuilderWorkspace {
     readonly appMenu: HTMLElement;
     /** Pause and framing, mounted by main.ts on the global bar. */
     readonly controls: HTMLElement;
-    /** The band's foot line, where the game's hint bar lives. */
+    /** The panel's head line, where the game's hint bar lives. */
     readonly hint: HTMLElement;
+    /** The panel's title: the name of the tool in hand, set by main.ts. */
+    readonly title: HTMLElement;
   };
   /** A transient sentence in the chrome's own hint bar. */
   flash(text: string): void;
@@ -281,13 +285,24 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     true,
   );
 
-  // ------------------------------------------------------------ the dock
-  const dock = el('div', 'bw-dock');
-  // Tier 1 is the game's toolbar, and nothing else, in every tool: the band is
-  // the same band whether a road or a wall is being placed.
+  // ------------------------------------------------------------ the rail
+  // The game's tools, in a column down the left edge (a row of icons along the
+  // bottom on a phone): always there, whatever panel is open, so there is
+  // always a way from any tool to any other.
+  const rail = el('nav', 'bw-rail');
   const tier1 = el('div', 'bw-tier bw-tier1');
   const tier1Road = el('div', 'bw-host bw-host-road');
   tier1.append(tier1Road);
+  rail.append(tier1);
+
+  // ------------------------------------------------------------ the panel
+  // Beside the rail: the tool in hand, by name, with its one-line hint and a
+  // fold, over the tool's own content. Folded, the head stays: the hint is
+  // never lost, and the way back to the content is the button next to it.
+  const dock = el('section', 'bw-dock bw-panel');
+  const panelHead = el('div', 'bw-panel-head');
+  const panelTitle = el('h2', 'bw-panel-title');
+  const panelBody = el('div', 'bw-panel-body');
 
   // Tier 2 is the tray of the tool in hand: the road palette, the terrain
   // palette, or the Builder's categories. The Builder is not a mode - its
@@ -345,14 +360,18 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const fold = el('button', 'bw-fold');
   fold.type = 'button';
   fold.dataset['i18nTitle'] = 'builder.dock.fold';
+  fold.setAttribute('aria-expanded', 'true');
   fold.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
   fold.onclick = () => {
     dock.classList.toggle('folded');
     syncDock();
   };
-  // The band reads top down like the panel it is: the tools, the tray of the
-  // one in hand, the gallery it opens, and one line of hint along the bottom.
-  dock.append(tier1, tier2, tier3, foot, fold);
+  const headText = el('div', 'bw-panel-text');
+  headText.append(panelTitle, foot);
+  panelHead.append(headText, fold);
+  // Read top down: the tray of the tool in hand, then the gallery it opens.
+  panelBody.append(tier2, tier3);
+  dock.append(panelHead, panelBody);
 
   const quick = el('div', 'bw-quick');
   const hint = el('div', 'bw-hint');
@@ -375,7 +394,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const inspectorBody = el('div', 'bw-inspector-body');
   inspector.append(inspectorHead, inspectorBody);
 
-  root.append(top, drop, dock, inspector, quick);
+  root.append(top, drop, rail, dock, inspector, quick);
 
   const quickButtons = new Map<string, HTMLButtonElement>();
   for (const [name, icon] of [
@@ -406,8 +425,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     const hasThird = tier3.childElementCount > 0;
     const folded = dock.classList.contains('folded');
     dock.classList.toggle('has-third', hasThird);
-    tier2.hidden = folded;
-    tier3.hidden = folded || !hasThird;
+    panelBody.hidden = folded;
+    tier3.hidden = !hasThird;
+    fold.setAttribute('aria-expanded', String(!folded));
     root.dataset['dock'] = folded ? 'folded' : 'open';
   };
 
@@ -1042,7 +1062,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       renderDock(lastState);
       syncDock();
     },
-    hosts: { level1: tier1Road, level2: tier2Road, simMenu: simSlot, appMenu: appSlot, controls: controlsSlot, hint: foot },
+    hosts: { level1: tier1Road, level2: tier2Road, simMenu: simSlot, appMenu: appSlot, controls: controlsSlot, hint: foot, title: panelTitle },
     flash,
     relabel,
     setHistory(canUndo: boolean, canRedo: boolean) {

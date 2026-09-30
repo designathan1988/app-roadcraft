@@ -393,7 +393,7 @@ const SCENARIOS = [
       document.querySelector('.bw-globals .bw-select').click();
       await wait(400);
       if (document.querySelectorAll('.bw-section').length < 3) return 'selecting hides the groups, and the way back with them';
-      if (document.querySelector('.bw-dock').getBoundingClientRect().height > 300) return 'selecting grew the band';
+      if (document.querySelector('.bw-dock').getBoundingClientRect().bottom > innerHeight - 40) return 'selecting pushed the panel off the screen';
       // And the entry the player picked keeps its shelf open, marked.
       document.querySelector('.bw-section[data-builder-group="insert"]').click();
       await wait(250);
@@ -420,7 +420,8 @@ const SCENARIOS = [
       document.querySelector('.tool[data-tool="road"]').click();
       await wait(500);
       const dock = document.querySelector('.bw-dock').getBoundingClientRect();
-      if (dock.height > 380) return 'the road panel is ' + Math.round(dock.height) + ' px tall';
+      // The side panel stands between the bars and scrolls inside itself.
+      if (dock.bottom > innerHeight - 40) return 'the road panel runs past the status bar';
       const tiles = [...document.querySelectorAll('.road-type[data-type-index]')];
       if (tiles.length < 6) return 'only ' + tiles.length + ' road classes';
       if (tiles.filter((t) => t.querySelector('img')).length < tiles.length) return 'a road class has no picture';
@@ -430,7 +431,7 @@ const SCENARIOS = [
         if (tier.scrollHeight > tier.clientHeight + 1) return 'clipped: ' + tier.className;
       }
       const band = document.querySelector('.bw-dock').getBoundingClientRect();
-      if (band.bottom > innerHeight + 1 || band.right > innerWidth) return 'the band is off screen';
+      if (band.bottom > innerHeight + 1 || band.right > innerWidth) return 'the panel is off screen';
       window.__focus = { x: 0, y: 10 };
       frame(0, 10, 3.2); await settle();
       return null;
