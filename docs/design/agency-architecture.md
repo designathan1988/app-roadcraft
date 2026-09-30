@@ -1,6 +1,12 @@
 # Agency architecture: people, vehicles and the citizens they are
 
-Status: adopted 2026-09-30. This replaces the pedestrian model in `src/sim/peds/*`,
+Status: adopted 2026-09-30. **Implementation state (2026-09-30): only People P0
+(behaviour-neutral seams) is on master. The People engine, Drive v2 and the
+Person model are NOT implemented; the game still runs the legacy pedestrian
+and vehicle models, with their visible defects (sliding, popping, being
+dragged back at crossings). Update this line whenever a step goes live.**
+
+ This replaces the pedestrian model in `src/sim/peds/*`,
 the vehicle decision layers in `src/sim/vehicles/*`, `src/sim/routing/*` and
 `src/sim/intersections/admission.ts`, and the Microsoft Rocketbox character
 roster. It is delivered side by side behind flags and the old code is deleted

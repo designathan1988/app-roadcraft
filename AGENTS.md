@@ -270,6 +270,16 @@ dev servers and browsers as soon as a check is done.
 * **One heavy job on the machine at a time** (a full suite, a build, a browser
   harness, a benchmark), and tell the other sessions before you start one.
   Prefer the targeted spec files while working.
+* **A replacement is built, not patched into the old code.** When the
+  player orders a system replaced (pedestrian or traffic agents, the person
+  model), build the new one and switch it on in the game; do not patch the
+  model being replaced, and do not report design, research or
+  behaviour-neutral seams as progress the player can see. Status reports say
+  what is live in the game and what is not. See `CLAUDE.md`.
+* **Tests measure what the player sees.** A green suite does not prove a
+  visible defect gone: measure the drawn result (for motion, the published
+  `PedView` per tick) and look at it in the game. No hour-long or parallel
+  background runs.
 * **One writer per field.** Every piece of state has exactly one module that
   writes it (the list for the simulation is in `sim/pipeline.ts`: topology in
   stage 0, signals in 1, routes and population in 2, pedestrians in 3,
