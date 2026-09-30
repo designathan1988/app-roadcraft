@@ -1306,6 +1306,7 @@ ROAD_TYPES.forEach((rt, i) => {
  * classes: the same gesture a player makes, in the place they are looking.
  */
 for (const [op, icon] of [
+  ['upgrade', '<path d="M12 4v16M4 12h16"/><path d="m8 8 4-4 4 4"/>'],
   ['move', '<path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3m-6 12 3 3 3-3m3-9 3 3-3 3M6 9l-3 3 3 3"/>'],
   ['split', '<path d="M4 7h16M4 17h16"/><path d="M12 3v18"/><path d="m9 10 3 3 3-3"/>'],
   ['control', '<rect x="8" y="3" width="8" height="15" rx="2"/><path d="M12 18v3"/><circle cx="12" cy="7" r="1.4"/><circle cx="12" cy="10.6" r="1.4"/><circle cx="12" cy="14.2" r="1.4"/>'],

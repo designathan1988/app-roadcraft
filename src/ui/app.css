@@ -654,7 +654,7 @@ body { user-select: none; -webkit-user-select: none; }
   --bw-border: #29443e;
   --bw-active: #55e6ce;
   --bw-text: #e4ece9;
-  --bw-muted: #91a7a1;
+  --bw-muted: #9db4ae;
   --bw-danger: #ef625c;
   --bw-radius: 7px;
 }

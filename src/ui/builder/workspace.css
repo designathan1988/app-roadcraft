@@ -31,7 +31,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: 28px;
   padding: 0 9px;
   border: 1px solid var(--bw-border);
   border-radius: var(--bw-radius);
@@ -136,6 +136,9 @@
   /* One width for every tool: the band must not breathe in and out as the
      crew changes the shelf it is standing in front of. */
   width: min(1120px, calc(100vw - 260px));
+  /* The map is the game. Half the screen of controls is not an interface, it
+     is a wall: the band is capped and its galleries scroll inside it. */
+  max-height: min(42dvh, 380px);
   pointer-events: auto;
   background: color-mix(in srgb, var(--bw-panel) 95%, transparent);
   border: 1px solid var(--bw-border);
@@ -149,11 +152,15 @@
 .bw-tier {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 6px 10px;
+  padding: 6px 14px;
 }
+/* With the band capped, the rows keep their height and the GALLERY is the one
+   that gives: shrinking the rows made the entries row draw over the tiles. */
+.bw-tier1, .bw-tier2, .bw-foot { flex: 0 0 auto; }
+.bw-tier3 { flex: 1 1 auto; min-height: 0; }
 .bw-tier[hidden] { display: none; }
 .bw-tier1 { background: color-mix(in srgb, var(--bw-bg-2) 72%, transparent); }
 /* One hairline between stacked rows, however many of them are showing. */
@@ -166,14 +173,25 @@
 #builder:not(.has-tray) .bw-tier2 { display: none; }
 /* A quarter of the screen at most: a gallery of thirteen materials scrolls
    rather than covering the building it is being applied to. */
-.bw-tier3 { justify-content: center; align-content: flex-start; padding: 8px 12px; max-height: min(26dvh, 268px); overflow-y: auto; scrollbar-width: thin; }
+/* The gallery is the band's one scrolling part: faded at the foot so the
+   row that is cut reads as "there is more", not as a broken tile. */
+.bw-tier3 {
+  justify-content: flex-start;
+  align-content: flex-start;
+  padding: 10px 14px 14px;
+  max-height: min(22dvh, 186px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 14px), transparent 100%);
+}
 .bw-host { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; min-width: 0; }
 /* The Builder's tray: what it can do on top, what the chosen one offers
    under it, and the model's own switches at the end of the top row. */
 .bw-host-builder { display: grid; gap: 6px; justify-items: stretch; width: 100%; }
 /* The tray reads as a form: labels and controls from the left, the pictures
    owning the whole width under them. */
-.bw-tray { display: grid; gap: 7px; justify-items: start; width: 100%; padding: 0 6px; }
+.bw-tray { display: grid; gap: 6px; justify-items: start; width: 100%; padding: 0 6px; }
 .bw-context { display: flex; align-items: center; gap: 3px; }
 .bw-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; }
 .bw-host[hidden] { display: none; }
@@ -197,33 +215,37 @@
 #builder[data-dock="folded"] .bw-fold svg { transform: rotate(180deg); }
 
 /* The Builder's tray, row by row: globals, groups, tools, entries - and the
-   content of the entry taking the room the commands used to. */
-.bw-globals { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; }
-.bw-groups { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; }
-/* Hairlines say where one level ends and the next begins. */
-.bw-tools, .bw-families { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 3px; width: 100%; }
-.bw-tools { padding-top: 7px; border-top: 1px solid color-mix(in srgb, var(--bw-border) 45%, transparent); }
-.bw-families { padding-top: 7px; border-top: 1px solid color-mix(in srgb, var(--bw-border) 35%, transparent); }
+   content of the entry taking the room the commands used to.
+   Three levels, three weights: the groups are the biggest, the tools next,
+   the entries smallest. Layout carries the hierarchy, not a hairline. */
+.bw-globals { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; }
+.bw-groups { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; }
+.bw-tools, .bw-families { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px; width: 100%; }
+.bw-tools { padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--bw-border) 45%, transparent); }
+.bw-families { padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--bw-border) 35%, transparent); }
 
 /* A group: three of them carry the whole Builder. */
 .bw-section {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-width: 168px;
+  gap: 10px;
+  min-width: 172px;
   height: 36px;
-  padding: 0 12px;
+  padding: 0 14px;
   border: 1px solid var(--bw-border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--bw-bg) 45%, transparent);
-  color: var(--bw-muted);
-  font-size: 12px;
+  color: var(--bw-text);
+  font-size: 13px;
   white-space: nowrap;
 }
 .bw-section span { flex: 1; text-align: left; }
 .bw-section .bw-chevron { opacity: 0.6; }
-.bw-section:hover { color: var(--bw-text); border-color: var(--bw-active); }
+.bw-section:hover { border-color: var(--bw-active); }
 .bw-section.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
+/* The tools of the group sit one step below it, in size and in colour. */
+.bw-tools .bw-tool { height: 32px; padding: 0 12px; font-size: 12px; }
+.bw-tools .bw-tool svg { width: 17px; height: 17px; }
 
 /* Selecting is a global like the snap: smaller than the groups. */
 .bw-select { color: var(--bw-text); }
@@ -252,26 +274,28 @@
 .bw-tool:disabled { opacity: 0.35; }
 
 /* Tier 3: the gallery */
-.bw-gallery { display: grid; gap: 6px; }
-.bw-tiles { display: flex; flex-wrap: wrap; gap: 4px; }
+.bw-gallery { display: grid; gap: 8px; width: 100%; }
+.bw-tiles { display: flex; flex-wrap: wrap; gap: 6px; }
 .bw-tile {
   display: grid;
   justify-items: center;
-  gap: 3px;
-  width: 84px;
-  padding: 6px 4px;
+  align-content: start;
+  gap: 4px;
+  width: 96px;
+  padding: 6px;
   border: 1px solid var(--bw-border);
-  border-radius: 6px;
-  background: transparent;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bw-bg) 40%, transparent);
   color: var(--bw-muted);
-  font-size: 9.5px;
+  font-size: 10px;
+  line-height: 1.25;
   text-align: center;
 }
 .bw-tile:hover { color: var(--bw-text); border-color: var(--bw-active); }
 .bw-tile.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
-.bw-tile-art { display: grid; place-items: center; width: 56px; height: 56px; }
-.bw-tile-art img { width: 56px; height: 56px; object-fit: contain; }
-.bw-tile-name { line-height: 1.25; overflow-wrap: anywhere; }
+.bw-tile-art { display: grid; place-items: center; width: 82px; height: 52px; }
+.bw-tile-art img { width: 82px; height: 52px; object-fit: cover; border-radius: 4px; }
+.bw-tile-name { overflow-wrap: break-word; }
 .bw-tile .chips { display: inline-flex; border-radius: 3px; overflow: hidden; }
 .bw-tile .chips i { display: block; width: 12px; height: 34px; }
 
@@ -420,7 +444,7 @@
    laid at. */
 /* minmax(0, 1fr), not auto: an auto column grows to the widest row's content,
    and a carousel of nine tiles would push the panel past its own edge. */
-.bw-tier2 .road-palette .panel-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: start; width: 100%; }
+.bw-tier2 .road-palette .panel-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; justify-items: start; width: 100%; }
 .bw-tier2 .palette-section {
   display: flex;
   flex-wrap: wrap;
@@ -471,7 +495,8 @@
   flex: 0 0 auto;
   gap: 4px;
   justify-items: center;
-  width: 150px;
+  overflow: hidden;
+  width: 144px;
   padding: 5px;
   border: 1px solid var(--bw-border);
   border-radius: 8px;
@@ -484,12 +509,12 @@
 .bw-tier2 .road-palette .road-type.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 10%, transparent); }
 .bw-tier2 .road-palette .road-type-art {
   display: block;
-  width: 138px;
-  height: 78px;
+  width: 132px;
+  height: 66px;
   border-radius: 5px;
   object-fit: cover;
 }
-.bw-tier2 .road-palette .road-type-art.op { display: grid; place-items: center; height: 46px; color: currentColor; }
+.bw-tier2 .road-palette .road-type-art.op { display: grid; place-items: center; height: 66px; color: currentColor; }
 .bw-tier2 .road-palette .road-type-art.op svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .bw-tier2 .road-palette .road-type-name { line-height: 1.2; }
 
@@ -498,6 +523,7 @@
 .bw-tier2 .road-palette .road-lane {
   display: inline-flex;
   align-items: center;
+  overflow: hidden;
   gap: 8px;
   padding: 3px 12px 3px 3px;
   border: 1px solid var(--bw-border);
@@ -508,7 +534,7 @@
   font-size: 11px;
   white-space: nowrap;
 }
-.bw-tier2 .road-palette .road-lane img { display: block; width: 74px; height: 38px; border-radius: 5px; }
+.bw-tier2 .road-palette .road-lane img { display: block; flex: 0 0 auto; width: 66px; height: 34px; border-radius: 5px; object-fit: cover; }
 .bw-tier2 .road-palette .road-lane:hover { color: var(--bw-text); border-color: var(--bw-active); }
 .bw-tier2 .road-palette .road-lane.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
 
