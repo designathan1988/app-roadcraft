@@ -1,5 +1,5 @@
 import { m } from '@world/units';
-import { FOOTWAY, NAV_RADIUS, closestOnSegment } from '@world/nav/navmesh';
+import { FOOTWAY, NAV_RADIUS, OPEN, closestOnSegment, isZebra } from '@world/nav/navmesh';
 import { findPath, funnel, type NavPath } from '@world/nav/path';
 import type { SidewalkEdge } from '../peds/sidewalk';
 import { DT, PED, PED_CEILING, PED_DENSITY } from '../params';
@@ -48,6 +48,8 @@ interface Person {
   goalX: number;
   goalY: number;
   goalTri: number;
+  /** The goal is a way out: the person goes when they get there. */
+  leaving: boolean;
   path: NavPath | null;
   /** Where in the route's corridor the body is: `path.tris[ci]` is its triangle. */
   ci: number;
@@ -58,10 +60,8 @@ interface Person {
   waited: number;
   /** Seconds wanting to move without getting anywhere. */
   stuck: number;
-  /** Seconds the last steps were refused by a wall in a row. */
-  blocked: number;
-  /** A point in the body's own triangle it is walking to, to get out of a corner. */
-  escape: { x: number; y: number } | null;
+  /** Stopped at the kerb, facing the zebra, until it may cross. */
+  atKerb: boolean;
   /** Seconds left giving way to somebody in the way. */
   yielding: number;
   view: PedView;
@@ -105,8 +105,6 @@ const TURN_RATE = 3.2;
 const TURN_ACCEL = 12;
 /** A corner this close is reached, u. */
 const CORNER_ON = 0.05;
-/** A corner closer than this is passed if the next one is in sight, u. */
-const CORNER_REACH = m(0.12);
 /** How far from a kerb a person stops to wait, u. */
 const KERB_STOP = m(0.3);
 /** Nearer than this to the kerb, a person asks to cross; if refused, waits, u. */
@@ -129,10 +127,10 @@ const WALL_HUG = m(0.15);
 const RELAX = 0.54;
 const SPAWN_INTERVAL = 0.5;
 const MIN_TRIP = m(40);
+/** Share of trips that end by leaving (a door, the map's edge). */
+const LEAVE_SHARE = 0.5;
 /** How far past the edge of the mesh a step may land and still count as on it (rounding), u; the body is then placed exactly on the mesh. */
 const ON_MESH = 0.002;
-/** Seconds refused before a body heads straight for the way out of its triangle. */
-const UNBLOCK_ROUTE = 0.25;
 /** Seconds a body stands giving way before trying again. */
 const YIELD_HOLD = 0.4;
 /** Seconds of getting nowhere before a person looks for another way. */
@@ -179,7 +177,7 @@ export function createPeopleEngine(): PedestrianEngine {
         const s = stateOf(w);
         if (!s.nav || s.byId.has(person.seed)) return;
         const at = s.nav.mesh.nearest(person.footX, person.footY, m(3));
-        if (!at || s.nav.mesh.region[at.t] !== FOOTWAY) return;
+        if (!at || isZebra(s.nav.mesh.region[at.t]!)) return;
         const p = create(w, s, person.seed, at.x, at.y, at.t, person.footHeading, person.ageClass, person.gender);
         pickGoal(w, s, p);
       },
@@ -217,8 +215,8 @@ function create(w: SimWorld, s: State, id: number, x: number, y: number, tri: nu
   const p: Person = {
     id, x, y, heading, v: 0, turnV: 0, prevX: x, prevY: y, prevHeading: heading, age: 0, tri,
     pace, ageClass: cls, gender: sex, party,
-    goalX: x, goalY: y, goalTri: tri, path: null, ci: 0,
-    mode: 'walk', crossing: -1, waited: 0, stuck: 0, blocked: 0, escape: null, yielding: 0, view,
+    goalX: x, goalY: y, goalTri: tri, leaving: false, path: null, ci: 0,
+    mode: 'walk', crossing: -1, waited: 0, stuck: 0, atKerb: false, yielding: 0, view,
   };
   s.people.push(p);
   s.people.sort((a, b) => a.id - b.id);
@@ -256,9 +254,16 @@ function clearOfPeople(s: State, x: number, y: number, gap: number): boolean {
   return true;
 }
 
-function spawn(w: SimWorld, s: State): void {
+/**
+ * One more person. Once the city is populated they come in at a source - out
+ * of a door, or walking in along a road that runs off the map - and nobody
+ * appears in the middle of a pavement; `anywhere` fills a city just opened.
+ */
+function spawn(w: SimWorld, s: State, anywhere = false): void {
+  const sources = s.nav?.sources ?? [];
   for (let attempt = 0; attempt < 8; attempt++) {
-    const at = randomSpot(w, s);
+    const source = !anywhere && sources.length ? sources[Math.floor(w.rng.people.float() * sources.length)]! : null;
+    const at = source ?? randomSpot(w, s);
     if (!at || !clearOfPeople(s, at.x, at.y, m(1.2))) continue;
     const p = create(w, s, s.nextId, at.x, at.y, at.t, w.rng.people.float() * Math.PI * 2);
     if (!pickGoal(w, s, p)) { remove(s, p); continue; }
@@ -269,12 +274,19 @@ function spawn(w: SimWorld, s: State): void {
   }
 }
 
-/** Somewhere worth walking to, and the route there. False when none was found. */
+/**
+ * Somewhere worth walking to, and the route there: half the time a way out
+ * (a door, or off the map), otherwise a place along the pavements. False when
+ * none was found.
+ */
 function pickGoal(w: SimWorld, s: State, p: Person): boolean {
+  const sources = s.nav?.sources ?? [];
   for (let attempt = 0; attempt < 6; attempt++) {
-    const at = randomSpot(w, s);
+    const leave = sources.length > 0 && w.rng.people.float() < LEAVE_SHARE;
+    const at = leave ? sources[Math.floor(w.rng.people.float() * sources.length)]! : randomSpot(w, s);
     if (!at || Math.hypot(at.x - p.x, at.y - p.y) < MIN_TRIP) continue;
     p.goalX = at.x; p.goalY = at.y; p.goalTri = at.t;
+    p.leaving = leave;
     if (plan(s, p)) return true;
   }
   return false;
@@ -283,7 +295,7 @@ function pickGoal(w: SimWorld, s: State, p: Person): boolean {
 function plan(s: State, p: Person): boolean {
   const mesh = s.nav!.mesh;
   const path = findPath(mesh, p.x, p.y, p.tri, p.goalX, p.goalY, p.goalTri,
-    (from, to) => (mesh.region[to] !== FOOTWAY && mesh.region[from] !== mesh.region[to] ? CROSS_COST : 0));
+    (from, to) => (isZebra(mesh.region[to]!) && mesh.region[from] !== mesh.region[to] ? CROSS_COST : 0));
   p.path = path;
   p.ci = 0;
   return path !== null;
@@ -313,12 +325,18 @@ function rebind(w: SimWorld, s: State): void {
       if (!at) { remove(s, p); continue; }
       p.x = p.prevX = at.x; p.y = p.prevY = at.y; p.tri = at.t;
     }
-    p.mode = mesh.region[p.tri] === FOOTWAY ? 'walk' : 'cross';
-    p.crossing = mesh.region[p.tri] === FOOTWAY ? -1 : mesh.region[p.tri]!;
+    p.mode = isZebra(mesh.region[p.tri]!) ? 'cross' : 'walk';
+    p.crossing = isZebra(mesh.region[p.tri]!) ? mesh.region[p.tri]! : -1;
     const goal = mesh.locate(p.goalX, p.goalY);
     if (goal < 0 || !(p.goalTri = goal, plan(s, p))) {
       if (!pickGoal(w, s, p)) remove(s, p);
     }
+  }
+  // A city just opened is populated at once, all over; from then on people
+  // only come and go through doors and the map's edges.
+  if (!s.people.length) {
+    const target = peopleTarget(w);
+    for (let i = 0; i < target * 4 && s.people.length < target; i++) spawn(w, s, true);
   }
   publishCrossings(w, s);
   publishViews(w, s);
@@ -451,32 +469,17 @@ function step(w: SimWorld, s: State): void {
     let wantSpeed = Math.min(Math.hypot(wantX, wantY), vmax);
 
     // --- the body: turn towards where it wants to go, step forward
-    if (wantSpeed > m(0.08)) face = Math.atan2(wantY, wantX);
-    else if (face === null && p.mode === 'wait' && gate) face = gate.across;
-    // Refused for a moment, the body heads for the middle of the portal its
-    // route leaves this triangle by. A triangle is convex, so the straight
-    // line to any point of its own edge never leaves it: that step is always
-    // there to take, whatever the crowd, the walls or the corners say.
-    if (p.blocked > UNBLOCK_ROUTE && wantSpeed > m(0.08) && !p.escape) {
-      const exit = route.tris[p.ci] === p.tri ? route.portals[p.ci] : undefined;
-      if (exit) { p.escape = { x: (exit.lx + exit.rx) / 2, y: (exit.ly + exit.ry) / 2 }; }
-      else if (!plan(s, p) && !pickGoal(w, s, p)) { arrived.push(p); continue; }
-    }
-    // The way out, once chosen, is kept until reached: re-choosing it every
-    // tick turned a body back and forth on the spot.
-    if (p.escape) {
-      const ex = p.escape.x - p.x, ey = p.escape.y - p.y;
-      if (Math.hypot(ex, ey) < CORNER_REACH) { p.escape = null; p.blocked = 0; }
-      else {
-        face = Math.atan2(ey, ex);
-        wantX = Math.cos(face) * Math.min(p.pace, limit);
-        wantY = Math.sin(face) * Math.min(p.pace, limit);
-      }
-    } else if (p.yielding > 0) {
+    // Stopped at the kerb it faces the zebra and holds there until it may
+    // cross; it used to swing between the zebra and the way it came as its
+    // wanted speed hovered round the threshold for turning to it.
+    if (p.mode !== 'wait') p.atKerb = false;
+    else if (gate && p.v < m(0.05) && Math.hypot(gate.x - p.x, gate.y - p.y) < KERB_STOP + m(0.3)) p.atKerb = true;
+    if (p.atKerb && gate) { face = gate.across; wantX = 0; wantY = 0; }
+    else if (p.yielding > 0) {
       // Giving way: stand, facing the way on.
       face = Math.atan2(target.y - p.y, target.x - p.x);
       wantX = 0; wantY = 0;
-    }
+    } else if (wantSpeed > m(0.08)) face = Math.atan2(wantY, wantX);
     wantSpeed = Math.min(Math.hypot(wantX, wantY), vmax);
     turn(p, face);
     const off = face === null ? 0 : wrap(face - p.heading);
@@ -491,15 +494,11 @@ function step(w: SimWorld, s: State): void {
     const fromX = p.x, fromY = p.y;
     const moved = settle(mesh, p, nx, ny, near);
     const intended = Math.hypot(nx - fromX, ny - fromY);
-    const progressed = intended > 1e-6 && Math.hypot(p.x - fromX, p.y - fromY) >= intended * 0.5;
-    // Blocked until the body really gets somewhere: a hair's progress does
-    // not count, or a body inching into a wall is never told to turn away.
-    // Only a wall blocks: somebody in the way is waited for, facing the way
-    // on, as anybody gives way on a narrow pavement.
-    if (wantSpeed > m(0.08) && !(moved && progressed)) {
-      if (!moved && LAST_REFUSAL === 'person') p.yielding = YIELD_HOLD;
-      else p.blocked += DT;
-    } else if (moved && progressed) { p.blocked = 0; p.escape = null; }
+    void intended;
+    // Somebody in the way is waited for, facing the way on, as anybody gives
+    // way on a narrow pavement. A wall in the way needs nothing: the body is
+    // already turning towards a corner it can see, and the next step fits.
+    if (!moved && wantSpeed > m(0.08) && LAST_REFUSAL === 'person') p.yielding = YIELD_HOLD;
     p.yielding = Math.max(0, p.yielding - DT);
     if (!moved) {
       // Refused: the body stands, braking hard, and tries again next tick.
@@ -510,7 +509,7 @@ function step(w: SimWorld, s: State): void {
     }
 
     // --- leaving a zebra
-    if (p.mode === 'cross' && mesh.region[p.tri] === FOOTWAY) {
+    if (p.mode === 'cross' && !isZebra(mesh.region[p.tri]!)) {
       const onPath = route.tris[p.ci] === p.tri ? p.ci : -1;
       const stillAhead = gate && gate.crossing === p.crossing && onPath >= 0 && onPath < gate.index;
       if (!stillAhead) { p.mode = 'walk'; p.crossing = -1; }
@@ -524,8 +523,9 @@ function step(w: SimWorld, s: State): void {
     }
   }
 
+  // Arrived: through the door or off the map, or on to somewhere else.
   for (const p of arrived) {
-    if (w.rng.people.float() < 0.5 && pickGoal(w, s, p)) continue;
+    if (!p.leaving && pickGoal(w, s, p)) continue;
     remove(s, p);
   }
   publishCrossings(w, s);
@@ -583,7 +583,7 @@ function settle(mesh: WorldNav['mesh'], p: Person, x: number, y: number, near: r
   const t = mesh.step(p.tri, x, y, ON_MESH);
   if (t < 0) { LAST_REFUSAL = 'mesh'; return false; }
   const region = mesh.region[t]!;
-  if (region !== FOOTWAY && !(p.mode === 'cross' && region === p.crossing)) { LAST_REFUSAL = 'mesh'; return false; }
+  if (isZebra(region) && !(p.mode === 'cross' && region === p.crossing)) { LAST_REFUSAL = 'mesh'; return false; }
   for (const q of near) {
     const before = Math.hypot(q.x - p.x, q.y - p.y);
     const after = Math.hypot(q.x - x, q.y - y);
@@ -631,7 +631,7 @@ function nextGate(mesh: WorldNav['mesh'], p: Person, path: NavPath):
   const from = path.tris[p.ci] === p.tri ? p.ci : Math.max(0, path.tris.indexOf(p.tri));
   for (let i = from; i < path.portals.length && i < from + 60; i++) {
     const a = path.tris[i]!, b = path.tris[i + 1]!;
-    if (mesh.region[a] === FOOTWAY && mesh.region[b] !== FOOTWAY) {
+    if (!isZebra(mesh.region[a]!) && isZebra(mesh.region[b]!)) {
       const portal = path.portals[i]!;
       const q = closestOnSegment(portal.lx, portal.ly, portal.rx, portal.ry, p.x, p.y);
       const c = mesh.crossings[mesh.region[b]!]!;
@@ -692,8 +692,8 @@ function publishViews(w: SimWorld, s: State): void {
     v.x = p.x; v.y = p.y; v.heading = p.heading;
     v.prev.x = p.prevX; v.prev.y = p.prevY; v.prev.heading = p.prevHeading;
     v.v = p.v; v.turnV = p.turnV; v.age = p.age;
-    const crossing = nav && p.tri >= 0 ? nav.mesh.region[p.tri]! !== FOOTWAY : false;
-    v.ground = crossing ? 'crossing' : 'footway';
+    const region = nav && p.tri >= 0 ? nav.mesh.region[p.tri]! : FOOTWAY;
+    v.ground = isZebra(region) ? 'crossing' : region === OPEN ? 'open' : 'footway';
     const seg = nav && p.tri >= 0 ? nav.segment[p.tri]! : -1;
     v.segment = seg >= 0 ? (seg as never) : undefined;
     v.walking = p.mode !== 'wait' && p.v > m(0.1);

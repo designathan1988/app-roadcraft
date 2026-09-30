@@ -55,10 +55,24 @@ export interface NavInput {
   readonly obstacles: readonly NavObstacle[];
   /** Solid footprints (buildings), as rings. */
   readonly solids: readonly (readonly { x: number; y: number }[])[];
+  /** Paths across open ground, from the footway to a door: walkable, not footway. */
+  readonly paths?: readonly NavStrip[];
 }
 
-/** A triangle's region: footway, or the zebra with this index in `NavMesh.crossings`. */
+/** A straight walkable strip, `halfWidth` either side of a to b. */
+export interface NavStrip {
+  readonly ax: number;
+  readonly ay: number;
+  readonly bx: number;
+  readonly by: number;
+  readonly halfWidth: number;
+}
+
+/** A triangle's region: footway, open ground, or the zebra with this index in `NavMesh.crossings`. */
 export const FOOTWAY = -1;
+export const OPEN = -2;
+/** Whether a region is a zebra: a gate that has to be granted. */
+export const isZebra = (region: number): boolean => region >= 0;
 
 export interface NavPortal {
   /** The triangle on the other side. */
@@ -637,7 +651,8 @@ export function buildNavMesh(input: NavInput): NavMesh {
   // along the kerb, and a touch that rounding opens by a hair became, once the
   // mesh was shrunk by a body's radius, a gap nobody could step across -
   // measured, 24 of 55 zebras joined to the footway at one end only.
-  const walk = unionD([...input.layers.flatMap(toPaths), ...crossings.map((c) => rect(c, INTO_FOOTWAY))], [], FillRule.NonZero, PRECISION);
+  const strips = (input.paths ?? []).map((s) => rect({ id: '', ...s }, 0));
+  const walk = unionD([...input.layers.flatMap(toPaths), ...crossings.map((c) => rect(c, INTO_FOOTWAY)), ...strips], [], FillRule.NonZero, PRECISION);
   const blocked: PathsD = [
     ...input.obstacles.map((o) => disc(o.x, o.y, o.r)),
     ...input.solids.map((ring) => ccw(ring.map((p) => ({ x: p.x, y: p.y })))),
@@ -663,6 +678,18 @@ export function buildNavMesh(input: NavInput): NavMesh {
     let which = 0;
     for (let i = 0; i < bands.length; i++) if (insideRing(bands[i]!, probe.x, probe.y)) { which = i; break; }
     triangulate(poly, which, input.crossingLayers[which] ?? 0, polyId++, tris);
+  }
+  // Open ground: a path to a door, wherever it is not footway.
+  if (strips.length) {
+    const footwayRings = input.layers.flatMap(toPaths);
+    for (const t of tris) {
+      if (t.region !== FOOTWAY) continue;
+      const cx = (t.pts[0]! + t.pts[2]! + t.pts[4]!) / 3, cy = (t.pts[1]! + t.pts[3]! + t.pts[5]!) / 3;
+      if (!strips.some((s) => insideRing(s, cx, cy))) continue;
+      let inside = false;
+      for (const ring of footwayRings) if (insideRing(ring, cx, cy)) inside = !inside;
+      if (!inside) t.region = OPEN;
+    }
   }
   const portals = link(tris);
   const flat: number[] = [];

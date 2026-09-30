@@ -69,7 +69,7 @@ describe('the People engine, as drawn', () => {
     }
     expect(sim.pedViews.length).toBeGreaterThan(80);
     expect({ back, side, jump, flip }).toEqual({ back: 0, side: 0, jump: 0, flip: 0 });
-    expect(spin / personSeconds * 60).toBeLessThan(0.2);
+    expect(spin / personSeconds * 60).toBeLessThan(0.15);
     expect(longest).toBeLessThan(5);
     // Bodies are 0.5 m across and never overlap.
     expect(closest).toBeGreaterThanOrEqual(0.49);

@@ -2,7 +2,9 @@ import type { MultiPoly } from '@core/clipper';
 import { CROSSWALK_DEPTH } from '@world/approach';
 import { footprintRects } from '@world/buildings/geometry';
 import type { SegmentId } from '@world/ids';
-import { buildNavMesh, FOOTWAY, type NavCrossingInput, type NavInput, type NavMesh, type NavObstacle } from '@world/nav/navmesh';
+import { buildNavMesh, FOOTWAY, isZebra, type NavCrossingInput, type NavInput, type NavMesh, type NavObstacle, type NavStrip } from '@world/nav/navmesh';
+import { Level, halfWidth } from '@world/roadTypes';
+import { m } from '@world/units';
 import { signalPosts, SIGNAL_POST_RADIUS } from '@world/signalPosts';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import type { RoadStructure } from '@world/structures';
@@ -21,6 +23,12 @@ export interface WorldNav {
   /** Per crossing index: the node and the road it crosses. */
   readonly crossingNode: readonly number[];
   readonly crossingSegment: readonly SegmentId[];
+  /**
+   * Where people come from and go to: building doors, and the footway at the
+   * end of a road that runs off the map. Nobody appears or vanishes anywhere
+   * else once the city is populated.
+   */
+  readonly sources: readonly { readonly x: number; readonly y: number; readonly t: number; readonly door: boolean }[];
   /** When it was built. */
   readonly trafficRevision: number;
   readonly buildingsRevision: number;
@@ -76,6 +84,33 @@ export function buildWorldNav(w: SimWorld): WorldNav {
 
   const solids = [...w.doc.buildings.all()].flatMap((b) => footprintRects(b));
 
+  // Paths to doors, run half a metre on past the door into the building, so
+  // the door itself stands on the mesh once the footprint is cut out.
+  const paths: NavStrip[] = [];
+  const doors: { x: number; y: number }[] = [];
+  for (const edge of w.sidewalks.edges.values()) {
+    if (edge.kind !== 'access') continue;
+    const a = edge.path.point(0), b = edge.path.point(edge.path.n - 1);
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 1e-6) continue;
+    const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+    paths.push({ ax: a.x, ay: a.y, bx: b.x + ux * m(0.5), by: b.y + uy * m(0.5), halfWidth: Math.max(edge.halfWidth, m(0.5)) });
+    doors.push({ x: b.x, y: b.y });
+  }
+  // Road ends: the footway beside the last metres of a road that leads off.
+  const ends: { x: number; y: number }[] = [];
+  for (const [id, ribbon] of net.ribbons) {
+    const seg = net.doc.segment(id);
+    if (!seg) continue;
+    for (const [node, atStart] of [[seg.a, true], [seg.b, false]] as const) {
+      if (net.doc.degree(node) !== 1) continue;
+      const s = atStart ? m(1.5) : ribbon.full.length - m(1.5);
+      const f = ribbon.full.sampleAt(Math.max(0, Math.min(ribbon.full.length, s)));
+      const lateral = (halfWidth(ribbon.road, Level.Curb) + halfWidth(ribbon.road, Level.Sidewalk)) / 2;
+      for (const side of [1, -1]) ends.push({ x: f.p.x + f.n.x * lateral * side, y: f.p.y + f.n.y * lateral * side });
+    }
+  }
+
   const input: NavInput = {
     layers,
     crossingLayers,
@@ -83,6 +118,7 @@ export function buildWorldNav(w: SimWorld): WorldNav {
     crossings,
     obstacles,
     solids,
+    paths,
   };
   const mesh = buildNavMesh(input);
 
@@ -110,7 +146,8 @@ export function buildWorldNav(w: SimWorld): WorldNav {
   const decks = [...layerOf.entries()];
   for (let t = 0; t < mesh.count; t++) {
     const region = mesh.region[t]!;
-    if (region !== FOOTWAY) { segment[t] = crossingSegment[region]!; continue; }
+    if (isZebra(region)) { segment[t] = crossingSegment[region]!; continue; }
+    if (region !== FOOTWAY) continue;
     const deck = decks.find(([, i]) => i === mesh.layer[t])?.[0] ?? 'ground';
     const c = mesh.centroid(t);
     let best = -1;
@@ -123,8 +160,16 @@ export function buildWorldNav(w: SimWorld): WorldNav {
     segment[t] = best;
   }
 
+  const sources: { x: number; y: number; t: number; door: boolean }[] = [];
+  for (const [list, door] of [[doors, true], [ends, false]] as const) {
+    for (const p of list) {
+      const at = mesh.nearest(p.x, p.y, m(1.5));
+      if (at && mesh.region[at.t]! < 0) sources.push({ x: at.x, y: at.y, t: at.t, door });
+    }
+  }
+
   return {
-    mesh, segment, crossingIds, crossingNode, crossingSegment,
+    mesh, segment, sources, crossingIds, crossingNode, crossingSegment,
     trafficRevision: net.trafficRevision,
     buildingsRevision: w.doc.buildings.revision,
     utilityRevision: w.doc.utilityRevision,
