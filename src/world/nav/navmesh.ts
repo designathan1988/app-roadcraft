@@ -401,6 +401,25 @@ const INTO_FOOTWAY = 2.5;
 
 const PRECISION = 3;
 
+/** A point surely inside a simple ring: the middle of its first triangle of ear clipping. */
+function interiorPoint(ring: PathD): { x: number; y: number } {
+  const flat: number[] = [];
+  for (const p of ring) flat.push(p.x, p.y);
+  const idx = earcut(flat);
+  if (idx.length < 3) return ring[0] ?? { x: 0, y: 0 };
+  const [a, b, c] = [idx[0]!, idx[1]!, idx[2]!];
+  return { x: (flat[a * 2]! + flat[b * 2]! + flat[c * 2]!) / 3, y: (flat[a * 2 + 1]! + flat[b * 2 + 1]! + flat[c * 2 + 1]!) / 3 };
+}
+
+function insideRing(ring: PathD, x: number, y: number): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i]!, b = ring[j]!;
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
 /** Polygons with holes out of a clipper path set, via a PolyTree. */
 function polygons(paths: PathsD): PathD[][] {
   const tree = new PolyTreeD();
@@ -422,7 +441,18 @@ function polygons(paths: PathsD): PathD[][] {
   return out;
 }
 
-interface Tri { pts: number[]; region: number; layer: number; /** the polygon it was cut from */ poly: number }
+interface Tri {
+  pts: number[];
+  region: number;
+  layer: number;
+  /** the polygon it was cut from */
+  poly: number;
+  /** Its corners' vertex numbers, unique across the mesh: shared corners share a number. */
+  v: [number, number, number];
+}
+
+/** Next free vertex number, while one mesh is built. */
+let nextVertex = 0;
 
 /** Longest a polygon edge may be before it is split for triangulating, u. */
 const MAX_EDGE = 3;
@@ -441,53 +471,41 @@ const MAX_EDGE = 3;
 function triangulate(poly: PathD[], region: number, layer: number, id: number, out: Tri[]): void {
   const flat: number[] = [];
   const holes: number[] = [];
-  const fixed = new Set<number>();
   const K = 1 << 20;
-  const key = (a: number, b: number): number => (a < b ? a * K + b : b * K + a);
   for (let r = 0; r < poly.length; r++) {
     const ring = poly[r]!;
     if (ring.length < 3) continue;
     if (r > 0) holes.push(flat.length / 2);
-    const start = flat.length / 2;
     for (let i = 0; i < ring.length; i++) {
       const p = ring[i]!, q = ring[(i + 1) % ring.length]!;
       flat.push(p.x, p.y);
       const pieces = Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / MAX_EDGE);
       for (let j = 1; j < pieces; j++) flat.push(p.x + ((q.x - p.x) * j) / pieces, p.y + ((q.y - p.y) * j) / pieces);
     }
-    const end = flat.length / 2;
-    for (let v = start; v < end; v++) fixed.add(key(v, v + 1 < end ? v + 1 : start));
   }
   const X = (v: number): number => flat[v * 2]!;
   const Y = (v: number): number => flat[v * 2 + 1]!;
   const orient = (a: number, b: number, c: number): number => (X(b) - X(a)) * (Y(c) - Y(a)) - (X(c) - X(a)) * (Y(b) - Y(a));
   const idx = earcut(flat, holes.length ? holes : undefined, 2);
-  const tris: [number, number, number][] = [];
+  // Triangles as corner triples, and for each edge the triangle across it
+  // (-1 on the polygon's own outline, which is exactly what stays fixed).
+  const corners: number[] = [];
   for (let i = 0; i < idx.length; i += 3) {
     const a = idx[i]!, b = idx[i + 1]!, c = idx[i + 2]!;
     const o = orient(a, b, c);
     // Three points of one split edge: no area, nothing to stand on.
     if (Math.abs(o) < 2e-6) continue;
-    tris.push(o > 0 ? [a, b, c] : [a, c, b]);
+    if (o > 0) corners.push(a, b, c); else corners.push(a, c, b);
   }
-  // Which triangles hold each edge.
-  const edges = new Map<number, number[]>();
-  const addEdges = (t: number): void => {
-    const [a, b, c] = tris[t]!;
-    for (const [u, v] of [[a, b], [b, c], [c, a]] as const) {
-      const k = key(u, v);
-      const list = edges.get(k);
-      if (list) list.push(t); else edges.set(k, [t]);
-    }
-  };
-  const dropEdges = (t: number): void => {
-    const [a, b, c] = tris[t]!;
-    for (const [u, v] of [[a, b], [b, c], [c, a]] as const) {
-      const list = edges.get(key(u, v));
-      if (list) { const i = list.indexOf(t); if (i >= 0) list.splice(i, 1); }
-    }
-  };
-  for (let t = 0; t < tris.length; t++) addEdges(t);
+  const T = Int32Array.from(corners);
+  const count = T.length / 3;
+  const across = new Int32Array(T.length).fill(-1);
+  const half = new Map<number, number>();
+  for (let h = 0; h < T.length; h++) half.set(T[h]! * K + T[h - (h % 3) + ((h % 3) + 1) % 3]!, h);
+  for (let h = 0; h < T.length; h++) {
+    const twin = half.get(T[h - (h % 3) + ((h % 3) + 1) % 3]! * K + T[h]!);
+    if (twin !== undefined) across[h] = twin;
+  }
   const inCircle = (a: number, b: number, c: number, d: number): number => {
     const ax = X(a) - X(d), ay = Y(a) - Y(d);
     const bx = X(b) - X(d), by = Y(b) - Y(d);
@@ -495,34 +513,38 @@ function triangulate(poly: PathD[], region: number, layer: number, id: number, o
     return (ax * ax + ay * ay) * (bx * cy - cx * by) - (bx * bx + by * by) * (ax * cy - cx * ay) +
       (cx * cx + cy * cy) * (ax * by - bx * ay);
   };
-  const queue: number[] = [...edges.keys()].filter((k) => !fixed.has(k));
-  let budget = tris.length * 20;
-  while (queue.length && budget-- > 0) {
-    const k = queue.pop()!;
-    if (fixed.has(k)) continue;
-    const pair = edges.get(k);
-    if (!pair || pair.length !== 2) continue;
-    const [t1, t2] = pair as [number, number];
-    // t1 = (a, b, c) with the shared edge a -> b; t2 holds b -> a and d.
-    const r1 = tris[t1]!, r2 = tris[t2]!;
-    let a = -1, b = -1, c = -1, d = -1;
-    for (let i = 0; i < 3; i++) {
-      const u = r1[i]!, v = r1[(i + 1) % 3]!;
-      if (key(u, v) === k) { a = u; b = v; c = r1[(i + 2) % 3]!; }
-    }
-    for (let i = 0; i < 3; i++) if (r2[i] !== a && r2[i] !== b) d = r2[i]!;
-    if (a < 0 || d < 0) continue;
+  // Half-edge h = 3t + i runs T[3t+i] -> T[3t+(i+1)%3]; across[h] is its twin.
+  const next = (h: number): number => h - (h % 3) + ((h % 3) + 1) % 3;
+  const prev = (h: number): number => h - (h % 3) + ((h % 3) + 2) % 3;
+  const link2 = (h: number, g: number): void => { across[h] = g; if (g >= 0) across[g] = h; };
+  const stack: number[] = [];
+  for (let h = 0; h < T.length; h++) if (across[h]! > h) stack.push(h);
+  let budget = count * 30;
+  while (stack.length && budget-- > 0) {
+    const h = stack.pop()!;
+    const g = across[h]!;
+    if (g < 0) continue;
+    // t = (a, b, c) with h = a -> b; u = (b, a, d) with g = b -> a.
+    const a = T[h]!, b = T[next(h)]!, c = T[prev(h)]!, d = T[prev(g)]!;
+    if (T[g] !== b || T[next(g)] !== a) continue;
     if (inCircle(a, b, c, d) <= 1e-9) continue;
-    // Only a convex quadrilateral can be flipped.
     if (orient(a, d, c) <= 1e-12 || orient(d, b, c) <= 1e-12) continue;
-    dropEdges(t1); dropEdges(t2);
-    tris[t1] = [a, d, c];
-    tris[t2] = [d, b, c];
-    addEdges(t1); addEdges(t2);
-    for (const e of [key(a, d), key(d, b), key(b, c), key(c, a)]) if (!fixed.has(e)) queue.push(e);
+    const t0 = h - (h % 3), u0 = g - (g % 3);
+    // Outer neighbours before the flip.
+    const bc = across[next(h)]!, ca = across[prev(h)]!, ad = across[next(g)]!, db = across[prev(g)]!;
+    // New t = (a, d, c), new u = (d, b, c).
+    T[t0] = a; T[t0 + 1] = d; T[t0 + 2] = c;
+    T[u0] = d; T[u0 + 1] = b; T[u0 + 2] = c;
+    link2(t0, ad); link2(t0 + 1, u0 + 2); link2(t0 + 2, ca);
+    link2(u0, db); link2(u0 + 1, bc);
+    stack.push(t0, t0 + 2, u0, u0 + 1);
   }
+  const tris: [number, number, number][] = [];
+  for (let i = 0; i < count; i++) tris.push([T[i * 3]!, T[i * 3 + 1]!, T[i * 3 + 2]!]);
+  const base = nextVertex;
+  nextVertex += flat.length / 2;
   for (const [a, b, c] of tris) {
-    out.push({ pts: [X(a), Y(a), X(b), Y(b), X(c), Y(c)], region, layer, poly: id });
+    out.push({ pts: [X(a), Y(a), X(b), Y(b), X(c), Y(c)], region, layer, poly: id, v: [base + a, base + b, base + c] });
   }
 }
 
@@ -544,19 +566,18 @@ function link(tris: Tri[]): NavPortal[][] {
   // are the same two points the other way round. Matching them exactly keeps
   // a sliver - earcut leaves long thin ones along straight footways - from
   // being mistaken for the edge beside it, which is what a tolerance did.
-  const vkey = (x: number, y: number): string => `${x},${y}`;
-  const twins = new Map<string, [number, number]>();
+  const V = 1 << 24;
+  const twins = new Map<number, [number, number]>();
   for (let t = 0; t < tris.length; t++) {
-    for (let e = 0; e < 3; e++) {
-      const [ax, ay, bx, by] = edge(t, e);
-      twins.set(`${tris[t]!.poly}|${vkey(ax, ay)}|${vkey(bx, by)}`, [t, e]);
-    }
+    const v = tris[t]!.v;
+    for (let e = 0; e < 3; e++) twins.set(v[e]! * V + v[(e + 1) % 3]!, [t, e]);
   }
   const boundary: [number, number][] = [];
   for (let t = 0; t < tris.length; t++) {
+    const v = tris[t]!.v;
     for (let e = 0; e < 3; e++) {
       const [ax, ay, bx, by] = edge(t, e);
-      const twin = twins.get(`${tris[t]!.poly}|${vkey(bx, by)}|${vkey(ax, ay)}`);
+      const twin = twins.get(v[(e + 1) % 3]! * V + v[e]!);
       // Seen from t (counter-clockwise) the edge runs a -> b with the
       // triangle on its left; walking out across it, b is on the left.
       if (twin) portals[t]!.push({ to: twin[0], lx: bx, ly: by, rx: ax, ry: ay });
@@ -626,15 +647,23 @@ export function buildNavMesh(input: NavInput): NavMesh {
 
   const tris: Tri[] = [];
   let polyId = 0;
+  nextVertex = 0;
   const footway = differenceD(eroded, allZebras, FillRule.NonZero, PRECISION);
   input.layers.forEach((deck, layer) => {
-    const part = intersectD(footway, unionD(toPaths(deck), [], FillRule.NonZero, PRECISION), FillRule.NonZero, PRECISION);
+    // One deck is the whole footway; only with several is each cut out.
+    const part = input.layers.length === 1 ? footway
+      : intersectD(footway, unionD(toPaths(deck), [], FillRule.NonZero, PRECISION), FillRule.NonZero, PRECISION);
     for (const poly of polygons(part)) triangulate(poly, FOOTWAY, layer, polyId++, tris);
   });
-  zebras.forEach((zebra, i) => {
-    const part = intersectD(eroded, zebra, FillRule.NonZero, PRECISION);
-    for (const poly of polygons(part)) triangulate(poly, i, input.crossingLayers[i] ?? 0, polyId++, tris);
-  });
+  // Every zebra at once, each piece then told which zebra it is by where it
+  // lies: one clip instead of one per crossing.
+  const bands = crossings.map((c) => rect(c, INTO_FOOTWAY));
+  for (const poly of polygons(intersectD(eroded, allZebras, FillRule.NonZero, PRECISION))) {
+    const probe = interiorPoint(poly[0]!);
+    let which = 0;
+    for (let i = 0; i < bands.length; i++) if (insideRing(bands[i]!, probe.x, probe.y)) { which = i; break; }
+    triangulate(poly, which, input.crossingLayers[which] ?? 0, polyId++, tris);
+  }
   const portals = link(tris);
   const flat: number[] = [];
   for (const t of tris) flat.push(...t.pts);
