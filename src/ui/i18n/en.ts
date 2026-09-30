@@ -812,6 +812,7 @@ export const EN: Dictionary = {
   'hint.builder.run.wall': 'Click each corner of the run · Enter lays the wall',
   'hint.builder.run.fence': 'Click each corner of the run · Enter lays the fence',
   'hint.builder.run.pavement': 'Click each corner · Enter lays the footpath',
+  'hint.builder.run.stair': 'Click each corner of the run · Enter lays the stair',
   'hint.builder.tree': 'Click the ground to plant a tree',
   'hint.builder.bench': 'Point at a facade and click: the bench sits beside it',
   'hint.builder.planter': 'Point at a facade and click',

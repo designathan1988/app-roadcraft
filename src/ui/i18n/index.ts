@@ -79,6 +79,11 @@ export function t(key: string, params?: Readonly<Record<string, string | number>
   );
 }
 
+/** Whether the reference dictionary defines `key` (every language has the same keys). */
+export function hasKey(key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(EN, key);
+}
+
 /** Picks the singular or plural key by `count`, and passes it as `{count}`. */
 export function plural(key: string, count: number): string {
   return t(count === 1 ? `${key}.one` : `${key}.other`, { count });

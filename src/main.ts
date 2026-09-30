@@ -41,7 +41,7 @@ import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
 import { roadSwatch } from '@ui/roadSwatch';
 import { mountBuildStamp } from '@ui/buildStamp';
 import { mountAbout } from '@ui/about';
-import { LANGUAGES, initLanguage, language, onLanguageChange, setLanguage, t } from '@ui/i18n';
+import { LANGUAGES, hasKey, initLanguage, language, onLanguageChange, setLanguage, t } from '@ui/i18n';
 import {
   nodeCountLabel,
   peopleCountLabel,
@@ -1928,7 +1928,11 @@ function updateHint(): void {
     hint.textContent = t(key);
   }
   if (mobileHint) {
-    const key = hintKey('hint.mobile');
+    // A tool without touch wording of its own falls back to the desktop
+    // sentence. The Builder has none, and the bar (and every screen reader,
+    // through the canvas's aria-describedby) used to read the raw key.
+    const touch = hintKey('hint.mobile');
+    const key = hasKey(touch) ? touch : hintKey('hint');
     mobileHint.dataset['i18n'] = key;
     mobileHint.textContent = t(key);
   }
