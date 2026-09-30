@@ -232,6 +232,8 @@ export const EN: Dictionary = {
   'hint.opened': 'Map opened',
   'hint.openFailed': 'That file is not a Roadcraft map, or it is damaged. Nothing was changed',
   'hint.saveFailed': 'Autosave failed: browser storage is full. Use Save map to keep a copy',
+  'hint.terrain.capNear': 'The land is close to its sculpting limit: past it, the oldest strokes are replaced',
+  'hint.terrain.capReached': 'Sculpting limit reached: each new stroke replaces the oldest one',
   'hint.bootFailed': 'The saved map could not be loaded. It was kept aside and a new map was opened',
   'hint.newMap': 'New map started · the previous one can be restored with Ctrl+Z',
 

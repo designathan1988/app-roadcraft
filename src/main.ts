@@ -7,7 +7,7 @@ import { MAX_AUTHORED_GRADE } from '@world/elevation';
 import { Network } from '@world/network';
 import { LAST_UPGRADE_CLASS, ROAD_TYPES, roadProfile, roadType } from '@world/roadTypes';
 import { UNITS_PER_METER } from '@world/units';
-import type { TerrainMode } from '@world/terrain';
+import { MAX_TERRAIN_STAMPS, type TerrainMode } from '@world/terrain';
 import type { NodeId, SegmentId } from '@world/ids';
 import { POLE_HEIGHT, spanSag } from '@world/utilities';
 import {
@@ -693,7 +693,13 @@ function beginTerrainStroke(pointer: number, at: Vec2): void {
 }
 
 function endTerrainStroke(): void {
+  const wasPainting = terrainStroke !== null;
   terrainStroke = null;
+  // Past the cap the oldest sculpting is dropped to make room. Say so before
+  // it happens rather than erase the player's first hills in silence.
+  if (wasPainting && doc.terrainStamps.length >= MAX_TERRAIN_STAMPS * 0.9) {
+    flashHint(doc.terrainStamps.length >= MAX_TERRAIN_STAMPS ? 'hint.terrain.capReached' : 'hint.terrain.capNear');
+  }
   // The roads were held for the stroke; this frame re-solves them.
   requestDraw();
   if (terrainRepeat !== null) {
