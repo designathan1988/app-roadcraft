@@ -243,6 +243,16 @@ export class RoadDoc {
     return n;
   }
 
+  /** Whether a road at `structure` already joins `a` and `b` directly. */
+  connects(a: NodeId, b: NodeId, structure: RoadStructure): boolean {
+    const node = this.nodes.get(a);
+    if (!node) return false;
+    return node.incident.some((id) => {
+      const s = this.segments.get(id);
+      return s !== undefined && s.structure === structure && ((s.a === a && s.b === b) || (s.a === b && s.b === a));
+    });
+  }
+
   addSegment(
     a: NodeId,
     b: NodeId,
@@ -337,7 +347,10 @@ export class RoadDoc {
       const segment = this.segments.get(id);
       if (!segment) continue;
       const other = segment.a === source ? segment.b : segment.a;
-      if (other === target) {
+      // A road to the node being kept folds to nothing; a road to a neighbour
+      // the kept node already reaches would become a second road between the
+      // same two nodes - overlapping ribbons and doubled lanes. Both go.
+      if (other === target || this.connects(target, other, segment.structure)) {
         this.removeSegment(id);
         continue;
       }

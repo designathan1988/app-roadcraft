@@ -57,3 +57,19 @@ describe('a node dropped by Move', () => {
     expect(doc.segments.size).toBe(4);
   });
 });
+
+describe('merging two nodes', () => {
+  it('never leaves two roads between the same pair of nodes', () => {
+    const doc = new RoadDoc();
+    const hub = doc.addNode({ x: 0, y: 0 });
+    const a = doc.addNode({ x: 200, y: 0 });
+    const b = doc.addNode({ x: 205, y: 60 });
+    doc.addSegment(hub.id, a.id, 1);
+    doc.addSegment(hub.id, b.id, 1);
+    doc.addSegment(a.id, b.id, 1);
+    // b folded into a: its road to the hub would duplicate a's.
+    expect(doc.mergeNodes(a.id, b.id)).toBe(true);
+    const pairs = [...doc.segments.values()].map((s) => [s.a, s.b].sort().join('-'));
+    expect(new Set(pairs).size).toBe(pairs.length);
+  });
+});
