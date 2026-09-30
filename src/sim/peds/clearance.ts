@@ -17,6 +17,14 @@ export interface Footprint {
 }
 const CELL = m(4);
 const PERSON = m(0.3);
+/** Footprint ids at or below this are street furniture and scenery; above it, vehicles. */
+const SCENERY_IDS = -1_000_000;
+/**
+ * The skin a walker held up past the release keeps from a piece of street
+ * furniture it brushes past — the same bargain `agent.ts` strikes before it
+ * lets one through. Kept in step by hand: that constant is private there.
+ */
+const BRUSH = m(0.04);
 const POINT_FRAME = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
 const LINE_FRAME = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
 const cell = (x: number, y: number): string => `${Math.floor(x / CELL)}:${Math.floor(y / CELL)}`;
@@ -277,21 +285,60 @@ export class PedestrianClearance {
 
   /**
    * Whether a raw world point is inside the clearance kept from street
-   * furniture or a vehicle: a body's radius from it, as the gate keeps. The
-   * companion of `tooCloseToPerson`, for the same job — the catch-up offset in
-   * `settlePose` is a straight line between two positions, and it may no more
-   * be swept through a lamp column than through a person walking past.
-   * Measured on the crossroads fixture: a body's centre drawn 0.23 m from a
+   * furniture or a vehicle: the same floor the gate would keep there, so a
+   * body is never PLACED where it may not walk. The companion of
+   * `tooCloseToPerson`, for the same job — the catch-up offset in `settlePose`
+   * is a straight line between two positions, and the body it carries must not
+   * end inside a lamp column any more than inside a person walking past.
+   * Measured on the crossroads fixture: a body's centre placed 0.23 m from a
    * column's centre, which is a body drawn inside the column.
    */
-  tooCloseToFurniture(id: PedId, x: number, y: number): boolean {
+  tooCloseToFurniture(p: Ped, x: number, y: number): boolean {
     let found = false;
     this.visit(x, y, m(2.5), (other) => {
-      if (found || other.id === id || other.id > 0) return;
+      if (found || other.id === p.id || other.id > 0) return;
       const room = other.halfLength === undefined ? other.radius : 0;
-      if (this.distance(other, x, y) < PERSON + room) found = true;
+      const floor = other.id <= SCENERY_IDS
+        ? (p.stuck >= STUCK_RELEASE ? room + BRUSH : (PERSON + room) * squeezeOf(p))
+        : PERSON + room;
+      if (this.distance(other, x, y) < floor) found = true;
     });
     return found;
+  }
+
+  /**
+   * Whether a line from one offset across the footway to another would take
+   * the walker across the shut clearance of a piece of scenery that still
+   * stands ahead of it.
+   *
+   * The rule is the one the day's failures all come back to: do not walk into
+   * a place you cannot walk out of. A walker whose line lies beyond a hydrant
+   * must cross the hydrant's margin to reach it, and inside that margin the
+   * gate refuses every step — sideways towards it and forward along it both
+   * close on it — so it stands there (measured, 69 s of a 90 s scene, and the
+   * drawn-body audit red for the same reason). Scenery further off than
+   * `reach` does not count: there is still ground to make the move over, and a
+   * line across is taken early — or not at all, and the line waits on this
+   * side until the obstacle is behind.
+   */
+  crossesScenery(p: Ped, edge: SidewalkEdge, s: number, from: number, to: number,
+    reach: number): boolean {
+    if (Math.abs(to - from) < 1e-6) return false;
+    const frame = edge.corridor.frame(s, p.entry !== edge.from, LINE_FRAME);
+    const lo = Math.min(from, to), hi = Math.max(from, to);
+    let crosses = false;
+    this.visit(frame.x, frame.y, reach, (other) => {
+      if (crosses || other.id === p.id || other.id > 0) return;
+      const dx = other.x - frame.x, dy = other.y - frame.y;
+      // Behind the walker, or level with it: it has no say in where the line
+      // goes any more, and the gate has already let the walker stand there.
+      if (dx * frame.tx + dy * frame.ty < -PERSON) return;
+      const room = other.halfLength === undefined ? other.radius : 0;
+      const gap = PERSON + room;
+      const lat = dx * frame.nx + dy * frame.ny;
+      if (lo < lat + gap && hi > lat - gap) crosses = true;
+    });
+    return crosses;
   }
 
   // ------------------------------------------------------------ intentions

@@ -146,7 +146,7 @@ export function stepPedestrians(w: SimWorld): void {
           // this person may be here; how they get across, round the people
           // coming the other way, is the agent's choice.
           const want = Math.min(PED.maxSpeed, desired * crossingUrgency(w, p, edge));
-          const line = space.clearLine(w, p, edge, lateralTarget(w, p, edge),
+          const line = space.clearLine(w, p, edge, lateralTarget(w, p, edge, space),
             Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin));
           stepAgent(w, p, edge, { along: want, lat: line }, space);
         } else {
@@ -282,7 +282,7 @@ function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: P
 function walkAgent(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {
   let along = desired * facingShare(p, edge);
   const toEnd = edge.length - p.s;
-  let line = lateralTarget(w, p, edge);
+  let line = lateralTarget(w, p, edge, space);
   // A crossing ahead that may not be entered yet: walk to a place of one's
   // own in its waiting area and stop there (`waitArea.ts`).
   const slot = waitingPlace(w, p, edge);
@@ -387,7 +387,7 @@ function waitingPlace(w: SimWorld, p: Ped, edge: SidewalkEdge): boolean {
  * conversation, lined up for a narrower edge ahead. What is in the way is
  * the agent's business, not this.
  */
-function lateralTarget(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
+function lateralTarget(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClearance): number {
   const usable = Math.max(0, edge.halfWidth - PED_BEHAVIOUR.lateralMargin);
   let target = formation(p, usable);
   const stopping = p.activity && p.activity.side !== 0 && edge.kind === 'walk' ? p.activity : null;
@@ -401,8 +401,24 @@ function lateralTarget(w: SimWorld, p: Ped, edge: SidewalkEdge): number {
     const room = lerp(narrower, usable, clamp(remaining / LINE_UP_DISTANCE, 0, 1));
     target = clamp(target, -room, room);
   }
+  // A line reached by crossing the shut clearance of something the walker has
+  // not passed yet is not a line it can walk: to get onto it, it steps into
+  // the obstacle's margin, and inside that margin the gate refuses every step
+  // — sideways towards it and forward along it both close on it — so it
+  // stands there for good. Measured, 69 s of a 90 s scene beside a hydrant.
+  // The walker keeps the line it is on, passes the obstacle, and crosses
+  // after; the line is early or not at all, which is why only scenery within
+  // reach counts. Nothing the walker wants — a bench, a party's formation, a
+  // narrower edge ahead — is worth standing in a shut margin for.
+  if (space.crossesScenery(p, edge, p.s, p.lat, target, LINE_REACH)) target = p.lat;
   return target;
 }
+
+/**
+ * How far ahead a shut clearance still governs the line: distance a walker
+ * covers while making the widest sideways move it has, at a walking pace.
+ */
+const LINE_REACH = m(1);
 
 /** What happens when a walker reaches the end of its edge, or stands just short of a kerb. */
 function walkTail(w: SimWorld, p: Ped, edge: SidewalkEdge, space: PedestrianClearance): void {
@@ -1547,11 +1563,11 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   if (anchor) { p.offX = 0; p.offY = 0; }
   let x = anchor ? anchor.x : pathX + p.offX;
   let y = anchor ? anchor.y : pathY + p.offY;
-  if (!anchor && !standable(w, edge, x, y)) {
+  if (!anchor && (!standable(w, edge, x, y) || space.tooCloseToFurniture(p, x, y))) {
     // The last word, whatever put the body here: it is moved across the
     // corridor to the nearest place that is footway, and failing that it
     // stays where it stood last tick, which was.
-    const moved = nearestStandable(w, edge, rev, p.s, p.lat);
+    const moved = nearestStandable(w, p, edge, rev, p.s, p.lat, space);
     if (moved !== null) {
       p.lat = moved;
       p.offX = 0;
@@ -1803,9 +1819,17 @@ export function wallsClamp(edge: SidewalkEdge, entry: string, s: number, lat: nu
 
 /**
  * The offset across `edge` at `s`, within its walls, nearest `lat` at which
- * the body stands on the footway; null when there is none.
+ * the body stands on the footway AND clear of what stands on it; null when
+ * there is none.
+ *
+ * The footway alone is not enough. A lamp column stands at the edge of the
+ * footway it lights, so "on the walkable surface" is true inside it: a body
+ * put there is drawn inside the column, and the gate then refuses every step
+ * out of it. Measured on the crossroads fixture, a body's centre 0.23 m from a
+ * column's centre.
  */
-function nearestStandable(w: SimWorld, edge: SidewalkEdge, rev: boolean, s: number, lat: number): number | null {
+function nearestStandable(w: SimWorld, p: Ped, edge: SidewalkEdge, rev: boolean, s: number, lat: number,
+  space: PedestrianClearance): number | null {
   edge.corridor.bounds(s, rev, WALLS);
   const lo = WALLS.lo, hi = WALLS.hi;
   for (let step = 1; step <= 40; step++) {
@@ -1813,7 +1837,7 @@ function nearestStandable(w: SimWorld, edge: SidewalkEdge, rev: boolean, s: numb
       const at = lat + side * step * 0.1;
       if (at < lo - 1e-9 || at > hi + 1e-9) continue;
       edge.corridor.place(s, at, rev, SPOT);
-      if (standable(w, edge, SPOT.x, SPOT.y)) return at;
+      if (standable(w, edge, SPOT.x, SPOT.y) && !space.tooCloseToFurniture(p, SPOT.x, SPOT.y)) return at;
     }
   }
   return null;
@@ -1840,7 +1864,7 @@ function sweepBlocked(p: Ped, space: PedestrianClearance, pathX: number, pathY: 
     const t = i / SWEEP_SAMPLES;
     const x = pathX + p.offX * t;
     const y = pathY + p.offY * t;
-    if (space.tooCloseToPerson(p.id, x, y) || space.tooCloseToFurniture(p.id, x, y)) return true;
+    if (space.tooCloseToPerson(p.id, x, y) || space.tooCloseToFurniture(p, x, y)) return true;
   }
   return false;
 }
