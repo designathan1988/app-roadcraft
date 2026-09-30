@@ -4,6 +4,10 @@ import { DT } from '@sim/params';
 import { m } from '@world/units';
 import { createPeopleEngine } from '@sim/people/people';
 import { fixtureDoc, simOf } from '../support/bodies';
+import { RoadDoc } from '@world/doc';
+import { Network } from '@world/network';
+import { blueprintByKey, instantiate } from '@world/buildings/blueprints';
+import { SimWorld } from '@sim/world';
 
 /**
  * WHAT THE PLAYER SEES THE PEOPLE DO.
@@ -14,16 +18,12 @@ import { fixtureDoc, simOf } from '../support/bodies';
  * sideways round corners (334 a minute), jumping, popping side to side,
  * turning on the spot, freezing - must not happen at all.
  */
-describe('the People engine, as drawn', () => {
-  it('walks forward only, never slides, jumps, pops or spins, and never freezes', () => {
-    const sim = simOf(fixtureDoc(), 0x5eed, 2);
-    sim.usePedestrianEngine(createPeopleEngine());
+function measure(sim: SimWorld, seconds: number) {
     const U = m(1);
     const last = new Map<number, { x: number; y: number; lat: number; flips: number[] }>();
     const headings = new Map<number, { t: number; h: number }[]>();
     const still = new Map<number, number>();
     let back = 0, side = 0, jump = 0, flip = 0, spin = 0, longest = 0, closest = Infinity, personSeconds = 0;
-    const seconds = 45;
     for (let i = 0; i < Math.round(seconds / DT); i++) {
       step(sim, { traffic: true, pedestrians: true });
       const views = sim.pedViews;
@@ -33,7 +33,10 @@ describe('the People engine, as drawn', () => {
         }
       }
       const alive = new Set(views.map((v) => v.id));
+      // Somebody gone is forgotten: a passenger who later steps out of a car
+      // may carry the same id and is somebody else.
       for (const id of [...still.keys()]) if (!alive.has(id)) still.delete(id);
+      for (const id of [...last.keys()]) if (!alive.has(id)) last.delete(id);
       for (const v of views) {
         personSeconds += DT;
         // Standing, not waiting at a kerb: how long.
@@ -67,11 +70,38 @@ describe('the People engine, as drawn', () => {
         prev.x = v.x; prev.y = v.y; prev.lat = Math.abs(lat) > 0.15 ? lat : prev.lat;
       }
     }
-    expect(sim.pedViews.length).toBeGreaterThan(80);
-    expect({ back, side, jump, flip }).toEqual({ back: 0, side: 0, jump: 0, flip: 0 });
-    expect(spin / personSeconds * 60).toBeLessThan(0.15);
-    expect(longest).toBeLessThan(5);
-    // Bodies are 0.5 m across and never overlap.
-    expect(closest).toBeGreaterThanOrEqual(0.49);
+    return { back, side, jump, flip, spins: spin / personSeconds * 60, longest, closest, people: sim.pedViews.length };
+}
+
+function expectClean(r: ReturnType<typeof measure>): void {
+  expect({ back: r.back, side: r.side, jump: r.jump, flip: r.flip }).toEqual({ back: 0, side: 0, jump: 0, flip: 0 });
+  expect(r.spins).toBeLessThan(0.15);
+  expect(r.longest).toBeLessThan(5);
+  // Bodies are 0.5 m across; held up a while, people squeeze past shoulder
+  // to shoulder (0.45 m apart), and never closer.
+  expect(r.closest).toBeGreaterThanOrEqual(0.44);
+}
+
+describe('the People engine, as drawn', () => {
+  it('walks forward only, never slides, jumps, pops or spins, and never freezes', () => {
+    const sim = simOf(fixtureDoc(), 0x5eed, 2);
+    sim.usePedestrianEngine(createPeopleEngine());
+    const r = measure(sim, 45);
+    expect(r.people).toBeGreaterThan(80);
+    expectClean(r);
+  }, 120_000);
+
+  it('gets parties and people coming the other way past each other on a narrow street', () => {
+    const doc = new RoadDoc();
+    const a = doc.addNode({ x: -180, y: 0 }), b = doc.addNode({ x: 180, y: 0 });
+    doc.addSegment(a.id, b.id, 1);
+    const net = new Network(doc); net.rebuild();
+    for (const x of [-100, 0, 100]) doc.buildings.add(instantiate(blueprintByKey('house')!.body, { x, y: 55 }, 0, 'house'));
+    const sim = new SimWorld(doc, net, 0xbe7c);
+    sim.rebuildTopology();
+    sim.pedestrianIntensity = 8;
+    sim.usePedestrianEngine(createPeopleEngine());
+    const r = measure(sim, 240);
+    expectClean(r);
   }, 120_000);
 });

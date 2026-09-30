@@ -8,7 +8,8 @@ import { m } from '@world/units';
 import { signalPosts, SIGNAL_POST_RADIUS } from '@world/signalPosts';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import type { RoadStructure } from '@world/structures';
-import { bands, surfaces } from '@world/surfaces';
+import { difference } from '@core/clipper';
+import { surfaces } from '@world/surfaces';
 import { POLE_BASE_RADIUS } from '@world/utilities';
 import type { CrossingId } from '../signals/plan';
 import type { SimWorld } from '../world';
@@ -48,7 +49,12 @@ export function buildWorldNav(w: SimWorld): WorldNav {
     for (const id of net.ribbons.keys()) if (structureOf(id) === deck) { any = true; break; }
     if (!any) continue;
     layerOf.set(deck, layers.length);
-    layers.push(bands(surfaces(net, (id) => structureOf(id) === deck)).footway);
+    // The footway and the kerb stone: people walk on the kerb too, and without
+    // it a local street's pavement was too narrow for two to pass (1.0 u for
+    // body centres, against the 1.25 u two bodies need) and counterflow
+    // jammed solid.
+    const deckSurfaces = surfaces(net, (id) => structureOf(id) === deck);
+    layers.push(difference(deckSurfaces.sidewalk, deckSurfaces.asphalt));
   }
 
   const crossings: NavCrossingInput[] = [];
@@ -114,7 +120,7 @@ export function buildWorldNav(w: SimWorld): WorldNav {
   const input: NavInput = {
     layers,
     crossingLayers,
-    road: surfaces(net).curb,
+    road: surfaces(net).asphalt,
     crossings,
     obstacles,
     solids,

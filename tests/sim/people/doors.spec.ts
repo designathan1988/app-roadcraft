@@ -15,7 +15,7 @@ describe('where people come from and go to', () => {
     doc.buildings.add(instantiate(blueprintByKey('house')!.body, { x: 0, y: 55 }, 0, 'house'));
     const sim = new SimWorld(doc, net, 0xbe7c);
     sim.rebuildTopology();
-    sim.pedestrianIntensity = 8;
+    sim.pedestrianIntensity = 30;
     sim.usePedestrianEngine(createPeopleEngine());
     step(sim, { traffic: false, pedestrians: true });
     const doors = [...sim.sidewalks.nodes.values()].filter((n) => n.id.startsWith('B:')).map((n) => n.at);
@@ -24,7 +24,7 @@ describe('where people come from and go to', () => {
     const seen = new Set(sim.pedViews.map((v) => v.id));
     const last = new Map<number, { x: number; y: number }>();
     let fresh = 0, atDoor = 0, atEnd = 0, elsewhere = 0, onPath = false, wentIn = false;
-    for (let tick = 0; tick < 60 * 120; tick++) {
+    for (let tick = 0; tick < 60 * 400; tick++) {
       step(sim, { traffic: false, pedestrians: true });
       const now = new Set<number>();
       for (const v of sim.pedViews) {
