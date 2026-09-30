@@ -221,6 +221,7 @@ export const PT_BR: Dictionary = {
   'hint.saved': 'Mapa salvo em arquivo',
   'hint.opened': 'Mapa aberto',
   'hint.openFailed': 'Esse arquivo não é um mapa do Roadcraft ou está danificado. Nada foi alterado',
+  'hint.saveFailed': 'O salvamento automático falhou: o armazenamento do navegador está cheio. Use Salvar mapa para guardar uma cópia',
   'hint.bootFailed': 'O mapa salvo não pôde ser carregado. Ele foi guardado à parte e um mapa novo foi aberto',
   'hint.newMap': 'Novo mapa iniciado · o anterior volta com Ctrl+Z',
 

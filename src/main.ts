@@ -2872,6 +2872,21 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('beforeunload', () => persistence.saveSession(doc, sessionSettings()));
+// A hidden or discarded tab may never see `beforeunload` (phones, tab freezing).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') persistence.flush();
+});
+window.addEventListener('pagehide', () => persistence.saveSession(doc, sessionSettings()));
+
+// A failed write says so, at most once a minute, instead of losing the map at
+// the next reload in silence.
+let saveWarnedAt = -Infinity;
+persistence.onSaveFailed = () => {
+  const now = performance.now();
+  if (now - saveWarnedAt < 60_000) return;
+  saveWarnedAt = now;
+  flashHint('hint.saveFailed');
+};
 
 requestDraw();
 

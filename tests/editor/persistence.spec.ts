@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isSerializedDoc } from '@editor/persistence';
+import { isSerializedDoc, normalizeSettings } from '@editor/persistence';
 import { RoadDoc } from '@world/doc';
 import { MAP_HALF } from '@world/bounds';
 
@@ -70,5 +70,19 @@ describe('the model\'s own copies', () => {
     expect(copy.nodes.size).toBe(3);
     expect(copy.segments.size).toBe(2);
     expect(copy.toJSON()).toEqual(doc.toJSON());
+  });
+});
+
+describe('loaded settings', () => {
+  it('come back as values the controls offer', () => {
+    const settings = normalizeSettings({
+      camera: { x: 0, y: 0, zoom: 1 }, paused: false, speed: -3,
+      trafficIntensity: 9, pedestrianIntensity: -1, demandMultiplier: 1.4, congestionOverlay: false,
+    });
+    // A negative speed froze the simulation while it read as playing.
+    expect(settings.speed).toBe(1);
+    expect(settings.trafficIntensity).toBe(2);
+    expect(settings.pedestrianIntensity).toBe(0);
+    expect(settings.demandMultiplier).toBe(1.55);
   });
 });

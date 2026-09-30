@@ -37,6 +37,14 @@ interface SerializedSession extends SavedSession {
  */
 export class Persistence {
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private pending: (() => void) | null = null;
+
+  /**
+   * Called when a write fails (storage full or refused). The autosave used to
+   * fail in silence and the next reload lost everything since the last write
+   * that worked.
+   */
+  onSaveFailed: (() => void) | null = null;
 
   constructor(private readonly storageKey = KEY) {}
 
@@ -80,16 +88,28 @@ export class Persistence {
       localStorage.setItem(this.storageKey, JSON.stringify({ version: 2, document: doc.toJSON(), settings }));
       return true;
     } catch {
+      this.onSaveFailed?.();
       return false;
     }
   }
 
   saveSessionSoon(doc: RoadDoc, settings: () => SavedSettings): void {
     if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.saveSession(doc, settings());
-    }, DEBOUNCE_MS);
+    this.pending = () => this.saveSession(doc, settings());
+    this.timer = setTimeout(() => this.flush(), DEBOUNCE_MS);
+  }
+
+  /**
+   * Writes a debounced save now. The page calls it when it is hidden or torn
+   * down: a phone or a background tab discarded without `beforeunload` used to
+   * lose the last 700 ms of edits.
+   */
+  flush(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    const pending = this.pending;
+    this.pending = null;
+    pending?.();
   }
 
   load(): SerializedDoc | null {
@@ -123,7 +143,7 @@ export class Persistence {
     try {
       const parsed: unknown = JSON.parse(raw);
       if (isSerializedDoc(parsed)) return { document: parsed, settings: defaultSettings() };
-      if (isSavedSession(parsed)) return parsed;
+      if (isSavedSession(parsed)) return { document: parsed.document, settings: normalizeSettings(parsed.settings) };
     } catch {
       // Unparseable. Fall through and set it aside rather than reread it.
     }
@@ -197,6 +217,28 @@ function quarantine(raw: string | null, sourceKey = KEY, quarantineKey = QUARANT
   }
 }
 
+/** The speeds the Simulation menu offers; anything else was never chosen there. */
+const SPEEDS = [1, 2, 4];
+/** The demand levels the menu offers. */
+const DEMANDS = [0.55, 1, 1.55];
+
+/**
+ * Settings as the controls can show them. A file could carry any finite
+ * number: a negative speed froze the simulation while it read as playing,
+ * with no speed button lit.
+ */
+export function normalizeSettings(settings: SavedSettings): SavedSettings {
+  const intensity = (value: number): number => Math.min(2, Math.max(0, value));
+  const demand = settings.demandMultiplier;
+  return {
+    ...settings,
+    speed: SPEEDS.includes(settings.speed) ? settings.speed : 1,
+    trafficIntensity: intensity(settings.trafficIntensity),
+    pedestrianIntensity: intensity(settings.pedestrianIntensity),
+    ...(demand === undefined ? {} : { demandMultiplier: DEMANDS.reduce((best, d) => Math.abs(d - demand) < Math.abs(best - demand) ? d : best, 1) }),
+  };
+}
+
 function defaultSettings(): SavedSettings {
   return { camera: { x: 0, y: 0, zoom: 1 }, paused: false, speed: 1, trafficIntensity: 1, pedestrianIntensity: 1, congestionOverlay: false };
 }
@@ -228,7 +270,9 @@ export function exportToFile(
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  // Revoked a moment later: revoking synchronously can cancel the download
+  // before Firefox or Safari has started it.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 /** What a file pick came to: a map, nothing chosen, or a file that is not one. */
@@ -280,7 +324,7 @@ export async function importFromFile(): Promise<ImportResult> {
 /** Accepts legacy geometry-only files while preserving complete session files. */
 function readImportedSession(value: unknown): SavedSession | null {
   if (isSerializedDoc(value)) return { document: value, settings: defaultSettings() };
-  return isSavedSession(value) ? value : null;
+  return isSavedSession(value) ? { document: value.document, settings: normalizeSettings(value.settings) } : null;
 }
 
 /** Strict boundary validation for local storage and imported files. */
