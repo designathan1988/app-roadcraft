@@ -270,7 +270,7 @@ Details in section 8.
 - **Current:** a pedestrian whose edge vanished went to the **first** walk edge of the map at `s=0`, keeping its activity, slot and party links.
 - **Now:** the People engine re-seats everyone on the nearest walkable ground after an edit.
 
-**P1-19 · Vehicles with a destination never change lane to turn [code] — `open` (Drive v2, tactical layer)**
+**P1-19 · Vehicles with a destination never change lane to turn [code] — `fixed` in Drive v2 (`src/sim/drive/tactical.ts`, tested by `tests/sim/drive/tactical.spec.ts`; `?drive=v1` keeps the old planner)**
 - **Location:** `sim/routing/router.ts:30-38, 41, 69`; `routing/destination.ts:60-87, 97-134`.
 - **Current:** `planFrom` with a destination clears `desiredLane` and runs Dijkstra only over the exits of the current lane, with no lane-change edges; in the wrong lane a car goes round the block or makes a U-turn.
 - **Fix:** sibling-lane edges in routing, reachable exits per carriageway, a test with a destination.
@@ -573,6 +573,6 @@ The approved resolution plan (2026-09-30) orders the work in lots: 0 verifiable 
 3. **A global rebuild on every edit** — P1-28, P1-29, P1-31, P1-43, P1-48, P2-12, P2-32, P2-58 — open (Lot 7).
 4. **Incomplete boundary validation** — P0-03, P2-30 — `fixed`.
 5. **Identity by volatile ids** — P1-13 (`fixed`), P1-17 (`fixed`), P1-42 (open), P2-19 (`replaced`).
-6. **Tests that do not exercise the real code** — P1-39, P1-40 `fixed`; P1-41 open; P1-19 open. Visible motion is now measured on the drawn body (`tests/sim/people/motion.spec.ts`).
+6. **Tests that do not exercise the real code** — P1-39, P1-40 `fixed`; P1-41 open; P1-19 `fixed` (Drive v2). Visible motion is now measured on the drawn body (`tests/sim/people/motion.spec.ts`).
 7. **Two generations of UI living together** — open (Lot U).
 8. **Per-tick and per-frame scans and allocations** — pedestrian side `replaced`; the rest open.

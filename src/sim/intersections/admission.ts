@@ -5,7 +5,7 @@ import type { SimWorld } from '../world';
 import type { Vehicle } from '../vehicles/state';
 import { canStopComfortably, type ObstacleKind } from '../vehicles/idm';
 import { pedestrianSignalState, signalStateFor } from '../signals/query';
-import { mustStopAtSignal } from '../signals/permission';
+import { signalHolds } from '../signals/permission';
 import { hasDownstreamStorage } from './spillback';
 import { cycleFull } from './cycles';
 import { COARSE_EPS } from '@core/scalar';
@@ -260,7 +260,7 @@ function revokeStaleGrants(w: SimWorld): void {
 
     // Still permitted to enter: an amber it cannot stop for, or a credited
     // right on red.
-    if (!mustStopAtSignal(state, conn.turn, v.rorCredit, v.driver, v.v, d)) continue;
+    if (!signalHolds(v, conn.id, state, conn.turn, d)) continue;
 
     // Committed. A driver who can no longer stop must not be told to — that is
     // the dilemma zone, and the all-red exists precisely so this vehicle can
@@ -898,16 +898,7 @@ export function rightOfWay(
 
   if (controller && junction?.signalised) {
     const state = signalStateFor(controller, conn.group);
-    if (
-      mustStopAtSignal(
-        state,
-        conn.turn,
-        v.rorCredit,
-        v.driver,
-        v.v,
-        distanceToStop,
-      )
-    ) return 'none';
+    if (signalHolds(v, conn.id, state, conn.turn, distanceToStop)) return 'none';
 
     // A movement is protected when the current stage gives green to nothing
     // that physically conflicts with it from another approach (`annotate` in

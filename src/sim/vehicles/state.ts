@@ -106,6 +106,11 @@ export interface Vehicle {
   /** Set once the vehicle has come to a full stop, enabling right-on-red. */
   rorCredit: boolean;
   rorStopped: number;
+  /**
+   * The connector whose amber this driver has decided to stop for, until its
+   * next green. Written only through `signalHolds` (`signals/permission.ts`).
+   */
+  amberStop: string | null;
 
   /** Ticks since spawn, used to fade in. */
   age: number;
@@ -265,6 +270,7 @@ export function createVehicle(
     waited: 0,
     rorCredit: false,
     rorStopped: 0,
+    amberStop: null,
     age: 0,
     greenStall: 0,
     greenDenied: 0,

@@ -3,6 +3,7 @@ import type { SimWorld } from '../world';
 import type { Vehicle } from '../vehicles/state';
 import { bodyClassOfArchetype } from '../vehicles/archetypes';
 import { routeToDestination } from './destination';
+import { planTrip } from '../drive/tactical';
 
 /** Horizon for a vehicle with no reachable boundary destination. */
 const HORIZON = 24;
@@ -27,6 +28,33 @@ const LOOKAHEAD = 5;
  */
 export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
   const body = bodyClassOfArchetype(v.archetype);
+  if (v.destination && w.driveModel === 'v2' && w.lanelet(v.lanelet)?.kind === 'link') {
+    // Drive v2: the trip is planned over the whole carriageway, lane changes
+    // included (`drive/tactical.ts`), so the lane the car is in never decides
+    // which way it can go.
+    const plan = planTrip(w, v.lanelet, v.s, v.destination, body);
+    if (plan) {
+      v.desiredLane = plan.changeTo;
+      if (plan.changeTo) v.movementIntent = plan.intent;
+      if (plan.route.length >= 3) {
+        v.route = plan.route;
+        if (!plan.changeTo) v.movementIntent = plan.route[1]!;
+        return plan.route[1]!;
+      }
+      if (plan.changeTo) {
+        // No way on from this lane towards the goal: whatever exit it has is
+        // the route until the change lands, and the change stays wanted.
+        const own = w.graph.exitsOf(v.lanelet).filter((id) => (w.connector(id)?.maxBodyClass ?? -1) >= body);
+        const pick = own.length ? chooseExit(w, own, body, new Set([v.lanelet])) : null;
+        const conn = pick ? w.connector(pick) : undefined;
+        if (!pick || !conn) return null;
+        v.route = [v.lanelet, pick, conn.toLane];
+        return pick;
+      }
+    } else {
+      v.destination = null;
+    }
+  }
   if (v.destination) {
     const trip = routeToDestination(w, v.lanelet, v.destination, body);
     const first = trip && trip.length >= 3 ? w.connector(trip[1]!) : undefined;
@@ -90,6 +118,21 @@ export function planFrom(w: SimWorld, v: Vehicle): LaneletId | null {
 /** Grows a route forward until it reaches the horizon or a dead end. */
 export function extend(w: SimWorld, v: Vehicle): void {
   const body = bodyClassOfArchetype(v.archetype);
+  if (v.destination && w.driveModel === 'v2') {
+    const tail = v.route[v.route.length - 1];
+    if (tail === v.destination) return;
+    const lane = tail ? w.lanelet(tail) : undefined;
+    if (lane?.kind === 'link') {
+      const plan = planTrip(w, tail!, 0, v.destination, body);
+      // A change due on the tail lane is planned when the car gets there: the
+      // route ends at that lane, runs out, and `planFrom` is asked again.
+      if (plan) {
+        if (!plan.changeTo) v.route.push(...plan.route.slice(1));
+        return;
+      }
+      v.destination = null;
+    }
+  }
   if (v.destination) {
     const tail = v.route[v.route.length - 1];
     if (tail === v.destination) return;

@@ -28,6 +28,39 @@ import type { SignalState } from './query';
  */
 const RIGHT_ON_RED_ALLOWED = false;
 
+/**
+ * `mustStopAtSignal` for one vehicle and connector, with the amber decision
+ * held once it is made.
+ *
+ * Asked afresh every tick, "can I still stop comfortably?" changes its answer
+ * as the car closes on the line. A driver who decided at the start of the
+ * amber to stop, and eased off gently to do it, found a few ticks later that
+ * the same question now said "no": the stop obstacle vanished, admission
+ * granted the movement, and the car crossed the line on red. Drivers do not
+ * change their mind like that. The decision to stop is kept until the
+ * movement's next green; the decision to go is not kept, and is asked again,
+ * so a car that can stop still does.
+ *
+ * Braking, admission and the revocation of stale grants all ask here, so the
+ * three always agree.
+ */
+export function signalHolds(
+  v: { amberStop: string | null; rorCredit: boolean; driver: DriverParams; v: number },
+  connector: string,
+  state: SignalState,
+  turn: TurnKind,
+  distanceToStop: number,
+): boolean {
+  if (state === 'green') {
+    if (v.amberStop === connector) v.amberStop = null;
+    return false;
+  }
+  if (state === 'amber' && v.amberStop === connector) return true;
+  const stop = mustStopAtSignal(state, turn, v.rorCredit, v.driver, v.v, distanceToStop);
+  if (stop && state === 'amber') v.amberStop = connector;
+  return stop;
+}
+
 export function mustStopAtSignal(
   state: SignalState,
   turn: TurnKind,

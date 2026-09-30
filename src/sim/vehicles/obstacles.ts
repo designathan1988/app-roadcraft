@@ -4,7 +4,7 @@ import type { ConstraintSet, Obstacle } from './idm';
 import { PED_CROSSING_STOP_BUFFER, pedestrianInSpan } from '../intersections/crossingSpans';
 import { divergeObstacle, findLeader, shadowLeaderObstacle } from './leaderIndex';
 import { signalStateFor } from '../signals/query';
-import { mustStopAtSignal } from '../signals/permission';
+import { signalHolds } from '../signals/permission';
 import { mergeRemaining, nextConnector } from '../intersections/admission';
 import { kerbStopObstacle } from './kerbStops';
 
@@ -166,14 +166,7 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
         // aggression * BRAKE_SPREAD)). So for a sizeable slice of the fleet
         // admission could grant a connector on the very amber tick the
         // vehicle decided to stop for, and vice versa.
-        const mustStop = mustStopAtSignal(
-          state,
-          conn.turn,
-          v.rorCredit,
-          v.driver,
-          v.v,
-          signalGap,
-        );
+        const mustStop = signalHolds(v, conn.id, state, conn.turn, signalGap);
         if (mustStop) {
           constraints.obstacles.push({ gap: signalGap, speed: 0, kind: 'signal' });
         }
