@@ -6,10 +6,9 @@ import { m } from '@world/units';
 import { CROSSWALK_DEPTH } from '@world/approach';
 import type { CrossingId } from '../signals/plan';
 import type { SimWorld } from '../world';
-import type { Ped } from '../peds/state';
+import type { CrossingOccupant } from '../crossings/state';
 import type { Vehicle } from '../vehicles/state';
 import { canStopComfortably } from '../vehicles/idm';
-import type { SidewalkEdge } from '../peds/sidewalk';
 
 /** Arc interval of a crossing, measured from its `from` kerb. */
 export interface CrossingSpan {
@@ -178,28 +177,23 @@ export function reservationCoversCrossing(w: SimWorld, v: Vehicle, connector: Co
   return true;
 }
 
-/** Whether this pedestrian occupies or will soon reach this movement's part of a zebra. */
-export function pedestrianAffectsSpan(p: Ped, edge: SidewalkEdge, span: CrossingSpan): boolean {
-  const forward = p.entry === edge.from;
-  const at = forward ? p.s : edge.length - p.s;
+/** Whether somebody on a crossing occupies or will soon reach this movement's part of it. */
+export function pedestrianAffectsSpan(p: CrossingOccupant, span: CrossingSpan): boolean {
+  const at = p.s;
   if (at >= span.s0 - PED_BODY && at <= span.s1 + PED_BODY) return true;
-  const ahead = forward ? span.s0 - at : at - span.s1;
+  const ahead = p.forward ? span.s0 - at : at - span.s1;
   return ahead > 0 && ahead < Math.max(p.v, PED_MIN_PACE) * PED_REACH_TIME;
 }
 
 /** Whether somebody on this crossing is in, or about to enter, the span. */
 export function pedestrianInSpan(w: SimWorld, connector: ConnectorId, crossing: CrossingId): CrossingSpan | null {
-  const occupants = w.pedOccupancy.get(crossing);
-  if (!occupants?.length) return null;
+  const state = w.crossingStates.get(crossing);
+  if (!state?.occupants.length) return null;
   const span = w.crossingSpans.span(connector, crossing);
   if (span === null) return null;
-  const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(crossing) ?? '');
-  const whole: CrossingSpan = { s0: 0, s1: edge?.length ?? 0, along: 0 };
-  if (span === undefined || !edge) return whole;
-  for (const pedId of occupants) {
-    const p = w.peds.get(pedId);
-    if (!p) continue;
-    if (pedestrianAffectsSpan(p, edge, span)) return span;
+  if (span === undefined) return { s0: 0, s1: state.length, along: 0 };
+  for (const p of state.occupants) {
+    if (pedestrianAffectsSpan(p, span)) return span;
   }
   return null;
 }

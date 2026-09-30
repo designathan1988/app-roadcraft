@@ -1097,10 +1097,6 @@ export function crossingBusy(w: SimWorld, conn: Connector): boolean {
   return false;
 }
 
-/** Walking pace below which somebody on a zebra is standing, world units a second. */
-const PED_WALKING = 0.3;
-/** Seconds a walker must have been held still to count as waiting rather than arriving. */
-const PED_HELD = 2;
 /** Allowance over the estimated time for a front to reach a zebra it turns across. */
 const CLEAR_MARGIN = 1.2;
 
@@ -1137,19 +1133,16 @@ function crossingReachedFirst(w: SimWorld, r: Request): boolean {
   let top = 0;
   for (const segment of w.doc.node(r.conn.node)?.incident ?? []) {
     const crossing = `${r.conn.node}:${segment}`;
-    const occupants = w.pedOccupancy.get(crossing);
+    const occupants = w.crossingStates.get(crossing)?.occupants;
     if (!occupants?.length) continue;
     const span = w.crossingSpans.span(r.conn.id, crossing);
     if (!span) continue;
-    const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(crossing) ?? '');
-    if (!edge) continue;
     if (top === 0) top = Math.max(2, Math.min(lane.speedLimit, slowestBend(r.v, lane)));
     // `pedestrianAhead` stops a vehicle for anybody within `PED_REACH_TIME`
     // of the stretch until its front is over it; admit only a vehicle that
     // gets its front there before that can happen.
     const front = CLEAR_MARGIN * travelTime(Math.max(0, r.d) + span.along, r.v.v, top, r.v.driver.a);
-    for (const pedId of occupants) {
-      const p = w.peds.get(pedId);
+    for (const p of occupants) {
       // Somebody held still on the zebra is waiting for something - very
       // often for this very car - and is not arriving. Holding the car for
       // them made the two wait for each other for good: a walker frozen at the
@@ -1157,10 +1150,9 @@ function crossingReachedFirst(w: SimWorld, r: Request): boolean {
       // stage held green past its maximum because the walker was still
       // "crossing". Somebody who has only just stepped on and not yet got
       // going is arriving, and counts.
-      if (!p || (p.v < PED_WALKING && p.stuck > PED_HELD)) continue;
-      const forward = p.entry === edge.from;
-      const at = forward ? p.s : edge.length - p.s;
-      const ahead = forward ? span.s0 - PED_BODY - at : at - span.s1 - PED_BODY;
+      if (p.held) continue;
+      const at = p.s;
+      const ahead = p.forward ? span.s0 - PED_BODY - at : at - span.s1 - PED_BODY;
       if (ahead <= 0) continue;
       if (ahead / Math.max(p.v, PED_MIN_PACE) < front + PED_REACH_TIME) return true;
     }
@@ -1185,9 +1177,8 @@ function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
   const signalised = !!controller && !!w.graph.junctions.get(r.conn.node)?.signalised;
   for (const segment of w.doc.node(r.conn.node)?.incident ?? []) {
     const id = `${r.conn.node}:${segment}`;
-    const waiting = w.pedWaiting.get(id);
-    if (!waiting) continue;
-    const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(id) ?? '');
+    const state = w.crossingStates.get(id);
+    if (!state || (state.waitingFrom === 0 && state.waitingTo === 0)) continue;
     const span = w.crossingSpans.span(r.conn.id, id);
     if (span === null) continue;
     // Only people who would reach the vehicle's path soon after stepping off:
@@ -1202,14 +1193,14 @@ function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
       if (w.net.crosswalkDistanceAt(segment, r.conn.node) <= 0) continue;
       // Uncontrolled zebra: give way to those who would soon be in the path;
       // somebody at the far kerb of a wide crossing lets the turn go first.
-      if (edge && span) {
+      if (span) {
         const reach = PED_MIN_PACE * PED_REACH_TIME;
-        const near = (waiting.from > 0 && span.s0 < reach) || (waiting.to > 0 && edge.length - span.s1 < reach);
+        const near = (state.waitingFrom > 0 && span.s0 < reach) || (state.waitingTo > 0 && state.length - span.s1 < reach);
         if (!near) continue;
       }
       return true;
     }
-    if (edge && pedestrianSignalState(controller, id, edge.length) === 'walk') return true;
+    if (pedestrianSignalState(controller, id, state.length) === 'walk') return true;
   }
   return false;
 }

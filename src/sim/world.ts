@@ -17,6 +17,8 @@ import { CrossingSpans } from './intersections/crossingSpans';
 import { m } from '@world/units';
 import { facadeBays } from '@world/buildings/geometry';
 import { ACCESS_COMPONENTS } from '@world/buildings/foundation';
+import type { CrossingStates } from './crossings/state';
+import { publishCrossingStates } from './peds/publish';
 /** The body class a signal plan is protected for: an ordinary car. */const CAR_CLASS: BodyClass = 1;
 
 /** A queue is counted this far back from the stop line. */
@@ -73,6 +75,12 @@ export class SimWorld {
    * at (`from` or `to` end of the crossing edge). Rebuilt every tick.
    */
   readonly pedWaiting = new Map<CrossingId, { from: number; to: number }>();
+  /**
+   * What vehicles, signals and the audit may know about the people at each
+   * crossing (`crossings/state.ts`). Published by the pedestrian engine at the
+   * end of its stage; the only pedestrian state read outside it.
+   */
+  readonly crossingStates: CrossingStates = new Map();
   /** Stretch of each zebra that each movement drives over. */
   readonly crossingSpans = new CrossingSpans();
 
@@ -184,6 +192,7 @@ export class SimWorld {
     this.controllers.clear();
     this.pedOccupancy.clear();
     this.pedWaiting.clear();
+    this.crossingStates.clear();
     this.lastAdmission.clear();
     this.mergeTurn.clear();
     this.segmentVolume.clear();
@@ -345,6 +354,8 @@ export class SimWorld {
     this.buildingAccessRevision = this.doc.buildings.revision;
     this.accessUtilityRevision = this.doc.utilityRevision;
     this.accessSignature = signature;
+    // Relocated walkers change who waits where.
+    publishCrossingStates(this);
     return true;
   }
 
@@ -420,33 +431,15 @@ export class SimWorld {
         .filter((ref) => this.conflicts.points[ref.point]?.zone(id, CAR_CLASS, CAR_CLASS))
         .map((ref) => ref.other),
       pedestriansCrossing: (_node, crossings) =>
-        crossings.some((x) => (this.pedOccupancy.get(x)?.length ?? 0) > 0),
+        crossings.some((x) => (this.crossingStates.get(x)?.occupants.length ?? 0) > 0),
       demandOn: (node, groups, movements) => demandOf(node, groups, movements).score > 0,
       demand: (node, groups, movements) => demandOf(node, groups, movements),
-      pedestrianWait: (node, crossings) => {
+      pedestrianWait: (_node, crossings) => {
         let longest = 0;
-        if (!crossings.length) return 0;
-        for (const ped of this.peds.values()) {
-          if (ped.state !== 'WaitAtKerb') continue;
-          const edge = this.sidewalks.edges.get(ped.route[0] ?? '');
-          if (edge?.node === node && edge.crossing && crossings.includes(edge.crossing)) {
-            longest = Math.max(longest, ped.waited);
-          }
-        }
+        for (const x of crossings) longest = Math.max(longest, this.crossingStates.get(x)?.longestWait ?? 0);
         return longest;
       },
-      pedestrianDemandOn: (node, crossings) => {
-        if (!crossings.length) return false;
-        for (const ped of this.peds.values()) {
-          if (ped.state !== 'ApproachKerb' && ped.state !== 'WaitAtKerb') continue;
-          const next = ped.route[0];
-          const edge = next ? this.sidewalks.edges.get(next) : undefined;
-          if (edge?.kind === 'crossing' && edge.node === node && edge.crossing && crossings.includes(edge.crossing)) {
-            return true;
-          }
-        }
-        return false;
-      },
+      pedestrianDemandOn: (_node, crossings) => crossings.some((x) => this.crossingStates.get(x)?.demand ?? false),
       reservationDemandOn: (node, groups) => {
         const here = reservedGroups().get(node);
         return !!here && groups.some((group) => here.has(group));

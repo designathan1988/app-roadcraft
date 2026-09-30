@@ -22,6 +22,7 @@ import { reservationCoversCrossing } from '../intersections/crossingSpans';
 import { canStopComfortably } from '../vehicles/idm';
 import { vehiclePose } from '../pose';
 import { nextTowardGoal } from './route';
+import { publishCrossingStates } from './publish';
 import {
   activityAnchor,
   arrivalActivity,
@@ -272,6 +273,9 @@ export function stepPedestrians(w: SimWorld): void {
     endActivity(w, p);
     w.peds.delete(p.id);
   }
+
+  // The only pedestrian state the rest of the simulation reads.
+  publishCrossingStates(w);
 }
 
 function walk(w: SimWorld, p: Ped, edge: SidewalkEdge, desired: number, space: PedestrianClearance): void {

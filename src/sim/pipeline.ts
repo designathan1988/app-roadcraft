@@ -12,6 +12,7 @@ import { stepDespawn, stepDispatch } from './vehicles/spawn';
 import { stepLaneChange } from './vehicles/laneChange';
 import { stepKerbStops } from './vehicles/kerbStops';
 import { releaseCrossing, stepPedestrians } from './peds/crossingFsm';
+import { publishCrossingStates } from './peds/publish';
 import { stepPedDispatch } from './peds/spawn';
 import { planFrom, reconsiderRoute, repairRoute } from './routing/router';
 import { snapshot, type Vehicle } from './vehicles/state';
@@ -219,6 +220,7 @@ export function rebindPeds(w: SimWorld): void {
     if (list) list.push(p.id);
     else w.pedOccupancy.set(p.occupying, [p.id]);
   }
+  publishCrossingStates(w);
 }
 
 /** How far an orphaned pedestrian may be carried to a surviving footway. */

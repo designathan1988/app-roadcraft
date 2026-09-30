@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { publishCrossingStates } from '@sim/peds/publish';
 import { writeFileSync } from 'node:fs';
 
 import { step } from '@sim/pipeline';
@@ -239,6 +240,8 @@ describe('zones reaching back over a stop line', () => {
     walker.state = 'Crossing';
     sim.peds.set(walker.id, walker);
     sim.pedOccupancy.set(crossingId, [walker.id]);
+    // Vehicles read the crossing through its published state, not the model.
+    publishCrossingStates(sim);
 
     step(sim, { traffic: true, pedestrians: false });
     expect(car.admittedConnector).toBeNull();
