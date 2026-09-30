@@ -68,3 +68,19 @@ describe('undo', () => {
     expect(JSON.stringify(doc.toJSON())).toBe(edited);
   });
 });
+
+describe('the history', () => {
+  it('keeps within its byte budget by dropping the oldest steps', () => {
+    const { doc } = city();
+    const history = new History(60, 20_000);
+    for (let i = 0; i < 40; i++) {
+      doc.addNode({ x: i * 10, y: 300 });
+      history.record(doc);
+    }
+    expect(history.bytes).toBeLessThanOrEqual(20_000);
+    expect(history.canUndo).toBe(true);
+    // The newest step is the one kept.
+    const last = history.undo(doc)!;
+    expect(last.nodes.length).toBe(doc.nodes.size);
+  });
+});

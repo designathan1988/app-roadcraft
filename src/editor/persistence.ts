@@ -8,6 +8,12 @@ const KEY = 'roadcraft.world.v7';
 /** Where storage the loader could not read is kept, rather than deleted. */
 export const QUARANTINE_KEY = 'roadcraft.world.v7.unreadable';
 const DEBOUNCE_MS = 700;
+/**
+ * The camera and simulation settings, on their own. They share the map's
+ * entry too (older builds read them there), but a pan, a zoom or a speed change
+ * writes only this small key: each one used to serialise the whole map.
+ */
+const SETTINGS_KEY = 'roadcraft.settings.v1';
 
 export interface SavedSettings {
   readonly camera: { readonly x: number; readonly y: number; readonly zoom: number };
@@ -86,6 +92,7 @@ export class Persistence {
   saveSession(doc: RoadDoc, settings: SavedSettings): boolean {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify({ version: 2, document: doc.toJSON(), settings }));
+      this.writeSettings(settings);
       return true;
     } catch {
       this.onSaveFailed?.();
@@ -99,6 +106,47 @@ export class Persistence {
     this.timer = setTimeout(() => this.flush(), DEBOUNCE_MS);
   }
 
+  private settingsTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Stores the camera and simulation settings alone, coalescing rapid changes. */
+  saveSettingsSoon(settings: () => SavedSettings): void {
+    if (this.settingsTimer) clearTimeout(this.settingsTimer);
+    this.pendingSettings = settings;
+    this.settingsTimer = setTimeout(() => this.flushSettings(), DEBOUNCE_MS);
+  }
+
+  private pendingSettings: (() => SavedSettings) | null = null;
+
+  private flushSettings(): void {
+    if (this.settingsTimer) clearTimeout(this.settingsTimer);
+    this.settingsTimer = null;
+    const pending = this.pendingSettings;
+    this.pendingSettings = null;
+    if (pending) this.writeSettings(pending());
+  }
+
+  private writeSettings(settings: SavedSettings): void {
+    if (this.storageKey !== KEY) return;
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch {
+      /* Settings are a convenience; the map's own entry still carries them. */
+    }
+  }
+
+  /** The separately stored settings, when present and readable. */
+  private readSettings(): SavedSettings | null {
+    if (this.storageKey !== KEY) return null;
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return null;
+      const parsed: unknown = JSON.parse(raw);
+      return isSavedSettings(parsed) ? normalizeSettings(parsed) : null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Writes a debounced save now. The page calls it when it is hidden or torn
    * down: a phone or a background tab discarded without `beforeunload` used to
@@ -110,6 +158,7 @@ export class Persistence {
     const pending = this.pending;
     this.pending = null;
     pending?.();
+    this.flushSettings();
   }
 
   load(): SerializedDoc | null {
@@ -143,7 +192,9 @@ export class Persistence {
     try {
       const parsed: unknown = JSON.parse(raw);
       if (isSerializedDoc(parsed)) return { document: parsed, settings: defaultSettings() };
-      if (isSavedSession(parsed)) return { document: parsed.document, settings: normalizeSettings(parsed.settings) };
+      if (isSavedSession(parsed)) {
+        return { document: parsed.document, settings: this.readSettings() ?? normalizeSettings(parsed.settings) };
+      }
     } catch {
       // Unparseable. Fall through and set it aside rather than reread it.
     }
@@ -244,8 +295,12 @@ function defaultSettings(): SavedSettings {
 }
 
 function isSavedSession(value: unknown): value is SavedSession {
-  if (!isRecord(value) || value.version !== 2 || !isSerializedDoc(value.document) || !isRecord(value.settings)) return false;
-  const settings = value.settings;
+  if (!isRecord(value) || value.version !== 2 || !isSerializedDoc(value.document)) return false;
+  return isSavedSettings(value.settings);
+}
+
+function isSavedSettings(settings: unknown): settings is SavedSettings {
+  if (!isRecord(settings)) return false;
   const camera = settings.camera;
   return isRecord(camera) && isFiniteNumber(camera.x) && isFiniteNumber(camera.y) && isFiniteNumber(camera.zoom) &&
     typeof settings.paused === 'boolean' && isFiniteNumber(settings.speed) && isFiniteNumber(settings.trafficIntensity) &&

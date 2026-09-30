@@ -13,8 +13,21 @@ import { repairNearConnections } from './repair';
 export class History {
   private readonly undoStack: SerializedDoc[] = [];
   private readonly redoStack: SerializedDoc[] = [];
+  /** Approximate bytes held by each stack's entries, index-aligned. */
+  private readonly undoBytes: number[] = [];
+  private readonly redoBytes: number[] = [];
 
-  constructor(private readonly limit = 60) {}
+  /**
+   * `limit` steps, and at most `byteBudget` bytes of snapshots across both
+   * stacks. A count alone let 120 copies of a large city (thousands of terrain
+   * stamps, every building) grow to hundreds of megabytes.
+   */
+  constructor(private readonly limit = 60, private readonly byteBudget = 96 * 1024 * 1024) {}
+
+  /** Bytes currently held, approximately (UTF-16 of the serialized snapshots). */
+  get bytes(): number {
+    return sum(this.undoBytes) + sum(this.redoBytes);
+  }
 
   get canUndo(): boolean {
     return this.undoStack.length > 0;
@@ -26,29 +39,59 @@ export class History {
 
   /** Records the document as it was BEFORE a mutation. */
   record(doc: RoadDoc): void {
-    this.undoStack.push(doc.toJSON());
-    if (this.undoStack.length > this.limit) this.undoStack.shift();
+    this.push(this.undoStack, this.undoBytes, doc.toJSON());
     this.redoStack.length = 0;
+    this.redoBytes.length = 0;
+    this.trim();
   }
 
   undo(current: RoadDoc): SerializedDoc | null {
     const previous = this.undoStack.pop();
     if (!previous) return null;
-    this.redoStack.push(current.toJSON());
+    this.undoBytes.pop();
+    this.push(this.redoStack, this.redoBytes, current.toJSON());
+    this.trim();
     return previous;
   }
 
   redo(current: RoadDoc): SerializedDoc | null {
     const next = this.redoStack.pop();
     if (!next) return null;
-    this.undoStack.push(current.toJSON());
+    this.redoBytes.pop();
+    this.push(this.undoStack, this.undoBytes, current.toJSON());
+    this.trim();
     return next;
   }
 
   clear(): void {
     this.undoStack.length = 0;
     this.redoStack.length = 0;
+    this.undoBytes.length = 0;
+    this.redoBytes.length = 0;
   }
+
+  private push(stack: SerializedDoc[], bytes: number[], snapshot: SerializedDoc): void {
+    stack.push(snapshot);
+    bytes.push(JSON.stringify(snapshot).length * 2);
+  }
+
+  /** Drops the OLDEST undo steps past the count or the byte budget; the newest always stays. */
+  private trim(): void {
+    while (this.undoStack.length > this.limit) {
+      this.undoStack.shift();
+      this.undoBytes.shift();
+    }
+    while (this.undoStack.length > 1 && this.bytes > this.byteBudget) {
+      this.undoStack.shift();
+      this.undoBytes.shift();
+    }
+  }
+}
+
+function sum(values: readonly number[]): number {
+  let total = 0;
+  for (const v of values) total += v;
+  return total;
 }
 
 /**

@@ -1205,7 +1205,7 @@ function endPointer(e: PointerEvent): void {
       }
     }
   }
-  persistence.saveSessionSoon(doc, sessionSettings);
+  persistence.saveSettingsSoon(sessionSettings);
   requestDraw();
 }
 
@@ -1241,7 +1241,7 @@ canvas.addEventListener(
       surface.cssW,
       surface.cssH,
     );
-    persistence.saveSessionSoon(doc, sessionSettings);
+    persistence.saveSettingsSoon(sessionSettings);
     requestDraw();
   },
   { passive: false },
@@ -1276,7 +1276,7 @@ window.addEventListener('keydown', (e) => {
   if (!meta && (e.key === 'q' || e.key === 'Q' || e.key === 'e' || e.key === 'E')) {
     const turns = e.key.toLowerCase() === 'q' ? -1 : 1;
     view.rotate(turns, surface.cssW / 2, surface.cssH / 2, surface.cssW, surface.cssH);
-    persistence.saveSessionSoon(doc, sessionSettings);
+    persistence.saveSettingsSoon(sessionSettings);
     requestDraw();
     return;
   }
@@ -1747,7 +1747,7 @@ function setPaused(paused: boolean): void {
   trafficButton.classList.toggle('active', traffic);
   trafficButton.setAttribute('aria-pressed', String(traffic));
   last = performance.now();
-  persistence.saveSessionSoon(doc, sessionSettings);
+  persistence.saveSettingsSoon(sessionSettings);
   requestDraw();
 }
 // Through `setSpeed`, so the speed buttons show "Pause" pressed as well; going
@@ -1780,7 +1780,7 @@ function bindIntensity(input: HTMLInputElement, outputId: string, assign: (value
     const value = Number(input.value) / 100;
     assign(value);
     text(outputId, `${input.value}%`);
-    persistence.saveSessionSoon(doc, sessionSettings);
+    persistence.saveSettingsSoon(sessionSettings);
   };
   input.oninput = update;
   update();
@@ -1791,7 +1791,7 @@ const demandLevel = document.getElementById('demandLevel') as HTMLSelectElement;
 demandLevel.value = String(sim.demandMultiplier);
 demandLevel.onchange = () => {
   sim.demandMultiplier = Number(demandLevel.value);
-  persistence.saveSessionSoon(doc, sessionSettings);
+  persistence.saveSettingsSoon(sessionSettings);
 };
 document.querySelectorAll<HTMLButtonElement>('[data-speed]').forEach((button) => {
   const active = Number(button.dataset['speed']) === (sim.clock.paused ? 0 : sim.clock.speed);
@@ -1804,7 +1804,7 @@ congestionButton.onclick = () => {
   congestionOverlay = !congestionOverlay;
   congestionButton.classList.toggle('active', congestionOverlay);
   congestionButton.setAttribute('aria-pressed', String(congestionOverlay));
-  persistence.saveSessionSoon(doc, sessionSettings);
+  persistence.saveSettingsSoon(sessionSettings);
   requestDraw();
 };
 congestionButton.classList.toggle('active', congestionOverlay);
@@ -1863,7 +1863,7 @@ function openImported(result: ImportResult): boolean {
 
 (document.getElementById('resetView') as HTMLButtonElement).onclick = () => {
   fitView();
-  persistence.saveSessionSoon(doc, sessionSettings);
+  persistence.saveSettingsSoon(sessionSettings);
   requestDraw();
 };
 
@@ -1918,7 +1918,7 @@ function restoreSettings(settings: SavedSettings): void {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
-  persistence.saveSessionSoon(doc, sessionSettings);
+  persistence.saveSettingsSoon(sessionSettings);
   requestDraw();
 }
 updateHistoryButtons();
