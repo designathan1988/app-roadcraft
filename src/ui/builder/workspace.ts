@@ -135,6 +135,12 @@ export interface BuilderWorkspace {
   flash(text: string): void;
   /** Re-labels everything after a language change. */
   relabel(): void;
+  /**
+   * The undo/redo buttons' state, from the one history, whatever tool is in
+   * hand. They were refreshed only while the Builder was open, so everywhere
+   * else they stayed grey: the player could not undo a road with the mouse.
+   */
+  setHistory(canUndo: boolean, canRedo: boolean): void;
   /** Paints the gallery's pictures once they are rendered. */
   setPresetThumbnails(images: ReadonlyMap<string, string>): void;
   readonly root: HTMLElement;
@@ -1039,6 +1045,10 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     hosts: { level1: tier1Road, level2: tier2Road, simMenu: simSlot, appMenu: appSlot, controls: controlsSlot, hint: foot },
     flash,
     relabel,
+    setHistory(canUndo: boolean, canRedo: boolean) {
+      undo.disabled = !canUndo;
+      redo.disabled = !canRedo;
+    },
     root,
     setPresetThumbnails(images) {
       for (const [key, url] of images) thumbnails.set(key, url);

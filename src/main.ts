@@ -290,7 +290,13 @@ let selectedNode: NodeId | null = null;
  * branch here at all.
  */
 let panning: { id: number; grabbed: Vec2 } | null = null;
-let moving: { node: NodeId; origin: Vec2 } | null = null;
+/**
+ * A node being dragged, with the document as it was when the drag began. The
+ * live preview edits the document, and each step through a spot where an
+ * incident curve would be too tight flattened it for good (`fitCurve`); the
+ * snapshot is what cancel restores and what the undo step records.
+ */
+let moving: { node: NodeId; origin: Vec2; before: ReturnType<RoadDoc['toJSON']> } | null = null;
 /**
  * A terrain stroke in progress.
  *
@@ -457,6 +463,10 @@ function mutate(fn: () => boolean): void {
 function mutateBuilt(fn: () => boolean): boolean {
   const before = doc.toJSON();
   if (!fn()) return false;
+  // An edit that reports success without changing anything - the same lane
+  // count, a split on an existing endpoint, a pole line traced over itself -
+  // used to push an undo step and throw away the redo stack.
+  if (JSON.stringify(before) === JSON.stringify(doc.toJSON())) return false;
   history.record(RoadDoc.fromJSON(before, { repair: false }));
   // A pole or a wire moves `doc.utilityRevision`, not `doc.revision`: the
   // network is unchanged, and rebuilding it (and, behind it, the simulation
@@ -469,6 +479,7 @@ function mutateBuilt(fn: () => boolean): boolean {
   topologyAfterDraw = topologyAfterDraw || sim.topologyRevision !== net.trafficRevision;
   persistence.saveSessionSoon(doc, sessionSettings);
   updateHistoryButtons();
+  updateStatus();
   refreshInspector();
   requestDraw();
   return true;
@@ -499,6 +510,7 @@ function applySnapshot(data: ReturnType<RoadDoc['toJSON']> | null, source: 'snap
   closeInspector();
   persistence.saveSessionSoon(doc, sessionSettings);
   updateHistoryButtons();
+  updateStatus();
   requestDraw();
 }
 
@@ -581,13 +593,54 @@ function panAnchorOf(e: PointerEvent): Vec2 {
   return panAnchor(e.clientX - r.left, e.clientY - r.top);
 }
 
+/**
+ * Ends every gesture in progress without committing it: a road being drawn or
+ * chained, a pole line, a terrain stroke, a node drag, a pan, the Builder's
+ * press. ONE list for every way a gesture can be cut short - a tool switch,
+ * undo/redo, Escape, the right button, a pinch - where there used to be six
+ * lists that disagreed (Ctrl+Z mid-drag kept moving a node of the restored
+ * map; Escape left a terrain stroke stamping).
+ */
+function cancelGestures(): void {
+  draft = null;
+  roadChain = null;
+  chainPreview = null;
+  curvePending = null;
+  poleDraft = null;
+  poleChain = null;
+  endTerrainStroke();
+  cancelMove();
+  panning = null;
+  if (tool === 'building') buildings.pointerUp(true);
+  requestDraw();
+}
+
+/** Whether anything is being drawn or dragged right now. */
+function gestureInProgress(): boolean {
+  return draft !== null || roadChain !== null || curvePending !== null || poleDraft !== null ||
+    poleChain !== null || terrainStroke !== null || moving !== null;
+}
+
+/**
+ * A press whose release will never arrive - the window lost focus, the pointer
+ * capture was taken - ends what the held button was doing. A terrain stroke
+ * kept stamping every 110 ms after an alt-tab with the button down.
+ */
+function releaseHeld(): void {
+  endTerrainStroke();
+  cancelMove();
+  panning = null;
+  pointers.clear();
+  pinch = null;
+}
+
 /** Cancels a node drag without leaving its live preview in the document. */
 function cancelMove(): void {
   if (!moving) return;
-  doc.moveNode(moving.node, moving.origin);
+  const before = moving.before;
   moving = null;
-  net.rebuild();
-  rebuildSimulationTopology();
+  restoreSnapshot(doc, before, net);
+  if (sim.topologyRevision !== net.trafficRevision) rebuildSimulationTopology();
 }
 
 /** Height of an authored connection; open ground takes the height being drawn at. */
@@ -715,18 +768,18 @@ function endTerrainStroke(): void {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  // The mouse's back and forward buttons are not a click: they used to fall
+  // through to the tool as if they were the left button.
+  if (e.pointerType === 'mouse' && e.button > 2) return;
   canvas.setPointerCapture(e.pointerId);
   const r = canvas.getBoundingClientRect();
   pointers.set(e.pointerId, { x: e.clientX - r.left, y: e.clientY - r.top });
 
-  // A second finger promotes the gesture to pinch and cancels any draft.
-  if (pointers.size === 2) {
-    draft = null;
-    curvePending = null;
-    chainPreview = null;
-    endTerrainStroke();
-    cancelMove();
-    panning = null;
+  // A second finger promotes the gesture to pinch and cancels any draft. A
+  // third finger is part of the pinch too: at size 3 it used to fall through to
+  // the tool, and Bulldoze demolished the road under it.
+  if (pointers.size >= 2) {
+    cancelGestures();
     const [a, b] = [...pointers.values()] as [Vec2, Vec2];
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     pinch = {
@@ -738,10 +791,13 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 
   if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2)) {
-    if (e.button === 2 && tool === 'road' && roadChain) {
-      roadChain = null;
-      chainPreview = null;
-      curvePending = null;
+    // The right button cancels whatever is in progress, in every tool; with
+    // nothing in progress it pans.
+    if (e.button === 2 && gestureInProgress()) {
+      cancelGestures();
+      return;
+    }
+    if (e.button === 2 && tool === 'building' && buildings.cancelOperation()) {
       requestDraw();
       return;
     }
@@ -836,7 +892,7 @@ canvas.addEventListener('pointerdown', (e) => {
     case 'move':
       if (anchor.kind === 'node' && anchor.node !== undefined) {
         const node = doc.node(anchor.node);
-        if (node) moving = { node: anchor.node, origin: { x: node.x, y: node.y } };
+        if (node) moving = { node: anchor.node, origin: { x: node.x, y: node.y }, before: doc.toJSON() };
       } else {
         panning = { id: e.pointerId, grabbed: panAnchorOf(e) };
       }
@@ -920,7 +976,16 @@ canvas.addEventListener('pointerdown', (e) => {
   requestDraw();
 });
 
+window.addEventListener('blur', releaseHeld);
+canvas.addEventListener('lostpointercapture', (e) => {
+  // After an ordinary release the pointer is already gone from the map.
+  if (pointers.has(e.pointerId)) releaseHeld();
+});
+
 canvas.addEventListener('pointermove', (e) => {
+  // A mouse whose button is no longer down has ended its stroke, whether or
+  // not the release reached us.
+  if (e.pointerType === 'mouse' && e.buttons === 0 && terrainStroke) endTerrainStroke();
   const r = canvas.getBoundingClientRect();
   const screen: Vec2 = { x: e.clientX - r.left, y: e.clientY - r.top };
   if (tool === 'road') roadPointerScreen = screen;
@@ -1127,15 +1192,16 @@ function endPointer(e: PointerEvent): void {
     if (node) {
       const now = { x: node.x, y: node.y };
       const changed = Math.hypot(now.x - m.origin.x, now.y - m.origin.y) > COARSE_EPS;
-      if (changed) doc.moveNode(m.node, m.origin);
-      if (changed && (cancelled || wasPinching)) {
-        net.rebuild();
-        rebuildSimulationTopology();
-      } else if (changed) {
+      // Back to the document as it was - curves included - then, if the drag
+      // counts, one move from there to the drop point as one undo step.
+      restoreSnapshot(doc, m.before, net);
+      if (changed && !cancelled && !wasPinching) {
         mutate(() => {
           doc.moveNode(m.node, now);
           return true;
         });
+      } else if (sim.topologyRevision !== net.trafficRevision) {
+        rebuildSimulationTopology();
       }
     }
   }
@@ -1592,15 +1658,8 @@ terrainStrengthInput.oninput = () => setTerrainStrength(Number(terrainStrengthIn
 };
 
 function setTool(next: Tool): void {
+  cancelGestures();
   tool = next;
-  draft = null;
-  roadChain = null;
-  chainPreview = null;
-  curvePending = null;
-  poleDraft = null;
-  poleChain = null;
-  endTerrainStroke();
-  cancelMove();
   // Improving a road, moving its points, splitting a segment and setting up a
   // junction are things done TO a road, so they are the road's own options and
   // its button stays lit while one of them is in hand.
@@ -1813,11 +1872,15 @@ const redoButton = document.getElementById('redoAction') as HTMLButtonElement;
 // An undo can change something far off screen, so the hint bar says it
 // happened; Ctrl+Z and Ctrl+Y go through these buttons too.
 undoButton.onclick = () => {
+  // A drag or stroke in progress ends first: undoing mid-drag used to go on
+  // moving a node of the restored map, and record the half-done state as redo.
+  cancelGestures();
   const snapshot = history.undo(doc);
   applySnapshot(snapshot);
   if (snapshot) flashHint('hint.undone');
 };
 redoButton.onclick = () => {
+  cancelGestures();
   const snapshot = history.redo(doc);
   applySnapshot(snapshot);
   if (snapshot) flashHint('hint.redone');
@@ -1826,6 +1889,7 @@ redoButton.onclick = () => {
 function updateHistoryButtons(): void {
   undoButton.disabled = !history.canUndo;
   redoButton.disabled = !history.canRedo;
+  buildings.workspace.setHistory(history.canUndo, history.canRedo);
 }
 
 /** Restores the user-visible state stored beside a map without touching topology. */
@@ -2013,19 +2077,8 @@ const arrowPan = (e: KeyboardEvent): void => {
   // so there has to be a way to say "that is the end of this line" without
   // switching tool and back.
   if (e.key === 'Escape') {
-    if (tool === 'road' && (draft || roadChain || curvePending)) {
-      draft = null;
-      roadChain = null;
-      chainPreview = null;
-      curvePending = null;
-      requestDraw();
-      e.preventDefault();
-      return;
-    }
-    if (poleDraft || poleChain) {
-      poleDraft = null;
-      poleChain = null;
-      requestDraw();
+    if (gestureInProgress()) {
+      cancelGestures();
       e.preventDefault();
     }
     return;

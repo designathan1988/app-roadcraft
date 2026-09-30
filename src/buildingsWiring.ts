@@ -761,13 +761,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         dirty = true;
         return;
       }
-      // The free plan starts on the first click of the gesture.
-      if (toolId === 'sketch' && !tool.planPoints) {
-        tool.startPlan('new');
-        tool.pointerMove(screen, world, shift);
-        dirty = true;
-        return;
-      }
+      // The free plan starts on the first click of the gesture - and that click
+      // is its first corner. It used to only start the plan and return, so the
+      // press was never armed as a click: three corners clicked gave two
+      // points, and a square came out a triangle.
+      if (toolId === 'sketch' && !tool.planPoints) tool.startPlan('new');
       tool.pointerDown(screen, world, shift);
       dirty = true;
     },
@@ -820,6 +818,14 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       refresh();
     },
     deactivate() {
+      // A stroke or a shape drag left running across a tool switch came back to
+      // life on return: hovering painted faces with no button held, and the
+      // next release built a shape from a stale corner.
+      if (painting) {
+        painting = false;
+        tool.endPaintStroke();
+      }
+      if (tool.shapeDragStart) tool.endShapeDrag(true);
       tool.deactivate();
       scene.setBuildingPreview(null);
       scene.setBuildingsDimmed(undefined);
