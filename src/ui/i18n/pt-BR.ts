@@ -222,6 +222,8 @@ export const PT_BR: Dictionary = {
   'hint.opened': 'Mapa aberto',
   'hint.openFailed': 'Esse arquivo não é um mapa do Roadcraft ou está danificado. Nada foi alterado',
   'hint.saveFailed': 'O salvamento automático falhou: o armazenamento do navegador está cheio. Use Salvar mapa para guardar uma cópia',
+  'hint.move.tooShort': 'Não movido: uma via ali ficaria curta demais para ser construída',
+  'hint.move.clearance': 'Não movido: as vias se cruzariam com diferença de altura pequena demais para se unir ou passar uma sobre a outra',
   'hint.terrain.capNear': 'O terreno está perto do limite de escultura: além dele, os traços mais antigos são substituídos',
   'hint.terrain.capReached': 'Limite de escultura atingido: cada novo traço substitui o mais antigo',
   'hint.bootFailed': 'O mapa salvo não pôde ser carregado. Ele foi guardado à parte e um mapa novo foi aberto',

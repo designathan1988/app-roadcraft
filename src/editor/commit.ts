@@ -30,7 +30,7 @@ const CROSSING_CLEARANCE = roadStructure('elevated').clearance;
 
 export interface DraftResult {
   readonly committed: boolean;
-  readonly reason?: 'tooShort' | 'duplicate' | 'degenerate' | 'tooSharp';
+  readonly reason?: 'tooShort' | 'duplicate' | 'degenerate' | 'tooSharp' | 'clearance';
   readonly heightLimited?: boolean;
   readonly finalHeightOffset?: number;
 }
@@ -441,6 +441,85 @@ export function splitSegment(
 ): NodeId | null {
   const tag = Symbol('split');
   return splitSegmentAtCuts(doc, net, id, [{ at, s, tag }]).get(tag) ?? null;
+}
+
+/**
+ * Makes the topology agree with a node the Move tool has just dropped.
+ *
+ * Drawing a road reconciles it with the network - crossings become junctions,
+ * a near endpoint is reused, a stub too short to be a road is refused. A node
+ * drop did none of it: it could land on its neighbour (a zero-length road), on
+ * another node (two junctions at one point), or carry a road across another
+ * with no junction, where no conflict zone exists and cars drive through each
+ * other. Here, in order:
+ *  - dropped on another node at its level: the two become one;
+ *  - an incident road now shorter than a quarter of `MIN_LINK_LENGTH`: refused;
+ *  - an incident road now crossing another road at its level: both are split
+ *    there and joined by one node. A crossing between the join tolerance and
+ *    a deck's clearance can be neither, and is refused.
+ * Returns `committed: false` with a reason when the drop must be undone.
+ */
+export function reconcileMovedNode(doc: RoadDoc, net: Network, id: NodeId, depth = 0): DraftResult {
+  if (depth > 16) return { committed: true };
+  const node = doc.node(id);
+  if (!node) return { committed: false, reason: 'degenerate' };
+
+  for (const other of doc.nodes.values()) {
+    if (other.id === id) continue;
+    if (dist(node, other) > MERGE_EPS || Math.abs(other.heightOffset - node.heightOffset) > HEIGHT_JOIN_EPS) continue;
+    // Merging along a road would fold that road to nothing.
+    if (node.incident.some((sid) => { const seg = doc.segment(sid); return seg && (seg.a === other.id || seg.b === other.id); })) {
+      return { committed: false, reason: 'tooShort' };
+    }
+    doc.mergeNodes(other.id, id);
+    return { committed: true };
+  }
+
+  for (const sid of node.incident) {
+    const seg = doc.segment(sid);
+    const far = seg && doc.node(seg.a === id ? seg.b : seg.a);
+    if (far && dist(node, far) < MIN_LINK_LENGTH * 0.25) return { committed: false, reason: 'tooShort' };
+  }
+
+  net.rebuild();
+  for (const sid of [...node.incident]) {
+    const moved = doc.segment(sid);
+    if (!moved) continue;
+    const path = net.polylines.get(doc, sid);
+    for (const [otherId, other] of [...doc.segments]) {
+      if (otherId === sid || other.structure !== moved.structure) continue;
+      if (other.a === moved.a || other.a === moved.b || other.b === moved.a || other.b === moved.b) continue;
+      const line = net.polylines.get(doc, otherId);
+      for (let i = 0; i + 1 < path.n; i++) {
+        let crossed = false;
+        for (let j = 0; j + 1 < line.n; j++) {
+          const hit = segSeg(path.point(i), path.point(i + 1), line.point(j), line.point(j + 1));
+          if (!hit) continue;
+          const sMoved = (path.cum[i] as number) + hit.t * ((path.cum[i + 1] as number) - (path.cum[i] as number));
+          const sOther = (line.cum[j] as number) + hit.u * ((line.cum[j + 1] as number) - (line.cum[j] as number));
+          if (sMoved <= MERGE_EPS || sMoved >= path.length - MERGE_EPS) continue;
+          const gap = Math.abs(segmentOffsetAt(doc, moved, sMoved, path.length) - segmentOffsetAt(doc, other, sOther, line.length));
+          if (gap > CROSSING_CLEARANCE) continue;
+          if (gap > HEIGHT_JOIN_EPS) return { committed: false, reason: 'clearance' };
+          // Near the other road's end, its junction is reused, as a drawn road does.
+          const onOther = sOther <= MIN_LINK_LENGTH ? other.a
+            : sOther >= line.length - MIN_LINK_LENGTH ? other.b
+              : splitSegmentAtCuts(doc, net, otherId, [{ at: hit.point, s: sOther, tag: 'x' }]).get('x');
+          const onMoved = splitSegmentAtCuts(doc, net, sid, [{ at: hit.point, s: sMoved, tag: 'x' }]).get('x');
+          if (onOther !== undefined && onMoved !== undefined) doc.mergeNodes(onOther, onMoved);
+          net.rebuild();
+          crossed = true;
+          break;
+        }
+        if (crossed) {
+          // The moved road is now two pieces; what is left of it is handled
+          // by a fresh pass rather than on stale arc lengths.
+          return reconcileMovedNode(doc, net, id, depth + 1);
+        }
+      }
+    }
+  }
+  return { committed: true };
 }
 
 /** Joins two compatible straight segments meeting at an otherwise unused node. */

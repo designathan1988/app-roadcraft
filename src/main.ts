@@ -32,7 +32,7 @@ import { summarize } from '@sim/audit';
 import {
   type Anchor, anchorForHeight as anchorAtHeight, anchorHeightOffset as anchorHeightAt, findAnchor, snapRoadEndpoint, type SnapResult,
 } from '@editor/snap';
-import { commitRoadPath, duplicateSegment, joinSegments, splitSegment } from '@editor/commit';
+import { type DraftResult, commitRoadPath, duplicateSegment, joinSegments, reconcileMovedNode, splitSegment } from '@editor/commit';
 import { roadPathFromGesture, type RoadPathPiece, type RoadPathPoint } from '@editor/roadPath';
 import { History, restoreInto, restoreSnapshot } from '@editor/history';
 import { type ImportResult, Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
@@ -1196,10 +1196,19 @@ function endPointer(e: PointerEvent): void {
       // counts, one move from there to the drop point as one undo step.
       restoreSnapshot(doc, m.before, net);
       if (changed && !cancelled && !wasPinching) {
+        // The drop is reconciled like a drawn road: onto a node it joins it,
+        // across a road it makes a junction, and a drop that would leave a
+        // stub or cross a road at the wrong height is refused.
+        let refused: DraftResult['reason'] | undefined;
         mutate(() => {
           doc.moveNode(m.node, now);
-          return true;
+          const result = reconcileMovedNode(doc, net, m.node);
+          if (result.committed) return true;
+          refused = result.reason;
+          restoreSnapshot(doc, m.before, net);
+          return false;
         });
+        if (refused) flashHint(refused === 'clearance' ? 'hint.move.clearance' : 'hint.move.tooShort');
       } else if (sim.topologyRevision !== net.trafficRevision) {
         rebuildSimulationTopology();
       }

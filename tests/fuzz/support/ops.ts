@@ -6,7 +6,7 @@ import type { NodeId, SegmentId } from '@world/ids';
 import { MIN_LINK_LENGTH } from '@world/approach';
 import { ROAD_TYPES } from '@world/roadTypes';
 import type { RoadStructure } from '@world/structures';
-import { commitDraft, commitRoadPath, joinSegments, splitSegment } from '@editor/commit';
+import { commitDraft, commitRoadPath, joinSegments, reconcileMovedNode, splitSegment } from '@editor/commit';
 import { anchorForHeight, anchorHeightOffset, findAnchor, snapEndpoint, snapRoadEndpoint, type Anchor } from '@editor/snap';
 import { fitRoadCurve } from '@world/doc';
 
@@ -146,7 +146,13 @@ export function applyOp(state: FuzzState, op: FuzzOp): boolean {
       const id = pickFrom(nodeIds(doc), op.pick);
       const node = id === undefined ? undefined : doc.node(id);
       if (!node || id === undefined) return false;
+      // As main.ts's drop: move, then reconcile; a refused drop is undone.
+      const before = doc.toJSON();
       changed = doc.moveNode(id, { x: node.x + op.dx, y: node.y + op.dy });
+      if (changed && !reconcileMovedNode(doc, net, id).committed) {
+        doc.replaceFromJSON(before, { repair: false });
+        changed = false;
+      }
       break;
     }
     case 'type': case 'upgrade': {
