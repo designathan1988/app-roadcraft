@@ -2,7 +2,7 @@ import type { Vec2 } from '@core/vec2';
 import { signedArea } from '@core/polygon';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
-import { BLUEPRINTS, bodyOf } from '@world/buildings/blueprints';
+import { bodyOf } from '@world/buildings/blueprints';
 import { DEFAULT_PITCH, baysOn, footprintBox, levelElevation, localDirToWorld, ridgeAlongX, topLevel } from '@world/buildings/geometry';
 import { type Building, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
@@ -17,8 +17,7 @@ import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
 import { drawBuilderGizmos, type GizmoInput } from '@ui/overlay/builderGizmos';
-import { PART_IDS, renderPartThumbnails } from '@render/buildings/parts';
-import { renderBuildingThumbnails } from '@render/buildings/thumbnails';
+import { type ThumbnailStudio, createThumbnailStudio } from '@render/buildings/parts';
 import { initBuilderWorkspace, type BuilderActions, type BuilderState } from '@ui/builder/workspace';
 import { plural, t } from '@ui/i18n';
 
@@ -56,6 +55,12 @@ export interface BuildingWiring {
   pointerDown(screen: Vec2, world: Vec2, shift: boolean): void;
   pointerMove(screen: Vec2, world: Vec2, shift: boolean): void;
   pointerUp(cancelled: boolean): void;
+  /**
+   * Photographs the parts a gallery is about to show, a few per frame. The
+   * pictures arrive through the workspace as they are ready; nothing here
+   * blocks, and a gallery that is never opened costs nothing.
+   */
+  requestThumbnails(ids: readonly string[]): void;
   /** Returns true when the tool used the key. */
   key(e: KeyboardEvent): boolean;
   /** Right button: cancels the operation in progress, if any. */
@@ -109,7 +114,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
 
   let dirty = true;
   let painting = false;
-  let thumbnailsDone = false;
+  let studio: ThumbnailStudio | null = null;
   let inspectorOpen = true;
   let category: BuilderCategoryId = 'select';
   let toolId = 'select';
@@ -312,7 +317,19 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     notify('builder.styleCopied');
   }
 
+  /**
+   * Photographs the parts a gallery is about to show, a few per frame, and
+   * hands each batch to the workspace as it is ready. Nothing blocks: the
+   * eighty pictures used to be taken in one frame, which cost a third of a
+   * second of freeze the moment the Builder was opened.
+   */
+  function requestThumbnails(ids: readonly string[]): void {
+    studio ??= createThumbnailStudio(scene.gl);
+    studio.request(ids, (images) => workspace.setPresetThumbnails(images));
+  }
+
   const actions: BuilderActions = {
+    requestThumbnails,
     undo: () => deps.undo(),
     redo: () => deps.redo(),
     setCategory: (id) => {
@@ -801,16 +818,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     activate() {
       dirty = true;
       refresh();
-      if (!thumbnailsDone) {
-        thumbnailsDone = true;
-        // After this frame, so opening the Builder is not held up by it: the
-        // galleries show real pictures of the models and of the parts, all of
-        // them photographed off screen by the game's own mesh builder.
-        requestAnimationFrame(() => {
-          workspace.setPresetThumbnails(renderBuildingThumbnails(scene.gl, BLUEPRINTS));
-          workspace.setPresetThumbnails(renderPartThumbnails(scene.gl, PART_IDS));
-        });
-      }
     },
     deactivate() {
       tool.deactivate();
@@ -880,6 +887,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       tool.sync();
       return result.ok;
     },
+    requestThumbnails,
     hintKey(prefix) {
       return `${prefix}.builder.${tool.builderHintKey()}`;
     },

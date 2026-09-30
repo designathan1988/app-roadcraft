@@ -28,7 +28,17 @@ const OUTLINES: Readonly<Record<PlanShapeId, readonly (readonly [number, number]
   chamfered: [[0.08, 0.16], [0.6, 0.16], [0.92, 0.5], [0.92, 0.84], [0.08, 0.84]],
 };
 
+/**
+ * Drawn once per shape and size. These are asked for on every redraw of the
+ * tray, and a canvas drawn and encoded to PNG is far too expensive to repeat:
+ * it was the whole game's frame budget, sixty times a second.
+ */
+const CACHE = new Map<string, string>();
+
 export function planSwatch(shape: PlanShapeId, width = 148, height = 78, dpr = 2): string {
+  const key = `${shape}|${width}x${height}@${dpr}`;
+  const cached = CACHE.get(key);
+  if (cached !== undefined) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = width * dpr;
   canvas.height = height * dpr;
@@ -73,5 +83,7 @@ export function planSwatch(shape: PlanShapeId, width = 148, height = 78, dpr = 2
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  return canvas.toDataURL('image/png');
+  const url = canvas.toDataURL('image/png');
+  CACHE.set(key, url);
+  return url;
 }

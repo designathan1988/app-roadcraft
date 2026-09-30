@@ -212,7 +212,13 @@ function draw(ctx: CanvasRenderingContext2D, finish: Finish, size: number): void
   }
 }
 
+/** Drawn once per finish: the tray asks for these on every redraw. */
+const CACHE = new Map<string, string>();
+
 export function materialSwatch(finish: Finish, size = 56, dpr = 2): string {
+  const key = `${finish}|${size}@${dpr}`;
+  const cached = CACHE.get(key);
+  if (cached !== undefined) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = size * dpr;
   canvas.height = size * dpr;
@@ -220,5 +226,7 @@ export function materialSwatch(finish: Finish, size = 56, dpr = 2): string {
   if (!ctx) return '';
   ctx.scale(dpr, dpr);
   draw(ctx, finish, size);
-  return canvas.toDataURL('image/png');
+  const url = canvas.toDataURL('image/png');
+  CACHE.set(key, url);
+  return url;
 }

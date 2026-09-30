@@ -75,6 +75,12 @@ export interface BuilderState {
 }
 
 export interface BuilderActions {
+  /**
+   * Asks for pictures of the parts a gallery is about to show. They arrive
+   * through `setPresetThumbnails` a few per frame: a gallery of eighty
+   * pictures taken at once freezes the frame it is opened on.
+   */
+  requestThumbnails(ids: readonly string[]): void;
   undo(): void;
   redo(): void;
   setCategory(id: BuilderCategoryId): void;
@@ -594,10 +600,41 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   /** Tier 3: the gallery of whatever the chosen sub-tool opens. */
   function renderTier3(state: BuilderState): void {
+    // Rebuilding the gallery means rebuilding every tile in it, and this runs
+    // on every frame the Builder is up: the signature is what keeps the frame
+    // from being spent on buttons that have not changed.
+    const signature = [
+      openGallery ?? '',
+      state.tool,
+      state.armed,
+      state.material?.finish ?? '',
+      state.material?.colour ?? '',
+      state.pattern ?? '',
+      state.scope,
+      state.roof?.pitch ?? '',
+      state.roof?.ridge ?? '',
+      state.roof?.fall ?? '',
+      state.userBlueprints.length,
+      thumbnails.size,
+    ].join('|');
+    if (tier3.dataset['signature'] === signature) return;
+    tier3.dataset['signature'] = signature;
     tier3.innerHTML = '';
     // A plan in progress does not take the pictures away: the controls for
     // finishing it sit in the row above, and the player keeps their shelf.
     if (!openGallery) return;
+    // Whatever this gallery shows is worth a picture: ask for the ones that
+    // do not have one yet (the studio ignores the rest).
+    if (openGallery === 'models') {
+      actions.requestThumbnails([...BLUEPRINTS.map((bp) => bp.key), ...state.userBlueprints.map((bp) => bp.key)]);
+    } else {
+      const ids = BUILDER_GALLERIES[openGallery];
+      if (ids) actions.requestThumbnails(ids);
+      else if (openGallery === 'moreComponents') actions.requestThumbnails(ELEMENT_KINDS);
+      else if (openGallery === 'patterns') actions.requestThumbnails(FACADE_PATTERNS);
+      else if (openGallery === 'material' || openGallery === 'colour') actions.requestThumbnails(FINISHES);
+      else if (openGallery === 'roofShape') actions.requestThumbnails(['roofFlat', 'roofShed', 'roofGable', 'roofHip', 'roofSawtooth', 'roofTerrace']);
+    }
     const box = el('div', 'bw-gallery');
     const family = BUILDER_GALLERIES[openGallery];
     if (family) {
@@ -881,6 +918,18 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   }
 
   const renderTop = (state: BuilderState): void => {
+    // The bar is redrawn on every frame too: only what is on it decides.
+    const signature = [
+      state.floor.active,
+      state.floor.total,
+      state.snap,
+      state.grid,
+      state.hideOthers,
+      state.canUndo,
+      state.canRedo,
+    ].join('|');
+    if (top.dataset['signature'] === signature) return;
+    top.dataset['signature'] = signature;
     undo.innerHTML = builderIconSvg('undo', 16);
     redo.innerHTML = builderIconSvg('redo', 16);
     undo.disabled = !state.canUndo;
@@ -964,6 +1013,8 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     groupsRow.dataset['signature'] = '';
     toolsRow.dataset['signature'] = '';
     familiesRow.dataset['signature'] = '';
+    tier3.dataset['signature'] = '';
+    top.dataset['signature'] = '';
     (simMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.simulation');
     (appMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.app');
     if (lastState) refresh(lastState);
@@ -991,7 +1042,10 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     root,
     setPresetThumbnails(images) {
       for (const [key, url] of images) thumbnails.set(key, url);
-      if (openGallery === 'models') renderDock(lastState);
+      // Whatever gallery is open is the one that asked: redraw it, or the
+      // pictures arrive with nothing to put them on (the game only draws on
+      // demand, so waiting for the next frame can be waiting a long time).
+      renderDock(lastState);
     },
   };
 }

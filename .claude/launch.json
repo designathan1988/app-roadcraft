@@ -4,21 +4,46 @@
     {
       "name": "roadcraft-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5173,
       "autoPort": true
     },
     {
       "name": "roadperf-build-a",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "preview", "--config", "C:/Users/jonathanrodriguesti/AppData/Local/Temp/claude/C--Users-jonathanrodriguesti-Desktop-Projetos-Road/2a3b216e-82fc-4b65-9f20-fc634724b40b/scratchpad/ab/vite.a.config.mjs"],
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--config",
+        "C:/Users/jonathanrodriguesti/AppData/Local/Temp/claude/C--Users-jonathanrodriguesti-Desktop-Projetos-Road/2a3b216e-82fc-4b65-9f20-fc634724b40b/scratchpad/ab/vite.a.config.mjs"
+      ],
       "port": 4301
     },
     {
       "name": "roadperf-build-b",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "preview", "--config", "C:/Users/jonathanrodriguesti/AppData/Local/Temp/claude/C--Users-jonathanrodriguesti-Desktop-Projetos-Road/2a3b216e-82fc-4b65-9f20-fc634724b40b/scratchpad/ab/vite.b.config.mjs"],
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--config",
+        "C:/Users/jonathanrodriguesti/AppData/Local/Temp/claude/C--Users-jonathanrodriguesti-Desktop-Projetos-Road/2a3b216e-82fc-4b65-9f20-fc634724b40b/scratchpad/ab/vite.b.config.mjs"
+      ],
       "port": 4302
+    },
+    {
+      "name": "roadcraft-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--port",
+        "5199",
+        "--strictPort"
+      ],
+      "port": 5199
     }
   ]
 }
