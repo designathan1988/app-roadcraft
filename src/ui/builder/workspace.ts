@@ -399,9 +399,14 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     root.dataset['dock'] = folded ? 'folded' : 'open';
   };
 
-  const closeGalleryAnd = (run: () => void): (() => void) => () => {
+  /**
+   * Runs a gallery's choice and stays where the player is. The pictures are
+   * their shelf, not a door that shuts behind them: choosing a window used to
+   * close the gallery, so the second window meant finding the family again.
+   * The family's own button is what closes it, or another family opens.
+   */
+  const chooseInGallery = (run: () => void): (() => void) => () => {
     run();
-    openGallery = null;
     renderDock(lastState);
   };
 
@@ -590,7 +595,9 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   /** Tier 3: the gallery of whatever the chosen sub-tool opens. */
   function renderTier3(state: BuilderState): void {
     tier3.innerHTML = '';
-    if (!openGallery || state.planning) return;
+    // A plan in progress does not take the pictures away: the controls for
+    // finishing it sit in the row above, and the player keeps their shelf.
+    if (!openGallery) return;
     const box = el('div', 'bw-gallery');
     const family = BUILDER_GALLERIES[openGallery];
     if (family) {
@@ -599,7 +606,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
         const on = state.tool === id || state.armed === id;
         const shape = DRAW_SHAPES[id];
         const thumb = thumbnails.get(id) ?? (shape ? planSwatch(shape) : undefined);
-        grid.appendChild(tile(id, t(`builder.tool.${id}`), on, closeGalleryAnd(() => actions.chooseTool(id)), thumb));
+        grid.appendChild(tile(id, t(`builder.tool.${id}`), on, chooseInGallery(() => actions.chooseTool(id)), thumb));
       }
       box.append(grid, menuNote(`builder.family.${openGallery}`));
       // A window or a door also asks where it goes.
@@ -612,12 +619,12 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       for (const bp of BLUEPRINTS) {
         const label = bp.nameKey ? t(bp.nameKey) : bp.key;
         const thumb = thumbnails.get(bp.key);
-        const b = tile(bp.key, label, false, closeGalleryAnd(() => actions.choosePreset(bp.key)), thumb);
+        const b = tile(bp.key, label, false, chooseInGallery(() => actions.choosePreset(bp.key)), thumb);
         b.dataset['preset'] = bp.key;
         grid.appendChild(b);
       }
       for (const bp of state.userBlueprints) {
-        const b = tile('user', bp.name ?? bp.key, false, closeGalleryAnd(() => actions.chooseUserBlueprint(bp.key)));
+        const b = tile('user', bp.name ?? bp.key, false, chooseInGallery(() => actions.chooseUserBlueprint(bp.key)));
         b.dataset['userPreset'] = bp.key;
         (b.querySelector('.bw-tile-name') as HTMLElement).textContent = `${bp.name ?? bp.key} ×`;
         grid.appendChild(b);
@@ -645,7 +652,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
           'finish',
           t(`building.finish.${finish}`),
           on,
-          closeGalleryAnd(() => actions.chooseFinish(finish)),
+          chooseInGallery(() => actions.chooseFinish(finish)),
           materialSwatch(finish),
         ));
       }
@@ -655,7 +662,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
         b.type = 'button';
         b.style.setProperty('--swatch', hexOf(colour));
         b.setAttribute('aria-label', hexOf(colour));
-        b.onclick = closeGalleryAnd(() => actions.chooseColour(colour));
+        b.onclick = chooseInGallery(() => actions.chooseColour(colour));
         swatches.appendChild(b);
       }
       const custom = el('input', 'bw-swatch custom');
@@ -664,7 +671,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       swatches.appendChild(custom);
       const styles = el('div', 'bw-tiles');
       for (const style of STYLES) {
-        const b = tile('style', t(`building.style.${style.key}`), false, closeGalleryAnd(() => actions.chooseStyle(style.key)));
+        const b = tile('style', t(`building.style.${style.key}`), false, chooseInGallery(() => actions.chooseStyle(style.key)));
         const chips = el('span', 'chips');
         for (const c of [style.materials.wall.colour, style.materials.trim.colour, style.materials.roof.colour]) {
           const i = el('i');
@@ -685,7 +692,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
           pattern,
           t(`creator.pattern.${pattern}`),
           state.pattern === pattern,
-          closeGalleryAnd(() => actions.choosePattern(pattern)),
+          chooseInGallery(() => actions.choosePattern(pattern)),
           thumbnails.get(pattern),
         ));
       }
@@ -701,7 +708,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
           id,
           t(`builder.tool.${id}`),
           false,
-          closeGalleryAnd(() => actions.chooseTool(id)),
+          chooseInGallery(() => actions.chooseTool(id)),
           thumbnails.get(id),
         ));
       }
@@ -716,7 +723,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
           kind,
           t(`building.element.${kind}`),
           state.tool === kind,
-          closeGalleryAnd(() => actions.chooseTool(kind)),
+          chooseInGallery(() => actions.chooseTool(kind)),
           thumbnails.get(kind),
         ));
       }
