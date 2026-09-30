@@ -1,6 +1,7 @@
 import { TAU, clamp } from '@core/scalar';
 import { m } from '@world/units';
 import type { PedAgeClass } from './state';
+import { personHash } from '../people/view';
 
 /**
  * How a pedestrian behaves between the rules that keep it safe.
@@ -203,20 +204,8 @@ export const PED_BEHAVIOUR = {
   scanAhead: 8,
 } as const;
 
-/**
- * Integer avalanche over an id.
- *
- * The same construction the renderer uses for a pedestrian's appearance, kept
- * separately because `src/sim` may not import from `src/render`. Two copies of
- * five lines are cheaper than a shared module that would have to sit in
- * `core` and be a dependency of both.
- */
-export function pedHash(id: number): number {
-  let h = (id | 0) + 0x9e3779b9;
-  h = Math.imul(h ^ (h >>> 16), 0x21f0aaad);
-  h = Math.imul(h ^ (h >>> 15), 0x735a2d97);
-  return (h ^ (h >>> 15)) >>> 0;
-}
+/** Integer avalanche over an id (`personHash`, shared with the renderer). */
+export const pedHash = personHash;
 
 /** A byte of a hash as a fraction in [0, 1). */
 const frac = (h: number, shift: number): number => ((h >>> shift) & 0xff) / 256;

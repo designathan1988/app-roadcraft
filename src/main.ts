@@ -2911,7 +2911,7 @@ function updateStatus(): void {
   text('roadCount', roadCountLabel(doc.segments.size));
   text('nodeCount', nodeCountLabel(doc.nodes.size));
   text('vehicleCount', vehicleCountLabel(sim.vehicles.size));
-  text('pedCount', peopleCountLabel(sim.peds.size));
+  text('pedCount', peopleCountLabel(sim.pedViews.length));
   text('zoomReadout', `${Math.round(view.zoom * 100)}%`);
   // From the seam, not the flat camera: under 3D that one never moves, so
   // the readout sat frozen at its start position through every pan and zoom.

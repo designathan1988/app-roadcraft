@@ -3,7 +3,7 @@ import { type Vec2, addScaled, angleOf, dist, lerpVec, perp } from '@core/vec2';
 import type { Frame } from '@core/polyline';
 import type { SimWorld } from '@sim/world';
 import type { Kinematics, Vehicle } from '@sim/vehicles/state';
-import type { Ped } from '@sim/peds/state';
+import type { PedView } from '@sim/people/view';
 import { HEADING_CHORD, chordHeading } from '@world/heading';
 
 export interface Pose {
@@ -181,8 +181,7 @@ function lerpAngle(from: number, to: number, t: number): number {
  * simulation now owns a world position and a heading turned at a human rate
  * (`settlePose`), and this only blends them.
  */
-export function pedPose(w: SimWorld, p: Ped, alpha: number): Pose | null {
-  if (!w.sidewalks.edges.has(p.edge)) return null;
+export function pedPose(p: PedView, alpha: number): Pose {
   const t = clamp(alpha, 0, 1);
   const now = { x: p.x, y: p.y };
   const before = { x: p.prev.x, y: p.prev.y };

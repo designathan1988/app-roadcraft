@@ -1,5 +1,4 @@
-import { SIT_DOWN_SECONDS, STAND_UP_SECONDS } from '@sim/peds/activities';
-import type { Ped } from '@sim/peds/state';
+import { SIT_DOWN_SECONDS, STAND_UP_SECONDS, type PedView } from '@sim/people/view';
 import { DT } from '@sim/params';
 import { m } from '@world/units';
 import {
@@ -375,7 +374,7 @@ const approach = (dt: number, time: number): number => 1 - Math.exp(-dt / time);
 export const gaitHeading = (g: Gait): number => g.base + g.lean;
 
 /** Velocity of the drawn body over the last simulation tick, m/s. */
-function drawnVelocity(ped: Ped): { x: number; y: number } {
+function drawnVelocity(ped: PedView): { x: number; y: number } {
   const x = (ped.x - ped.prev.x) / m(1) / DT;
   const y = (ped.y - ped.prev.y) / m(1) / DT;
   if (Math.hypot(x, y) <= JUMP) return { x, y };
@@ -383,7 +382,7 @@ function drawnVelocity(ped: Ped): { x: number; y: number } {
   return { x: Math.cos(ped.heading) * v, y: Math.sin(ped.heading) * v };
 }
 
-export function createGait(ped: Ped, time: number, heading: number, hash: number): Gait {
+export function createGait(ped: PedView, time: number, heading: number, hash: number): Gait {
   const v = drawnVelocity(ped);
   const speed = Math.hypot(v.x, v.y);
   return {
@@ -408,21 +407,20 @@ function play(g: Gait, key: PlayKey, phase = 0, fade = FADE): void {
  * are doing: talking or listening with their party, reading a phone,
  * looking round, or simply standing, each with a phase of their own.
  */
-function standingKey(ped: Ped, g: Gait, hash: number): Single {
-  const act = ped.activity;
+function standingKey(ped: PedView, g: Gait, hash: number): Single {
+  const act = ped.gesture;
   if (act?.kind === 'talk' && act.phase === 'hold') {
     // One speaks at a time, and the turn passes round the party.
     const turn = Math.floor((ped.age + (ped.party.id % 7) * 1.3) / 6.5) % Math.max(1, ped.party.size);
     return turn === ped.rank ? 'talk' : 'listen';
   }
   if (act?.kind === 'phone') return 'phone';
-  const lookFor: unknown = act?.kind === 'look' ? act : ped.state === 'WaitAtKerb' && (hash & 3) === 1 &&
-    ped.waited > 1.5 ? ped.route[0] : null;
+  const lookFor: unknown = act?.kind === 'look' ? act : (hash & 3) === 1 && ped.kerbWait > 1.5 ? ped.waitingFor : null;
   if (lookFor !== null && lookFor !== undefined) {
     if (g.looked !== lookFor) { g.looked = lookFor; return 'look'; }
     if (g.cur.key === 'look' && g.cur.phase < 1) return 'look';
   }
-  if (ped.state === 'WaitAtKerb' && (hash & 3) === 0 && ped.waited > 2.5) return 'phone';
+  if ((hash & 3) === 0 && ped.kerbWait > 2.5) return 'phone';
   return 'idle';
 }
 
@@ -431,7 +429,7 @@ function standingKey(ped: Ped, g: Gait, hash: number): Single {
  * interpolated). `heading` is the simulation's, interpolated; `size` is the
  * body's scale, metres per model metre.
  */
-export function stepGait(g: Gait, ped: Ped, clips: GaitClips, time: number, heading: number,
+export function stepGait(g: Gait, ped: PedView, clips: GaitClips, time: number, heading: number,
   size: number, hash: number): void {
   const dt = Math.min(Math.max(0, time - g.time), 0.2);
   g.time = time;
@@ -482,7 +480,7 @@ export function stepGait(g: Gait, ped: Ped, clips: GaitClips, time: number, head
   const turned = Math.abs(wrap(drawn - g.drawn));
   g.drawn = drawn;
 
-  const act = ped.activity;
+  const act = ped.gesture;
   const elder = ped.ageClass === 'elder';
   const cur = g.cur;
   const isGait = cur.key === 'loco' || cur.key === 'start' || cur.key === 'stop';
@@ -528,7 +526,7 @@ export function stepGait(g: Gait, ped: Ped, clips: GaitClips, time: number, head
 }
 
 /** The branch of `stepGait` for a body not going anywhere: turning, settling, or standing. */
-function standing(g: Gait, ped: Ped, clips: GaitClips, dt: number, turned: number, spin: boolean,
+function standing(g: Gait, ped: PedView, clips: GaitClips, dt: number, turned: number, spin: boolean,
   isTurn: boolean, hash: number, turnSign: number): void {
   const cur = g.cur;
   if (spin || (isTurn && g.settling < TURN_SETTLE)) {
@@ -569,7 +567,7 @@ function standing(g: Gait, ped: Ped, clips: GaitClips, dt: number, turned: numbe
 }
 
 /** The moving branch of `stepGait`: set off, walk or run, or stop. */
-function moving(g: Gait, ped: Ped, clips: GaitClips, dt: number, speed: number, size: number,
+function moving(g: Gait, ped: PedView, clips: GaitClips, dt: number, speed: number, size: number,
   hash: number, elder: boolean): void {
   g.settling = 0;
   const cur = g.cur;

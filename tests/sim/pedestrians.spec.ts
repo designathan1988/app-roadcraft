@@ -10,10 +10,10 @@ import { SimWorld } from '@sim/world';
 import { step } from '@sim/pipeline';
 import { DT, PED } from '@sim/params';
 import { hashSim } from '@sim/snapshot';
-import { pedPose } from '@sim/pose';
 import { PED_BEHAVIOUR } from '@sim/peds/behaviour';
 import { PERSON_RELEASED_SPACING } from '@sim/peds/clearance';
 import type { Ped } from '@sim/peds/state';
+import { pedPoseOf } from './support/bodies';
 
 /**
  * The crowd, exercised on a network the editor could have drawn.
@@ -166,7 +166,7 @@ describe('pedestrians', () => {
         // across; what must never happen is somebody walking a footway
         // standing in the road, which is what the steering clamp guarantees.
         if (edge.kind !== 'walk') continue;
-        const pose = pedPose(sim, p, 1);
+        const pose = pedPoseOf(sim, p);
         if (pose && surfaces.some((poly) => pointInPolygon(pose.p, poly))) intrusions++;
       }
     });
@@ -285,7 +285,7 @@ describe('pedestrians', () => {
     let pairs = 0;
     run(fixture, 90, (sim) => {
       const positions = sim.pedsInIdOrder()
-        .map((ped) => pedPose(sim, ped, 1)?.p)
+        .map((ped) => pedPoseOf(sim, ped)?.p)
         .filter((position) => position !== null && position !== undefined);
       for (let i = 0; i < positions.length; i++) {
         for (let j = i + 1; j < positions.length; j++) {
@@ -316,7 +316,7 @@ describe('pedestrians', () => {
     let minimum = Infinity;
     run(fixture, 90, (sim) => {
       for (const ped of sim.pedsInIdOrder()) {
-        const at = pedPose(sim, ped, 1)?.p;
+        const at = pedPoseOf(sim, ped)?.p;
         if (!at) continue;
         for (const column of columns) {
           minimum = Math.min(minimum, Math.hypot(at.x - column.x, at.y - column.y));

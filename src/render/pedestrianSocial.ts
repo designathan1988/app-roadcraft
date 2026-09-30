@@ -1,5 +1,4 @@
-import { pedHash } from '@sim/peds/behaviour';
-import type { Ped } from '@sim/peds/state';
+import { personHash, type PedView } from '@sim/people/view';
 import { m } from '@world/units';
 
 export interface SocialCue {
@@ -15,15 +14,15 @@ const angleDelta = (from: number, to: number): number =>
   Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
 /** A party member is an id offset from the party's first pedestrian. */
-export function socialCue(ped: Ped, members: ReadonlyMap<number, Ped>, time: number): SocialCue {
+export function socialCue(ped: PedView, members: ReadonlyMap<number, PedView>, time: number): SocialCue {
   if (ped.party.size < 2) return NONE;
 
-  let partner: Ped | undefined;
+  let partner: PedView | undefined;
   let partnerDistance = Infinity;
   for (let rank = 0; rank < ped.party.size; rank++) {
     if (rank === ped.rank) continue;
     const other = members.get(ped.party.id + rank);
-    if (!other || other.party !== ped.party || other.edge !== ped.edge || other.entry !== ped.entry) continue;
+    if (!other || other.party.id !== ped.party.id || other.stretch !== ped.stretch) continue;
     const distance = Math.hypot(other.x - ped.x, other.y - ped.y);
     if (distance < partnerDistance && distance < m(2)) {
       partner = other;
@@ -36,16 +35,16 @@ export function socialCue(ped: Ped, members: ReadonlyMap<number, Ped>, time: num
   const pair = members.get(ped.party.id + pairRank);
   const dx = partner.x - ped.x;
   const dy = partner.y - ped.y;
-  const pulse = 0.5 + 0.5 * Math.sin(time * 1.1 + (pedHash(ped.party.id) % 97) * 0.13);
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.1 + (personHash(ped.party.id) % 97) * 0.13);
   const conversation = Math.max(0, (pulse - 0.25) / 0.75);
   const proximity = Math.max(0, 1 - partnerDistance / m(2));
   const gaze = angleDelta(ped.heading, Math.atan2(dy, dx));
   const gazeYaw = Math.max(-0.22, Math.min(0.22, gaze)) * conversation * proximity;
   const talkWeight = conversation * proximity *
-    (0.7 + 0.3 * Math.sin(time * 2.2 + pedHash(ped.id) % 19));
+    (0.7 + 0.3 * Math.sin(time * 2.2 + personHash(ped.id) % 19));
 
-  if (!pair || pair !== partner || ped.state !== 'Walking' || pair.state !== 'Walking' ||
-      ped.v < m(0.3) || pair.v < m(0.3) || ped.pause > 0 || pair.pause > 0 ||
+  if (!pair || pair !== partner || !ped.walking || !pair.walking ||
+      ped.v < m(0.3) || pair.v < m(0.3) ||
       Math.abs(angleDelta(ped.heading, pair.heading)) > 0.35 ||
       partnerDistance < m(0.28) || partnerDistance > m(1.05)) {
     return { gazeYaw, talkWeight, holdSide: 0, holdWeight: 0 };

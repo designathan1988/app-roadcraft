@@ -1,6 +1,7 @@
 import type { SimWorld } from '../world';
 import { emptyCrossingState, type CrossingOccupant, type CrossingState } from '../crossings/state';
-import type { Ped } from './state';
+import type { Ped, PedActivity } from './state';
+import type { GestureView, PedGround } from '../people/view';
 import type { SidewalkEdge } from './sidewalk';
 
 /** Below this pace somebody on a crossing is standing, not walking. */
@@ -65,5 +66,69 @@ export function publishCrossingStates(w: SimWorld): void {
     if (!state) continue;
     if (edge.kind === 'crossing') state.demand = true;
     if (p.state === 'WaitAtKerb') state.longestWait = Math.max(state.longestWait, p.waited);
+  }
+}
+
+/** One gesture object per activity, so a renderer sees a new gesture only when there is one. */
+const gestures = new WeakMap<PedActivity, GestureView>();
+
+function gestureOf(activity: PedActivity | null): GestureView | null {
+  if (!activity) return null;
+  let gesture = gestures.get(activity);
+  if (!gesture) {
+    gesture = { kind: activity.kind, phase: activity.phase, t: activity.t };
+    gestures.set(activity, gesture);
+  }
+  gesture.phase = activity.phase;
+  gesture.t = activity.t;
+  return gesture;
+}
+
+const groundOf = (edge: SidewalkEdge): PedGround =>
+  edge.kind === 'access' ? 'open' : edge.kind === 'crossing' ? 'crossing' : 'footway';
+
+/**
+ * The legacy model's answer to `SimWorld.pedViews`: one view per person on a
+ * known edge, in id order, the same object for an id for as long as it lives.
+ */
+export function publishPedViews(w: SimWorld): void {
+  const views = w.pedViews;
+  const byId = w.pedViewById;
+  views.length = 0;
+  for (const p of w.pedsInIdOrder()) {
+    const edge = w.sidewalks.edges.get(p.edge);
+    if (!edge) continue;
+    let view = byId.get(p.id);
+    if (!view) {
+      view = {
+        id: p.id, x: 0, y: 0, heading: 0, prev: { x: 0, y: 0, heading: 0 }, v: 0, turnV: 0, age: 0,
+        ageClass: p.ageClass, gender: p.gender, party: p.party, rank: p.rank,
+        ground: 'footway', segment: undefined, stretch: '', walking: false, kerbWait: 0, waitingFor: null, gesture: null,
+      };
+      byId.set(p.id, view);
+    }
+    view.x = p.x;
+    view.y = p.y;
+    view.heading = p.heading;
+    view.prev.x = p.prev.x;
+    view.prev.y = p.prev.y;
+    view.prev.heading = p.prev.heading;
+    view.v = p.v;
+    view.turnV = p.turnV;
+    view.age = p.age;
+    view.party = p.party;
+    view.rank = p.rank;
+    view.ground = groundOf(edge);
+    view.segment = edge.segment;
+    view.stretch = `${p.edge}|${p.entry}`;
+    view.walking = p.state === 'Walking' && p.pause <= 0;
+    const waiting = p.state === 'WaitAtKerb';
+    view.kerbWait = waiting ? p.waited : 0;
+    view.waitingFor = waiting ? p.route[0] ?? null : null;
+    view.gesture = gestureOf(p.activity);
+    views.push(view);
+  }
+  if (byId.size > views.length) {
+    for (const id of byId.keys()) if (!w.peds.has(id)) byId.delete(id);
   }
 }

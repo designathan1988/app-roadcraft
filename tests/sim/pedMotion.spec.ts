@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { step } from '@sim/pipeline';
 import { DT } from '@sim/params';
-import { pedPose } from '@sim/pose';
 import { PED_BEHAVIOUR } from '@sim/peds/behaviour';
-import { LAYOUTS, fixtureDoc, layoutDoc, simOf } from './support/bodies';
+import { LAYOUTS, fixtureDoc, layoutDoc, pedPoseOf, simOf } from './support/bodies';
 
 /**
  * PEOPLE WALK; THEY DO NOT MARCH, TWITCH OR SNAP.
@@ -47,7 +46,7 @@ describe('pedestrian motion', () => {
       sim.clock.run(Math.round(120 / DT), () => {
         step(sim, { traffic: true, pedestrians: true });
         for (const p of sim.peds.values()) {
-          const pose = pedPose(sim, p, 1);
+          const pose = pedPoseOf(sim, p);
           if (!pose) continue;
           ticks++;
           const before = last.get(p.id);

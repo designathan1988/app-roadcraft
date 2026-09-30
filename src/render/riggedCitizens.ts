@@ -5,8 +5,7 @@ import {
 } from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
-import { pedHash } from '@sim/peds/behaviour';
-import type { Ped, PedParty } from '@sim/peds/state';
+import { personHash, type PartyView, type PedView } from '@sim/people/view';
 import { DT } from '@sim/params';
 import { m } from '@world/units';
 import { CROWD, CROWD_IDS, CastingRegistry, type CastingContext, type Company } from './citizenCasting';
@@ -90,7 +89,7 @@ interface CitizenBatch {
 }
 
 /** The company a walker is dressed with (`citizenCasting.codesFor`): their party's kind, or alone. */
-export function companyOf(party: Pick<PedParty, 'size' | 'archetype'>): Company {
+export function companyOf(party: Pick<PartyView, 'size' | 'archetype'>): Company {
   return party.size > 1 ? party.archetype : 'solo';
 }
 
@@ -133,7 +132,7 @@ interface FacialExpression {
 
 /** Each person carries a quiet, deterministic facial beat rather than a shared loop. */
 function facialExpression(seed: number, time: number, activity?: string): FacialExpression {
-  const hash = pedHash(seed ^ 0x4c9e3721);
+  const hash = personHash(seed ^ 0x4c9e3721);
   const blinkPhase = (time * (0.72 + ((hash >>> 8) & 15) * 0.018) + (hash & 255) / 255) % 1;
   const blink = blinkPhase > 0.93 ? Math.sin((blinkPhase - 0.93) / 0.07 * Math.PI) : 0;
   const talking = activity === 'talk' ? 0.32 + 0.25 * Math.sin(time * 5 + (hash >>> 16)) : 0;
@@ -386,7 +385,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   const slots: Promise<void>[] = [Promise.resolve(), Promise.resolve(), Promise.resolve()];
   let nextSlot = 0;
   const resources = new Set<{ dispose(): void }>();
-  const motion = new WeakMap<Ped, Gait>();
+  const motion = new WeakMap<PedView, Gait>();
   const plays: GaitPlay[] = [];
   const transform = new Object3D();
   const matrix = new Matrix4();
@@ -588,8 +587,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
      * round by the angle turned, and the stands, talk, phone and bench.
      */
     /** `ground`: the footway's gradient under the walker, so both feet stand on it (`groundShear.ts`). */
-    draw(ped: Ped, x: number, y: number, heading: number, deck: number, alpha: number, ground: Gradient | null = null) {
-      const hash = pedHash(ped.id);
+    draw(ped: PedView, x: number, y: number, heading: number, deck: number, alpha: number, ground: Gradient | null = null) {
+      const hash = personHash(ped.id);
       const body = bodyFor({ seed: ped.id, gender: ped.gender, ageClass: ped.ageClass, company: companyOf(ped.party),
         companyId: ped.party.id, hasChild: ped.party.hasChild, x, y });
       if (!body) return;
@@ -621,7 +620,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         mixWeights.push(play.weight);
       }
       emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), 0, ground,
-        facialExpression(ped.id, time, ped.activity?.kind));
+        facialExpression(ped.id, time, ped.gesture?.kind));
     },
     /**
      * Somebody in or on a vehicle, or stepping between a vehicle and the
@@ -651,7 +650,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         readonly distance?: number }[],
       lean = 0, maxScale = Infinity, fromGround: boolean | 'pelvisOver' = false, fixedScale = 0,
       helmet: Matrix4 | null = null): number {
-      const hash = pedHash(identity.seed);
+      const hash = personHash(identity.seed);
       const body = bodyFor({ ...identity, helmet: helmet !== null, x: pelvisX, y: pelvisY });
       if (!body) return 0;
       const batch = batches.get(body.index);

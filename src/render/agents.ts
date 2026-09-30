@@ -1318,22 +1318,21 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       // more than the entire fleet does.
       if (band >= 1) {
         let pedCount = 0;
-        for (const ped of world.pedsInIdOrder()) {
+        for (const ped of world.pedViews) {
           if (pedCount >= MAX_PEDS) break;
-          const pose = pedPose(world, ped, alpha);
-          if (!pose) continue;
-          const edge = world.sidewalks.edges.get(ped.edge);
-          const open = edge?.kind === 'access';
-          const land = open && groundAt ? groundAt : (gx: number, gy: number) => elevationAt(world, gx, gy, edge?.segment);
+          const pose = pedPose(ped, alpha);
+          const open = ped.ground === 'open';
+          const segment = ped.segment;
+          const land = open && groundAt ? groundAt : (gx: number, gy: number) => elevationAt(world, gx, gy, segment);
           const deck = open ? land(pose.p.x, pose.p.y) + m(0.04)
-            : elevationAt(world, pose.p.x, pose.p.y, edge?.segment) +
-              (edge?.kind === 'crossing' ? 0 : FOOTWAY_RISE);
+            : elevationAt(world, pose.p.x, pose.p.y, segment) +
+              (ped.ground === 'crossing' ? 0 : FOOTWAY_RISE);
           if (options.pedestrianVisible && !options.pedestrianVisible(pose.p.x, pose.p.y, deck)) continue;
           frameAt(pose.p.x, pose.p.y, pose.angle, deck);
           // The rise is the same on both sides of the difference, so the
           // gradient is the road's own under the walker.
           const ground = groundGradient(land,
-            pose.p.x, pose.p.y, deck - (open ? m(0.04) : edge?.kind === 'crossing' ? 0 : FOOTWAY_RISE));
+            pose.p.x, pose.p.y, deck - (open ? m(0.04) : ped.ground === 'crossing' ? 0 : FOOTWAY_RISE));
           pedestrians.draw(ped, pose.p.x, pose.p.y, pose.angle, deck, alpha, ground);
           pedCount++;
         }

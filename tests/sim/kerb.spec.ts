@@ -5,7 +5,7 @@ import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { SimWorld } from '@sim/world';
 import { step } from '@sim/pipeline';
-import { pedPose, vehiclePose } from '@sim/pose';
+import { vehiclePose } from '@sim/pose';
 import { DT } from '@sim/params';
 import { spawnVehicle } from '@sim/vehicles/spawn';
 import { stepLaneChange } from '@sim/vehicles/laneChange';
@@ -16,6 +16,7 @@ import { levelPolygons } from '@world/surfaces';
 import { pointInPolygon } from '@core/polygon';
 import type { MultiPoly } from '@core/clipper';
 import type { Vec2 } from '@core/vec2';
+import { pedPoseOf } from './support/bodies';
 
 /**
  * NOBODY DRIVES ON THE PAVEMENT.
@@ -249,7 +250,7 @@ describe('the kerb', () => {
         // and clearing one are all states in which being on the asphalt is
         // the correct thing to be doing.
         if (ped.state !== 'Walking') continue;
-        const pose = pedPose(sim, ped, 1);
+        const pose = pedPoseOf(sim, ped);
         if (!pose) continue;
         if (!onSurface(asphalt, pose.p)) continue;
         offences++;

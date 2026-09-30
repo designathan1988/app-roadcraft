@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { step } from '@sim/pipeline';
 import { DT } from '@sim/params';
 import { pedPose } from '@sim/pose';
-import { pedHash } from '@sim/peds/behaviour';
+import { personHash, type PedView } from '@sim/people/view';
 import type { Ped } from '@sim/peds/state';
 import type { SimWorld } from '@sim/world';
 import { m } from '@world/units';
@@ -39,8 +39,8 @@ export const GAIT_CLIPS: Readonly<Record<'male' | 'female', GaitClips>> = {
 
 /** A gait controller as the renderer drives one: created once, stepped every frame. */
 export interface GaitController<S> {
-  create(ped: Ped, time: number, heading: number, hash: number): S;
-  step(state: S, ped: Ped, clips: GaitClips, time: number, heading: number, size: number, hash: number): void;
+  create(ped: PedView, time: number, heading: number, hash: number): S;
+  step(state: S, ped: PedView, clips: GaitClips, time: number, heading: number, size: number, hash: number): void;
   plays(state: S, clips: GaitClips, out: GaitPlay[]): void;
   heading(state: S): number;
 }
@@ -72,7 +72,7 @@ const MOVING = 0.15;
 const SLOW = 0.75;
 
 /** Body size the renderer gives an age class, near enough: a child is drawn about two thirds tall. */
-const sizeOf = (p: Ped): number => (p.ageClass === 'child' ? 0.7 : 1);
+const sizeOf = (p: PedView): number => (p.ageClass === 'child' ? 0.7 : 1);
 
 export function auditGait<S>(controller: GaitController<S>, seconds: number, seed = 3,
   onTick?: (sim: SimWorld) => void, breakdown?: Map<string, number>): GaitAudit {
@@ -91,11 +91,10 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
   sim.clock.run(Math.round(seconds / DT), () => {
     step(sim, { traffic: true, pedestrians: true });
     onTick?.(sim);
-    for (const ped of sim.peds.values()) {
-      const pose = pedPose(sim, ped, 1);
-      if (!pose) continue;
+    for (const ped of sim.pedViews) {
+      const pose = pedPose(ped, 1);
       const clips = GAIT_CLIPS[ped.gender === 'f' ? 'female' : 'male'];
-      const hash = pedHash(ped.id);
+      const hash = personHash(ped.id);
       const size = sizeOf(ped);
       let state = states.get(ped.id);
       if (!state) {
@@ -147,7 +146,7 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
           audit.unsteppedRotation += turned;
           if (breakdown && turned > 0) {
             const top = out.reduce((a, b) => (b.weight > a.weight ? b : a), out[0]!);
-            const key = `${top.name}|${ped.state}|${ped.activity ? ped.activity.kind + ':' + ped.activity.phase : '-'}|${Math.abs(ped.turnV) > 0.35 ? 'spin' : 'slowturn'}|${speed < 0.06 ? 'still' : 'creep'}`;
+            const key = `${top.name}|${sim.peds.get(ped.id)?.state}|${ped.gesture ? ped.gesture.kind + ':' + ped.gesture.phase : '-'}|${Math.abs(ped.turnV) > 0.35 ? 'spin' : 'slowturn'}|${speed < 0.06 ? 'still' : 'creep'}`;
             breakdown.set(key, (breakdown.get(key) ?? 0) + turned);
           }
         }
@@ -158,7 +157,7 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
           audit.glideSeconds += DT;
           if (breakdown) {
             const top = out.reduce((a, b) => (b.weight > a.weight ? b : a), out[0]!);
-            const key = `G:${top.name}|${ped.state}|${ped.activity ? ped.activity.kind : '-'}|${speed < 0.5 ? 'slow' : speed < 1 ? 'mid' : 'fast'}`;
+            const key = `G:${top.name}|${sim.peds.get(ped.id)?.state}|${ped.gesture ? ped.gesture.kind : '-'}|${speed < 0.5 ? 'slow' : speed < 1 ? 'mid' : 'fast'}`;
             breakdown.set(key, (breakdown.get(key) ?? 0) + DT);
           }
         }

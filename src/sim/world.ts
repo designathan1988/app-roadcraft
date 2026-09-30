@@ -18,7 +18,8 @@ import { m } from '@world/units';
 import { facadeBays } from '@world/buildings/geometry';
 import { ACCESS_COMPONENTS } from '@world/buildings/foundation';
 import type { CrossingStates } from './crossings/state';
-import { publishCrossingStates } from './peds/publish';
+import { publishCrossingStates, publishPedViews } from './peds/publish';
+import type { PedView } from './people/view';
 /** The body class a signal plan is protected for: an ordinary car. */const CAR_CLASS: BodyClass = 1;
 
 /** A queue is counted this far back from the stop line. */
@@ -81,6 +82,13 @@ export class SimWorld {
    * end of its stage; the only pedestrian state read outside it.
    */
   readonly crossingStates: CrossingStates = new Map();
+  /**
+   * Every person as the renderer and the counters see them (`people/view.ts`),
+   * in id order, published at the end of each tick. The object for an id lives
+   * as long as the person.
+   */
+  readonly pedViews: PedView[] = [];
+  readonly pedViewById = new Map<number, PedView>();
   /** Stretch of each zebra that each movement drives over. */
   readonly crossingSpans = new CrossingSpans();
 
@@ -193,6 +201,8 @@ export class SimWorld {
     this.pedOccupancy.clear();
     this.pedWaiting.clear();
     this.crossingStates.clear();
+    this.pedViews.length = 0;
+    this.pedViewById.clear();
     this.lastAdmission.clear();
     this.mergeTurn.clear();
     this.segmentVolume.clear();
@@ -356,6 +366,7 @@ export class SimWorld {
     this.accessSignature = signature;
     // Relocated walkers change who waits where.
     publishCrossingStates(this);
+    publishPedViews(this);
     return true;
   }
 

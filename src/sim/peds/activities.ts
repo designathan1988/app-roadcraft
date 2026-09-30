@@ -1,4 +1,5 @@
 import { clamp } from '@core/scalar';
+import { SIT_DOWN_SECONDS, STAND_UP_SECONDS } from '../people/view';
 import { m } from '@world/units';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { signalPosts } from '@world/signalPosts';
@@ -169,9 +170,7 @@ function index(w: SimWorld): Index {
   return built;
 }
 
-/** Seconds the Rocketbox sit-down and stand-up take, per sex; the renderer plays them to this clock. */
-export const SIT_DOWN_SECONDS = { m: 2.9, f: 4.9 } as const;
-export const STAND_UP_SECONDS = { m: 2.5, f: 3.33 } as const;
+export { SIT_DOWN_SECONDS, STAND_UP_SECONDS };
 
 /** Chance a walker on a footway with a free bench ahead goes to sit on it. */
 const BENCH_CHANCE = { child: 0, adult: 0.16, elder: 0.45 } as const;

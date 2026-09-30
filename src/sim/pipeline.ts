@@ -12,7 +12,7 @@ import { stepDespawn, stepDispatch } from './vehicles/spawn';
 import { stepLaneChange } from './vehicles/laneChange';
 import { stepKerbStops } from './vehicles/kerbStops';
 import { releaseCrossing, stepPedestrians } from './peds/crossingFsm';
-import { publishCrossingStates } from './peds/publish';
+import { publishCrossingStates, publishPedViews } from './peds/publish';
 import { stepPedDispatch } from './peds/spawn';
 import { planFrom, reconsiderRoute, repairRoute } from './routing/router';
 import { snapshot, type Vehicle } from './vehicles/state';
@@ -140,6 +140,9 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
   }
   lap('8 audit');
 
+  // What the renderer and the counters see of the people this tick.
+  publishPedViews(w);
+
   // 9. time: the only writer of the clock. Everything above read this tick.
   w.clock.tick++;
 }
@@ -221,6 +224,7 @@ export function rebindPeds(w: SimWorld): void {
     else w.pedOccupancy.set(p.occupying, [p.id]);
   }
   publishCrossingStates(w);
+  publishPedViews(w);
 }
 
 /** How far an orphaned pedestrian may be carried to a surviving footway. */

@@ -1,5 +1,6 @@
 import type { CrossingId } from '../signals/plan';
 import type { SidewalkEdgeId, SidewalkNodeId } from './sidewalk';
+import { PARTY_ARCHETYPES, type PartyArchetype, type PersonAgeClass, type PersonGender } from '../people/view';
 
 export type PedId = number;
 
@@ -9,8 +10,8 @@ export type PedId = number;
  * rigged citizens a pedestrian is drawn as (`render/riggedCitizens.ts`) and
  * how it moves — a child's pace and gait, an elder's, an adult's.
  */
-export type PedAgeClass = 'child' | 'adult' | 'elder';
-export type PedGender = 'f' | 'm';
+export type PedAgeClass = PersonAgeClass;
+export type PedGender = PersonGender;
 
 /**
  * Explicit crossing states.
@@ -96,8 +97,7 @@ export interface PedActivity {
  * and children, a couple, friends of an age, colleagues, elderly friends -
  * never a child, a teenager and a pensioner thrown together at random.
  */
-export type PartyArchetype = 'solo' | 'family' | 'couple' | 'friends' | 'colleagues' | 'elders' | 'tourists';
-export const PARTY_ARCHETYPES: readonly PartyArchetype[] = ['solo', 'family', 'couple', 'friends', 'colleagues', 'elders', 'tourists'];
+export { PARTY_ARCHETYPES, type PartyArchetype };
 
 export interface PedParty {
   /** The pacer's id, and the seed every member's destination is drawn from. */
