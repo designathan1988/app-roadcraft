@@ -321,7 +321,7 @@ const CLICK_SLOP = 5;
 /** Camera turn per Q/E press, rad. */
 const KEY_TURN = Math.PI / 12;
 /** A camera orbit in progress: the pointer and where it last was, CSS px. */
-let orbiting: { id: number; last: Vec2 } | null = null;
+let orbiting: { id: number; last: Vec2; pressed: Vec2; moved: boolean; cancelOnClick: boolean } | null = null;
 /**
  * A node being dragged, with the document as it was when the drag began. The
  * live preview edits the document, and each step through a spot where an
@@ -837,24 +837,24 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
 
-  // The middle button - or Shift with the right one, for a trackpad - swings
-  // the camera round and over the centre of the view, in every tool.
-  if (e.pointerType === 'mouse' && (e.button === 1 || (e.button === 2 && e.shiftKey))) {
-    orbiting = { id: e.pointerId, last: { x: e.clientX - r.left, y: e.clientY - r.top } };
-    return;
-  }
-
-  if (e.pointerType === 'mouse' && e.button === 2) {
-    // The right button pans when dragged. A right CLICK - pressed and let go
-    // without moving - cancels whatever is in progress, in every tool. The
-    // cancel waits for the release so a road half placed can still be panned
-    // along: the middle button, which used to do that, now orbits.
+  // The mouse, as city builders have it: the right button dragged swings
+  // the camera round and over the centre of the view (Shift with it pans);
+  // a right CLICK - pressed and let go without moving - cancels whatever is
+  // in progress. The middle button dragged pans. Both work mid-gesture, so a
+  // road half placed can still be looked round.
+  if (e.pointerType === 'mouse' && e.button === 2 && !e.shiftKey) {
     if (tool === 'building' && buildings.cancelOperation()) {
       requestDraw();
       return;
     }
     const at = { x: e.clientX - r.left, y: e.clientY - r.top };
-    panning = { id: e.pointerId, grabbed: panAnchor(at.x, at.y), pressed: at, moved: false, cancelOnClick: gestureInProgress() };
+    orbiting = { id: e.pointerId, last: at, pressed: at, moved: false, cancelOnClick: gestureInProgress() };
+    return;
+  }
+
+  if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2)) {
+    const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+    panning = { id: e.pointerId, grabbed: panAnchor(at.x, at.y) };
     return;
   }
 
@@ -1063,6 +1063,10 @@ canvas.addEventListener('pointermove', (e) => {
   }
 
   if (orbiting && orbiting.id === e.pointerId) {
+    if (!orbiting.moved) {
+      if (Math.hypot(screen.x - orbiting.pressed.x, screen.y - orbiting.pressed.y) < CLICK_SLOP) return;
+      orbiting.moved = true;
+    }
     const dx = screen.x - orbiting.last.x;
     const dy = screen.y - orbiting.last.y;
     orbiting.last = screen;
@@ -1213,7 +1217,14 @@ function endPointer(e: PointerEvent): void {
       return;
     }
   }
-  if (orbiting?.id === e.pointerId) orbiting = null;
+  if (orbiting?.id === e.pointerId) {
+    const click = orbiting.cancelOnClick && !orbiting.moved;
+    orbiting = null;
+    if (click && !cancelled) {
+      cancelGestures();
+      return;
+    }
+  }
   if (terrainStroke?.pointer === e.pointerId) endTerrainStroke();
   if (tool === 'building') buildings.pointerUp(cancelled || wasPinching);
 
@@ -1402,6 +1413,19 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  // Delete removes what Inspect has picked: the road it shows.
+  if (!meta && (e.key === 'Delete' || e.key === 'Backspace') && tool === 'inspect' && selectedSegment !== null) {
+    e.preventDefault();
+    const id = selectedSegment;
+    (document.getElementById('closeInspector') as HTMLButtonElement).click();
+    mutate(() => {
+      doc.removeSegment(id);
+      doc.pruneOrphanNodes();
+      return true;
+    });
+    return;
+  }
+
   // Space pauses and resumes, as in every simulation game. A button the
   // player reached with the keyboard keeps Space for itself; one merely
   // clicked with the mouse (and so still focused) must not swallow it.
@@ -1443,8 +1467,9 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  // R is the building's rotation and nothing else; the road tool is the
+  // number row, which also picks the class (above).
   const shortcuts: Record<string, Tool> = {
-    r: 'road',
     u: 'upgrade',
     m: 'move',
     x: 'split',
@@ -2316,10 +2341,13 @@ const arrowPan = (e: KeyboardEvent): void => {
   const step = e.shiftKey ? 120 : 40;
   const { cssW: w, cssH: h } = surface;
   const along = (dx: number, dy: number): void => view.moveTo(view.toWorld(w / 2 + dx, h / 2 + dy, w, h));
-  if (e.key === 'ArrowLeft') along(-step, 0);
-  else if (e.key === 'ArrowRight') along(step, 0);
-  else if (e.key === 'ArrowUp') along(0, -step);
-  else if (e.key === 'ArrowDown') along(0, step);
+  // W A S D as well as the arrows, as in every city builder; never with
+  // Ctrl or Alt (Ctrl+S saves, Ctrl+D duplicates).
+  const key = e.ctrlKey || e.metaKey || e.altKey ? '' : e.key.toLowerCase();
+  if (e.key === 'ArrowLeft' || key === 'a') along(-step, 0);
+  else if (e.key === 'ArrowRight' || key === 'd') along(step, 0);
+  else if (e.key === 'ArrowUp' || key === 'w') along(0, -step);
+  else if (e.key === 'ArrowDown' || key === 's') along(0, step);
   else if (e.key === 'Home') {
     view.setOrbit(DEFAULT_AZIMUTH, DEFAULT_ELEVATION);
     fitView();
