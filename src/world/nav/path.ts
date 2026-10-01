@@ -24,6 +24,8 @@ export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: 
   cost: NavCost = () => 0, maxNodes = 20000): NavPath | null {
   if (st < 0 || gt < 0) return null;
   if (st === gt) return { tris: [st], portals: [], corners: [{ x: gx, y: gy, tri: 0 }] };
+  // Ground with no way between: known at once (`NavMesh.piece`).
+  if (mesh.piece[st] !== mesh.piece[gt]) return null;
   // A* over triangles; a triangle's position is the point it was entered at:
   // the point of the portal nearest where the walk came from, which keeps
   // costs close to walked distance. (The portal's middle, used before, lay

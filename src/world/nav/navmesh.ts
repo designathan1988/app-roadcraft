@@ -102,6 +102,13 @@ export class NavMesh {
   readonly portals: NavPortal[][];
   readonly crossings: readonly NavCrossingInput[];
   readonly count: number;
+  /**
+   * Per triangle: the connected piece of walkable ground it belongs to. Two
+   * triangles in different pieces have no route between them, known at once:
+   * a search for one used to expand thousands of triangles to find that out,
+   * one tick in eight, and those were the long ticks.
+   */
+  readonly piece: Int32Array;
   private readonly grid = new Map<number, number[]>();
   /** Every wall: the edges no portal leads through, 4 numbers each. */
   private readonly walls: number[] = [];
@@ -117,6 +124,24 @@ export class NavMesh {
     this.portals = portals;
     this.crossings = crossings;
     this.count = region.length;
+    this.piece = new Int32Array(this.count).fill(-1);
+    {
+      // Portals taken both ways: a piece may be too generous, never too strict.
+      const near: number[][] = Array.from({ length: this.count }, () => []);
+      for (let t = 0; t < this.count; t++) for (const p of portals[t]!) { near[t]!.push(p.to); near[p.to]?.push(t); }
+      let pieces = 0;
+      const stack: number[] = [];
+      for (let t0 = 0; t0 < this.count; t0++) {
+        if (this.piece[t0] !== -1) continue;
+        this.piece[t0] = pieces;
+        stack.push(t0);
+        while (stack.length) {
+          const t = stack.pop()!;
+          for (const u of near[t]!) if (this.piece[u] === -1) { this.piece[u] = pieces; stack.push(u); }
+        }
+        pieces++;
+      }
+    }
     for (let t = 0; t < this.count; t++) {
       for (let e = 0; e < 3; e++) {
         const o = t * 6;

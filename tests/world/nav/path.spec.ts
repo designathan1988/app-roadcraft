@@ -24,6 +24,17 @@ describe('navmesh paths', () => {
     expect(corners.at(-1)).toMatchObject({ x: 38, y: 38 });
   });
 
+  it('knows at once that two footways with no zebra between have no route', () => {
+    // Two footways across a road, and no crossing: two pieces of ground.
+    const footway = [[[[0, 0], [40, 0], [40, 4], [0, 4], [0, 0]]], [[[0, 16], [40, 16], [40, 20], [0, 20], [0, 16]]]];
+    const mesh = buildNavMesh({ layers: [footway], crossingLayers: [], road: [], crossings: [], obstacles: [], solids: [] });
+    const a = mesh.locate(2, 2), b = mesh.locate(38, 18), c = mesh.locate(38, 2);
+    expect(mesh.piece[a]).toBe(mesh.piece[c]);
+    expect(mesh.piece[a]).not.toBe(mesh.piece[b]);
+    expect(findPath(mesh, 2, 2, a, 38, 18, b)).toBeNull();
+    expect(findPath(mesh, 2, 2, a, 38, 2, c)).not.toBeNull();
+  });
+
   it('goes straight when the way is straight', () => {
     const mesh = buildNavMesh({ layers: [L], crossingLayers: [], road: [], crossings: [], obstacles: [], solids: [] });
     const path = findPath(mesh, 2, 2, mesh.locate(2, 2), 30, 2, mesh.locate(30, 2))!;
