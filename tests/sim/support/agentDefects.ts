@@ -23,7 +23,8 @@ import { fixtureDoc, LAYOUTS, layoutDoc } from './bodies';
  * - `back`, `side`, `jump`, `flip`: steps against the heading, sideways faster
  *   than a shuffle, teleports, side-to-side pops;
  * - `closest`: the nearest two bodies came, metres;
- * - `junction`: longest a junction had a queue at its line and let nobody in.
+ * - `junction`: longest a junction had a queue at its line and let nobody in;
+ * - `still`: longest any one vehicle stood without moving (a red included).
  */
 export interface AgentDefects {
   name: string;
@@ -38,6 +39,7 @@ export interface AgentDefects {
   flip: number;
   closest: number;
   junction: number;
+  still: number;
   /** Share of person-time given way to by everybody, and walking through people (the safety nets). */
   urgent: number;
   ghost: number;
@@ -122,7 +124,7 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
   const where = new Map<number, string>();
   const r: AgentDefects = {
     name: city.name, people: 0, vehicles: 0, zebraStand: 0, pavementStand: 0, fidgets: 0,
-    back: 0, side: 0, jump: 0, flip: 0, closest: Infinity, junction: 0, urgent: 0, ghost: 0, overlaps: 0,
+    back: 0, side: 0, jump: 0, flip: 0, closest: Infinity, junction: 0, still: 0, urgent: 0, ghost: 0, overlaps: 0,
   };
   let fidget = 0, personSeconds = 0;
   const ticks = Math.round(seconds / DT);
@@ -182,6 +184,7 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
       for (const q of inspectPeople(sim)) { if (q.urgent > 0) r.urgent += 1; if (q.ghost > 0) r.ghost += 1; }
     }
     if (i % 30 !== 0) continue;
+    for (const v of sim.vehicles.values()) r.still = Math.max(r.still, sim.clock.since(v.lastMovedTick));
     for (const [node, junction] of sim.graph.junctions) {
       const queued = junction.inbound.some((l) => { const h = sim.laneHead(l); return h && h.v < 0.1 && sim.lanelet(l)!.length - h.s < 20; });
       if (queued) r.junction = Math.max(r.junction, t - (lastEntry.get(node) ?? 0));
@@ -210,5 +213,5 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
 
 export function formatDefects(r: AgentDefects): string {
   const f = (x: number, d = 1) => x.toFixed(d);
-  return `${r.name.padEnd(18)} people ${String(r.people).padStart(3)} cars ${String(r.vehicles).padStart(3)} | zebra ${f(r.zebraStand)}s pavement ${f(r.pavementStand)}s fidget ${f(r.fidgets, 2)}/min | back ${r.back} side ${f(r.side, 3)}/min jump ${r.jump} flip ${f(r.flip, 3)}/min closest ${f(r.closest, 2)}m overlap ${f(r.overlaps, 3)}/min | junction ${f(r.junction, 0)}s | nets urgent ${f(r.urgent * 100, 2)}% ghost ${f(r.ghost * 100, 2)}%`;
+  return `${r.name.padEnd(18)} people ${String(r.people).padStart(3)} cars ${String(r.vehicles).padStart(3)} | zebra ${f(r.zebraStand)}s pavement ${f(r.pavementStand)}s fidget ${f(r.fidgets, 2)}/min | back ${r.back} side ${f(r.side, 3)}/min jump ${r.jump} flip ${f(r.flip, 3)}/min closest ${f(r.closest, 2)}m overlap ${f(r.overlaps, 3)}/min | junction ${f(r.junction, 0)}s still ${f(r.still, 0)}s | nets urgent ${f(r.urgent * 100, 2)}% ghost ${f(r.ghost * 100, 2)}%`;
 }

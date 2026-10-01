@@ -32,6 +32,9 @@ describe('agents in every city', () => {
       expect(r.overlaps).toBeLessThan(0.5);
       expect(r.ghost).toBeLessThan(0.005);
       expect(r.junction).toBeLessThan(60);
+      // No car stands longer than a signal cycle: the longest measured is a
+      // five-stage junction's red, 78 s; a frozen car would grow without end.
+      expect(r.still).toBeLessThan(100);
     }, 300_000);
   }
 });
