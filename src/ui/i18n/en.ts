@@ -34,6 +34,8 @@ export const EN: Dictionary = {
   'person.name': 'Name',
   'person.namePlaceholder': 'Name (optional)',
   'person.random': 'Random',
+  'person.walk': 'Walk',
+  'person.stand': 'Stand',
   'person.save': 'Save',
   'person.savedFlash': 'Saved',
   'person.new': 'New',

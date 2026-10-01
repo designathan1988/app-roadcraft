@@ -18,6 +18,8 @@ import type { BaseMeta, PeoplePacks } from './morph';
 
 export interface PeopleAssets {
   readonly packs: PeoplePacks;
+  /** The game_engine skeleton: names, parents, where each head is read from. */
+  readonly skeleton: SkeletonMeta;
   readonly bodyRange: readonly (readonly [number, number])[];
   readonly mesh: {
     readonly vertexCount: number;
@@ -31,8 +33,12 @@ export interface PeopleAssets {
   };
 }
 
-interface SkeletonMeta {
-  readonly bones: readonly { readonly name: string }[];
+export interface SkeletonMeta {
+  readonly bones: readonly {
+    readonly name: string;
+    readonly parent: string | null;
+    readonly head: { readonly strategy: string; readonly cubeName?: string; readonly vertexIndices?: readonly number[] };
+  }[];
   readonly weights: { readonly vertexCount: number; readonly layout: { readonly joints: { readonly byteOffset: number }; readonly weights: { readonly byteOffset: number } } };
 }
 
@@ -58,6 +64,7 @@ export function loadPeopleAssets(): Promise<PeopleAssets> {
     const groups = section('faceGroup');
     return {
       packs: { base, baseBin: baseData, macro, macroBin: macroData, local, localBin: localData, modifiers },
+      skeleton,
       bodyRange: base.vertexGroups['body'] ?? [[0, base.vertexCount - 1]],
       mesh: {
         vertexCount: base.vertexCount,

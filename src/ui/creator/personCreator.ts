@@ -22,6 +22,7 @@ export interface PersonPreviewPort {
   readonly ready: Promise<void>;
   show(person: PersonSpec): void;
   setLook(look: PersonLook): void;
+  setWalking(walking: boolean): void;
   turn(delta: number): void;
   zoom(delta: number): void;
   readonly height: number;
@@ -81,7 +82,19 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
   const canvas = el('canvas', 'pc-canvas');
   const status = el('div', 'pc-status');
   const heightTag = el('div', 'pc-height');
-  stage.append(canvas, status, heightTag);
+  // Walk on the spot: the person as the street will see them move.
+  const walkButton = el('button', 'pc-walk');
+  walkButton.type = 'button';
+  walkButton.setAttribute('aria-pressed', 'false');
+  let walking = false;
+  walkButton.addEventListener('click', () => {
+    walking = !walking;
+    walkButton.setAttribute('aria-pressed', String(walking));
+    walkButton.classList.toggle('active', walking);
+    walkButton.textContent = t(walking ? 'person.stand' : 'person.walk');
+    preview.setWalking(walking);
+  });
+  stage.append(canvas, status, heightTag, walkButton);
   const preview = host.preview(canvas);
   void preview.ready.then(() => {
     loaded = true;
@@ -352,6 +365,7 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     nameInput.placeholder = t('person.namePlaceholder');
     nameInput.setAttribute('aria-label', t('person.name'));
     randomButton.textContent = t('person.random');
+    walkButton.textContent = t(walking ? 'person.stand' : 'person.walk');
     saveButton.textContent = t('person.save');
     newButton.textContent = t('person.new');
     if (!loaded) status.textContent = t('person.loading');

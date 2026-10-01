@@ -142,6 +142,16 @@ export function clipTransferFor(rig: Object3D, mesh: SkinnedMesh, clip: LibraryC
   return transferOnto(rig, mesh, clip.source, amplitude);
 }
 
+/**
+ * Where each bone of a capture's avatar stands in its bind pose, metres, world:
+ * the posture every transfer measures from. A body built for these captures
+ * (`render/people/personRig.ts`) is put in the same posture before it is bound.
+ */
+export function captureBind(sex: WalkSex): ReadonlyMap<string, Vector3> {
+  const file = SOURCES[sex].file;
+  return new Map(file.bones.map((name, i) => [name, vector(file.bind[i]?.p ?? [0, 0, 0])]));
+}
+
 /** The neutral walk of one sex as a transfer source, for `strideShare`. */
 export const walkSource = (sex: WalkSex): Source => SOURCES[sex];
 

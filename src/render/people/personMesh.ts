@@ -225,8 +225,12 @@ export function facesFor(data: PersonMeshData, look: PersonLook, cut: Tailoring)
         else if (t <= leg) add('bottom', f);
       } else if (limb === 'arm') {
         // The sleeves are their own material: a plane across an arm, being
-        // infinite, would cut the trunk too.
-        if (t <= sleeve) add('sleeves', f);
+        // infinite, would cut the trunk too. A tank top has none: its
+        // armholes are cut on the trunk.
+        if (look.top === 'tank') {
+          // The shoulder's cloth goes with the trunk; the armhole planes cut it.
+          if (t <= 0.35) add('top', f);
+        } else if (t <= sleeve) add('sleeves', f);
       } else {
         // Trunk and neck together, cut by height alone: the neckline and the
         // waistband run along the mesh's horizontal loops.
@@ -239,16 +243,18 @@ export function facesFor(data: PersonMeshData, look: PersonLook, cut: Tailoring)
   return out;
 }
 
+/** How far from vertical a tank top's armhole leans, radians: out at the bottom. */
+const ARMHOLE_SLANT = (35 * Math.PI) / 180;
 /** Where the waistband sits between the hip joints (0) and the lowest spine joint (1). */
 const WAIST_SHARE = 0.4;
 /** Along-limb margin faces are kept past a cut, so the clipping plane always has cloth to cut. */
 const HEM_MARGIN = 0.18;
 /** Where a sleeve ends along the arm: 0 shoulder, 1 elbow, 2 wrist. */
-function sleeveEnd(look: PersonLook): number {
+export function sleeveEnd(look: PersonLook): number {
   return look.top === 'tank' ? -0.05 : look.top === 'tshirt' ? 0.42 : look.top === 'longsleeve' ? 1.9 : -1;
 }
 /** Where a leg ends along the leg: 0 hip, 1 knee, 2 ankle. */
-function legEnd(look: PersonLook): number {
+export function legEnd(look: PersonLook): number {
   return look.bottom === 'trousers' ? 1.93 : look.bottom === 'shorts' ? 0.62 : 0.12;
 }
 
@@ -258,7 +264,7 @@ function legEnd(look: PersonLook): number {
  * leg, each plane perpendicular to its limb. Measured on the MORPHED joints,
  * so they move with the body.
  */
-function hemPlanes(data: PersonMeshData, metres: Float32Array, look: PersonLook): { top: Plane[]; sleeves: Plane[]; bottom: Plane[] } {
+export function hemPlanes(data: PersonMeshData, metres: Float32Array, look: PersonLook): { top: Plane[]; sleeves: Plane[]; bottom: Plane[] } {
   const centre = (group: string): Vector3 => {
     const c = new Vector3();
     let n = 0;
@@ -289,9 +295,22 @@ function hemPlanes(data: PersonMeshData, metres: Float32Array, look: PersonLook)
   const sleeves: Plane[] = [];
   const bottom: Plane[] = [];
   if (look.top !== 'none') {
-    top.push(new Plane(new Vector3(0, -1, 0), neck), new Plane(new Vector3(0, 1, 0), -waist + 0.03));
+    // The waist is ONE cut: the top above it, the bottoms below, meeting
+    // exactly. An overlap put two copies of the same cloth in one place and
+    // they flickered against each other.
+    top.push(new Plane(new Vector3(0, -1, 0), neck), new Plane(new Vector3(0, 1, 0), -waist));
     const s = sleeveEnd(look);
     for (const side of ['l', 'r']) sleeves.push(across([`joint-${side}-shoulder`, `joint-${side}-elbow`, `joint-${side}-hand`], s));
+  }
+  // A tank top's armholes: through the shoulder, slanting out as they go down
+  // so the armpit stays covered. Only the trunk's cloth carries them.
+  if (look.top === 'tank') {
+    for (const side of ['l', 'r']) {
+      const shoulder = centre(`joint-${side}-shoulder`);
+      const out = Math.sign(shoulder.x) || 1;
+      const normal = new Vector3(-out * Math.cos(ARMHOLE_SLANT), -Math.sin(ARMHOLE_SLANT), 0);
+      top.push(new Plane().setFromNormalAndCoplanarPoint(normal, new Vector3(shoulder.x * 0.68, shoulder.y + 0.03, shoulder.z)));
+    }
   }
   bottom.push(new Plane(new Vector3(0, -1, 0), waist));
   if (look.bottom !== 'skirt') {

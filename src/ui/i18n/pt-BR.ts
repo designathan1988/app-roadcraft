@@ -30,6 +30,8 @@ export const PT_BR: Dictionary = {
   'person.name': 'Nome',
   'person.namePlaceholder': 'Nome (opcional)',
   'person.random': 'Aleatória',
+  'person.walk': 'Andar',
+  'person.stand': 'Parar',
   'person.save': 'Salvar',
   'person.savedFlash': 'Salva',
   'person.new': 'Nova',
