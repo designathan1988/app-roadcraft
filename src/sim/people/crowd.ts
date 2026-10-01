@@ -74,7 +74,7 @@ interface Walker {
   rank: number;
   leader: Walker | null;
   /** DESTINATION: where the trip ends, and whether it ends by leaving. */
-  goal: Vec2;
+  goal: GroundPoint;
   /** Navigation frame of the trip, independent of the body's visual facing. */
   routeDirection: Vec2;
   leaving: boolean;
@@ -93,7 +93,7 @@ interface Walker {
   /** Having passed the place it meant to stand at (somebody close behind kept it going), where it comes to rest instead of turning back. */
   settle: { for: Vec2; at: Vec2 } | null;
   /** The target last passed to Detour (null: none, or withdrawn because it stands at its place). */
-  asked: Vec2 | null;
+  asked: GroundPoint | null;
   /** Standing at the place it means to stand at: no move target, Detour brings it to rest. */
   holding: Vec2 | null;
   /** Ticks to the next look at the way ahead. */
@@ -129,7 +129,8 @@ interface Passage {
   waiting: Map<Way, { id: number; since: number }[]>;
 }
 
-interface WaitingFootprint extends Vec2 { readonly h: number }
+interface GroundPoint extends Vec2 { readonly h: number }
+type WaitingFootprint = GroundPoint;
 type WaitingCrossing = Pick<Zebra, 'id' | 'a' | 'b' | 'half' | 'kerb'> & { readonly h: number };
 
 interface State {
@@ -394,9 +395,9 @@ function configureAvoidance(crowd: Crowd): void {
   raw.setObstacleAvoidanceParams(AVOIDANCE, p);
 }
 
-function onMesh(s: State, at: Vec2, reach = m(3)): { x: number; h: number; y: number } | null {
+function onMesh(s: State, at: Vec2 & { readonly h?: number }, reach = m(3)): GroundPoint | null {
   const nav = s.nav!;
-  const h = nav.elevation.at(at.x, at.y);
+  const h = at.h ?? nav.elevation.at(at.x, at.y);
   const r = nav.query.findClosestPoint({ x: at.x, y: h, z: at.y }, { halfExtents: { x: reach, y: m(6), z: reach } });
   if (!r.success || r.polyRef === 0) return null;
   return { x: r.point.x, h: r.point.y, y: r.point.z };
@@ -456,7 +457,7 @@ function create(w: SimWorld, s: State, id: number, at: Vec2, heading: number, tr
   const p: Walker = {
     id, view, agent, x: pos.x, y: pos.z, h: pos.y, prevX: pos.x, prevY: pos.z, prevHeading: heading, heading, turnV: 0, speed: 0, age: 0, published: false,
     pace, ageClass: cls, gender: sex, party, rank: traits.rank ?? 0, leader: traits.leader ?? null,
-    goal: { x: pos.x, y: pos.z }, routeDirection: { x: 1, y: 0 }, leaving: false, mode: 'walk', waitAt: null, zebra: null, narrow: null, waited: 0, granted: new Map(),
+    goal: { x: pos.x, y: pos.z, h: pos.y }, routeDirection: { x: 1, y: 0 }, leaving: false, mode: 'walk', waitAt: null, zebra: null, narrow: null, waited: 0, granted: new Map(),
     passage: null, aside: null, settle: null, asked: null, holding: null, think: id % THINK_EVERY, segment: undefined, onZebra: null, scripted: false,
     blocked: 0, rest: 0, onZebras: true, topSpeed: pace, eased: null, going: 0, replans: 0, yields: 0,
   };
@@ -582,7 +583,7 @@ function pickGoal(w: SimWorld, s: State, p: Walker): boolean {
     const route = nav.query.computePath({ x: p.x, y: p.h, z: p.y }, { x: goal.x, y: goal.h, z: goal.y });
     const last = route.path[route.path.length - 1];
     if (!route.success || !last || Math.hypot(last.x - goal.x, last.z - goal.y) > ARRIVED) continue;
-    p.goal = { x: goal.x, y: goal.y };
+    p.goal = goal;
     p.leaving = leave;
     p.zebra = null; p.waitAt = null; p.mode = 'walk';
     stopWaitingNarrow(s, p);
@@ -597,11 +598,11 @@ function pickGoal(w: SimWorld, s: State, p: Walker): boolean {
 // ------------------------------------------------------------- intent: the corridor
 
 /** Passes a target to Detour (a path search). */
-function ask(s: State, p: Walker, target: Vec2): void {
-  const at = onMesh(s, target);
+function ask(s: State, p: Walker, target: Vec2 & { readonly h?: number }): void {
+  const at = onMesh(s, { ...target, h: target.h ?? p.h });
   if (!at) return;
   if (!p.agent.requestMoveTarget({ x: at.x, y: at.h, z: at.y })) return;
-  p.asked = { x: at.x, y: at.y };
+  p.asked = at;
   p.holding = null;
   p.rest = 0;
   p.replans++;
@@ -623,11 +624,11 @@ function zebraAccess(s: State, p: Walker): void {
 
 
 /** Asks for a place to stand at, unless that is already where it goes or stands. */
-function askPlace(s: State, p: Walker, place: Vec2): void {
+function askPlace(s: State, p: Walker, place: Vec2 & { readonly h?: number }): void {
   // Compare the same representation stored by ask(). A place outside the
   // mesh can project far from itself; comparing it with the raw place kept
   // submitting an unchanged path and resetting the rest timer every tick.
-  const at = onMesh(s, place);
+  const at = onMesh(s, { ...place, h: place.h ?? p.h });
   if (!at) return;
   const near = (q: Vec2 | null): boolean => q !== null && Math.hypot(q.x - at.x, q.y - at.y) < RETARGET;
   if (near(p.holding) || near(p.asked)) return;
@@ -672,7 +673,7 @@ function decide(w: SimWorld, s: State, p: Walker): void {
   if (!lead) p.leader = null;
   if (lead) { follow(s, p, lead); return; }
   // The way ahead from here to the destination, as Detour would walk it.
-  const route = s.nav!.query.computePath({ x: p.x, y: p.h, z: p.y }, { x: p.goal.x, y: s.nav!.elevation.at(p.goal.x, p.goal.y), z: p.goal.y });
+  const route = s.nav!.query.computePath({ x: p.x, y: p.h, z: p.y }, { x: p.goal.x, y: p.goal.h, z: p.goal.y });
   const path = route.success ? route.path : [];
   // Keep the trip's frame within its arrival radius, so the final approach
   // to a stopping place does not turn the whole party around that place.
@@ -760,10 +761,10 @@ function follow(s: State, p: Walker, lead: Walker): void {
   const stop = placeOf(lead);
   const at = stop && Math.hypot(stop.x - lead.x, stop.y - lead.y) < m(4) ? stop : lead;
   const ground = (q: Vec2): Vec2 | null => {
-    const on = onMesh(s, q, m(1));
-    return on && Math.hypot(on.x - q.x, on.y - q.y) < m(0.25) ? { x: on.x, y: on.y } : null;
+    const on = onMesh(s, { ...q, h: lead.h }, m(1));
+    return on && Math.hypot(on.x - q.x, on.y - q.y) < m(0.25) ? on : null;
   };
-  const place = (lined ? null : ground(beside(false))) ?? ground(beside(true)) ?? { x: lead.x, y: lead.y };
+  const place = (lined ? null : ground(beside(false))) ?? ground(beside(true)) ?? { x: lead.x, y: lead.y, h: lead.h };
   // The leader standing: so does the companion, at its place by the leader.
   if (lead.holding) {
     if (!p.waitAt || Math.hypot(p.waitAt.x - place.x, p.waitAt.y - place.y) > RETARGET) waitThere(s, p, place);
@@ -788,12 +789,12 @@ function laneTarget(s: State, p: Walker, path: readonly { x: number; y: number; 
     const len = Math.hypot(b.x - a.x, b.z - a.z);
     if (len < left) { left -= len; continue; }
     const ux = (b.x - a.x) / len, uy = (b.z - a.z) / len;
-    const at = { x: a.x + ux * left, y: a.z + uy * left };
+    const at = { x: a.x + ux * left, y: a.z + uy * left, h: a.y + (b.y - a.y) * left / len };
     // The right of the way walked is (uy, -ux).
-    const aside = { x: at.x + uy * RIGHT, y: at.y - ux * RIGHT };
+    const aside = { x: at.x + uy * RIGHT, y: at.y - ux * RIGHT, h: at.h };
     const on = onMesh(s, aside, RIGHT);
     // Kept on the ground; where the right is wall, the way itself.
-    return on ? { x: on.x, y: on.y } : at;
+    return on ?? at;
   }
   return p.goal;
 }
@@ -1758,7 +1759,7 @@ export function addScriptedWalker(w: SimWorld, spec: ScriptedWalker): number | n
   if (!p) return null;
   p.scripted = true;
   const goal = onMesh(s, spec.goal);
-  p.goal = goal ? { x: goal.x, y: goal.y } : spec.goal;
+  p.goal = goal ?? { ...spec.goal, h: s.nav.elevation.at(spec.goal.x, spec.goal.y) };
   if (leader) {
     const size = s.walkers.filter((q) => q.leader === leader).length + 1;
     const shared: PartyView = { id: leader.id, size, archetype: 'friends', hasChild: false };

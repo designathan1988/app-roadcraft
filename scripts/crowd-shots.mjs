@@ -12,6 +12,8 @@ const [BASE, OUTDIR, NAME, START = '4', STEP = '1', FRAMES = '8', DIST = '40', E
 // The same seeds as the battery and the full player-city probe.
 const SEED = NAME === 'player-city' ? 0x2026 : 0x5ce7;
 const KEEP_OPEN = process.env.CROWD_KEEP_OPEN === '1';
+const VIEW_ZOOM = Number(process.env.CROWD_VIEW_ZOOM ?? '20');
+const FOCUS_IDS = (process.env.CROWD_FOCUS_IDS ?? '').split(',').filter(Boolean).map(Number);
 const OUT = path.resolve(OUTDIR);
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: !KEEP_OPEN, args: ['--use-gl=angle', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
@@ -63,7 +65,7 @@ const placed = await page.evaluate(async ({ name, start, cx, cy, seed }) => {
 const shots = [];
 const records = [];
 for (let k = 0; k < Number(FRAMES); k++) {
-  const frame = await page.evaluate(async ({ stepSeconds, dist, elev }) => {
+  const frame = await page.evaluate(async ({ stepSeconds, dist, elev, viewZoom, focusIds }) => {
     const R = window.__roadcraft;
     const step = (_sim, o) => R.step(o.traffic, o.pedestrians);
     // Look where the people are: their centre.
@@ -73,7 +75,7 @@ for (let k = 0; k < Number(FRAMES); k++) {
       window.__fixed = v.length ? { x: v.reduce((s, p) => s + p.x, 0) / v.length, y: v.reduce((s, p) => s + p.y, 0) / v.length } : window.__focus;
     }
     const cx = window.__fixed.x, cy = window.__fixed.y;
-    R.lookAt(cx, cy, 20);
+    R.lookAt(cx, cy, viewZoom);
     R.scene().census();
     for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
     // Casting precedes asynchronous model loading. Wait for the actual drawn
@@ -88,8 +90,9 @@ for (let k = 0; k < Number(FRAMES); k++) {
       });
       if (assetError) throw new Error(`Citizen model failed to load: ${assetError}`);
       const cast = R.scene().census();
-      if (cast.every((person) => drawn.some((name) => name.startsWith(`citizen-${person.model}-`)))) break;
-      if (Date.now() >= deadline) throw new Error('Timed out waiting for visible citizen meshes');
+      const focusReady = focusIds.every(id => cast.some(person => person.seed === id));
+      if (focusReady && cast.every((person) => drawn.some((name) => name.startsWith(`citizen-${person.model}-`)))) break;
+      if (Date.now() >= deadline) throw new Error(`Timed out waiting for visible citizen meshes; requested focus IDs: ${focusIds.join(',')}. Check the play-view framing as well as the photo camera.`);
       await new Promise((r) => requestAnimationFrame(r));
     }
     const h = R.scene().elevationAt(cx, cy);
@@ -103,7 +106,7 @@ for (let k = 0; k < Number(FRAMES); k++) {
       await new Promise((r) => requestAnimationFrame(r));
     }
     return { shot, record };
-  }, { stepSeconds: Number(STEP), dist: Number(DIST), elev: Number(ELEV) });
+  }, { stepSeconds: Number(STEP), dist: Number(DIST), elev: Number(ELEV), viewZoom: VIEW_ZOOM, focusIds: FOCUS_IDS });
   shots.push(frame.shot);
   records.push({ secondsAfterSpawn: Number(START) + k * Number(STEP), ...frame.record });
 }
@@ -120,7 +123,7 @@ const sheet = await page.evaluate(async ({ urls, rows, step }) => {
   return c.toDataURL('image/jpeg', 0.85);
 }, { urls: shots, rows, step: Number(STEP) });
 fs.writeFileSync(path.join(OUT, `${NAME}.jpg`), Buffer.from(sheet.split(',')[1], 'base64'));
-fs.writeFileSync(path.join(OUT, `${NAME}.json`), JSON.stringify({ name: NAME, seed: SEED, placed, frames: records, errors }, null, 2));
+fs.writeFileSync(path.join(OUT, `${NAME}.json`), JSON.stringify({ name: NAME, seed: SEED, placed, viewZoom: VIEW_ZOOM, focusIds: FOCUS_IDS, frames: records, errors }, null, 2));
 console.log('placed', placed, 'errors', errors.slice(0, 3));
 if (errors.length) throw new Error(`Scenario page errors: ${errors.join('; ')}`);
 if (KEEP_OPEN) {

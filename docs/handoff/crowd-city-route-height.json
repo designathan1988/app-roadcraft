@@ -1,0 +1,114 @@
+{
+  "ticks": 3600,
+  "simulatedSeconds": 60,
+  "population": 334,
+  "pipelineMs": {
+    "mean": 6.635140027777743,
+    "p95": 19.11110000000008,
+    "max": 513.0326999999997
+  },
+  "peopleStepMs": {
+    "mean": 4.583417166666667,
+    "p95": 16.930199999998877,
+    "max": 41.80500000000029
+  },
+  "steadyPipelineMs": {
+    "mean": 6.660234696969657,
+    "p95": 19.06659999999829,
+    "max": 28.860500000000684
+  },
+  "steadyPeopleStepMs": {
+    "mean": 4.622664545454545,
+    "p95": 16.84150000000045,
+    "max": 27.11959999999999
+  },
+  "backward": 466,
+  "slides": 1,
+  "correctionTicks": 639,
+  "jumps": 0,
+  "trespass": 0,
+  "longestStill": 22.716666666666658,
+  "longestUnexplained": 12.350000000000193,
+  "longestPhysicalStarvation": 16.033333333333704,
+  "maxKerbDistanceMetres": 1.2900149915095853,
+  "maxKerbCentreDistanceMetres": 1.4490000824506242,
+  "farthest": {
+    "tick": 641,
+    "id": 432,
+    "zebra": "47:42",
+    "place": {
+      "x": -850.529541015625,
+      "y": 1199.071044921875,
+      "h": 0.42500001192092896
+    },
+    "kerbCentre": {
+      "x": -850.1967201645327,
+      "y": 1195.8632268128472
+    },
+    "distanceMetres": 1.2900149915095853,
+    "centreDistanceMetres": 1.2900149915115589
+  },
+  "slowestTicks": [
+    {
+      "tick": 0,
+      "seconds": 0,
+      "ms": 513.0326999999997,
+      "people": 334
+    },
+    {
+      "tick": 750,
+      "seconds": 12.5,
+      "ms": 28.860500000000684,
+      "people": 334
+    },
+    {
+      "tick": 15,
+      "seconds": 0.25,
+      "ms": 24.103900000000067,
+      "people": 334
+    },
+    {
+      "tick": 30,
+      "seconds": 0.5,
+      "ms": 23.026699999998527,
+      "people": 334
+    },
+    {
+      "tick": 3510,
+      "seconds": 58.5,
+      "ms": 22.71229999999923,
+      "people": 334
+    },
+    {
+      "tick": 3525,
+      "seconds": 58.75,
+      "ms": 22.46070000000327,
+      "people": 334
+    },
+    {
+      "tick": 2535,
+      "seconds": 42.25,
+      "ms": 22.10780000000159,
+      "people": 334
+    },
+    {
+      "tick": 2220,
+      "seconds": 37,
+      "ms": 21.775400000002264,
+      "people": 334
+    },
+    {
+      "tick": 585,
+      "seconds": 9.75,
+      "ms": 21.77349999999933,
+      "people": 334
+    },
+    {
+      "tick": 1425,
+      "seconds": 23.75,
+      "ms": 21.696899999999005,
+      "people": 334
+    }
+  ],
+  "elapsedMs": 25777.896099999998
+}
