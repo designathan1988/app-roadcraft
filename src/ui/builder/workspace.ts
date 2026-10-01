@@ -1021,6 +1021,16 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   const refresh = (state: BuilderState): void => {
     lastState = state;
     root.dataset['category'] = state.category;
+    // Nothing selected: only creating makes sense - windows, floors and
+    // finishes need a building - so the panel shows the ways to create and
+    // nothing else (CSS, `data-selection`). A category that needs a building
+    // falls back to Create when the selection goes.
+    const none = state.selection === null && !state.planning;
+    root.dataset['selection'] = none ? 'none' : 'some';
+    if (none && state.category !== 'draw' && state.category !== 'select') {
+      actions.setCategory('draw');
+      return;
+    }
     renderTop(state);
     renderDock(state);
     renderInspector(state);

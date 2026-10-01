@@ -813,3 +813,20 @@
 @media (max-width: 780px) {
   .bw-tier2 .road-palette .road-types { grid-template-columns: repeat(12, minmax(0, 1fr)); }
 }
+
+/* --- the Builder with nothing selected: create, and only create ----------------
+   Three ways in - a model, a shape, a free plan - as tabs over the gallery.
+   The editing groups (Create / Insert / Appearance, Draw / Mass / Face), the
+   floor and the view chips need a building, and come with the selection. */
+#builder[data-mode="builder"][data-selection="none"] .bw-groups,
+#builder[data-mode="builder"][data-selection="none"] .bw-tools,
+#builder[data-mode="builder"][data-selection="none"] .bw-floor,
+#builder[data-mode="builder"][data-selection="none"] .bw-context .bw-chip:not(.bw-select):not(.bw-snap):not(.bw-toggle) { display: none; }
+#builder[data-mode="builder"][data-selection="none"] .bw-families { border-top: 0; padding-top: 0; }
+#builder[data-mode="builder"][data-selection="none"] .bw-families .bw-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
+#builder[data-mode="builder"][data-selection="none"] .bw-families .bw-tool {
+  justify-content: center; height: 40px; font-size: 12.5px; font-weight: 600; border: 1px solid var(--bw-border);
+}
+#builder[data-mode="builder"][data-selection="none"] .bw-families .bw-tool .bw-chevron { display: none; }
+#builder[data-mode="builder"][data-selection="none"] .bw-families .bw-tool.open,
+#builder[data-mode="builder"][data-selection="none"] .bw-families .bw-tool.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }

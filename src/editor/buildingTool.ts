@@ -1840,6 +1840,9 @@ export class BuildingTool {
       } else if (this.mode === 'place') {
         this.setMode('edit');
       } else if (this.activeModelTool) this.activeModelTool = null;
+      // Nothing else in hand: Escape puts the building down, and the panel
+      // goes back to the ways to create.
+      else if (this.selection) this.selection = null;
       this.host.changed();
       return true;
     }
