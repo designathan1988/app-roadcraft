@@ -30,6 +30,13 @@ const COOLNESS = 0.99;
 /** Fastest a driver's acceleration rises (easing on), and falls (braking harder), u/s³. */
 const JERK_UP = m(2.5);
 const JERK_DOWN = m(8);
+/**
+ * Below this a driver lifts off at once. Held to the jerk limit, a car
+ * creeping up to its standing gap kept accelerating a few ticks after the
+ * model said to stop, met the safe-speed cap and was cut to zero - and then
+ * crept again: a nudge-and-stop loop every 0.4 s, measured at a stop line.
+ */
+const CRAWL = m(1);
 
 /** Improved IDM against one obstacle, and the free-road term. */
 function iidm(p: DriverParams, v: number, v0: number, o: Obstacle | null): number {
@@ -94,7 +101,7 @@ export function nextSpeed(p: DriverParams, v: number, v0: number, lastAccel: num
   // Easing on, and ordinary braking, change at a driver's pace; braking
   // beyond comfortable is not held back: a jerk limit there only delayed
   // the response and then needed harder braking later.
-  const a = target < -p.b ? Math.min(target, foot + JERK_UP * dt)
+  const a = target < -p.b || (v < CRAWL && target < foot) ? Math.min(target, foot + JERK_UP * dt)
     : clamp(target, foot - JERK_DOWN * dt, foot + JERK_UP * dt);
   const next = clamp(v + a * dt, 0, Math.max(0, cap));
   return { v: next, a: (next - v) / dt };

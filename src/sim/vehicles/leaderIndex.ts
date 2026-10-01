@@ -1,7 +1,7 @@
 import type { LaneletId } from '@world/lanelets';
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
-import type { Obstacle } from './idm';
+import { canStopComfortably, type Obstacle } from './idm';
 import { bodyClassOfArchetype } from './archetypes';
 import { pullOutRoom } from './laneChange';
 
@@ -40,10 +40,16 @@ export function findLeader(w: SimWorld, v: Vehicle): Obstacle | null {
     const aheadId = rt.order[idx + 1];
     const lead = aheadId === undefined ? undefined : w.veh(aheadId);
     if (lead) {
-      // Stopped at the kerb: hold back far enough to pull out round it.
+      // Stopped at the kerb: hold back far enough to pull out round it - when
+      // there is still room to stop there in comfort. A car already closer
+      // than that follows the real gap: the hold point used to be a gap of
+      // minus eight metres, and the safe speed stopped the car dead in one
+      // tick (audit P1-47).
       const standing = lead.kerbStop && lead.kerbStop.phase !== 'approach' ? pullOutRoom(w, v) : 0;
+      const real = lead.s - lead.archetype.length - v.s;
+      const hold = real - Math.max(0, standing - Math.max(v.driver.s0, 0));
       consider({
-        gap: lead.s - lead.archetype.length - v.s - Math.max(0, standing - Math.max(v.driver.s0, 0)),
+        gap: hold < real && canStopComfortably(v.driver, v.v, hold - v.driver.s0) ? hold : real,
         speed: lead.v,
         accel: lead.accel,
         kind: 'vehicle',

@@ -399,7 +399,7 @@ Details in section 8.
 - **Location:** `admission.ts:504-505`; `pipeline.ts:379-382`; `router.ts:91-118`.
 - **Fix:** extend the route when the last link is shorter than the vehicle plus margin, or fewer than 2 links remain.
 
-**P1-47 · A vehicle crossing at speed stops instantly (unbounded deceleration) [code] — `in progress c4059dc` (Drive v2 operational layer; obstacle producers are next)**
+**P1-47 · A vehicle crossing at speed stops instantly (unbounded deceleration) [code] — `fixed` (Drive v2 operational layer c4059dc; obstacle producers: a kerb-stop hold point, the zebra margin and the pedestrian denial only count while the car can stop for them in comfort; measured on the test city, hard brakes 1.03 → 0.078 per vehicle-minute and emergency ticks 0.124 → 0)**
 - **Location:** `vehicles/idm.ts:86-91, 114-115`; `integrate.ts:97-113`.
 - **Current:** the safe-speed cap zeroes the speed in one tick (12 m/s → 0) at any new obstacle; `safeSpeed` uses the follower's `bEmergency` for the leader.
 - **Fix:** a hard-brake metric (in the Drive v2 probe); use the leader's `bEmergency`; obstacle producers respect `canStopComfortably`.
@@ -446,7 +446,7 @@ Format: **ID · title** — location — current → expected · cause · fix �
 - **P2-05 · Stop planning scans the whole city per vehicle per tick** — `kerbStops.ts:221-227, 451-523` · a footway index per segment; replan only on lanelet entry — **open** (Drive v2 stop tasks).
 - **P2-06 · A full Dijkstra on every lane change or reconsideration; O(n²) `unshift`; `new Set(visited)` per recursion** — `router.ts:28-42,91-99,158-229`; `integrate.ts:267-268` · push+reverse; cached reverse trees per destination; spread reconsiderations — **open** (Drive v2 strategic layer).
 - **P2-07 · A shortened link stacks vehicles at the same `s`** — `pipeline.ts:158` · map `s` proportionally or reproject, and respace by `JAM_GAP` — **open**.
-- **P2-08 · Spawning ignores the birth speed (born at ~5 m/s 2 m behind a queue)** — `spawn.ts:146-170` · require `JAM_GAP + v²/2b` or be born at the leader's speed — **open**.
+- **P2-08 · Spawning ignores the birth speed (born at ~5 m/s 2 m behind a queue)** — `spawn.ts:146-170` · require `JAM_GAP + v²/2b` or be born at the leader's speed — **fixed** (born at the fastest speed its driver needs no more than comfortable braking for; it was most of the fleet's hard braking).
 - **P2-09 · No last-resort recovery for a stuck vehicle** — `pipeline.ts:306-330` · after long immobility outside a red: release reservations → replan → despawn with an issue — **open**.
 - **P2-10 · An edit does not reacquire claims for vehicles inside the junction** — `conflictPoints.ts:268-276`; `pipeline.ts:176`; `claims.ts:93-118` · `grantAll` in `rebindVehicles` for the zones still ahead — **open**.
 - **P2-11 · One bad pair anywhere vetoes every admission in the map** — `admission.ts:790-795` · check double ownership only on the requester's resources — **open** (Drive v2 negotiation).

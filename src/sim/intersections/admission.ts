@@ -208,11 +208,17 @@ function admit(w: SimWorld): void {
       }
       w.lastAdmission.set(r.conn.node, w.clock.tick);
     } else {
+      // Denial for a person on a zebra must hold the entire vehicle before
+      // its near edge. Holding only at the connector's stop line could put
+      // the body beside that person and leave neither able to proceed. The
+      // margin is kept only while the car can still stop for it in comfort:
+      // denials alternate between reasons, and a car that had crept up to the
+      // line for one of them found the pedestrian hold a metre BEHIND it and
+      // was cut to a standstill - then crept again (audit P1-47).
+      const held = r.d - PED_CROSSING_STOP_BUFFER;
+      const pedestrianGap = canStopComfortably(r.v.driver, r.v.v, held - r.v.driver.s0) ? held : r.d;
       r.v.constraints.obstacles.push({
-        // Denial for a person on a zebra must hold the entire vehicle before
-        // its near edge. Holding only at the connector's stop line could put
-        // the body beside that person and leave neither able to proceed.
-        gap: Math.max(0, r.d - (verdict.reason === 'pedestrian' ? PED_CROSSING_STOP_BUFFER : 0)),
+        gap: Math.max(0, verdict.reason === 'pedestrian' ? pedestrianGap : r.d),
         speed: 0,
         kind: verdict.reason ?? 'signal',
       });
@@ -323,6 +329,9 @@ function evaluate(w: SimWorld, r: Request): Verdict {
     return { ok: false, reason: 'conflict', reservations };
   }
   if (queuedBodyInZone(w, r.v, current.connector)) {
+    return { ok: false, reason: 'conflict', reservations };
+  }
+  if (exitSwingBlocked(w, r.v, current.connector)) {
     return { ok: false, reason: 'conflict', reservations };
   }
   if (!convoyCanEnter(w, r, current.connector)) {
@@ -568,6 +577,28 @@ function movementReservedByOther(w: SimWorld, v: Vehicle, conn: Connector): bool
  * see it; the index records exactly these cases as `queueIntrusions`. The bus
  * waits until the car has gone.
  */
+/**
+ * Whether a long body turning into a lane would sweep a vehicle beside it.
+ *
+ * A truck or a bus turning in swings its tail across the lane next to the one
+ * it enters, for about its own length past the start. The conflict sweep only
+ * covers the junction's own approaches, so a car standing at the start of the
+ * neighbouring lane - waiting at the next stop line on a short link - was in
+ * no zone at all, and a bus turned in over it. A bus driver waits for that
+ * room; so does this one.
+ */
+function exitSwingBlocked(w: SimWorld, v: Vehicle, conn: Connector): boolean {
+  if (conn.turn === 'through' || bodyClassOfArchetype(v.archetype) < 1) return false;
+  const reach = v.archetype.length;
+  for (const sibling of w.graph.siblingLanes(conn.toLane)) {
+    for (const body of w.bodiesIn(sibling)) {
+      if (body.vehicle.id === v.id) continue;
+      if (body.s - body.vehicle.archetype.length < reach) return true;
+    }
+  }
+  return false;
+}
+
 function queuedBodyInZone(w: SimWorld, v: Vehicle, conn: Connector): boolean {
   const mine = bodyClassOfArchetype(v.archetype);
   for (const ref of w.conflicts.refs(conn.id)) {

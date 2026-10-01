@@ -1,6 +1,6 @@
 import type { SimWorld } from '../world';
 import type { Vehicle } from './state';
-import type { ConstraintSet, Obstacle } from './idm';
+import { canStopComfortably, type ConstraintSet, type Obstacle } from './idm';
 import { PED_CROSSING_STOP_BUFFER, pedestrianInSpan } from '../intersections/crossingSpans';
 import { divergeObstacle, findLeader, shadowLeaderObstacle } from './leaderIndex';
 import { signalStateFor } from '../signals/query';
@@ -20,6 +20,12 @@ function pedestrianAhead(w: SimWorld, v: Vehicle): Obstacle | null {
   } else if (v.admittedConnector) {
     connectorId = v.admittedConnector;
     offset = lane.length - v.s;
+  } else if (v.route[0] === lane.id && v.route[1] !== undefined && w.connector(v.route[1])) {
+    // Not admitted yet: the turn it plans. Whether somebody is on the zebra
+    // does not depend on the grant, and a stop that came and went with it
+    // had a car creep up to the line and snap to a halt every 0.4 s.
+    connectorId = v.route[1];
+    offset = lane.length - v.s;
   } else {
     return null;
   }
@@ -34,8 +40,12 @@ function pedestrianAhead(w: SimWorld, v: Vehicle): Obstacle | null {
     // the junction; stopping at that distance left a car beside the walker
     // and made both wait for each other inside the crossing. Once the car is
     // on the connector, its measured span governs the stop instead.
+    // The margin short of the line is kept while there is room to stop for it
+    // in comfort; a car already past that point stops at the line itself
+    // rather than being cut to a standstill where it is (audit P1-47).
+    const buffered = offset - PED_CROSSING_STOP_BUFFER;
     const gap = lane.kind === 'link'
-      ? Math.max(0, offset - PED_CROSSING_STOP_BUFFER)
+      ? Math.max(0, canStopComfortably(v.driver, v.v, buffered - v.driver.s0) ? buffered : offset)
       : offset + span.along - PED_STOP_MARGIN;
     // Already over the span: stopping there would park on the zebra. Carry on
     // through; the walker's own clearance keeps them out of a moving body.

@@ -8,6 +8,7 @@ import {
 import type { SimWorld } from '../world';
 import { ARCHETYPES, type Archetype, archetypeWeights, bodyClassOfArchetype } from './archetypes';
 import { makeDriver } from './driver';
+import { idmAccel } from './idm';
 import { createVehicle, snapshot } from './state';
 import { planFrom } from '../routing/router';
 import { chooseVehicleDestination } from '../routing/destination';
@@ -142,7 +143,14 @@ function spawnAt(w: SimWorld, id: string): boolean {
         (w.connector(exit)?.maxBodyClass ?? -1) < bodyClassOfArchetype(arch))) return false;
   // The tail includes a body still sliding out of this lane.
   let tailRear = Infinity;
-  for (const body of w.bodiesIn(id)) tailRear = Math.min(tailRear, body.s - body.vehicle.archetype.length);
+  let tailSpeed = Infinity;
+  for (const body of w.bodiesIn(id)) {
+    const rear = body.s - body.vehicle.archetype.length;
+    if (rear < tailRear) {
+      tailRear = rear;
+      tailSpeed = body.vehicle.v;
+    }
+  }
   const entryClearance = Math.max(0.5, Math.min(1.5, arch.width / 4));
   // `s` is the front of the vehicle. Its rear must be on the authored road
   // at birth; the entry node has no lanelet behind it to carry the body.
@@ -167,7 +175,8 @@ function spawnAt(w: SimWorld, id: string): boolean {
 
   const vehicle = createVehicle(w.nextVehicleId++, arch, driver, color, id, v0, w.clock.tick);
   vehicle.s = arch.length + entryClearance;
-  vehicle.v = Math.min(v0 * 0.4, lane.speedLimit * 0.4);
+  vehicle.v = birthSpeed(driver, v0, Math.min(v0 * 0.4, lane.speedLimit * 0.4),
+    tailRear - vehicle.s, tailSpeed);
   vehicle.prev = snapshot(vehicle);
 
   assignOccupancy(w, vehicle);
@@ -177,6 +186,27 @@ function spawnAt(w: SimWorld, id: string): boolean {
   vehicle.destination = chooseVehicleDestination(w, id, bodyClassOfArchetype(vehicle.archetype));
   planFrom(w, vehicle);
   return true;
+}
+
+/**
+ * How fast a vehicle arrives from off the map: its usual entry speed, unless
+ * that would put it on the tail of the car ahead harder than its driver
+ * brakes in comfort (audit P2-08). Measured on the test city, most of the
+ * fleet's hard braking was cars born at speed two metres behind a slower one
+ * - and braking at seven metres a second squared on their first tick.
+ */
+function birthSpeed(driver: ReturnType<typeof makeDriver>, v0: number, usual: number, gap: number, leaderSpeed: number): number {
+  if (!Number.isFinite(gap)) return usual;
+  const ahead = { gap: Math.max(0.01, gap), speed: Number.isFinite(leaderSpeed) ? leaderSpeed : 0, kind: 'vehicle' as const };
+  if (idmAccel(driver, usual, v0, ahead) >= -driver.b) return usual;
+  let lo = 0;
+  let hi = usual;
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2;
+    if (idmAccel(driver, mid, v0, ahead) >= -driver.b) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** Removes vehicles that have reached a dead end and stopped there. */
