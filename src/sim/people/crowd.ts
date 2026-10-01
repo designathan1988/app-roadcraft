@@ -702,7 +702,7 @@ function decide(w: SimWorld, s: State, p: Walker): void {
   // A passage one person wide ahead: let in, or wait before it.
   const narrow = narrowAhead(s, p, path);
   if (narrow && p.passage?.n !== narrow.n && narrow.distance < NARROW_ASK) {
-    if (admit(s, p, narrow.n, narrow.d)) {
+    if (admit(s, p, narrow.n, narrow.d, path, narrow.distance)) {
       if (p.narrow) stopWaiting(s, p);
     } else {
       if (p.zebra) { freeSlot(s, p); p.zebra = null; }
@@ -1118,13 +1118,30 @@ function queueOf(s: State, n: Narrow, d: Way): { id: number; since: number }[] {
  * passage to empty. Let in, it is the walker's way through until it has
  * come out.
  */
-function admit(s: State, p: Walker, n: Narrow, d: Way): boolean {
+function admit(s: State, p: Walker, n: Narrow, d: Way, path: readonly { x: number; y: number; z: number }[], distance: number): boolean {
   const st = passageOf(s, n);
-  const mine = queueOf(s, n, d).find((e) => e.id === p.id)?.since ?? s.clock;
+  const queue = queueOf(s, n, d);
+  const mine = queue.find((e) => e.id === p.id)?.since ?? s.clock;
   const theirs = queueOf(s, n, d === 1 ? -1 : 1)[0]?.since ?? Infinity;
   if (st.inside.size === 0) st.dir = 0;
   const open = st.dir === 0 ? theirs >= mine : st.dir === d && s.clock - theirs < TURN_AFTER;
   if (!open) return false;
+  // A logical turn is not physical room to enter. A same-side waiter may
+  // still be standing in this approach while its yielding maneuver runs.
+  const approach: WaitingFootprint[] = [{ x: p.x, y: p.y, h: p.h }];
+  let left = distance;
+  for (let i = 1; i < path.length && left > 0; i++) {
+    const a = path[i - 1]!, b = path[i]!;
+    const length = Math.hypot(b.x - a.x, b.z - a.z);
+    if (length < 1e-6) continue;
+    const t = Math.min(1, left / length);
+    approach.push({ x: a.x + (b.x - a.x) * t, y: a.z + (b.z - a.z) * t, h: a.y + (b.y - a.y) * t });
+    left -= length;
+  }
+  for (const entry of queue) {
+    const q = s.byId.get(entry.id);
+    if (q && q !== p && q.holding && !approachClearsPlace(approach, q)) return false;
+  }
   st.dir = d;
   st.inside.add(p.id);
   stopWaitingNarrow(s, p);
@@ -1166,17 +1183,19 @@ function narrowSlot(s: State, p: Walker, n: Narrow, d: Way): Vec2 {
   const index = Math.max(0, queueOf(s, n, d).findIndex((e) => e.id === p.id));
   const end = d === 1 ? n.a : n.b;
   const fx = n.dir.x * d, fy = n.dir.y * d;
+  const standing = s.walkers.filter(q => q !== p && q.holding && Math.abs(q.h - p.h) < AGENT_HEIGHT);
   let fallback: Vec2 | null = null;
   for (let back = NARROW_BACK + index * NARROW_GAP; back < NARROW_BACK + index * NARROW_GAP + m(6); back += m(0.25)) {
     for (const side of [NARROW_SIDE, NARROW_SIDE * 2, 0]) {
       const spot = { x: end.x - fx * back + fy * side, y: end.y - fy * back - fx * side };
       const on = onMesh(s, spot, m(0.6));
       if (!on) continue;
+      if (standing.some(q => !approachClearsPlace([{ x: p.x, y: p.y, h: p.h }, on], q))) continue;
       fallback ??= { x: on.x, y: on.y };
       if (roomLeft(s, on, fx, fy) >= 2 * AGENT_RADIUS + m(0.1)) return { x: on.x, y: on.y };
     }
   }
-  return fallback ?? end;
+  return fallback ?? p.holding ?? { x: p.x, y: p.y };
 }
 
 /** Walkable ground to the left of a place, across the way `(fx, fy)`, u. */
@@ -1370,8 +1389,14 @@ function standingPlace(s: State, q: Walker, passer: Walker, way: readonly Vec2[]
   };
   // Both bodies can participate in avoiding: test a route round the new
   // footprint, not an unchanged centreline that the giver must clear alone.
+  // Prefer continuing or stepping sideways in the trip's frame. Visual
+  // facing never selects a navigation target. Keep a feasible retreat only
+  // when none of the bounded forward/side alternatives leaves a passage.
+  const travel = q.leader?.routeDirection ?? q.routeDirection;
+  let retreat: Vec2 | null = null;
   for (const r of [m(0.3), m(0.5), m(0.8), m(1.2), m(1.8)]) {
     let best: Vec2 | null = null, bestDetour = Infinity;
+    let back: Vec2 | null = null, backDetour = Infinity;
     for (let k = 0; k < 16; k++) {
       const angle = (k / 16) * Math.PI * 2;
       const c = { x: q.x + Math.cos(angle) * r, y: q.y + Math.sin(angle) * r };
@@ -1388,11 +1413,16 @@ function standingPlace(s: State, q: Walker, passer: Walker, way: readonly Vec2[]
       }
       if (occupied) continue;
       const detour = passes(c);
+      if ((c.x - q.x) * travel.x + (c.y - q.y) * travel.y < -1e-5) {
+        if (detour < backDetour) { backDetour = detour; back = c; }
+        continue;
+      }
       if (detour < bestDetour) { bestDetour = detour; best = c; }
     }
     if (best) return best;
+    retreat ??= back;
   }
-  return null;
+  return retreat;
 }
 
 /** Existing recovery for two moving agents; distinct from parking a standing body. */
