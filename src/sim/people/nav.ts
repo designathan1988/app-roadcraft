@@ -52,6 +52,8 @@ export interface WorldNav {
 }
 
 const DECKS: readonly RoadStructure[] = ['ground', 'elevated', 'bridge', 'tunnel'];
+/** Mean authored height above which a road at grade is walked as a raised deck, u. */
+const RAISED_BY_HAND = m(2.5);
 /** Seats either side of a bench's centre, and how far in front of the seat a sitter stands. */
 const SEAT_OFFSET = m(0.45);
 const STAND_IN_FRONT = m(0.48);
@@ -61,7 +63,18 @@ const SEAT_REACH = m(1.5);
 /** Builds the walkable mesh from the map as it stands. */
 export function buildWorldNav(w: SimWorld): WorldNav {
   const net = w.net;
-  const structureOf = (id: SegmentId): RoadStructure => net.doc.segment(id)?.structure ?? 'ground';
+  // The deck a road's footways belong to. A road at grade raised by hand
+  // (its own heights) is a viaduct for whoever walks it: kept with the raised
+  // decks. With the roads at grade, its footways merged with those below it
+  // and people walked off its edge, and the ground footway beside it took its
+  // height - walkers drawn in the air beside the deck.
+  const structureOf = (id: SegmentId): RoadStructure => {
+    const seg = net.doc.segment(id);
+    const structure = seg?.structure ?? 'ground';
+    if (!seg || structure !== 'ground') return structure;
+    const lift = ((net.doc.node(seg.a)?.heightOffset ?? 0) + (net.doc.node(seg.b)?.heightOffset ?? 0)) / 2;
+    return lift > RAISED_BY_HAND ? 'elevated' : 'ground';
+  };
   const layers: MultiPoly[] = [];
   const kerbs: MultiPoly[] = [];
   const layerOf = new Map<RoadStructure, number>();
