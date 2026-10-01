@@ -769,7 +769,7 @@ function onRoad(z: Zebra, x: number, y: number, margin = 0): boolean {
 /** The first zebra the way ahead crosses the road on that the walker has not been let onto, and where the way reaches the road. */
 function zebraAhead(s: State, p: Walker, path: readonly { x: number; z: number }[]): { zebra: Zebra; entry: Vec2 } | null {
   for (const q of along(path, ASK_AT * 3)) {
-    for (const z of s.nav!.zebras) {
+    for (const z of s.nav!.spatial.zebras.at(q.x, q.y)) {
       if (p.granted.has(z.id) || !onRoad(z, q.x, q.y)) continue;
       return { zebra: z, entry: { x: q.x, y: q.y } };
     }
@@ -820,7 +820,8 @@ function inNarrow(n: Narrow, x: number, y: number): boolean {
 
 /** The first narrow passage the way ahead goes through, the way through it, and how far along the way it begins. */
 function narrowAhead(s: State, p: Walker, path: readonly { x: number; z: number }[]): { n: Narrow; d: Way; distance: number } | null {
-  const near = s.nav!.narrows.filter((n) => Math.hypot((n.a.x + n.b.x) / 2 - p.x, (n.a.y + n.b.y) / 2 - p.y) < NARROW_ASK * 2 + m(4));
+  const near = s.nav!.spatial.narrowCentres.around(p.x, p.y, NARROW_ASK * 2 + m(4))
+    .filter((n) => Math.hypot((n.a.x + n.b.x) / 2 - p.x, (n.a.y + n.b.y) / 2 - p.y) < NARROW_ASK * 2 + m(4));
   if (!near.length) return null;
   for (const q of along(path, NARROW_ASK * 2)) {
     for (const n of near) {
@@ -944,7 +945,7 @@ function trackPassages(s: State): void {
       continue;
     }
     if (p.speed < STILL) continue;
-    for (const n of nav.narrows) {
+    for (const n of nav.spatial.narrows.at(p.x, p.y)) {
       if (!inNarrow(n, p.x, p.y)) continue;
       const vel = p.agent.velocity();
       const d: Way = vel.x * n.dir.x + vel.z * n.dir.y >= 0 ? 1 : -1;
@@ -1236,7 +1237,7 @@ function step(w: SimWorld, s: State): void {
     p.going = p.speed > 0.5 * p.topSpeed ? p.going + DT : 0;
     // Zebras: which it stands on, and those it has left behind.
     p.onZebra = null;
-    for (const z of s.nav.zebras) if (onRoad(z, p.x, p.y)) { p.onZebra = z; break; }
+    for (const z of s.nav.spatial.zebras.at(p.x, p.y)) if (onRoad(z, p.x, p.y)) { p.onZebra = z; break; }
     if (p.mode === 'walk' && p.onZebra) p.mode = 'cross';
     else if (p.mode === 'cross' && !p.onZebra) p.mode = 'walk';
     // A zebra let onto stays this walker's until it has been on it and left
@@ -1265,7 +1266,7 @@ function step(w: SimWorld, s: State): void {
 function roadUnder(s: State, p: Walker): SegmentId | undefined {
   const nav = s.nav!;
   let best = -1, bd = Infinity;
-  for (const way of nav.graph.ways) {
+  for (const way of nav.spatial.ways.at(p.x, p.y)) {
     const bb = way.path.bbox;
     if (p.x < bb.minX - m(4) || p.x > bb.maxX + m(4) || p.y < bb.minY - m(4) || p.y > bb.maxY + m(4)) continue;
     const d = way.path.closestPoint({ x: p.x, y: p.y }).distance;

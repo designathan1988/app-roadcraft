@@ -13,6 +13,7 @@ import { POLE_BASE_RADIUS } from '@world/utilities';
 import { makeCrossingId } from '../signals/plan';
 import type { SidewalkEdge } from '../peds/sidewalk';
 import type { SimWorld } from '../world';
+import { buildCrowdSpatial, type CrowdSpatial } from './crowdIndex';
 
 /**
  * THE WALKABLE SPACE of the crowd engine (`crowd.ts`), as a Recast
@@ -74,6 +75,8 @@ export interface CrowdNav {
   readonly footLength: readonly number[];
   /** Passages one person wide (`findNarrows`). */
   readonly narrows: readonly Narrow[];
+  /** Conservative static candidates, in the same order as the source arrays. */
+  readonly spatial: CrowdSpatial;
 }
 
 /**
@@ -275,7 +278,8 @@ export function buildCrowdNav(w: SimWorld): CrowdNav | null {
   const tN = performance.now();
   const narrows = findNarrows(query, graph, obstacles, (way, x, y) => heightAt(roadOf[way], x, y));
   (globalThis as { __navProfile?: unknown }).__navProfile = { recast: tN - tR, narrows: performance.now() - tN, walkways: tR - tW };
-  return { navMesh, query, graph, elevation, zebras, roadOf, sources, footways, footLength, narrows };
+  const spatial = buildCrowdSpatial(zebras, narrows, graph.ways, AGENT_RADIUS);
+  return { navMesh, query, graph, elevation, zebras, roadOf, sources, footways, footLength, narrows, spatial };
 }
 
 /**

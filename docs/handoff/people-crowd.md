@@ -30,6 +30,10 @@ document is information, not a script. The reviewer audits results; he does not 
 - Second continuation step: [crowd-step-02.md](crowd-step-02.md). Identical
   projected waiting targets are no longer requested every tick. The complete
   movement report stays identical; crowd requests/minute fall 83.9 -> 11.
+- Third continuation step: [crowd-step-03.md](crowd-step-03.md). Static spatial
+  indices preserve all 19 reports and recorded trajectories. A paired 334-person
+  city benchmark measures mean pedestrian cost 10.65 -> 3.20 ms/tick; final
+  60-second validation and visible movement fixes remain open.
 
 ## 2. Architecture (keep it)
 

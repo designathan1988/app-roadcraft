@@ -1,0 +1,42 @@
+{
+  "warmTicksPerCity": 300,
+  "measuredTicksPerCity": 300,
+  "totalSimulationTicks": 1200,
+  "builtMs": 11120.534,
+  "elapsedMs": 22947.1126,
+  "population": [
+    334,
+    334
+  ],
+  "fullScan": {
+    "peopleMs": {
+      "mean": 10.64982033333347,
+      "median": 6.004000000000815,
+      "p95": 70.35870000000068
+    },
+    "pipelineMs": {
+      "mean": 11.442886333333336,
+      "median": 6.8038999999989755,
+      "p95": 71.26440000000002
+    }
+  },
+  "indexed": {
+    "peopleMs": {
+      "mean": 3.1988806666667005,
+      "median": 2.238099999998667,
+      "p95": 16.217499999995198
+    },
+    "pipelineMs": {
+      "mean": 3.969272666666511,
+      "median": 2.9747999999999593,
+      "p95": 16.95349999999962
+    }
+  },
+  "publicHashesEqual": true,
+  "publicHashTicksCompared": 600,
+  "trajectoryHash": [
+    "b273c50c12e4628ac190f51c0e76368c445dacfe00959322187f569c980a5f3c",
+    "b273c50c12e4628ac190f51c0e76368c445dacfe00959322187f569c980a5f3c"
+  ],
+  "notes": "Full-scan adapter returns each index original source array in source order, restoring the old candidate scans. Both modes have identical engine timing wrappers, city seed, traffic, warmup and tick counts; first-in-pair order alternates. Engine total covers dispatch, step and publish. Hash work is outside the measured interval. Static index construction is outside the measured interval in both modes."
+}
