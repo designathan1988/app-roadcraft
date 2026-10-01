@@ -778,6 +778,12 @@ function bankerSafeAfterGrant(
   const processes: BankerProcess[] = [];
   const owners = new Map<ResourceKey, number>();
   const universe = new Set<ResourceKey>();
+  // The resources this grant concerns: a double holding anywhere else in the
+  // city is not this applicant's to answer for, and vetoing on it stopped
+  // every junction on the map (audit P2-11).
+  const mine = new Set<ResourceKey>();
+  for (const intention of proposal) for (const r of connectorResources(w, intention.connector)) mine.add(r);
+  for (const r of actualAllocation(w, applicant)) mine.add(r);
 
   for (const vehicle of w.vehicles.values()) {
     let allocation: Set<ResourceKey>;
@@ -821,7 +827,7 @@ function bankerSafeAfterGrant(
     if (!maximum.size) continue;
     for (const resource of allocation) {
       const owner = owners.get(resource);
-      if (owner !== undefined && owner !== vehicle.id && !sharedConvoyResource(w, resource)) return false;
+      if (owner !== undefined && owner !== vehicle.id && !sharedConvoyResource(w, resource) && mine.has(resource)) return false;
       owners.set(resource, vehicle.id);
       universe.add(resource);
     }

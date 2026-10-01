@@ -449,7 +449,7 @@ Format: **ID · title** — location — current → expected · cause · fix �
 - **P2-08 · Spawning ignores the birth speed (born at ~5 m/s 2 m behind a queue)** — `spawn.ts:146-170` · require `JAM_GAP + v²/2b` or be born at the leader's speed — **fixed** (born at the fastest speed its driver needs no more than comfortable braking for; it was most of the fleet's hard braking).
 - **P2-09 · No last-resort recovery for a stuck vehicle** — `pipeline.ts:306-330` · after long immobility outside a red: release reservations → replan → despawn with an issue — **open**.
 - **P2-10 · An edit does not reacquire claims for vehicles inside the junction** — `conflictPoints.ts:268-276`; `pipeline.ts:176`; `claims.ts:93-118` · `grantAll` in `rebindVehicles` for the zones still ahead — **open**.
-- **P2-11 · One bad pair anywhere vetoes every admission in the map** — `admission.ts:790-795` · check double ownership only on the requester's resources — **open** (Drive v2 negotiation).
+- **P2-11 · One bad pair anywhere vetoes every admission in the map** — `admission.ts:790-795` · check double ownership only on the requester's resources — **fixed** (the double-holding veto only counts resources the grant concerns).
 - **P2-12 · A re-edit re-sweeps the conflict zones of every junction** — `conflictPoints.ts:178-239, 425-454` · compare each connector's shape with the previous build by id and reuse the junction when nothing changed — **open**.
 - **P2-13 · A pedestrian enters the zebra from up to 1.5 m (or a slot) before the kerb: a teleport** — **replaced 7ec1994** (a body only walks; it waits at a point on the kerb and steps onto the zebra when granted).
 - **P2-14 · A pedestrian stands on the zebra up to 7 s after reaching a goal at the kerb** — **replaced 7ec1994**.
