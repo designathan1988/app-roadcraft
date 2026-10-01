@@ -370,34 +370,53 @@ export class NavMesh {
    * lie across the pavement under it.
    */
   wallSegmentsNear(x: number, y: number, reach: number, layer: number, visit: (ax: number, ay: number, bx: number, by: number, nx: number, ny: number) => void): void {
-    const seen = new Set<number>();
+    // Every person asks every tick: a visit stamp instead of a Set, and the
+    // distance worked out in place (as `closestOnSegment` does it).
+    const stamp = this.nextStamp();
+    const seen = this.wallSeen ??= new Uint32Array(this.walls.length / 4);
+    const w = this.walls;
     for (let cx = wcell(x - reach); cx <= wcell(x + reach); cx++) {
       for (let cy = wcell(y - reach); cy <= wcell(y + reach); cy++) {
-        for (const i of this.wallGrid.get(cellKey(cx, cy)) ?? []) {
-          if (seen.has(i)) continue;
-          seen.add(i);
+        const list = this.wallGrid.get(cellKey(cx, cy));
+        if (!list) continue;
+        for (const i of list) {
+          if (seen[i] === stamp) continue;
+          seen[i] = stamp;
           if (this.wallLayer[i] !== layer) continue;
-          const w = this.walls;
-          const q = closestOnSegment(w[i * 4]!, w[i * 4 + 1]!, w[i * 4 + 2]!, w[i * 4 + 3]!, x, y);
-          if (Math.hypot(q.x - x, q.y - y) < reach) visit(w[i * 4]!, w[i * 4 + 1]!, w[i * 4 + 2]!, w[i * 4 + 3]!, this.wallNormals[i * 2]!, this.wallNormals[i * 2 + 1]!);
+          const ax = w[i * 4]!, ay = w[i * 4 + 1]!, bx = w[i * 4 + 2]!, by = w[i * 4 + 3]!;
+          if (segmentDistance(ax, ay, bx, by, x, y) < reach) visit(ax, ay, bx, by, this.wallNormals[i * 2]!, this.wallNormals[i * 2 + 1]!);
         }
       }
     }
+  }
+
+  private wallSeen: Uint32Array | null = null;
+  private mouthSeen: Uint32Array | null = null;
+  private stamp = 0;
+  private nextStamp(): number {
+    if (++this.stamp === 0xffffffff) {
+      this.stamp = 1;
+      this.wallSeen?.fill(0);
+      this.mouthSeen?.fill(0);
+    }
+    return this.stamp;
   }
 
   /** Like `mouthsNear`, with the mouth's ends: `visit(crossing, ax, ay, bx, by, nx, ny)`, the normal pointing off the zebra. */
   mouthSegmentsNear(x: number, y: number, reach: number, layer: number, visit: (crossing: number, ax: number, ay: number, bx: number, by: number, nx: number, ny: number) => void): void {
     if (!this.mouths) this.indexMouths();
     const m = this.mouths!;
-    const seen = new Set<number>();
+    const stamp = this.nextStamp();
+    const seen = this.mouthSeen ??= new Uint32Array(m.length / 6);
     for (let cx = wcell(x - reach); cx <= wcell(x + reach); cx++) {
       for (let cy = wcell(y - reach); cy <= wcell(y + reach); cy++) {
-        for (const i of this.mouthGrid.get(cellKey(cx, cy)) ?? []) {
-          if (seen.has(i)) continue;
-          seen.add(i);
+        const list = this.mouthGrid.get(cellKey(cx, cy));
+        if (!list) continue;
+        for (const i of list) {
+          if (seen[i] === stamp) continue;
+          seen[i] = stamp;
           if (this.mouthLayer[i] !== layer) continue;
-          const q = closestOnSegment(m[i * 6]!, m[i * 6 + 1]!, m[i * 6 + 2]!, m[i * 6 + 3]!, x, y);
-          if (Math.hypot(q.x - x, q.y - y) < reach) visit(this.mouthCrossing[i]!, m[i * 6]!, m[i * 6 + 1]!, m[i * 6 + 2]!, m[i * 6 + 3]!, m[i * 6 + 4]!, m[i * 6 + 5]!);
+          if (segmentDistance(m[i * 6]!, m[i * 6 + 1]!, m[i * 6 + 2]!, m[i * 6 + 3]!, x, y) < reach) visit(this.mouthCrossing[i]!, m[i * 6]!, m[i * 6 + 1]!, m[i * 6 + 2]!, m[i * 6 + 3]!, m[i * 6 + 4]!, m[i * 6 + 5]!);
         }
       }
     }
@@ -479,6 +498,14 @@ function segmentHit(x0: number, y0: number, x1: number, y1: number, ax: number, 
 function onSegment(ax: number, ay: number, bx: number, by: number, x: number, y: number, eps: number): boolean {
   const q = closestOnSegment(ax, ay, bx, by, x, y);
   return Math.hypot(q.x - x, q.y - y) <= eps;
+}
+
+/** Distance from (x, y) to the segment a-b: `closestOnSegment`'s arithmetic, without the object. */
+function segmentDistance(ax: number, ay: number, bx: number, by: number, x: number, y: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const len = dx * dx + dy * dy;
+  const t = len > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len)) : 0;
+  return Math.hypot(ax + dx * t - x, ay + dy * t - y);
 }
 
 export function closestOnSegment(ax: number, ay: number, bx: number, by: number, x: number, y: number): { x: number; y: number; t: number } {

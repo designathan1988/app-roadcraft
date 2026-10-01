@@ -105,13 +105,12 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
   start = 0, max = Infinity): { x: number; y: number; tri: number }[] {
   const out: { x: number; y: number; tri: number }[] = [];
   // The portals from `start` on; corners report indices into `all`.
-  const portals = start > 0 ? { length: all.length - start, at: (i: number) => all[start + i] } : { length: all.length, at: (i: number) => all[i] };
-  const n = portals.length;
+  const n = all.length - start;
   // A corner is a portal's end, which is a corner of a wall: walking to it
   // exactly is walking into the wall. It is taken a little way in along its
   // portal, into open ground ("corner offset"), so the body rounds it clear.
   const inward = (x: number, y: number, i: number, fromRight: boolean): { x: number; y: number } => {
-    const p = portals.at(i);
+    const p = all[start + i];
     if (!p) return { x, y };
     const ox = fromRight ? p.lx : p.rx, oy = fromRight ? p.ly : p.ry;
     const len = Math.hypot(ox - x, oy - y);
@@ -119,16 +118,16 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
     const pull = Math.min(CORNER_PULL, len / 2) / len;
     return { x: x + (ox - x) * pull, y: y + (oy - y) * pull };
   };
-  // Portal i as (left, right); the goal as a degenerate last portal.
-  const L = (i: number): [number, number] => (i < n ? [portals.at(i)!.lx, portals.at(i)!.ly] : [gx, gy]);
-  const R = (i: number): [number, number] => (i < n ? [portals.at(i)!.rx, portals.at(i)!.ry] : [gx, gy]);
+  // Portal i as (left, right); the goal as a degenerate last portal. Read in
+  // place: every walker pulls its string every tick, and a pair of fresh
+  // arrays per portal was most of the funnel's time.
   let ax = sx, ay = sy;
-  let [lx, ly] = L(0);
-  let [rx, ry] = R(0);
+  let lx = gx, ly = gy, rx = gx, ry = gy;
+  if (n > 0) { const p0 = all[start]!; lx = p0.lx; ly = p0.ly; rx = p0.rx; ry = p0.ry; }
   let li = 0, ri = 0;
   for (let i = 1; i <= n; i++) {
-    const [nlx, nly] = L(i);
-    const [nrx, nry] = R(i);
+    let nlx = gx, nly = gy, nrx = gx, nry = gy;
+    if (i < n) { const q = all[start + i]!; nlx = q.lx; nly = q.ly; nrx = q.rx; nry = q.ry; }
     // Tighten the right side.
     if (cross(ax, ay, rx, ry, nrx, nry) >= 0) {
       if (same(ax, ay, rx, ry) || cross(ax, ay, lx, ly, nrx, nry) < 0) {
@@ -139,8 +138,8 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
         if (out.length >= max) return out;
         ax = lx; ay = ly;
         const restart = li;
-        [lx, ly] = L(restart + 1 <= n ? restart + 1 : n);
-        [rx, ry] = R(restart + 1 <= n ? restart + 1 : n);
+        const k = restart + 1 <= n ? restart + 1 : n;
+        if (k < n) { const q = all[start + k]!; lx = q.lx; ly = q.ly; rx = q.rx; ry = q.ry; } else { lx = rx = gx; ly = ry = gy; }
         li = ri = restart + 1;
         i = restart + 1;
         continue;
@@ -155,8 +154,8 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
         if (out.length >= max) return out;
         ax = rx; ay = ry;
         const restart = ri;
-        [lx, ly] = L(restart + 1 <= n ? restart + 1 : n);
-        [rx, ry] = R(restart + 1 <= n ? restart + 1 : n);
+        const k = restart + 1 <= n ? restart + 1 : n;
+        if (k < n) { const q = all[start + k]!; lx = q.lx; ly = q.ly; rx = q.rx; ry = q.ry; } else { lx = rx = gx; ly = ry = gy; }
         li = ri = restart + 1;
         i = restart + 1;
         continue;
