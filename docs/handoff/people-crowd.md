@@ -20,6 +20,9 @@ Read that, `AGENTS.md`, `CLAUDE.md` and the player's orders
   use a navigation frame instead of the leader's visual heading; city backward
   ticks 1395 -> 1176, battery still 8/19. Hygiene and movement work remain open.
   The player's relayed Claude review at 16:06 approved committing this step.
+- Second continuation step: [crowd-step-02.md](crowd-step-02.md). Identical
+  projected waiting targets are no longer requested every tick. The complete
+  movement report stays identical; crowd requests/minute fall 83.9 -> 11.
 
 ## 2. Architecture (keep it)
 

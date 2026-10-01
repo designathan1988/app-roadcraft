@@ -537,7 +537,7 @@ function pickGoal(w: SimWorld, s: State, p: Walker): boolean {
 function ask(s: State, p: Walker, target: Vec2): void {
   const at = onMesh(s, target);
   if (!at) return;
-  p.agent.requestMoveTarget({ x: at.x, y: at.h, z: at.y });
+  if (!p.agent.requestMoveTarget({ x: at.x, y: at.h, z: at.y })) return;
   p.asked = { x: at.x, y: at.y };
   p.holding = null;
   p.rest = 0;
@@ -561,9 +561,14 @@ function zebraAccess(s: State, p: Walker): void {
 
 /** Asks for a place to stand at, unless that is already where it goes or stands. */
 function askPlace(s: State, p: Walker, place: Vec2): void {
-  const near = (q: Vec2 | null): boolean => q !== null && Math.hypot(q.x - place.x, q.y - place.y) < RETARGET;
+  // Compare the same representation stored by ask(). A place outside the
+  // mesh can project far from itself; comparing it with the raw place kept
+  // submitting an unchanged path and resetting the rest timer every tick.
+  const at = onMesh(s, place);
+  if (!at) return;
+  const near = (q: Vec2 | null): boolean => q !== null && Math.hypot(q.x - at.x, q.y - at.y) < RETARGET;
   if (near(p.holding) || near(p.asked)) return;
-  ask(s, p, place);
+  ask(s, p, at);
 }
 
 /** Stops to wait at `place`. */
