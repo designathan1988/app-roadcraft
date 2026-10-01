@@ -1,4 +1,4 @@
-/* global window, document, requestAnimationFrame, Image */
+/* global window, document, requestAnimationFrame, Image, structuredClone */
 // One crowd scenario (tests/fixtures/crowdScenarios.ts) in the RUNNING game
 // (`npm run dev`), photographed as a timed sequence from a FIXED camera, so
 // slides, jumps, swaying and uneven speed stay visible. Writes <out>/<name>.jpg.
@@ -9,6 +9,8 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 const [BASE, OUTDIR, NAME, START = '4', STEP = '1', FRAMES = '8', DIST = '40', ELEV = '0.95', CX, CY] = process.argv.slice(2);
+// The battery's seed: photos must reproduce its people, pace and signals.
+const SEED = 0x5ce7;
 const OUT = path.resolve(OUTDIR);
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', args: ['--use-gl=angle', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
@@ -18,13 +20,21 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(String(e.message)));
 await page.goto(`${BASE}/?people=crowd`, { waitUntil: 'networkidle' });
 await page.waitForFunction('Boolean(window.__roadcraft)', null, { timeout: 60000 });
-const placed = await page.evaluate(async ({ name, start, cx, cy }) => {
+const placed = await page.evaluate(async ({ name, start, cx, cy, seed }) => {
   const R = window.__roadcraft;
+  R.sim.clock.paused = true;
   const step = (_sim, o) => R.step(o.traffic, o.pedestrians);
   const addScriptedWalker = (sim, spec) => R.crowd.add(sim, spec);
   const { SCENARIOS } = await import('/tests/fixtures/crowdScenarios.ts');
+  const { SimWorld } = await import('/src/sim/world.ts');
   const sc = SCENARIOS.find((s) => s.name === name);
   R.loadDoc(sc.doc.toJSON());
+  // loadDoc deliberately keeps a player's random streams and clock. A fixed
+  // scenario needs the fresh world's streams instead, exactly as in the test.
+  R.sim.reset();
+  Object.assign(R.sim.rng, new SimWorld(R.net.doc, R.net, seed).rng);
+  R.sim.clock.tick = 0;
+  R.sim.rebuildTopology();
   R.sim.pedestrianIntensity = 0;
   R.sim.trafficIntensity = 0;
   R.sim.clock.paused = true;
@@ -32,15 +42,16 @@ const placed = await page.evaluate(async ({ name, start, cx, cy }) => {
   const ids = [];
   for (const wk of sc.walkers(R.net)) ids.push(addScriptedWalker(R.sim, { x: wk.x, y: wk.y, goal: wk.goal, ...(wk.pace !== undefined ? { pace: wk.pace } : {}), ...(wk.leader !== undefined ? { leader: ids[wk.leader] } : {}) }));
   // A zero-second photo still needs the initial bodies published; no tick is advanced.
-  R.sim.pedEngine.publish(R.sim);
+  if (start === 0) R.sim.pedEngine.publish(R.sim);
   for (let i = 0; i < Math.round(start / R.DT); i++) step(R.sim, { traffic: false, pedestrians: true });
   window.__focus = sc.focus;
   if (cx !== undefined) window.__fixed = { x: Number(cx), y: Number(cy) };
   return ids.filter((i) => i !== null).length;
-}, { name: NAME, start: Number(START), cx: CX, cy: CY });
+}, { name: NAME, start: Number(START), cx: CX, cy: CY, seed: SEED });
 const shots = [];
+const records = [];
 for (let k = 0; k < Number(FRAMES); k++) {
-  shots.push(await page.evaluate(async ({ stepSeconds, dist, elev }) => {
+  const frame = await page.evaluate(async ({ stepSeconds, dist, elev }) => {
     const R = window.__roadcraft;
     const step = (_sim, o) => R.step(o.traffic, o.pedestrians);
     // Look where the people are: their centre.
@@ -70,10 +81,19 @@ for (let k = 0; k < Number(FRAMES); k++) {
       await new Promise((r) => requestAnimationFrame(r));
     }
     const h = R.scene().elevationAt(cx, cy);
-    const shot = R.scene().inspect.shot({ x: cx, y: cy, h: h + 1, azimuth: 1.25, elevation: elev, distance: dist, fov: 35, width: 640, height: 480 });
-    for (let i = 0; i < Math.round(stepSeconds / R.DT); i++) step(R.sim, { traffic: false, pedestrians: true });
-    return shot;
-  }, { stepSeconds: Number(STEP), dist: Number(DIST), elev: Number(ELEV) }));
+    const camera = { x: cx, y: cy, h: h + 1, azimuth: 1.25, elevation: elev, distance: dist, fov: 35, width: 640, height: 480 };
+    const shot = R.scene().inspect.shot(camera);
+    const record = structuredClone({ tick: R.sim.clock.tick, camera, people: R.crowd.inspect(R.sim), cast: R.scene().census() });
+    // Let gait read every simulation tick instead of jumping several seconds
+    // between renders (stepGait intentionally caps large animation deltas).
+    for (let i = 0; i < Math.round(stepSeconds / R.DT); i++) {
+      step(R.sim, { traffic: false, pedestrians: true });
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    return { shot, record };
+  }, { stepSeconds: Number(STEP), dist: Number(DIST), elev: Number(ELEV) });
+  shots.push(frame.shot);
+  records.push({ secondsAfterSpawn: Number(START) + k * Number(STEP), ...frame.record });
 }
 const rows = Math.ceil(shots.length / 2);
 const sheet = await page.evaluate(async ({ urls, rows, step }) => {
@@ -88,6 +108,7 @@ const sheet = await page.evaluate(async ({ urls, rows, step }) => {
   return c.toDataURL('image/jpeg', 0.85);
 }, { urls: shots, rows, step: Number(STEP) });
 fs.writeFileSync(path.join(OUT, `${NAME}.jpg`), Buffer.from(sheet.split(',')[1], 'base64'));
+fs.writeFileSync(path.join(OUT, `${NAME}.json`), JSON.stringify({ name: NAME, seed: SEED, placed, frames: records, errors }, null, 2));
 console.log('placed', placed, 'errors', errors.slice(0, 3));
 if (errors.length) throw new Error(`Scenario page errors: ${errors.join('; ')}`);
 } finally {

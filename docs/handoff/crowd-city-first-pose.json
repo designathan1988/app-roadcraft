@@ -1,0 +1,99 @@
+{
+  "ticks": 3600,
+  "simulatedSeconds": 60,
+  "population": 335,
+  "pipelineMs": {
+    "mean": 5.572378055555521,
+    "p95": 16.884100000001126,
+    "max": 473.52520000000004
+  },
+  "peopleStepMs": {
+    "mean": 3.8072951388888985,
+    "p95": 14.966300000000047,
+    "max": 37.60779999999977
+  },
+  "steadyPipelineMs": {
+    "mean": 5.5785588484848105,
+    "p95": 16.85160000000178,
+    "max": 23.942399999999907
+  },
+  "steadyPeopleStepMs": {
+    "mean": 3.8383271818181943,
+    "p95": 14.91400000000067,
+    "max": 22.26719999999841
+  },
+  "backward": 656,
+  "slides": 58,
+  "correctionTicks": 1019,
+  "jumps": 28,
+  "trespass": 0,
+  "longestStill": 41.699999999998916,
+  "longestUnexplained": 39.93333333333235,
+  "longestPhysicalStarvation": 24.333333333333233,
+  "maxKerbDistanceMetres": 0,
+  "maxKerbCentreDistanceMetres": 0,
+  "farthest": null,
+  "slowestTicks": [
+    {
+      "tick": 0,
+      "seconds": 0,
+      "ms": 473.52520000000004,
+      "people": 334
+    },
+    {
+      "tick": 1005,
+      "seconds": 16.75,
+      "ms": 23.942399999999907,
+      "people": 334
+    },
+    {
+      "tick": 1860,
+      "seconds": 31,
+      "ms": 22.16019999999844,
+      "people": 334
+    },
+    {
+      "tick": 30,
+      "seconds": 0.5,
+      "ms": 20.571200000000317,
+      "people": 334
+    },
+    {
+      "tick": 1020,
+      "seconds": 17,
+      "ms": 20.503600000000006,
+      "people": 334
+    },
+    {
+      "tick": 1335,
+      "seconds": 22.25,
+      "ms": 20.035500000001775,
+      "people": 334
+    },
+    {
+      "tick": 15,
+      "seconds": 0.25,
+      "ms": 19.881400000000212,
+      "people": 334
+    },
+    {
+      "tick": 1290,
+      "seconds": 21.5,
+      "ms": 19.725299999998242,
+      "people": 334
+    },
+    {
+      "tick": 1050,
+      "seconds": 17.5,
+      "ms": 19.33849999999984,
+      "people": 334
+    },
+    {
+      "tick": 2805,
+      "seconds": 46.75,
+      "ms": 19.130600000000413,
+      "people": 333
+    }
+  ],
+  "elapsedMs": 21676.7209
+}

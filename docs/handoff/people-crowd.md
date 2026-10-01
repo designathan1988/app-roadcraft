@@ -34,6 +34,10 @@ document is information, not a script. The reviewer audits results; he does not 
   indices preserve all 19 reports and recorded trajectories. A paired 334-person
   city benchmark measures mean pedestrian cost 10.65 -> 3.20 ms/tick; final
   60-second validation and visible movement fixes remain open.
+- Fourth continuation step: [crowd-step-04.md](crowd-step-04.md). Initialize
+  unpublished moving poses from Detour velocity: battery 8/19 -> 9/19, city
+  backward 1176 -> 656 over 60 s, other measured city defects unchanged.
+  The queue-place candidate was discarded because it regressed city/queue.
 
 ## 2. Architecture (keep it)
 

@@ -64,6 +64,8 @@ interface Walker {
   turnV: number;
   speed: number;
   age: number;
+  /** Whether this body's pose has already been published for drawing. */
+  published: boolean;
   readonly pace: number;
   readonly ageClass: PersonAgeClass;
   readonly gender: PersonGender;
@@ -312,6 +314,7 @@ export function createCrowdEngine(): PedestrianEngine {
         ensureNav(w, s);
         if (!s.nav || s.byId.has(person.seed)) return;
         const p = create(w, s, person.seed, { x: person.footX, y: person.footY }, person.footHeading, { ageClass: person.ageClass, gender: person.gender });
+        if (p) p.published = true; // An alighting person already had a visible pose in the car.
         if (p && !pickGoal(w, s, p)) remove(s, p);
       },
       anyoneWithin(w, x, y, radius, except) {
@@ -438,7 +441,7 @@ function create(w: SimWorld, s: State, id: number, at: Vec2, heading: number, tr
     ground: 'footway', segment: undefined, stretch: '', walking: false, kerbWait: 0, waitingFor: null, gesture: null,
   };
   const p: Walker = {
-    id, view, agent, x: pos.x, y: pos.z, h: pos.y, prevX: pos.x, prevY: pos.z, prevHeading: heading, heading, turnV: 0, speed: 0, age: 0,
+    id, view, agent, x: pos.x, y: pos.z, h: pos.y, prevX: pos.x, prevY: pos.z, prevHeading: heading, heading, turnV: 0, speed: 0, age: 0, published: false,
     pace, ageClass: cls, gender: sex, party, rank: traits.rank ?? 0, leader: traits.leader ?? null,
     goal: { x: pos.x, y: pos.z }, routeDirection: { x: 1, y: 0 }, leaving: false, mode: 'walk', waitAt: null, zebra: null, narrow: null, waited: 0, granted: new Map(),
     passage: null, aside: null, settle: null, asked: null, holding: null, think: id % THINK_EVERY, segment: undefined, onZebra: null, scripted: false,
@@ -1217,13 +1220,20 @@ function step(w: SimWorld, s: State): void {
     const vel = p.agent.velocity();
     p.x = pos.x; p.y = pos.z; p.h = pos.y;
     p.speed = Math.hypot(vel.x, vel.z);
+    // A new body has no previously drawn facing to turn from. Initialize its
+    // first visible pose from Detour, retaining every physical state/RNG draw.
+    const firstPose = !p.published && p.speed > 0;
+    if (firstPose) {
+      p.heading = Math.atan2(vel.z, vel.x);
+      p.prevHeading = p.heading;
+    }
     // VISUAL ORIENTATION, which moves nothing: walking, the way it walks;
     // shuffling, the way it means to go; standing, the way it waits to go.
     const want = p.agent.desiredVelocity();
     const face = p.speed >= WALKING ? Math.atan2(vel.z, vel.x)
       : Math.hypot(want.x, want.z) > MEANS ? Math.atan2(want.z, want.x)
         : p.holding ? waitFacing(p) : null;
-    if (face !== null) {
+    if (face !== null && !firstPose) {
       const delta = Math.atan2(Math.sin(face - p.heading), Math.cos(face - p.heading));
       // Turning on the spot is quicker than turning while walking.
       const rate = PIVOT_RATE + (TURN_RATE - PIVOT_RATE) * Math.min(1, p.speed / WALKING);
@@ -1290,6 +1300,7 @@ function publish(w: SimWorld, s: State): void {
   w.crossingStates.clear();
   for (const p of s.walkers) {
     const v = p.view;
+    p.published = true;
     v.x = p.x; v.y = p.y; v.heading = p.heading;
     v.prev.x = p.prevX; v.prev.y = p.prevY; v.prev.heading = p.prevHeading;
     v.v = p.speed; v.turnV = p.turnV; v.age = p.age;
@@ -1330,7 +1341,7 @@ function publish(w: SimWorld, s: State): void {
 
 /** A read-only look at the walkers, for tests and diagnosis. */
 export function inspectCrowd(w: SimWorld): readonly {
-  id: number; x: number; y: number; h: number; heading: number; vx: number; vy: number; dvx: number; dvy: number; speed: number;
+  id: number; x: number; y: number; h: number; heading: number; vx: number; vy: number; dvx: number; dvy: number; speed: number; pace: number;
   mode: string; holding: boolean; leader: number | null; waited: number; target: Vec2 | null; goal: Vec2; zebra: string | null; state: number;
   narrow: number | null; passage: number | null; aside: Vec2 | null; blocked: number; replans: number; yields: number; granted: readonly string[]; onZebra: string | null;
   /** Detour's own view: its target, its target's state (0 none, 1 failed, 2 valid, 3 requesting, 4 waiting for queue, 5 waiting for path, 6 velocity), the corners ahead. */
@@ -1343,7 +1354,7 @@ export function inspectCrowd(w: SimWorld): readonly {
     const neighbours = Array.from({ length: raw.nneis }, (_, i) => byIndex.get(raw.get_neis(i).idx) ?? -1);
     const v = p.agent.velocity(), dv = p.agent.desiredVelocity(), t = p.agent.target();
     return {
-      id: p.id, x: p.x, y: p.y, h: p.h, heading: p.heading, vx: v.x, vy: v.z, dvx: dv.x, dvy: dv.z, speed: p.speed,
+      id: p.id, x: p.x, y: p.y, h: p.h, heading: p.heading, vx: v.x, vy: v.z, dvx: dv.x, dvy: dv.z, speed: p.speed, pace: p.pace,
       mode: p.mode, holding: p.holding !== null, leader: p.leader?.id ?? null, waited: p.waited, target: p.asked, goal: p.goal,
       zebra: p.zebra?.id ?? null, state: p.agent.state(), narrow: p.narrow?.n.id ?? null, passage: p.passage?.n.id ?? null, aside: p.aside?.at ?? null, blocked: p.blocked,
       replans: p.replans, yields: p.yields, granted: [...p.granted.keys()], onZebra: p.onZebra?.id ?? null,
