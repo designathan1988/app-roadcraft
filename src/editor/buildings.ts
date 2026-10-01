@@ -1,3 +1,4 @@
+import { paletteOf, roofMaterial } from '@world/buildings/materials';
 import type { Vec2 } from '@core/vec2';
 import { edgeFrame, localFootprint, offsetRing, supportedBy, overlapArea, roofDetailRing } from '@world/buildings/footprints';
 import { setVolumePlan } from './buildingPlans';
@@ -711,11 +712,19 @@ export function opMoveVolume(b: Building, volumeId: number, dx: number, dy: numb
  * (volumes that share a wall already read as one mass, so nothing is lost by
  * leaving them).
  */
-export function opUnionVolumes(b: Building, volumeId: number): boolean {
+/** What a mass looks like, resolved: its walls, each side's, and its roof. */
+const lookOf = (b: Building, v: Volume): string => JSON.stringify({
+  wall: v.materials?.wall ?? b.materials?.wall ?? paletteOf(b).wall,
+  sides: v.materials?.sides ?? null,
+  roof: roofMaterial(b, v),
+});
+
+export function opUnionVolumes(b: Building, volumeId: number, sameLookOnly = false): boolean {
   const v = volumeById(b, volumeId);
   if (!v || v.outline) return false;
   for (const other of [...b.volumes]) {
     if (other.id === v.id || other.outline) continue;
+    if (sameLookOnly && lookOf(b, v) !== lookOf(b, other)) continue;
     if (other.base !== v.base || other.storeys.length !== v.storeys.length) continue;
     const sameRow = Math.abs(v.y - other.y) < 1e-6 && Math.abs(v.d - other.d) < 1e-6;
     const sameColumn = Math.abs(v.x - other.x) < 1e-6 && Math.abs(v.w - other.w) < 1e-6;
@@ -815,6 +824,14 @@ export function weldInto(ctx: BuildingContext, draft: Building, skip: readonly B
       volume.y = polygonBounds(ring).minY;
       volume.w = Math.max(MIN_SIZE, polygonBounds(ring).maxX - volume.x);
       volume.d = Math.max(MIN_SIZE, polygonBounds(ring).maxY - volume.y);
+      // Each mass keeps the look it had: walls and roof of the building it
+      // came from. Left to the building it joins, they took its palette, and
+      // the last building placed painted every one beside it.
+      volume.materials = {
+        ...volume.materials,
+        wall: v.materials?.wall ?? other.materials?.wall ?? paletteOf(other).wall,
+        roof: roofMaterial(other, v),
+      };
       const plain = ring.length === 4;
       if (plain) delete volume.outline;
       else volume.outline = ring.map((p) => ({ x: p.x - volume.x, y: p.y - volume.y }));
@@ -886,7 +903,8 @@ export function fuseVolumes(b: Building): void {
   for (let guard = 0; guard < 24; guard++) {
     let merged = false;
     for (const v of [...b.volumes]) {
-      if (opUnionVolumes(b, v.id)) {
+      // Only masses that look alike: two buildings welded keep their colours.
+      if (opUnionVolumes(b, v.id, true)) {
         merged = true;
         break;
       }

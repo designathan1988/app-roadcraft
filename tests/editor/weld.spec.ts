@@ -5,6 +5,7 @@ import { Network } from '@world/network';
 import { footprintBox, footprintRects, localDirToWorld, planOverlap } from '@world/buildings/geometry';
 import { type Building, type BuildingId, cloneBuilding, volumeById } from '@world/buildings/types';
 import { blueprintByKey } from '@world/buildings/blueprints';
+import { paletteOf } from '@world/buildings/materials';
 import { validateBuilding } from '@world/buildings/validate';
 import {
   type BuildingContext,
@@ -62,6 +63,18 @@ function placeOverlapping(ctx: BuildingContext, against: Building, at: { x: numb
 }
 
 describe('welding two buildings', () => {
+  it('keeps each building its own colours: the last one placed does not paint the other', () => {
+    const { ctx } = world();
+    const first = place(ctx, { x: 0, y: 60 });
+    ctx.doc.buildings.get(first.id)!.palette = 1; // brick
+    const second = placeOverlapping(ctx, first, { x: 12, y: 60 });
+    const draft = cloneBuilding(second);
+    draft.palette = 0; // plaster
+    expect(weldInto(ctx, draft, [])).toEqual([first.id]);
+    const walls = draft.volumes.map((v) => (v.materials?.wall ?? paletteOf(draft).wall).finish).sort();
+    expect(walls).toEqual(['brick', 'plaster']);
+  });
+
   it('cuts the overlap out of the smaller mass, leaving nothing overlapping', () => {
     const { ctx } = world();
     const first = place(ctx, { x: 0, y: 60 });
