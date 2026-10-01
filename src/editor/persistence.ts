@@ -478,6 +478,8 @@ export function isSerializedDoc(value: unknown): value is SerializedDoc {
   // or dropped one by one by `migrateBuilding` on load, so a damaged building
   // never quarantines the roads around it.
   if (!isSerializedBuildings(value.buildings)) return false;
+  // People are normalised one by one on load; the key only has to be a list.
+  if (value.people !== undefined && !Array.isArray(value.people)) return false;
 
   return true;
 }

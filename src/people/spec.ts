@@ -1,0 +1,156 @@
+import { DEFAULT_MACRO, ageFromYears, type MacroParams } from './body/macro';
+
+/**
+ * A person: everything the Person Creator sets, and all a citizen needs to be
+ * drawn. Small (a few hundred bytes), saved with the city, and the same record
+ * for a pedestrian, a driver and a passenger.
+ */
+export interface PersonSpec {
+  readonly id: number;
+  readonly name: string;
+  readonly body: MacroParams;
+  /** Regional sliders, -1..1, by slider name (`l-`/`r-` for one side). */
+  readonly features: Readonly<Record<string, number>>;
+  readonly look: PersonLook;
+}
+
+export type HairStyle = 'none' | 'short' | 'long';
+export type TopStyle = 'none' | 'tank' | 'tshirt' | 'longsleeve';
+export type BottomStyle = 'trousers' | 'shorts' | 'skirt';
+
+export interface PersonLook {
+  /** Colours as 0xRRGGBB. */
+  readonly skin: number;
+  readonly eyes: number;
+  readonly hair: number;
+  readonly hairStyle: HairStyle;
+  readonly top: TopStyle;
+  readonly topColour: number;
+  readonly bottom: BottomStyle;
+  readonly bottomColour: number;
+  readonly shoes: number;
+}
+
+/** Skin tones from very light to very dark, a deliberately wide range. */
+export const SKIN_TONES: readonly number[] = [
+  0xf6dccb, 0xf0cdb2, 0xe5b898, 0xd9a47f, 0xc68b62, 0xb07349, 0x8f5b3a, 0x6f452b, 0x553220, 0x3d2417,
+];
+export const HAIR_COLOURS: readonly number[] = [
+  0x1a1410, 0x2e2018, 0x4a3022, 0x6b4428, 0x8c5a2e, 0xa8743c, 0xc9a165, 0xe0c58f, 0x9a9a98, 0xdedcd8, 0x8a2f1f,
+];
+export const EYE_COLOURS: readonly number[] = [0x3b2416, 0x5a3a22, 0x6b6a3a, 0x3d6b4a, 0x3d5d8a, 0x7a8a9a];
+export const CLOTH_COLOURS: readonly number[] = [
+  0xf2f0ea, 0x22252b, 0x3b4a6b, 0x6a8fbf, 0x2f5d50, 0x7a9a5a, 0xb03a2e, 0xd9822b, 0xe8c547, 0x8a5a9a, 0xc9a68a, 0x5c5c5c,
+];
+
+export const DEFAULT_LOOK: PersonLook = {
+  skin: SKIN_TONES[3]!, eyes: EYE_COLOURS[1]!, hair: HAIR_COLOURS[2]!, hairStyle: 'short',
+  top: 'tshirt', topColour: CLOTH_COLOURS[3]!, bottom: 'trousers', bottomColour: CLOTH_COLOURS[2]!, shoes: CLOTH_COLOURS[1]!,
+};
+
+export function defaultPerson(id: number, name = ''): PersonSpec {
+  return { id, name, body: { ...DEFAULT_MACRO }, features: {}, look: { ...DEFAULT_LOOK } };
+}
+
+/** A small, fast, seedable generator (mulberry32). */
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const pick = <T>(r: () => number, list: readonly T[]): T => list[Math.floor(r() * list.length)]!;
+
+/**
+ * A plausible stranger, the same one for the same seed: any sex, an age from
+ * a toddler to the very old (weighted towards adults, as a street is), every
+ * skin tone, and clothes and hair to go with them.
+ */
+export function randomPerson(id: number, seed: number, keep: Partial<Pick<PersonSpec, 'body' | 'look'>> = {}): PersonSpec {
+  const r = rng(seed);
+  const years = r() < 0.12 ? 2 + r() * 14 : r() < 0.82 ? 18 + r() * 47 : 65 + r() * 25;
+  const gender = r() < 0.5 ? r() * 0.25 : 0.75 + r() * 0.25;
+  const shares = [r() ** 2, r() ** 2, r() ** 2];
+  const total = shares.reduce((s, x) => s + x, 0) || 1;
+  const body: MacroParams = {
+    gender,
+    age: ageFromYears(years),
+    muscle: 0.3 + r() * 0.45,
+    weight: 0.25 + r() * 0.55,
+    height: 0.3 + r() * 0.4,
+    proportions: 0.4 + r() * 0.5,
+    african: shares[0]! / total,
+    asian: shares[1]! / total,
+    caucasian: shares[2]! / total,
+    cupsize: 0.35 + r() * 0.4,
+    firmness: 0.4 + r() * 0.4,
+    ...keep.body,
+  };
+  const old = years > 60;
+  const female = gender < 0.5;
+  const look: PersonLook = {
+    skin: pick(r, SKIN_TONES),
+    eyes: pick(r, EYE_COLOURS),
+    hair: old && r() < 0.7 ? pick(r, [0x9a9a98, 0xdedcd8]) : pick(r, HAIR_COLOURS),
+    hairStyle: !female && r() < 0.12 ? 'none' : female && r() < 0.6 ? 'long' : 'short',
+    top: pick(r, ['tank', 'tshirt', 'tshirt', 'longsleeve', 'longsleeve'] as const),
+    topColour: pick(r, CLOTH_COLOURS),
+    bottom: female && r() < 0.35 ? 'skirt' : r() < 0.25 ? 'shorts' : 'trousers',
+    // Never the top's own colour: a matching pair reads as a boiler suit.
+    bottomColour: 0,
+    shoes: pick(r, [0x22252b, 0x4a3022, 0xf2f0ea, 0x5c5c5c]),
+    ...keep.look,
+  };
+  const bottoms = CLOTH_COLOURS.filter((c) => c !== look.topColour);
+  const finished: PersonLook = keep.look?.bottomColour !== undefined ? look : { ...look, bottomColour: pick(r, bottoms) };
+  return { id, name: '', body, features: {}, look: finished };
+}
+
+const unit = (x: unknown, fallback: number): number =>
+  typeof x === 'number' && Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : fallback;
+const colour = (x: unknown, fallback: number): number =>
+  typeof x === 'number' && Number.isInteger(x) && x >= 0 && x <= 0xffffff ? x : fallback;
+const oneOf = <T extends string>(x: unknown, values: readonly T[], fallback: T): T =>
+  typeof x === 'string' && (values as readonly string[]).includes(x) ? (x as T) : fallback;
+
+/**
+ * A person read from outside (a save, a file): every field brought into range,
+ * every unknown dropped. Null when it is not a person at all.
+ */
+export function normalizePerson(raw: unknown): PersonSpec | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o['id'] !== 'number' || !Number.isInteger(o['id']) || o['id'] < 0 || o['id'] > 2 ** 31) return null;
+  const b = (typeof o['body'] === 'object' && o['body'] !== null ? o['body'] : {}) as Record<string, unknown>;
+  const l = (typeof o['look'] === 'object' && o['look'] !== null ? o['look'] : {}) as Record<string, unknown>;
+  const f = (typeof o['features'] === 'object' && o['features'] !== null ? o['features'] : {}) as Record<string, unknown>;
+  const body = Object.fromEntries(
+    (Object.keys(DEFAULT_MACRO) as (keyof MacroParams)[]).map((k) => [k, unit(b[k], DEFAULT_MACRO[k])]),
+  ) as unknown as MacroParams;
+  const features: Record<string, number> = {};
+  for (const [k, v] of Object.entries(f)) {
+    if (typeof v === 'number' && Number.isFinite(v) && v !== 0 && k.length < 80) features[k] = Math.min(1, Math.max(-1, v));
+  }
+  return {
+    id: o['id'],
+    name: typeof o['name'] === 'string' ? o['name'].slice(0, 40) : '',
+    body,
+    features,
+    look: {
+      skin: colour(l['skin'], DEFAULT_LOOK.skin),
+      eyes: colour(l['eyes'], DEFAULT_LOOK.eyes),
+      hair: colour(l['hair'], DEFAULT_LOOK.hair),
+      hairStyle: oneOf(l['hairStyle'], ['none', 'short', 'long'] as const, DEFAULT_LOOK.hairStyle),
+      top: oneOf(l['top'], ['none', 'tank', 'tshirt', 'longsleeve'] as const, DEFAULT_LOOK.top),
+      topColour: colour(l['topColour'], DEFAULT_LOOK.topColour),
+      bottom: oneOf(l['bottom'], ['trousers', 'shorts', 'skirt'] as const, DEFAULT_LOOK.bottom),
+      bottomColour: colour(l['bottomColour'], DEFAULT_LOOK.bottomColour),
+      shoes: colour(l['shoes'], DEFAULT_LOOK.shoes),
+    },
+  };
+}

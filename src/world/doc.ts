@@ -20,6 +20,7 @@ import { clampToMap } from './bounds';
 import { casingHalf, roadProfile } from './roadTypes';
 import { BuildingStore } from './buildings/store';
 import type { SerializedBuilding } from './buildings/serialize';
+import { normalizePerson, type PersonSpec } from '@people/spec';
 
 /** `shape` flattened until no band of a road of this profile folds over (see `RoadDoc.fitCurve`). */
 export function fitRoadCurve(
@@ -125,6 +126,33 @@ export class RoadDoc {
    * would rebuild the road network and the simulation for nothing.
    */
   readonly buildings = new BuildingStore();
+
+  /**
+   * The people made in the Person Creator, saved with the city. Their own
+   * revision, `peopleRevision`: a person is not part of any network.
+   */
+  readonly people: PersonSpec[] = [];
+  peopleRevision = 0;
+
+  /** Adds a person, or replaces the one with the same id. */
+  savePerson(person: PersonSpec): void {
+    const at = this.people.findIndex((p) => p.id === person.id);
+    if (at >= 0) this.people[at] = person;
+    else this.people.push(person);
+    this.peopleRevision++;
+  }
+
+  removePerson(id: number): void {
+    const at = this.people.findIndex((p) => p.id === id);
+    if (at < 0) return;
+    this.people.splice(at, 1);
+    this.peopleRevision++;
+  }
+
+  /** An id no saved person has. */
+  nextPersonId(): number {
+    return this.people.reduce((m, p) => Math.max(m, p.id), 0) + 1;
+  }
 
   /** Bumped on every structural change; consumers use it to invalidate caches. */
   revision = 0;
@@ -640,6 +668,11 @@ export class RoadDoc {
     for (const [id, span] of source.poleSpans) this.poleSpans.set(id, { ...span });
     // Moves `buildings.revision` only if the buildings differ.
     this.buildings.replaceWith(source.buildings);
+    if (JSON.stringify(this.people) !== JSON.stringify(source.people)) {
+      this.people.length = 0;
+      this.people.push(...source.people.map((p) => JSON.parse(JSON.stringify(p)) as PersonSpec));
+      this.peopleRevision++;
+    }
 
     if (landMoved) {
       this.terrainStamps.length = 0;
@@ -692,6 +725,8 @@ export class RoadDoc {
       // Only when there are any, so a map without buildings serialises
       // exactly as it did before buildings existed.
       ...(this.buildings.size > 0 ? { buildings: this.buildings.toJSON() } : {}),
+      // Likewise the people: only a city that has some carries the key.
+      ...(this.people.length > 0 ? { people: this.people.map((p) => JSON.parse(JSON.stringify(p)) as PersonSpec) } : {}),
     };
   }
 
@@ -789,6 +824,14 @@ export class RoadDoc {
     }
     // Buildings, if the map has any; each one through `migrateBuilding`.
     if (data.buildings) doc.buildings.load(data.buildings);
+    // People, each brought into range; anything that is not one is dropped.
+    const seen = new Set<number>();
+    for (const raw of data.people ?? []) {
+      const person = normalizePerson(raw);
+      if (!person || seen.has(person.id)) continue;
+      seen.add(person.id);
+      doc.people.push(person);
+    }
     for (const id of doc.nodes.keys()) doc.dirtyNodes.add(id);
     for (const id of doc.segments.keys()) doc.dirtySegments.add(id);
     doc.revision = 1;
@@ -836,6 +879,8 @@ export interface SerializedDoc {
    * the poles: every map saved before buildings existed has no such key.
    */
   readonly buildings?: readonly SerializedBuilding[];
+  /** People from the Person Creator; OPTIONAL like the buildings. Normalised on load. */
+  readonly people?: readonly unknown[];
 }
 
 function detach(n: RoadNode | undefined, id: SegmentId): void {

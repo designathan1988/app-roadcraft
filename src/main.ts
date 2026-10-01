@@ -22,6 +22,8 @@ import { type Viewport, flatViewport } from '@view/viewport';
 import { CanvasSurface } from '@ui/overlay/surface';
 import { INVALID, SELECTION, HOVER } from '@ui/overlay/palette';
 import { createSceneRenderer, type SceneHandle } from '@render/renderer';
+import { createPersonPreview } from '@render/people/personPreview';
+import { createPersonCreator } from '@ui/creator/personCreator';
 import { DEFAULT_AZIMUTH, DEFAULT_ELEVATION, isoZoomBounds } from '@render/isoViewport';
 
 import { SimWorld } from '@sim/world';
@@ -67,7 +69,8 @@ type Tool =
   | 'bulldoze'
   | 'control'
   | 'inspect'
-  | 'pole';
+  | 'pole'
+  | 'person';
 type Alignment = 'straight' | 'curve' | 'free';
 interface RoadDraft {
   readonly start: Anchor;
@@ -1451,6 +1454,7 @@ window.addEventListener('keydown', (e) => {
     i: 'inspect',
     p: 'pole',
     h: 'building',
+    k: 'person',
   };
   const next = shortcuts[e.key.toLowerCase()];
   if (next) setTool(next);
@@ -1781,7 +1785,12 @@ function setTool(next: Tool): void {
   terrainPalette.setAttribute('aria-hidden', String(!terrainActive));
   // A tool with nothing to configure still fills its panel: with what it does
   // and every key it answers to. An empty shelf is a defect, not minimalism.
-  renderToolHelp(roadFamily || terrainActive || next === 'building' ? null : next);
+  renderToolHelp(roadFamily || terrainActive || next === 'building' || next === 'person' ? null : next);
+  // The Person Creator fills the panel while it is the tool in hand.
+  personCreator.root.hidden = next !== 'person';
+  personCreator.stage.hidden = next !== 'person';
+  if (next === 'person') personCreator.activate();
+  else personCreator.deactivate();
   renderPanelTitle();
   // Buildings are a tool, not a mode: the game's own HUD stays up, and the
   // band's tray swaps to the Builder's categories while it is the tool in hand.
@@ -1792,6 +1801,25 @@ function setTool(next: Tool): void {
   updateHint();
   requestDraw();
 }
+
+/** The Person Creator (`ui/creator/personCreator.ts`); its people are saved with the city. */
+const personCreator = createPersonCreator({
+  preview: (canvas) => createPersonPreview(canvas),
+  people: () => doc.people,
+  save: (person) => mutate(() => {
+    doc.savePerson(person);
+    return true;
+  }),
+  remove: (id) => mutate(() => {
+    doc.removePerson(id);
+    return true;
+  }),
+  nextId: () => doc.nextPersonId(),
+});
+personCreator.root.hidden = true;
+personCreator.stage.hidden = true;
+document.getElementById('app')?.appendChild(personCreator.stage);
+let seenPeopleRevision = doc.peopleRevision;
 
 /** The panel's help card, for the tools that have nothing else to show. */
 const toolHelp = document.createElement('div');
@@ -1868,6 +1896,7 @@ function mountUnifiedChrome(): void {
   // right-hand column belongs to the camera and the minimap.
   move(document.getElementById('inspector'), hosts.level2);
   move(toolHelp, hosts.level2);
+  move(personCreator.root, hosts.level2);
   renderToolHelp(toolHelpFor);
   renderPanelTitle();
   move(document.querySelector('.simulation-controls'), hosts.simMenu);
@@ -2390,6 +2419,11 @@ function frame(now: number): void {
   scene.draw(net, sim, alpha, wall, { holdRoads: terrainStroke !== null });
   drawOverlayScreen();
   updateCameraNeedle();
+  // Undo, redo or a loaded map can change the saved people under the Creator.
+  if (doc.peopleRevision !== seenPeopleRevision) {
+    seenPeopleRevision = doc.peopleRevision;
+    personCreator.refresh();
+  }
   if (topologyAfterDraw) {
     topologyAfterDraw = false;
     requestDraw();
@@ -3187,6 +3221,7 @@ languageSelect.onchange = () => {
 // carry a key, and these were built by hand.
 onLanguageChange(() => {
   refreshRoadTypeLabels();
+  personCreator.relabel();
   labelTools();
   renderToolHelp(toolHelpFor);
   renderPanelTitle();
