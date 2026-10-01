@@ -96,6 +96,7 @@ that `world` and `sim` never call `Math.random` (invariant 5, which
 | car-following, lane changes, spawning | `src/sim/vehicles/` | [docs/architecture.md](docs/architecture.md) |
 | how one driver differs from another | `src/sim/vehicles/driver.ts` | [docs/architecture.md](docs/architecture.md) |
 | overtaking and lane discipline | `src/sim/vehicles/laneChange.ts` | [docs/architecture.md](docs/architecture.md) |
+| the NEW pedestrian engine (Detour crowd, `?people=crowd`): intent, zebras, narrow passages | `src/sim/people/crowd.ts`, `crowdNav.ts` | [docs/handoff/people-crowd.md](docs/handoff/people-crowd.md), skill `roadcraft-people-crowd` |
 | pedestrian pace, parties, steering, destinations | `src/sim/peds/behaviour.ts` | [docs/architecture.md](docs/architecture.md) |
 | what pedestrians do in places — benches, stopping to look, talking | `src/sim/peds/activities.ts` | [docs/architecture.md](docs/architecture.md) |
 | how a pedestrian's body moves — walk, start, stop, turns, sit, talk | `src/render/riggedCitizens.ts` + `src/render/citizenWalk.ts` | `scripts/extract-rocketbox-clips.mjs` |
@@ -263,6 +264,12 @@ dev servers and browsers as soon as a check is done.
 
 ## 8. Working here
 
+* **Pedestrians are handed to Codex** (2026-10-01): any work on people
+  movement follows the skill `.agents/skills/roadcraft-people-crowd/` and
+  [docs/handoff/people-crowd.md](docs/handoff/people-crowd.md). That work is
+  done in the shared checkout on `master` (its uncommitted trace tools live
+  there and it has a single writer); the worktree rule below applies to
+  everything else.
 * **A worktree of your own, always.** Several agents work in this repository
   at once. `git worktree add -b <branch> ../<name> master`, work and commit
   there, and never edit, stage or commit someone else's uncommitted changes in
