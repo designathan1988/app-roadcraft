@@ -95,4 +95,19 @@ describe('road surface tiles', () => {
     buildRoadSurfaces(net, elevation, materials, ground, reuse);
     expect([...reuse.tiles.keys()]).toEqual(['ground']);
   });
+
+  it('draws a road raised in one stroke as one surface, not a piece at a time', () => {
+    // Four pieces at authored heights, bending a little at each node: one
+    // alignment pass. A pass per segment closed every piece's ends, and the
+    // joins showed as lines across the road and notched kerbs.
+    const doc = new RoadDoc();
+    const pts: [number, number, number][] = [[0, 0, 0], [60, 4, 5], [120, 0, 9], [180, 6, 5], [240, 0, 0]];
+    const nodes = pts.map(([x, y, h]) => doc.addNode({ x, y }, h));
+    for (let i = 1; i < nodes.length; i++) doc.addSegment(nodes[i - 1]!.id, nodes[i]!.id, 1);
+    const net = new Network(doc);
+    net.rebuild();
+    const reuse = reuseFor(() => buildRoadElevation(net, ground));
+    buildRoadSurfaces(net, buildRoadElevation(net, ground), materials, ground, reuse);
+    expect([...reuse.tiles.keys()].filter((id) => id.startsWith('alignment-'))).toHaveLength(1);
+  });
 });

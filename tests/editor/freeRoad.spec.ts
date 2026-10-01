@@ -21,6 +21,33 @@ function empty(): { doc: RoadDoc; net: Network } {
 }
 
 describe('free road gesture', () => {
+  it('raises the road mid-drag without leaving a gap or a stub', () => {
+    // Page Up pressed with the pointer still: samples at almost one place
+    // with rising heights, then the stroke goes on. It was committed with a
+    // gap where the heights changed.
+    const { doc, net } = empty();
+    const start = point(0, 0), end = point(300, 0, 15);
+    const samples = [point(40, 0), point(80, 0), point(82, 0, 2.5), point(83, 0, 5), point(84, 0, 7.5),
+      point(130, 0, 7.5), point(180, 0, 10), point(230, 0, 12.5), point(270, 0, 15)];
+    const pieces = roadPathFromGesture(samples, start, end);
+    for (const piece of pieces) expect(Math.hypot(piece.end.at.x - piece.start.at.x, piece.end.at.y - piece.start.at.y)).toBeGreaterThan(9);
+    expect(commitRoadPath(doc, net, { kind: 'free', at: start.at }, { kind: 'free', at: end.at }, 1, pieces).committed).toBe(true);
+    // One continuous road: two ends, every other node joins two pieces.
+    const degrees = [...doc.nodes.values()].map((node) => node.incident.length).sort();
+    expect(degrees.filter((d) => d === 1)).toHaveLength(2);
+    expect(degrees.every((d) => d === 1 || d === 2)).toBe(true);
+  });
+
+  it('folds a piece too short to be a road into the next one', () => {
+    const { doc, net } = empty();
+    const a = point(0, 0), b = point(60, 0, 5), c = point(64, 0, 6), d = point(140, 0, 10);
+    const pieces = [{ start: a, end: b, curve: null }, { start: b, end: c, curve: null }, { start: c, end: d, curve: null }];
+    expect(commitRoadPath(doc, net, { kind: 'free', at: a.at }, { kind: 'free', at: d.at }, 1, pieces).committed).toBe(true);
+    expect(doc.segments.size).toBe(2);
+    const degrees = [...doc.nodes.values()].map((node) => node.incident.length).sort();
+    expect(degrees).toEqual([1, 1, 2]);
+  });
+
   it('closes a loop back onto its own start', () => {
     const { doc, net } = empty();
     const start = point(-100, 0);

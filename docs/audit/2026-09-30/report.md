@@ -54,7 +54,7 @@ Count: **6 P0 · 49 P1 · 72 P2 · 54 P3** (consolidated items; duplicates acros
 | Vehicles | Drive v2 is the game's default (`?drive=v1` keeps the old model): tactical lane changes, amber latch, birth speed, shortest-loop metering (P1-19, P1-20, P1-22, P2-08, P2-11 fixed); turn-taking with pedestrians at zebras `789e00e`. Strategic routing (P2-06) and stop indexing (P2-05) are open; stuck vehicles measured and guarded (P2-09); the long-vehicle corner (`kerb.spec`) passes |
 | UI shell and camera | **replaced**: free-orbit camera `603400c`, tool rail and side panel `83c45b0`, city-builder controls `8013836` |
 | Person creator, Rocketbox | Creator live `2d22711`; street people are MakeHuman bodies and the Rocketbox models are removed `64ecfa1` (its animations are kept); clothes and hair from MakeHuman proxies are open |
-| Roads redesign, building mode | Buildings panel by models and shapes `33061d1`, road seams `29e1c01`. 2026-10-01, every Builder flow driven in the game and photographed (`docs/audit/2026-10-01/buildings/`): a model, a dragged shape and a free plan now land where placed (`9eca741`: the cursor pick no longer jumps onto the nearest deck, a shape fills the rectangle drawn, a house beside a raised road no longer stands on a deck-high plinth); a finish comes in its own colour and the panel follows (`02622d3`). Level-aware junctions, ramps and per-point heights are open |
+| Roads redesign, building mode | Buildings panel by models and shapes `33061d1`, road seams `29e1c01`. 2026-10-01, every Builder flow driven in the game and photographed (`docs/audit/2026-10-01/buildings/`): a model, a dragged shape and a free plan now land where placed (`9eca741`: the cursor pick no longer jumps onto the nearest deck, a shape fills the rectangle drawn, a house beside a raised road no longer stands on a deck-high plinth); a finish comes in its own colour and the panel follows (`02622d3`). Per-point heights: a free stroke raised and lowered with Page Up/Down mid-drag is one continuous road at authored heights, drawn as one surface (no loop, no gap, no joint lines), photographed in `docs/audit/2026-10-01/roads/stroke-*`. Level-aware junctions remain open |
 
 ---
 
@@ -503,7 +503,7 @@ Format: **ID · title** — location — current → expected · cause · fix �
 - **P2-54 · The editor's "Frame selection" does nothing** — `host.focus` is a no-op; `deps.focusBuilding` is dead code — **open** (Lot U).
 - **P2-55 · Edits that change nothing create an undo step and clear redo** — compare the four revision counters before and after — **open**.
 - **P2-56 · Snapping and pole planning computed unused** — `main.ts:760, 976, 984, 1012` — **open**.
-- **P2-57 · Status-bar counts update ~1 s late after undo/redo** [E2E] — update in `applySnapshot`/`mutateBuilt` — **open**.
+- **P2-57 · Status-bar counts update ~1 s late after undo/redo** [E2E] — update in `applySnapshot`/`mutateBuilt` — **fixed** (both call `updateStatus()`; checked in the game 2026-10-01: draw → 61, undo → 60, redo → 61, read in the same frame).
 
 ### 6.4 Render and performance
 

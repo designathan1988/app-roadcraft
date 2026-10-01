@@ -235,10 +235,39 @@ export function buildRoadSurfaces(
     return !!segment && (Math.abs(net.doc.node(segment.a)?.heightOffset ?? 0) > 1e-6 ||
       Math.abs(net.doc.node(segment.b)?.heightOffset ?? 0) > 1e-6);
   };
-  const passes: { readonly id: string; readonly structure: RoadStructure; readonly segment?: SegmentId }[] = [
+  // Roads at authored heights are drawn on their own, each from its own
+  // deck, and those that run on from one another through a two-way node
+  // as ONE surface: drawn a segment at a time, every piece of a road raised in
+  // one stroke closed its ends, and the joins showed as lines and notched kerbs.
+  const alignments = new Map<SegmentId, SegmentId[]>();
+  {
+    const owner = new Map<SegmentId, SegmentId>();
+    const find = (id: SegmentId): SegmentId => {
+      let r = id;
+      while (owner.get(r) !== r) r = owner.get(r)!;
+      return r;
+    };
+    const ids = [...net.doc.segments.keys()].filter(manual);
+    for (const id of ids) owner.set(id, id);
+    for (const node of net.doc.nodes.values()) {
+      if (node.incident.length !== 2) continue;
+      const [p, q] = node.incident as [SegmentId, SegmentId];
+      // Bent or straight: a bend's junction plate belongs to the pass that
+      // holds both its legs (`ownsJunction`), so it is drawn in the same surface.
+      if (!owner.has(p) || !owner.has(q)) continue;
+      const a = find(p), b = find(q);
+      if (a !== b) owner.set(Math.max(a, b) as SegmentId, Math.min(a, b) as SegmentId);
+    }
+    for (const id of ids) {
+      const root = find(id);
+      const list = alignments.get(root);
+      if (list) list.push(id); else alignments.set(root, [id]);
+    }
+  }
+  const passes: { readonly id: string; readonly structure: RoadStructure; readonly segment?: SegmentId; readonly chain?: readonly SegmentId[] }[] = [
     ...ROAD_STRUCTURES.map((structure) => ({ id: structure.id, structure: structure.id })),
-    ...[...net.doc.segments.keys()].filter(manual).map((segment) =>
-      ({ id: `alignment-${segment}`, structure: 'ground' as const, segment })),
+    ...[...alignments].map(([root, chain]) =>
+      ({ id: `alignment-${root}`, structure: 'ground' as const, segment: root, chain })),
   ];
   if (reuse) {
     const current = new Set(passes.map((pass) => pass.id));
@@ -247,8 +276,8 @@ export function buildRoadSurfaces(
   for (const pass of passes) {
     const structure = roadStructure(pass.structure);
     const present = [...net.doc.segments.values()].some(
-      (segment) => pass.segment !== undefined
-        ? segment.id === pass.segment
+      (segment) => pass.chain !== undefined
+        ? pass.chain.includes(segment.id)
         : segment.structure === structure.id && !manual(segment.id),
     );
     if (!present) {
@@ -257,25 +286,36 @@ export function buildRoadSurfaces(
     }
 
     const only: ReadonlySet<RoadStructure> = new Set([structure.id]);
-    const include = (id: SegmentId): boolean => pass.segment !== undefined
-      ? id === pass.segment
+    const include = (id: SegmentId): boolean => pass.chain !== undefined
+      ? pass.chain.includes(id)
       : !manual(id) && (net.doc.segment(id)?.structure ?? 'ground') === structure.id;
-    const raised = pass.segment !== undefined
-      ? (() => {
-        const line = net.ribbons.get(pass.segment)?.full;
+    /** The segment of the pass a point belongs to: the one whose centreline is nearest. */
+    const segmentAt = (x: number, y: number): SegmentId => {
+      const chain = pass.chain!;
+      if (chain.length === 1) return chain[0]!;
+      let best = chain[0]!, bestD = Infinity;
+      for (const id of chain) {
+        const d = net.ribbons.get(id)?.full.closestPoint({ x, y }).distance ?? Infinity;
+        if (d < bestD) { bestD = d; best = id; }
+      }
+      return best;
+    };
+    const raised = pass.chain !== undefined
+      ? pass.chain.some((id) => {
+        const line = net.ribbons.get(id)?.full;
         if (!line) return false;
         for (let s = 0; s <= line.length; s += Math.max(4, line.length / 24)) {
           const p = line.sampleAt(s).p;
-          if (elevation.onSegment(pass.segment, p.x, p.y) - terrainAt(p.x, p.y) > 5) return true;
+          if (elevation.onSegment(id, p.x, p.y) - terrainAt(p.x, p.y) > 5) return true;
         }
         return false;
-      })()
+      })
       : isRaised(structure.id);
     const maxEdge = raised ? RAISED_MAX_EDGE : GROUND_MAX_EDGE;
 
     /** The single deck height every band of this structure is measured from. */
     const deck: HeightFn = pass.segment !== undefined
-      ? (x, y) => elevation.onSegment(pass.segment!, x, y)
+      ? (x, y) => elevation.onSegment(segmentAt(x, y), x, y)
       : (x, y) => elevation.at(x, y, only, false);
     /** Underside of the whole structure — the soffit of a deck, or the ground. */
     const soffit: HeightFn = raised
@@ -284,7 +324,7 @@ export function buildRoadSurfaces(
 
     const frameFor = (tile: number): UvFrameFn => (x, y, pickX, pickY, out) => {
       const frame = elevation.surfaceFrameAt(x, y, only, pickX, pickY,
-        pass.segment !== undefined, pass.segment);
+        pass.segment !== undefined, pass.segment === undefined ? undefined : segmentAt(pickX, pickY));
       out[0] = frame.across / tile;
       out[1] = frame.along / tile;
     };

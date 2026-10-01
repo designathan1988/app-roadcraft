@@ -79,8 +79,13 @@ export function roadPathFromGesture(
   const raw: RoadPathPoint[] = [start];
   for (const sample of samples) {
     const previous = raw[raw.length - 1] as RoadPathPoint;
-    if (dist(previous.at, sample.at) >= MIN_CONTROL_SPACING ||
-      Math.abs(previous.heightOffset - sample.heightOffset) >= 0.5) raw.push(sample);
+    if (dist(previous.at, sample.at) >= MIN_CONTROL_SPACING) raw.push(sample);
+    else if (raw.length > 1 && Math.abs(previous.heightOffset - sample.heightOffset) >= 0.5) {
+      // A height changed where the stroke stood (Page Up/Down mid-drag): the
+      // last control takes it. Pushed as a point of its own, a few units on,
+      // it made a piece too short to be a road, and the road had a gap there.
+      raw[raw.length - 1] = { at: previous.at, heightOffset: sample.heightOffset };
+    }
   }
   if (dist((raw[raw.length - 1] as RoadPathPoint).at, end.at) < MIN_CONTROL_SPACING) raw.pop();
   raw.push(end);

@@ -245,6 +245,13 @@ let tool: Tool = 'road';
 let roadTypeIndex = 1;
 let alignment: Alignment = 'straight';
 let roadHeightOffset = 0;
+/**
+ * How far a drag's stroke is carried, in plan, by the heights changed during
+ * it. The cursor is read on the plane at the road's height; raising the road
+ * mid-drag moved that plane up, the point under a still cursor jumped towards
+ * the camera, and the stroke doubled back on itself into a loop.
+ */
+let draftShift = { x: 0, y: 0 };
 let roadHeightEdited = false;
 let terrainMode: TerrainMode = 'raise';
 let terrainRadius = 80;
@@ -927,6 +934,7 @@ canvas.addEventListener('pointerdown', (e) => {
       }
       roadHeightEdited = false;
       chainPreview = null;
+      draftShift = { x: 0, y: 0 };
       draft = {
         start,
         startHeightOffset,
@@ -1131,8 +1139,9 @@ canvas.addEventListener('pointermove', (e) => {
   }
 
   if (draft) {
-    draft.snap = snapRoadEndpoint(doc, net, draft.start, world, view.zoom, draft.heightOffset);
-    if (draft.samples.length < 256) draft.samples.push({ at: world, heightOffset: draft.heightOffset });
+    const at = { x: world.x + draftShift.x, y: world.y + draftShift.y };
+    draft.snap = snapRoadEndpoint(doc, net, draft.start, at, view.zoom, draft.heightOffset);
+    if (draft.samples.length < 256) draft.samples.push({ at, heightOffset: draft.heightOffset });
     requestDraw();
     return;
   }
@@ -1713,14 +1722,25 @@ function updateRoadHeightValue(): void {
 }
 
 function stepRoadHeight(metres: number): void {
-  roadHeightOffset += metres * UNITS_PER_METER;
+  const before = roadHeightOffset;
+  // Steps land on whole metres. A road cut short by the safe grade leaves the
+  // height at a fraction (1.1 m), and stepping by a metre from there never
+  // came back to the terrain's own level.
+  const now = roadHeightOffset / UNITS_PER_METER;
+  const next = metres > 0 ? Math.floor(now + 1e-6) + metres : Math.ceil(now - 1e-6) + metres;
+  roadHeightOffset = next * UNITS_PER_METER;
   roadHeightEdited = true;
   const underPointer = roadPointerScreen
     ? worldAtScreen(roadPointerScreen.x, roadPointerScreen.y, roadHeightOffset)
     : null;
   if (draft) {
     draft.heightOffset = roadHeightOffset;
-    const at = underPointer ?? draft.snap.at;
+    if (roadPointerScreen) {
+      // The stroke goes on from where it is: the jump of the plane is carried.
+      const was = worldAtScreen(roadPointerScreen.x, roadPointerScreen.y, before);
+      draftShift = { x: draftShift.x + was.x - underPointer!.x, y: draftShift.y + was.y - underPointer!.y };
+    }
+    const at = underPointer ? { x: underPointer.x + draftShift.x, y: underPointer.y + draftShift.y } : draft.snap.at;
     draft.snap = snapRoadEndpoint(doc, net, draft.start, at, view.zoom, roadHeightOffset);
     draft.samples.push({ at, heightOffset: roadHeightOffset });
   }

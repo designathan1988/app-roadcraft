@@ -52,6 +52,7 @@ export function commitRoadPath(
   if (!pieces.length || !Number.isInteger(type) || type < 0 || type >= ROAD_TYPES.length) {
     return { committed: false, reason: 'degenerate' };
   }
+  pieces = joinShortPieces(pieces);
   const work = doc.clone();
   const workNet = new Network(work);
   workNet.rebuild();
@@ -91,6 +92,31 @@ export function commitRoadPath(
   doc.replaceWith(work);
   net.adopt(workNet);
   return { committed: true, heightLimited, finalHeightOffset: currentHeight };
+}
+
+/**
+ * A piece too short to be a road is folded into the next one (the last into
+ * the one before): left alone it was refused, and the pieces either side of
+ * it ended a few metres apart - a road with a gap in it.
+ */
+function joinShortPieces(pieces: readonly RoadPathPiece[]): readonly RoadPathPiece[] {
+  const out: RoadPathPiece[] = [];
+  let carry: RoadPathPiece['start'] | null = null;
+  for (const piece of pieces) {
+    const start: RoadPathPiece['start'] = carry ?? piece.start;
+    if (dist(start.at, piece.end.at) < MIN_LINK_LENGTH * 0.25) {
+      carry = start;
+      continue;
+    }
+    out.push(carry ? { start, end: piece.end, curve: null } : piece);
+    carry = null;
+  }
+  if (carry) {
+    const last = out.pop();
+    const tail = pieces[pieces.length - 1]!;
+    out.push(last ? { start: last.start, end: tail.end, curve: null } : { start: carry, end: tail.end, curve: null });
+  }
+  return out;
 }
 
 interface DraftStop {
