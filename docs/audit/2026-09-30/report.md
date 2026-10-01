@@ -284,7 +284,7 @@ Details in section 8.
 - **Cause:** `bankerSafeAfterGrant` sees two owners of `movement:C` and denies; `sharedConvoyResource` only accepts `point:`.
 - **Fix:** `sharedConvoyResource` true for `movement:`; a test of two cars turning right on green.
 
-**P1-22 · The ring-gridlock breaker (`cycles.ts`) never acts on a connected city [code] — `open` (Drive v2, negotiation layer)**
+**P1-22 · The ring-gridlock breaker (`cycles.ts`) never acts on a connected city [code] — `fixed` (loops are each link's shortest way round without U-turns, bounded, metered one by one; test `tests/sim/drive/cycles.spec.ts`)**
 - **Location:** `sim/intersections/cycles.ts:28, 67-134`.
 - **Cause:** maximal strongly connected components: with two-way streets the whole city is one component, larger than `MAX_CYCLE_STORAGE`, and is discarded.
 - **Fix:** the shortest cycle per link, bounded, merged where links share a cycle; precomputed per topology.
