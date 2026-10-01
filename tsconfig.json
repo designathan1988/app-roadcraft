@@ -30,6 +30,7 @@
       "@view/*": ["src/view/*"],
       "@editor/*": ["src/editor/*"],
       "@ui/*": ["src/ui/*"],
+      "@people/*": ["src/people/*"],
       "@/*": ["src/*"]
     }
   },

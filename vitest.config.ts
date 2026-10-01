@@ -13,6 +13,7 @@ export default defineConfig({
       '@view': r('./src/view'),
       '@editor': r('./src/editor'),
       '@ui': r('./src/ui'),
+      '@people': r('./src/people'),
       '@': r('./src'),
     },
   },
