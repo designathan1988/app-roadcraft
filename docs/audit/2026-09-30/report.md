@@ -54,7 +54,7 @@ Count: **6 P0 · 49 P1 · 72 P2 · 54 P3** (consolidated items; duplicates acros
 | Vehicles | Drive v2 is the game's default (`?drive=v1` keeps the old model): tactical lane changes, amber latch, birth speed, shortest-loop metering (P1-19, P1-20, P1-22, P2-08, P2-11 fixed); turn-taking with pedestrians at zebras `789e00e`. Strategic routing (P2-06), stop indexing (P2-05), last-resort recovery (P2-09) and off-tracking of long vehicles are open |
 | UI shell and camera | **replaced**: free-orbit camera `603400c`, tool rail and side panel `83c45b0`, city-builder controls `8013836` |
 | Person creator, Rocketbox | Creator live `2d22711`; street people are MakeHuman bodies and the Rocketbox models are removed `64ecfa1` (its animations are kept); clothes and hair from MakeHuman proxies are open |
-| Roads redesign, building mode | Buildings panel by models and shapes `33061d1`, road seams `29e1c01`; the level-aware junctions, ramps and the rest of the redesign are open |
+| Roads redesign, building mode | Buildings panel by models and shapes `33061d1`, road seams `29e1c01`. 2026-10-01, every Builder flow driven in the game and photographed (`docs/audit/2026-10-01/buildings/`): a model, a dragged shape and a free plan now land where placed (`9eca741`: the cursor pick no longer jumps onto the nearest deck, a shape fills the rectangle drawn, a house beside a raised road no longer stands on a deck-high plinth); a finish comes in its own colour and the panel follows (`02622d3`). Level-aware junctions, ramps and per-point heights are open |
 
 ---
 
