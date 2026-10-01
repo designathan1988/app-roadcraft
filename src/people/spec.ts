@@ -177,7 +177,17 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     outfitTint: r() < 0.35 ? pick(r, CLOTH_COLOURS) : null,
     ...keep.look,
   };
-  return { id, name: '', body, features: {}, look: finished };
+  // A face with something in it: most people a gentle smile, some at rest,
+  // a few serious; brows set a little differently on everybody. MakeHuman's
+  // neutral face, on everybody, read as a street of masks.
+  const mood = r();
+  const features: Record<string, number> = {
+    'mouth-angles-down-up': mood < 0.65 ? 0.2 + r() * 0.4 : mood < 0.9 ? r() * 0.15 : -0.1 - r() * 0.2,
+    'mouth-laugh-lines-in-out': mood < 0.65 ? r() * 0.3 : 0,
+    'eyebrows-angle-down-up': (r() - 0.5) * 0.5,
+    'eyebrows-trans-down-up': (r() - 0.5) * 0.4,
+  };
+  return { id, name: '', body, features, look: finished };
 }
 
 const unit = (x: unknown, fallback: number): number =>

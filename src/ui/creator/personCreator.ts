@@ -59,6 +59,10 @@ const FACE_SLIDERS = [
   'nose-curve-concave-convex', 'mouth-scale-horiz-decr-incr', 'mouth-lowerlip-volume-decr-incr', 'eye-scale-decr-incr',
   'ear-scale-decr-incr', 'chin-width-decr-incr', 'chin-prominent-decr-incr', 'cheek-bones-decr-incr',
 ] as const;
+/** The face's expression: MakeHuman's mouth and brow targets, held. */
+const EXPRESSION_SLIDERS = [
+  'mouth-angles-down-up', 'mouth-laugh-lines-in-out', 'mouth-dimples-in-out', 'eyebrows-angle-down-up', 'eyebrows-trans-down-up',
+] as const;
 const BODY_SLIDERS = [
   'measure-shoulder-dist-decr-incr', 'measure-waist-circ-decr-incr', 'measure-hips-circ-decr-incr',
   'stomach-pregnant-decr-incr', 'torso-vshape-decr-incr', 'upperarm-muscle-decr-incr',
@@ -376,6 +380,10 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     const face = sec('person.section.face');
     for (const name of FACE_SLIDERS) {
       slider(face, t(`person.f.${name}`), person.features[name] ?? 0, -1, 1, 0.02, (v) => setFeature(name, v), signed);
+    }
+    const expression = sec('person.section.expression');
+    for (const name of EXPRESSION_SLIDERS) {
+      slider(expression, t(`person.f.${name}`), person.features[name] ?? 0, -1, 1, 0.02, (v) => setFeature(name, v), signed);
     }
     const shape = sec('person.section.shape');
     for (const name of BODY_SLIDERS) {
