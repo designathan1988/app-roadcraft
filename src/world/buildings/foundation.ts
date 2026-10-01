@@ -131,6 +131,19 @@ const isAccess = (bay: FacadeBay): boolean => bay.level === 0 && ACCESS_COMPONEN
 export const flightRun = (steps: number): number => (steps > 0 ? (steps + 1) * STEP_RUN : 0);
 
 /**
+ * The paving at the level of land at `land`: paving storeys above or below it
+ * is a deck passing by, not the street a door opens onto (a house beside a
+ * raised road stood on a plinth as tall as the road).
+ */
+function atLevel(pavedAt: PavedAt, land: number): PavedAt {
+  if (pavedAt === NO_PAVING) return pavedAt;
+  return (x, y) => {
+    const h = pavedAt(x, y);
+    return Math.abs(h - land) <= MAX_PLINTH ? h : NaN;
+  };
+}
+
+/**
  * The highest paving any entrance opens onto, or -Infinity. The ground floor
  * is never below it: a door onto a footway is at the footway's level, not a
  * step down from it.
@@ -178,10 +191,11 @@ export function foundationOf(
   b: Building,
   groundAt: GroundAt,
   bays?: readonly FacadeBay[],
-  pavedAt: PavedAt = NO_PAVING,
+  anyPaving: PavedAt = NO_PAVING,
 ): Foundation {
   const all = bays ?? facadeBays(b);
   const { lowest, highest } = sampleFootprint(b, groundAt);
+  const pavedAt = atLevel(anyPaving, highest);
   const floor = Math.max(highest, entrancePaving(all, pavedAt)) + PLINTH_MIN;
   const volumes = new Map(b.volumes.map((v) => [v.id, v]));
   const entrances: Entrance[] = [];
@@ -312,7 +326,7 @@ export class FloorCache {
 /** The absolute ground-floor height of a building, uncached. Same rule as `foundationOf`. */
 export function floorHeight(b: Building, groundAt: GroundAt, pavedAt: PavedAt = NO_PAVING): number {
   const highest = sampleFootprint(b, groundAt).highest;
-  const paving = pavedAt === NO_PAVING ? -Infinity : entrancePaving(facadeBays(b), pavedAt);
+  const paving = pavedAt === NO_PAVING ? -Infinity : entrancePaving(facadeBays(b), atLevel(pavedAt, highest));
   return Math.max(highest, paving) + PLINTH_MIN;
 }
 

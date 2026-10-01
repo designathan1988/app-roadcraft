@@ -378,6 +378,12 @@ export class BuildingTool {
    * diagonal drag under a turned camera built a long thin sliver (P1-03).
    */
   private shapeDragAngle = 0;
+  /**
+   * The ground height the drag started on: the cursor is read on that level.
+   * Read off the drawn world, it landed on the ghost's own roof as the shape
+   * grew under it, and the far corner was dragged back towards the viewer.
+   */
+  private shapeDragZ = 0;
 
   /** The drag's span from `start` to `at`, in the screen-aligned frame. */
   private shapeDragSpan(start: Vec2, at: Vec2): { a0: number; b0: number; w: number; d: number } {
@@ -390,10 +396,11 @@ export class BuildingTool {
     return { a0: Math.min(0, a), b0: Math.min(0, b), w: Math.max(m(2), Math.abs(a)), d: Math.max(m(2), Math.abs(b)) };
   }
 
-  beginShapeDrag(shape: PlanShape, at: Vec2, action: PlanAction = 'new'): void {
+  beginShapeDrag(shape: PlanShape, at: Vec2, action: PlanAction = 'new', screen: Vec2 | null = this.lastScreen): void {
     this.shapeDragShape = shape;
-    this.shapeDragStart = at;
-    const screen = this.lastScreen;
+    this.shapeDragZ = this.view.groundAt(at.x, at.y);
+    this.shapeDragStart = screen ? this.view.planeAt(screen, this.shapeDragZ) : at;
+    at = this.shapeDragStart;
     if (screen) {
       const a = this.view.planeAt(screen, 0);
       const b = this.view.planeAt({ x: screen.x + 40, y: screen.y }, 0);
@@ -407,7 +414,7 @@ export class BuildingTool {
     this.planPoints = action === 'new' ? null : [];
     this.planAction = action;
     this.chooseShape(shape);
-    if (action === 'new') this.hoverPlace(at);
+    if (action === 'new') this.placeDrawn(at, at);
     this.host.changed();
   }
 
@@ -427,9 +434,10 @@ export class BuildingTool {
     });
   }
 
-  updateShapeDrag(at: Vec2): void {
+  updateShapeDrag(world: Vec2, screen?: Vec2): void {
     if (!this.shapeDragStart || !this.shapeDragShape) return;
     const start = this.shapeDragStart;
+    const at = screen ? this.view.planeAt(screen, this.shapeDragZ) : world;
     const { w, d } = this.shapeDragSpan(start, at);
     this.planCursor = at;
     if (this.shapeDragAction === 'new') {
@@ -438,7 +446,7 @@ export class BuildingTool {
       // Square to the screen, as it was drawn.
       this.rotation = normaliseAngle(this.shapeDragAngle);
       this.chooseShape(this.shapeDragShape);
-      this.hoverPlace({ x: (start.x + at.x) / 2, y: (start.y + at.y) / 2 });
+      this.placeDrawn(start, at);
     } else {
       // The wing, the stack and the cut are plans: the drag writes the
       // outline, and the ordinary plan preview and finish do the rest.
@@ -1773,7 +1781,26 @@ export class BuildingTool {
     const ctx = this.host.context();
     const size = footprintSize(this.body);
     const snap = snapPlacement(ctx.doc, ctx.net, size, world, this.rotation);
-    const draft = { ...instantiate(this.body, snap.anchor, snap.rotation, this.blueprintKey ?? undefined), id: PREVIEW_ID } as Building;
+    this.ghostAt(snap.anchor, snap.rotation);
+  }
+
+  /**
+   * The ghost of a dragged shape: exactly the rectangle drawn, square to the
+   * screen, its front towards the viewer. Snapped like a model it was pulled
+   * onto the nearest kerb and turned to face it, nowhere near the drag.
+   */
+  private placeDrawn(start: Vec2, at: Vec2): void {
+    const { a0, b0, w } = this.shapeDragSpan(start, at);
+    const c = Math.cos(this.shapeDragAngle);
+    const s = Math.sin(this.shapeDragAngle);
+    // The anchor is the front-centre; the front is the edge at `b0`.
+    const a = a0 + w / 2;
+    this.ghostAt({ x: start.x + a * c - b0 * s, y: start.y + a * s + b0 * c }, this.shapeDragAngle);
+  }
+
+  private ghostAt(anchor: Vec2, rotation: number): void {
+    const ctx = this.host.context();
+    const draft = { ...instantiate(this.body, anchor, rotation, this.blueprintKey ?? undefined), id: PREVIEW_ID } as Building;
     const problem = validateBuilding(ctx, draft);
     // Overlapping another building is a weld, not a refusal: the ghost stays
     // green and the drop fuses the two.

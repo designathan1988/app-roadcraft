@@ -109,6 +109,12 @@ export interface SceneHandle {
   /** The height the terrain is drawn at — what anything laid on it must clear. */
   terrainHeightAt(x: number, y: number): number;
   /**
+   * The top of what is drawn at a point: a deck where a road's casing covers
+   * it, the terrain elsewhere. (`elevationAt` is the NEAREST road's height
+   * wherever the point is, a field for previews, not a surface.)
+   */
+  surfaceHeightAt(x: number, y: number): number;
+  /**
    * The height of the paving at a point - footway or carriageway of a road at
    * grade - or NaN off the roads. What a building's entrance opens onto.
    */
@@ -123,6 +129,9 @@ export interface SceneHandle {
   census(): ReturnType<AgentMeshes['census']>;
   dispose(): void;
 }
+
+/** Roads at grade, and the decks above them, as `surfaceHeightAt` asks them. */
+const SURFACE_SETS: readonly ReadonlySet<RoadStructure>[] = [GROUND_ONLY, new Set<RoadStructure>(['elevated', 'bridge'])];
 
 export function createSceneRenderer(
   canvas: HTMLCanvasElement,
@@ -435,6 +444,20 @@ export function createSceneRenderer(
     },
     terrainHeightAt(x, y) {
       return terrain.renderedHeightAt(x, y);
+    },
+    surfaceHeightAt(x, y) {
+      const ground = terrain.renderedHeightAt(x, y);
+      if (!elevation) return ground;
+      let top = ground;
+      // The road at grade and the decks are asked apart: where an overpass
+      // crosses a street, the street's centreline is the nearer of the two.
+      for (const set of SURFACE_SETS) {
+        if (!elevation.has(set)) continue;
+        const road = elevation.roadAt(x, y, set);
+        if (road.type < 0 || Math.abs(road.across) > road.half) continue;
+        top = Math.max(top, elevation.at(x, y, set));
+      }
+      return top;
     },
     pavedHeightAt,
     setBuildingPreview(preview) {

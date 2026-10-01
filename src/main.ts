@@ -590,11 +590,10 @@ function rebuildSimulationTopology(): void {
 function worldAtScreen(px: number, py: number, heightOffset?: number): Vec2 {
   let point = view.toWorld(px, py, surface.cssW, surface.cssH);
   if (view.kind === '2d') return point;
+  if (heightOffset === undefined) return firstSurfaceAt(px, py) ?? point;
   let height = 0;
   for (let pass = 0; pass < 3; pass++) {
-    const next = heightOffset === undefined
-      ? sceneHeightAt(point)
-      : scene.terrainHeightAt(point.x, point.y) + heightOffset;
+    const next = scene.terrainHeightAt(point.x, point.y) + heightOffset;
     if (Math.abs(next - height) < 0.05) break;
     height = next;
     point = view.toWorldAt(px, py, height, surface.cssW, surface.cssH);
@@ -604,9 +603,38 @@ function worldAtScreen(px: number, py: number, heightOffset?: number): Vec2 {
 
 /** Whatever the player can see at a world point: a road deck, or the ground. */
 function sceneHeightAt(p: Vec2): number {
-  const road = scene.elevationAt(p.x, p.y);
-  const ground = scene.terrainHeightAt(p.x, p.y);
-  return Math.max(road, ground);
+  return scene.surfaceHeightAt(p.x, p.y);
+}
+
+/** Highest surface the pick looks for, world units; step of the march down the ray. */
+const PICK_TOP = 160;
+const PICK_STEP = 2;
+
+/**
+ * Where the ray under the cursor first meets what is drawn - a deck, or the
+ * ground - marched down from above. It used to be solved as a fixed point of
+ * "the height at the point under the cursor at that height" over the nearest
+ * road's deck height, which is defined everywhere: beside a raised road the
+ * equation had a second answer on the far side of the deck, and a corner
+ * clicked on the grass landed tens of metres away.
+ */
+function firstSurfaceAt(px: number, py: number): Vec2 | null {
+  const at = (h: number): Vec2 => view.toWorldAt(px, py, h, surface.cssW, surface.cssH);
+  const below = (h: number): boolean => {
+    const p = at(h);
+    return scene.surfaceHeightAt(p.x, p.y) >= h;
+  };
+  let above = PICK_TOP;
+  for (let h = PICK_TOP - PICK_STEP; h >= -PICK_TOP; h -= PICK_STEP) {
+    if (!below(h)) { above = h; continue; }
+    let lo = h;
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + above) / 2;
+      if (below(mid)) lo = mid; else above = mid;
+    }
+    return at(lo);
+  }
+  return null;
 }
 
 function pointerWorld(e: PointerEvent): Vec2 {

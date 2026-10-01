@@ -751,7 +751,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       }
       const shape = shapeOfTool(toolId);
       if (shape) {
-        tool.beginShapeDrag(shape, world);
+        tool.beginShapeDrag(shape, world, 'new', screen);
         dirty = true;
         return;
       }
@@ -762,7 +762,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           dirty = true;
           return;
         }
-        tool.beginShapeDrag('rectangle', world, action);
+        tool.beginShapeDrag('rectangle', world, action, screen);
         dirty = true;
         return;
       }
@@ -781,7 +781,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         return;
       }
       if (tool.shapeDragStart) {
-        tool.updateShapeDrag(world);
+        tool.updateShapeDrag(world, screen);
         dirty = true;
         return;
       }
