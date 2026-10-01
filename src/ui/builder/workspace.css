@@ -777,3 +777,39 @@
   .bw-tile { width: 72px; }
   .bw-tile-art, .bw-tile-art img { width: 44px; height: 44px; }
 }
+
+/* --- the road classes, all on view -------------------------------------------
+   A carousel in a 340 px panel showed one road and a half, and the rest had
+   to be paged to. Every class (and the road operations after them) is now a
+   tile in a grid: three across the panel, all visible, the panel scrolling
+   if it must. */
+.bw-tier2 .road-palette .road-carousel { display: block; }
+.bw-tier2 .road-palette .road-carousel .carousel-step { display: none; }
+.bw-tier2 .road-palette .road-types {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  overflow: visible;
+  padding: 0;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.road-carousel.scrollable.at-start .road-types,
+.road-carousel.scrollable.at-end .road-types { -webkit-mask-image: none; mask-image: none; }
+.bw-tier2 .road-palette .road-type { width: auto; min-width: 0; padding: 4px; font-size: 10.5px; }
+.bw-tier2 .road-palette .road-type-art { width: 100%; height: 46px; }
+.bw-tier2 .road-palette .road-type-art.op { height: 46px; }
+.bw-tier2 .road-palette .road-type-name { text-align: center; overflow-wrap: anywhere; }
+@media (max-width: 780px) {
+  .bw-tier2 .road-palette .road-types { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* Classes three across (4 of 12 columns each); the road's operations - improve,
+   move, split, control - a compact row of four (3 of 12) under them. */
+.bw-tier2 .road-palette .road-types { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.bw-tier2 .road-palette .road-type { grid-column: span 4; }
+.bw-tier2 .road-palette .road-type.road-op { grid-column: span 3; padding: 4px 2px; margin-top: 4px; }
+.bw-tier2 .road-palette .road-type-art.op { height: 26px; }
+.bw-tier2 .road-palette .road-type-art.op svg { width: 20px; height: 20px; }
+@media (max-width: 780px) {
+  .bw-tier2 .road-palette .road-types { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+}
