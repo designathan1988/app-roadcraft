@@ -111,6 +111,21 @@ export function surfaceMode(doc: RoadDoc, cache: PolylineCache, nodeId: NodeId):
   return d <= -CHAIN_BEND_COS ? 'none' : 'junction';
 }
 
+/** How far each leg is given to a change of structure on one road, units. */
+const SEAM_RUN = 6;
+
+/** Whether the two roads at a two-leg node differ only in their structure. */
+function structureSeam(doc: RoadDoc, nodeId: NodeId): boolean {
+  const node = doc.node(nodeId);
+  if (!node || node.incident.length !== 2) return false;
+  const sp = doc.segment(node.incident[0]!), sq = doc.segment(node.incident[1]!);
+  if (!sp || !sq || (sp.structure ?? 'ground') === (sq.structure ?? 'ground')) return false;
+  const wp = roadProfile(sp.type, sp.lanes, sp.direction);
+  const wq = roadProfile(sq.type, sq.lanes, sq.direction);
+  for (const level of SURFACE_LEVELS) if (Math.abs(halfWidth(wp, level) - halfWidth(wq, level)) >= COARSE_EPS) return false;
+  return wp.median === wq.median;
+}
+
 export interface BuildOptions {
   /** Per-segment curb-radius scale, keyed by segment id. Defaults to 1. */
   readonly radiusScaleBySegment?: ReadonlyMap<number, number>;
@@ -205,7 +220,13 @@ export function buildJunction(
   const MAX_CONTINUOUS_BEND = (55 * Math.PI) / 180;
   const throughBend = legs.length === 2 && bendAngle > 1e-5 &&
     bendAngle < MAX_CONTINUOUS_BEND;
-  if (isTransition(legs) || throughBend) {
+  // Only the structure changes - a ramp lands on the ground, a viaduct goes on
+  // as a bridge - on one road of one width: a seam, drawn as the taper's band
+  // of no width step. Built as a crossroads plate it put rounded kerb returns
+  // on a straight road, the edges stepped at the joint and the lane lines bent
+  // round them.
+  const seam = legs.length === 2 && bendAngle < MAX_CONTINUOUS_BEND && structureSeam(doc, nodeId);
+  if (isTransition(legs) || throughBend || seam) {
     const a = legs[0] as Leg;
     const b = legs[1] as Leg;
     const turn = Math.PI - Math.acos(Math.max(-1, Math.min(1, dot(a.dir, b.dir))));
@@ -215,7 +236,7 @@ export function buildJunction(
     const taperRun = widthStep(a.road, b.road) >= COARSE_EPS
       ? transitionRun(a.road, b.road)
       : 0;
-    const run = Math.max(taperRun, bendRun);
+    const run = Math.max(taperRun, bendRun, seam ? SEAM_RUN : 0);
     let trims = capTrims(legs.map(() => run), legs);
     for (let pass = 0; pass < passes; pass++) {
       legs = buildLegs(doc, cache, nodeId, level, { trims: bySegment(trims, legs) });

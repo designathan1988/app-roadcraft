@@ -475,15 +475,28 @@ describe('where a leg meets its junction plate', () => {
         const node = end === 'a' ? segment.a : segment.b;
         const trim = trims[end][Level.Casing] ?? 0;
         const plate = field.nodeHeight(node);
+        // Where only the structure changes on one road (a ramp landing) the
+        // node is a seam, not a plate: the grade runs on through it, so the
+        // deck is measured against the road it continues, point for point.
+        const seam = net.transitions.has(node);
         for (const delta of [-0.5, 0, 0.5]) {
           const reach = Math.min(line.length, Math.max(0, trim + delta));
           const s = end === 'a' ? reach : line.length - reach;
           const frame = line.sampleAt(s);
-          worst = Math.max(worst, Math.abs(field.onSegment(id, frame.p.x, frame.p.y) - plate));
+          const road = field.onSegment(id, frame.p.x, frame.p.y);
+          worst = Math.max(worst, Math.abs(road - (seam ? road : plate)));
           for (const across of [-0.9, -0.45, 0, 0.45, 0.9]) {
             const x = frame.p.x + frame.n.x * half * across;
             const y = frame.p.y + frame.n.y * half * across;
-            worst = Math.max(worst, Math.abs(field.at(x, y, only) - plate));
+            worst = Math.max(worst, Math.abs(field.at(x, y, only) - (seam ? road : plate)));
+          }
+        }
+        if (seam) {
+          // ...and the two roads meet at the node at one height: no step.
+          const n = doc.node(node)!;
+          for (const other of n.incident) {
+            if (other === id) continue;
+            worst = Math.max(worst, Math.abs(field.onSegment(id, n.x, n.y) - field.onSegment(other, n.x, n.y)));
           }
         }
       }
