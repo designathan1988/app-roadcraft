@@ -275,7 +275,7 @@ Details in section 8.
 - **Current:** `planFrom` with a destination clears `desiredLane` and runs Dijkstra only over the exits of the current lane, with no lane-change edges; in the wrong lane a car goes round the block or makes a U-turn.
 - **Fix:** sibling-lane edges in routing, reachable exits per carriageway, a test with a destination.
 
-**P1-20 · Traffic at 0% kills the entries for good; raising the slider only works minutes later [code] — `open`**
+**P1-20 · Traffic at 0% kills the entries for good; raising the slider only works minutes later [code] — `fixed` (each entry keeps the rate its wait was drawn at and rescales it when the rate changes; test `tests/sim/drive/entryRate.spec.ts`)**
 - **Location:** `sim/vehicles/spawn.ts:56-58, 76-94`.
 - **Fix:** keep the rate per entry and rescale the remaining wait; infinite at 0, redrawn on the first positive value; bound the backlog.
 

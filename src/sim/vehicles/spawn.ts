@@ -83,8 +83,18 @@ export function stepDispatch(w: SimWorld, enabled: boolean): void {
   for (const id of entries) {
     let demand = w.entryDemand.get(id);
     if (!demand) {
-      demand = { next: now + nextGap(w, rate), waiting: [] };
+      demand = { next: rate > 0 ? now + nextGap(w, rate) : Infinity, rate, waiting: [] };
       w.entryDemand.set(id, demand);
+    }
+    // The slider moved: the wait still to run is rescaled to the new rate, or
+    // drawn afresh when there was none (audit P1-20). At 0 % the next arrival
+    // used to be drawn ~10^9 s away, and raising the slider again left it
+    // there: the entry stayed dead for good.
+    if (demand.rate !== rate) {
+      demand.next = rate <= 0 ? Infinity
+        : demand.rate > 0 && Number.isFinite(demand.next) ? now + (demand.next - now) * (demand.rate / rate)
+          : now + nextGap(w, rate);
+      demand.rate = rate;
     }
     if (rate <= 0) continue;
     while (demand.next <= now) {

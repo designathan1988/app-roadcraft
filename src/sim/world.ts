@@ -139,7 +139,8 @@ export class SimWorld {
    * arrival is due, and the arrival times of vehicles held outside the map
    * because the entry was full (`sim/vehicles/spawn.ts`).
    */
-  readonly entryDemand = new Map<LaneletId, { next: number; waiting: number[] }>();
+  /** Per entry: the next arrival, the rate it was drawn at, and the arrivals waiting outside. */
+  readonly entryDemand = new Map<LaneletId, { next: number; rate: number; waiting: number[] }>();
   /** Arrivals turned away because an entry's outside queue was full. */
   entryDemandLost = 0;
   /** Vehicles that reached the boundary exit chosen for their trip. */

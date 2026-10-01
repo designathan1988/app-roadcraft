@@ -13,7 +13,7 @@ import { cyclesOf } from '@sim/intersections/cycles';
 describe('small loops of road', () => {
   it('are found on a connected grid of two-way streets: its blocks', () => {
     const doc = new RoadDoc();
-    const n: number[][] = [];
+    const n: ReturnType<RoadDoc['addNode']>['id'][][] = [];
     for (let i = 0; i < 3; i++) {
       n.push([]);
       for (let j = 0; j < 3; j++) n[i]!.push(doc.addNode({ x: i * 120, y: j * 120 }).id);
