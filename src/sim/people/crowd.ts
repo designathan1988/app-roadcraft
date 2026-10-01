@@ -481,11 +481,48 @@ function clearOfPeople(s: State, at: Vec2, gap: number): boolean {
   return true;
 }
 
+/** Validate the projected birth position, before a body exists. Projecting a
+ * party's offsets independently can collapse two members onto the same edge.
+ * Search only this party's immediate surroundings, never the whole city.
+ */
+function companionBirth(s: State, lead: Walker, preferred: Vec2): Vec2 | null {
+  const projected = onMesh(s, preferred);
+  if (projected && !s.walkers.some(p => Math.abs(p.h - projected.h) < AGENT_HEIGHT && Math.hypot(p.x - projected.x, p.y - projected.y) < 2 * AGENT_RADIUS)) return preferred;
+  const query = s.nav!.query, filter = s.crowd!.getFilter(1);
+  const start = query.findClosestPoint({ x: lead.x, y: lead.h, z: lead.y }, { filter });
+  if (!start.success || !start.polyRef) return null;
+  const diameter = 2 * AGENT_RADIUS;
+  const reach = BEHIND + 4 * diameter;
+  const nearby = s.walkers.filter(p => Math.abs(p.h - lead.h) < AGENT_HEIGHT && Math.hypot(p.x - lead.x, p.y - lead.y) < reach + diameter);
+  const candidate = (at: Vec2): Vec2 | null => {
+    const on = query.findClosestPoint({ x: at.x, y: lead.h, z: at.y }, {
+      filter, halfExtents: { x: AGENT_RADIUS, y: AGENT_HEIGHT, z: AGENT_RADIUS },
+    });
+    if (!on.success || !on.polyRef || Math.abs(on.point.y - lead.h) >= AGENT_HEIGHT) return null;
+    const p = { x: on.point.x, y: on.point.z };
+    if (Math.hypot(p.x - lead.x, p.y - lead.y) > reach) return null;
+    if (nearby.some(q => Math.hypot(q.x - p.x, q.y - p.y) < BEHIND)) return null;
+    const hit = query.raycast(start.polyRef, start.point, on.point, { filter });
+    return hit.success && hit.t >= 1 ? p : null;
+  };
+  const original = candidate(preferred);
+  if (original) return original;
+  // Fixed 64 candidates. Failure rejects the whole unpublished party below.
+  for (let ring = 1; ring <= 4; ring++) {
+    for (let i = 0; i < 16; i++) {
+      const a = i * Math.PI / 8;
+      const p = candidate({ x: preferred.x + Math.cos(a) * diameter * ring, y: preferred.y + Math.sin(a) * diameter * ring });
+      if (p) return p;
+    }
+  }
+  return null;
+}
+
 /** One more party: at a source once the city is populated, anywhere along the footways when it has just opened. */
 function spawn(w: SimWorld, s: State, anywhere: boolean): void {
   const nav = s.nav!;
   const rng = w.rng.people;
-  for (let attempt = 0; attempt < 8; attempt++) {
+  attempts: for (let attempt = 0; attempt < 8; attempt++) {
     const at = !anywhere && nav.sources.length ? nav.sources[Math.floor(rng.float() * nav.sources.length)]! : randomSpot(w, s);
     if (!at || !clearOfPeople(s, at, m(1.5))) continue;
     const plan0 = planParty(rng, s.nextId, Math.max(1, peopleTarget(w) - s.walkers.length));
@@ -495,9 +532,19 @@ function spawn(w: SimWorld, s: State, anywhere: boolean): void {
     if (!pickGoal(w, s, lead)) { remove(s, lead); continue; }
     const members = [lead];
     for (let k = 1; k < plan0.size; k++) {
-      const spot = { x: at.x + Math.cos(k * 2.1) * BEHIND, y: at.y + Math.sin(k * 2.1) * BEHIND };
+      const spot = companionBirth(s, lead, { x: at.x + Math.cos(k * 2.1) * BEHIND, y: at.y + Math.sin(k * 2.1) * BEHIND });
+      if (!spot) {
+        // No member has been published or moved yet. A family is admitted as
+        // a whole, never silently shortened because one birth place was full.
+        for (const member of members) remove(s, member);
+        continue attempts;
+      }
       const q = create(w, s, s.nextId, spot, lead.heading, { ageClass: plan0.ages[k]!, pace: plan0.speeds[k]!, party, rank: k, leader: lead });
-      if (q) members.push(q);
+      if (!q) {
+        for (const member of members) remove(s, member);
+        continue attempts;
+      }
+      members.push(q);
     }
     const shared: PartyView = {
       id: lead.id, size: members.length,

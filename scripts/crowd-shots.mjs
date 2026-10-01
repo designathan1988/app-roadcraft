@@ -9,11 +9,12 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 const [BASE, OUTDIR, NAME, START = '4', STEP = '1', FRAMES = '8', DIST = '40', ELEV = '0.95', CX, CY] = process.argv.slice(2);
-// The battery's seed: photos must reproduce its people, pace and signals.
-const SEED = 0x5ce7;
+// The same seeds as the battery and the full player-city probe.
+const SEED = NAME === 'player-city' ? 0x2026 : 0x5ce7;
+const KEEP_OPEN = process.env.CROWD_KEEP_OPEN === '1';
 const OUT = path.resolve(OUTDIR);
 fs.mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch({ channel: 'chrome', args: ['--use-gl=angle', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: !KEEP_OPEN, args: ['--use-gl=angle', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
 try {
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
@@ -27,26 +28,37 @@ const placed = await page.evaluate(async ({ name, start, cx, cy, seed }) => {
   const addScriptedWalker = (sim, spec) => R.crowd.add(sim, spec);
   const { SCENARIOS } = await import('/tests/fixtures/crowdScenarios.ts');
   const { SimWorld } = await import('/src/sim/world.ts');
+  const city = name === 'player-city';
   const sc = SCENARIOS.find((s) => s.name === name);
-  R.loadDoc(sc.doc.toJSON());
+  if (city) {
+    const raw = await (await window.fetch('/tests/fixtures/player-city.json')).json();
+    R.loadDoc(raw.document);
+  } else {
+    if (!sc) throw new Error(`Unknown crowd scenario: ${name}`);
+    R.loadDoc(sc.doc.toJSON());
+  }
   // loadDoc deliberately keeps a player's random streams and clock. A fixed
   // scenario needs the fresh world's streams instead, exactly as in the test.
   R.sim.reset();
   Object.assign(R.sim.rng, new SimWorld(R.net.doc, R.net, seed).rng);
   R.sim.clock.tick = 0;
   R.sim.rebuildTopology();
-  R.sim.pedestrianIntensity = 0;
-  R.sim.trafficIntensity = 0;
+  R.sim.pedestrianIntensity = city ? 2 : 0;
+  R.sim.trafficIntensity = city ? 2 : 0;
+  if (city) { R.sim.demandMultiplier = 2; R.sim.driveModel = 'v2'; }
   R.sim.clock.paused = true;
-  step(R.sim, { traffic: false, pedestrians: true });
   const ids = [];
-  for (const wk of sc.walkers(R.net)) ids.push(addScriptedWalker(R.sim, { x: wk.x, y: wk.y, goal: wk.goal, ...(wk.pace !== undefined ? { pace: wk.pace } : {}), ...(wk.leader !== undefined ? { leader: ids[wk.leader] } : {}) }));
+  if (!city) {
+    step(R.sim, { traffic: false, pedestrians: true });
+    for (const wk of sc.walkers(R.net)) ids.push(addScriptedWalker(R.sim, { x: wk.x, y: wk.y, goal: wk.goal, ...(wk.pace !== undefined ? { pace: wk.pace } : {}), ...(wk.leader !== undefined ? { leader: ids[wk.leader] } : {}) }));
+  }
   // A zero-second photo still needs the initial bodies published; no tick is advanced.
   if (start === 0) R.sim.pedEngine.publish(R.sim);
-  for (let i = 0; i < Math.round(start / R.DT); i++) step(R.sim, { traffic: false, pedestrians: true });
-  window.__focus = sc.focus;
+  for (let i = 0; i < Math.round(start / R.DT); i++) step(R.sim, { traffic: city, pedestrians: true });
+  window.__cityCrowdShot = city;
+  window.__focus = sc?.focus ?? { x: 0, y: 0 };
   if (cx !== undefined) window.__fixed = { x: Number(cx), y: Number(cy) };
-  return ids.filter((i) => i !== null).length;
+  return city ? R.sim.pedViews.length : ids.filter((i) => i !== null).length;
 }, { name: NAME, start: Number(START), cx: CX, cy: CY, seed: SEED });
 const shots = [];
 const records = [];
@@ -87,7 +99,7 @@ for (let k = 0; k < Number(FRAMES); k++) {
     // Let gait read every simulation tick instead of jumping several seconds
     // between renders (stepGait intentionally caps large animation deltas).
     for (let i = 0; i < Math.round(stepSeconds / R.DT); i++) {
-      step(R.sim, { traffic: false, pedestrians: true });
+      step(R.sim, { traffic: window.__cityCrowdShot, pedestrians: true });
       await new Promise((r) => requestAnimationFrame(r));
     }
     return { shot, record };
@@ -111,6 +123,11 @@ fs.writeFileSync(path.join(OUT, `${NAME}.jpg`), Buffer.from(sheet.split(',')[1],
 fs.writeFileSync(path.join(OUT, `${NAME}.json`), JSON.stringify({ name: NAME, seed: SEED, placed, frames: records, errors }, null, 2));
 console.log('placed', placed, 'errors', errors.slice(0, 3));
 if (errors.length) throw new Error(`Scenario page errors: ${errors.join('; ')}`);
+if (KEEP_OPEN) {
+  await page.evaluate(() => { window.__roadcraft.sim.clock.paused = false; });
+  console.log('The photographed game remains open for the player. Close its window to finish.');
+  await new Promise(resolve => browser.on('disconnected', resolve));
+}
 } finally {
 await browser.close();
 }

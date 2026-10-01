@@ -1,0 +1,99 @@
+{
+  "ticks": 3600,
+  "simulatedSeconds": 60,
+  "population": 334,
+  "pipelineMs": {
+    "mean": 5.698008444444449,
+    "p95": 17.373500000001513,
+    "max": 488.7703999999994
+  },
+  "peopleStepMs": {
+    "mean": 3.9099816944444505,
+    "p95": 15.492099999999482,
+    "max": 40.28570000000036
+  },
+  "steadyPipelineMs": {
+    "mean": 5.714098181818186,
+    "p95": 17.35479999999916,
+    "max": 28.096799999999348
+  },
+  "steadyPeopleStepMs": {
+    "mean": 3.9470547272727288,
+    "p95": 15.352200000001176,
+    "max": 26.738999999999578
+  },
+  "backward": 540,
+  "slides": 1,
+  "correctionTicks": 818,
+  "jumps": 0,
+  "trespass": 0,
+  "longestStill": 39.73333333333236,
+  "longestUnexplained": 39.73333333333236,
+  "longestPhysicalStarvation": 17.133333333333642,
+  "maxKerbDistanceMetres": 0,
+  "maxKerbCentreDistanceMetres": 0,
+  "farthest": null,
+  "slowestTicks": [
+    {
+      "tick": 0,
+      "seconds": 0,
+      "ms": 488.7703999999994,
+      "people": 334
+    },
+    {
+      "tick": 885,
+      "seconds": 14.75,
+      "ms": 28.096799999999348,
+      "people": 334
+    },
+    {
+      "tick": 1500,
+      "seconds": 25,
+      "ms": 25.769100000001345,
+      "people": 334
+    },
+    {
+      "tick": 1020,
+      "seconds": 17,
+      "ms": 23.651300000001356,
+      "people": 334
+    },
+    {
+      "tick": 1650,
+      "seconds": 27.5,
+      "ms": 21.62670000000071,
+      "people": 334
+    },
+    {
+      "tick": 30,
+      "seconds": 0.5,
+      "ms": 21.270800000000236,
+      "people": 334
+    },
+    {
+      "tick": 1035,
+      "seconds": 17.25,
+      "ms": 21.258499999999913,
+      "people": 334
+    },
+    {
+      "tick": 2610,
+      "seconds": 43.5,
+      "ms": 20.645000000000437,
+      "people": 334
+    },
+    {
+      "tick": 1665,
+      "seconds": 27.75,
+      "ms": 20.57499999999709,
+      "people": 334
+    },
+    {
+      "tick": 900,
+      "seconds": 15,
+      "ms": 20.5554000000011,
+      "people": 334
+    }
+  ],
+  "elapsedMs": 22152.388600000002
+}
