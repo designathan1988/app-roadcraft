@@ -424,11 +424,15 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       host.changed();
     },
     choosePreset: (key) => {
+      // A model in hand is placed by the next click; the plan pencil, if it
+      // was the tool, is put down - with it, that click began a plan instead.
+      if (toolId === 'sketch') toolId = 'place';
       tool.chooseBlueprint(key);
       host.changed();
     },
     chooseUserBlueprint(key) {
       const blueprint = userBlueprints.find((item) => item.key === key);
+      if (toolId === 'sketch') toolId = 'place';
       if (blueprint) tool.useBody(blueprint.body, key);
       host.changed();
     },
@@ -816,6 +820,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     },
     activate() {
       dirty = true;
+      // Nothing in hand: open on the models, the shapes a tab away.
+      if (!tool.selected() && !tool.planPoints) workspace.showGallery('draw', 'models');
       refresh();
     },
     deactivate() {

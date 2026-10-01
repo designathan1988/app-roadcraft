@@ -372,10 +372,35 @@ export class BuildingTool {
   shapeDragStart: Vec2 | null = null;
   shapeDragShape: PlanShape | null = null;
   shapeDragAction: PlanAction = 'new';
+  /**
+   * The screen's own axes on the ground, as an angle: the rectangle the player
+   * drags is the one they see. Measured along the map's axes instead, a
+   * diagonal drag under a turned camera built a long thin sliver (P1-03).
+   */
+  private shapeDragAngle = 0;
+
+  /** The drag's span from `start` to `at`, in the screen-aligned frame. */
+  private shapeDragSpan(start: Vec2, at: Vec2): { a0: number; b0: number; w: number; d: number } {
+    const c = Math.cos(this.shapeDragAngle);
+    const s = Math.sin(this.shapeDragAngle);
+    const dx = at.x - start.x;
+    const dy = at.y - start.y;
+    const a = dx * c + dy * s;
+    const b = -dx * s + dy * c;
+    return { a0: Math.min(0, a), b0: Math.min(0, b), w: Math.max(m(2), Math.abs(a)), d: Math.max(m(2), Math.abs(b)) };
+  }
 
   beginShapeDrag(shape: PlanShape, at: Vec2, action: PlanAction = 'new'): void {
     this.shapeDragShape = shape;
     this.shapeDragStart = at;
+    const screen = this.lastScreen;
+    if (screen) {
+      const a = this.view.planeAt(screen, 0);
+      const b = this.view.planeAt({ x: screen.x + 40, y: screen.y }, 0);
+      this.shapeDragAngle = Math.atan2(b.y - a.y, b.x - a.x);
+    } else {
+      this.shapeDragAngle = 0;
+    }
     this.shapeDragAction = action;
     this.stage = 'sketch';
     this.mode = 'place';
@@ -392,22 +417,26 @@ export class BuildingTool {
     const shape = this.shapeDragShape;
     const last = this.planCursor ?? this.lastWorld;
     if (!start || !shape || !last) return [];
-    const x0 = Math.min(start.x, last.x);
-    const y0 = Math.min(start.y, last.y);
-    const w = Math.max(m(2), Math.abs(last.x - start.x));
-    const d = Math.max(m(2), Math.abs(last.y - start.y));
-    return shapePoints(shape).map((p) => ({ x: x0 + p.x * w, y: y0 + p.y * d }));
+    const { a0, b0, w, d } = this.shapeDragSpan(start, last);
+    const c = Math.cos(this.shapeDragAngle);
+    const s = Math.sin(this.shapeDragAngle);
+    return shapePoints(shape).map((p) => {
+      const a = a0 + p.x * w;
+      const b = b0 + p.y * d;
+      return { x: start.x + a * c - b * s, y: start.y + a * s + b * c };
+    });
   }
 
   updateShapeDrag(at: Vec2): void {
     if (!this.shapeDragStart || !this.shapeDragShape) return;
     const start = this.shapeDragStart;
-    const w = Math.max(m(2), Math.abs(at.x - start.x));
-    const d = Math.max(m(2), Math.abs(at.y - start.y));
+    const { w, d } = this.shapeDragSpan(start, at);
     this.planCursor = at;
     if (this.shapeDragAction === 'new') {
       this.params.width = w;
       this.params.depth = d;
+      // Square to the screen, as it was drawn.
+      this.rotation = normaliseAngle(this.shapeDragAngle);
       this.chooseShape(this.shapeDragShape);
       this.hoverPlace({ x: (start.x + at.x) / 2, y: (start.y + at.y) / 2 });
     } else {
@@ -748,6 +777,10 @@ export class BuildingTool {
     this.blueprintKey = key;
     this.stage = 'sketch';
     this.component = null;
+    // Picking a model puts the plan pencil down: with it still in hand, the
+    // click meant to set the house on the ground started a plan instead.
+    this.activeModelTool = null;
+    this.planPoints = null;
     this.setMode('place');
   }
 

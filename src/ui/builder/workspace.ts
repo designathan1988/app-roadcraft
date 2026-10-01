@@ -137,6 +137,11 @@ export interface BuilderWorkspace {
   };
   /** A transient sentence in the chrome's own hint bar. */
   flash(text: string): void;
+  /**
+   * Opens a category with one of its galleries already open: the Builder
+   * opens on its models, so a house is one click away, not four.
+   */
+  showGallery(category: BuilderCategoryId, gallery: string): void;
   /** Re-labels everything after a language change. */
   relabel(): void;
   /**
@@ -1065,6 +1070,11 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     hosts: { level1: tier1Road, level2: tier2Road, simMenu: simSlot, appMenu: appSlot, controls: controlsSlot, hint: foot, title: panelTitle },
     flash,
     relabel,
+    showGallery(category, gallery) {
+      actions.setCategory(category);
+      openGallery = gallery;
+      renderDock(lastState);
+    },
     setHistory(canUndo: boolean, canRedo: boolean) {
       undo.disabled = !canUndo;
       redo.disabled = !canRedo;
