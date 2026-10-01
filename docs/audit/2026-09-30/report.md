@@ -467,7 +467,7 @@ Format: **ID · title** — location — current → expected · cause · fix �
 - **P2-23 · The "road wins" rule ignores ground-floor projections (bay windows up to 2.4 m)** — `editor/buildings.ts:572-592` × `validate.ts:138` · one shared `groundFootprint()` — **open**.
 - **P2-24 · Building footprints use raw polygon-clipping (Martinez) with no fallback** — `world/buildings/footprints.ts:41-59` · go through `@core/clipper` and report instead of throwing — **open**.
 - **P2-25 · Poles on the carriageway or in buildings, never removed by a new road, duplicated at the map edge** — `editor/poles.ts:180-213`; `doc.ts:164-171` · clamp before planning; skip carriageway and footprints; a "road wins" pass for poles — **open**.
-- **P2-26 · Holes in the asphalt on 3–5° bends** — `junction/build.ts:25, 110-111`; `network.ts:612-637` · extend the ends by `SEAM_OVERLAP + hw·tan(β/2)` or lower the tolerance to ~0.5° — **open** (roads redesign, Lot R).
+- **P2-26 · Holes in the asphalt on 3–5° bends** — `junction/build.ts:25, 110-111`; `network.ts:612-637` · extend the ends by `SEAM_OVERLAP + hw·tan(β/2)` or lower the tolerance to ~0.5° — **fixed** (each end's overlap covers its bend's wedge; test `tests/world/bendSeam.spec.ts`).
 - **P2-27 · The minimum-angle guard was removed, but code and comments still describe it** — `legAngles.ts`, `commit.ts:33`, `junction/build.ts:353-357` · restore the guard or delete the dead code — **open**.
 - **P2-28 · Two segments between the same pair of nodes** — `doc.ts:239-263, 301-313` — **fixed 64303e8**.
 - **P2-29 · Welding merges rotated buildings that are only near each other and inflates them (AABB swap)** — `editor/buildings.ts:790-830` · a real polygon overlap test — **open** (Lot B).

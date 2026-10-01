@@ -361,6 +361,32 @@ export class Network {
     }
   }
 
+  /**
+   * How far the road turns at a node joining exactly two segments, radians
+   * (0 straight on); 0 anywhere else. Read off the two polylines' ends.
+   */
+  private bendAt(nodeId: NodeId, segId: SegmentId): number {
+    const node = this.doc.node(nodeId);
+    if (!node || node.incident.length !== 2) return 0;
+    const away = (id: SegmentId): Vec2 | null => {
+      const seg = this.doc.segment(id);
+      if (!seg) return null;
+      const pts = this.polylines.get(this.doc, id).toPoints();
+      if (pts.length < 2) return null;
+      const [p, q] = seg.a === nodeId ? [pts[0]!, pts[1]!] : [pts[pts.length - 1]!, pts[pts.length - 2]!];
+      const len = Math.hypot(q.x - p.x, q.y - p.y);
+      return len > 0 ? { x: (q.x - p.x) / len, y: (q.y - p.y) / len } : null;
+    };
+    const other = node.incident.find((id) => id !== segId);
+    const u = away(segId);
+    const v = other === undefined ? null : away(other);
+    if (!u || !v) return 0;
+    // Straight on, the two directions away from the node are opposed.
+    const cos = Math.max(-1, Math.min(1, -(u.x * v.x + u.y * v.y)));
+    // Bends past the junction threshold get a junction instead; cap the push.
+    return Math.min(Math.acos(cos), (20 * Math.PI) / 180);
+  }
+
   private buildRibbons(): void {
     for (const [id, seg] of this.doc.segments) {
       const full = this.polylines.get(this.doc, id);
@@ -397,14 +423,22 @@ export class Network {
         // So an end that was not trimmed is pushed OUT instead, into its
         // neighbour. `centre` keeps the honest length: it carries the dash phase
         // and every marking, and lengthening it would slide the lane lines.
+        // At a bend with no junction the two ribbons meet square to their
+        // own ends, which leaves a wedge open on the outside of the bend:
+        // half the width times the tangent of half the bend. A fixed hair of
+        // overlap covered it only on dead-straight joins; 3 to 5 degree bends
+        // showed holes in the asphalt (audit P2-26).
+        const base = SEAM_OVERLAP + (level - Level.Casing) * SURFACE_END_STEP;
+        const hw = halfWidth(rt, level);
         rings[level] = ribbonRing(
           overlapUntrimmedEnds(
             trimmed,
             s0 <= 0,
             s1 >= length,
-            SEAM_OVERLAP + (level - Level.Casing) * SURFACE_END_STEP,
+            base + hw * Math.tan(this.bendAt(seg.a, id) / 2),
+            base + hw * Math.tan(this.bendAt(seg.b, id) / 2),
           ),
-          halfWidth(rt, level),
+          hw,
         );
       }
 
@@ -621,12 +655,13 @@ function overlapUntrimmedEnds(
   atStart: boolean,
   atEnd: boolean,
   amount = SEAM_OVERLAP,
+  amountEnd = amount,
 ): Polyline {
   if (!atStart && !atEnd) return line;
   const pts = line.toPoints();
   if (pts.length < 2) return line;
 
-  const push = (from: Vec2, towards: Vec2): Vec2 => {
+  const push = (from: Vec2, towards: Vec2, amount: number): Vec2 => {
     const dx = from.x - towards.x;
     const dy = from.y - towards.y;
     const len = Math.hypot(dx, dy);
@@ -635,10 +670,10 @@ function overlapUntrimmedEnds(
   };
 
   const out = [...pts];
-  if (atStart) out[0] = push(out[0] as Vec2, out[1] as Vec2);
+  if (atStart) out[0] = push(out[0] as Vec2, out[1] as Vec2, amount);
   if (atEnd) {
     const last = out.length - 1;
-    out[last] = push(out[last] as Vec2, out[last - 1] as Vec2);
+    out[last] = push(out[last] as Vec2, out[last - 1] as Vec2, amountEnd);
   }
   return Polyline.fromPoints(out);
 }
