@@ -1,0 +1,14 @@
+{
+ "name": "hatch_01", "kind": "hatch",
+ "length": 3.90, "width": 1.72, "height": 1.48,
+ "wheelbase": 2.50, "front_overhang": 0.72,
+ "wheel": {"radius": 0.30, "width": 0.20, "rim": 0.64, "spokes": 5, "inset": 0.03},
+ "clearance": 0.15,
+ "profile": {"nose_y": 0.62, "hood_front_y": 0.80, "hood_rear_y": 0.98, "cowl_d": 1.10,
+             "roof_front_d": 1.72, "roof_rear_d": 3.15, "deck_d": 3.74, "deck_y": 1.02, "tail_y": 0.98,
+             "front_bottom_y": 0.30, "rear_bottom_y": 0.36, "belt_front_y": 0.98, "belt_rear_y": 1.04},
+ "plan": {"corner_front": 0.30, "corner_rear": 0.24},
+ "pillars": {"a": 0.08, "b": 0.10, "c": 0.26},
+ "lamps": {"head": [0.32, 0.12], "tail": [0.16, 0.30], "head_y": 0.72, "tail_y": 0.90, "head_x": 0.64},
+ "seats": {"hip_y": 0.52, "front_d": 1.85, "rear_d": 2.65, "x": 0.36}
+}

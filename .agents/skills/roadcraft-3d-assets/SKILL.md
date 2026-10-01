@@ -43,7 +43,12 @@ A hairstyle is a small JSON spec. The generator does the geometry; you choose pa
    `hair_build.py` (a new `gather` type, a new clump shape) instead of fighting it - and keep the
    safety pass and the checker passing.
 
-## 2. Anything else (garments, hats, shoes, vehicles, props)
+## Cars and vans: use the `roadcraft-vehicles` skill
+
+Do not model a car body here. `$roadcraft-vehicles` builds sedans, hatchbacks, SUVs and vans from a
+spec with a tested generator and fails holes, dents and inside-out parts automatically.
+
+## 2. Anything else (garments, hats, shoes, props)
 
 1. Write `make_<name>.py`, a Blender script run headless, that builds the model from scratch:
    - people items: model ON the MakeHuman base body (load it with `scripts/mh.py`), then bind with

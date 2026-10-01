@@ -1,0 +1,18 @@
+{
+ "name": "van_01", "kind": "van",
+ "length": 5.60, "width": 2.00, "height": 2.35,
+ "wheelbase": 3.40, "front_overhang": 0.90,
+ "wheel": {"radius": 0.34, "width": 0.22, "rim": 0.60, "spokes": 6, "inset": 0.04},
+ "clearance": 0.18, "arch_flare": 0.02,
+ "profile": {"nose_y": 0.80, "hood_front_y": 1.00, "hood_rear_y": 1.22, "cowl_d": 0.92,
+             "roof_front_d": 1.62, "roof_rear_d": 5.40, "deck_d": 5.52, "deck_y": 2.25, "tail_y": 2.20,
+             "front_bottom_y": 0.38, "rear_bottom_y": 0.40, "belt_front_y": 1.22, "belt_rear_y": 1.30},
+ "plan": {"corner_front": 0.34, "corner_rear": 0.12, "taper_front": 0.06, "taper_rear": 0.0},
+ "section": {"roof_width": 0.90, "shoulder_inset": 0.04, "bulge": 0.015},
+ "pillars": {"a": 0.10, "b": 0.12, "c": 0.12},
+ "doors": 2,
+ "lamps": {"head": [0.36, 0.14], "tail": [0.16, 0.40], "head_y": 0.92, "tail_y": 0.95, "head_x": 0.64},
+ "bumpers": {"height": 0.24, "protrude": 0.05, "front_y": 0.52, "rear_y": 0.52},
+ "grille": {"width": 0.80, "height": 0.20},
+ "seats": {"hip_y": 0.82, "front_d": 1.75, "rear_d": 2.60, "x": 0.45}
+}

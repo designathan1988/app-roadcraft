@@ -1,0 +1,4 @@
+interface:
+  display_name: "Roadcraft vehicles"
+  short_description: "Generate checked car models (sedan, hatch, SUV, van) for Roadcraft from a JSON spec"
+  default_prompt: "Use $roadcraft-vehicles to make the requested Roadcraft cars: copy a reference spec, change numbers, run make_car.py, compare with the reference image, deliver into incoming/vehicles."
