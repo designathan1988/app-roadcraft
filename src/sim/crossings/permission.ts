@@ -3,7 +3,8 @@ import { PED } from '../params';
 import type { SimWorld } from '../world';
 import type { Vehicle } from '../vehicles/state';
 import type { SidewalkEdge } from '../peds/sidewalk';
-import { pedestrianSignalState } from '../signals/query';
+import { pedestrianSignalState, signalStateFor } from '../signals/query';
+import type { SignalController } from '../signals/fsm';
 import { makeCrossingId } from '../signals/plan';
 import { reservationCoversCrossing } from '../intersections/crossingSpans';
 import { canStopComfortably } from '../vehicles/idm';
@@ -47,6 +48,10 @@ export function mayEnterCrossing(w: SimWorld, crossing: SidewalkEdge, waited: nu
     const state = pedestrianSignalState(controller, id, crossing.length);
     if (state !== 'walk') return false;
     void need;
+    // A car turning over this zebra at its own green, that has waited its
+    // share while people kept stepping off in front of it: its turn. The
+    // people at the kerb wait for it; those already on the zebra go first.
+    if (turnOwedToVehicle(w, node, id, controller)) return false;
     return true;
   }
 
@@ -98,6 +103,31 @@ function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): 
 }
 
 /**
+ * Whether a car at its line, at green, whose movement crosses this zebra has
+ * waited longer than `PED_COURTESY` for people stepping off in front of it.
+ * Giving way to every new arrival through the whole WALK, a turning car at a
+ * busy crossing waited out cycle after cycle - four minutes, measured - and
+ * the junction behind it locked.
+ */
+function turnOwedToVehicle(w: SimWorld, node: NonNullable<SidewalkEdge["node"]>, crossing: string, controller: SignalController): boolean {
+  for (const laneId of w.graph.junctions.get(node)?.inbound ?? []) {
+    const head = w.laneHead(laneId);
+    if (!head || head.admittedConnector || head.waited <= PED_COURTESY) continue;
+    const lane = w.lanelet(laneId);
+    if (!lane || lane.length - head.s > m(8)) continue;
+    const conn = head.route[1] ? w.connector(head.route[1]) : undefined;
+    if (!conn || conn.node !== node) continue;
+    if (w.crossingSpans.span(conn.id, crossing as never) === null) continue;
+    if (signalStateFor(controller, conn.group) !== 'green') continue;
+    return true;
+  }
+  return false;
+}
+
+/** Seconds a car stands at a zebra giving way to people arriving at its kerb before it is its turn. */
+export const PED_COURTESY = 8;
+
+/**
  * Gap acceptance against approaching traffic on the lanes being crossed.
  *
  * At an uncontrolled zebra the pedestrian has priority once on it: admission
@@ -124,6 +154,11 @@ export function pedGapAccepted(w: SimWorld, crossing: SidewalkEdge, waited: numb
     // pedestrians at uncontrolled kerbs for over three minutes behind queues
     // that could not move until they had crossed.
     if (head.v < 0.5 && !head.admittedConnector) {
+      // Its turn: a car that has stood at the zebra this long while people
+      // kept stepping off in front of it goes next. On a busy pavement one
+      // walker after another arrived and the car gave way to each - over a
+      // minute at a bend. Whoever is on the zebra still goes first.
+      if (head.waited > PED_COURTESY) return false;
       continue;
     }
     const distance = lane.length - head.s;
@@ -145,7 +180,7 @@ function vehicleBodyOnCrossing(w: SimWorld, crossing: SidewalkEdge): boolean {
   return false;
 }
 
-function vehicleBodyIntersectsCrossing(w: SimWorld, vehicle: Vehicle, crossing: SidewalkEdge): boolean {
+export function vehicleBodyIntersectsCrossing(w: SimWorld, vehicle: Vehicle, crossing: SidewalkEdge): boolean {
   const pose = vehiclePose(w, vehicle, 1);
   if (!pose) return false;
   const first = crossing.path.point(0);

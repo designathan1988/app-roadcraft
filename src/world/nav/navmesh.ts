@@ -105,6 +105,9 @@ export class NavMesh {
   private readonly grid = new Map<number, number[]>();
   /** Every wall: the edges no portal leads through, 4 numbers each. */
   private readonly walls: number[] = [];
+  /** Per wall: the unit normal pointing into the triangle it bounds, and that triangle's deck. */
+  private readonly wallNormals: number[] = [];
+  private readonly wallLayer: number[] = [];
   private readonly wallGrid = new Map<number, number[]>();
 
   constructor(tri: number[], region: number[], layer: number[], portals: NavPortal[][], crossings: readonly NavCrossingInput[]) {
@@ -135,6 +138,10 @@ export class NavMesh {
           if (s1 - s0 < 1e-3) return;
           const i = this.walls.length / 4;
           this.walls.push(ax + ux * s0, ay + uy * s0, ax + ux * s1, ay + uy * s1);
+          const cx = (this.tri[o]! + this.tri[o + 2]! + this.tri[o + 4]!) / 3, cy = (this.tri[o + 1]! + this.tri[o + 3]! + this.tri[o + 5]!) / 3;
+          const inward = (cx - ax) * -uy + (cy - ay) * ux >= 0 ? 1 : -1;
+          this.wallNormals.push(-uy * inward, ux * inward);
+          this.wallLayer.push(this.layer[t]!);
           const x0 = Math.min(ax + ux * s0, ax + ux * s1), x1 = Math.max(ax + ux * s0, ax + ux * s1);
           const y0 = Math.min(ay + uy * s0, ay + uy * s1), y1 = Math.max(ay + uy * s0, ay + uy * s1);
           for (let cx = wcell(x0); cx <= wcell(x1); cx++) {
@@ -292,6 +299,80 @@ export class NavMesh {
           const q = closestOnSegment(this.walls[i * 4]!, this.walls[i * 4 + 1]!, this.walls[i * 4 + 2]!, this.walls[i * 4 + 3]!, x, y);
           const d = Math.hypot(q.x - x, q.y - y);
           if (d < reach) visit(q.x, q.y, d);
+        }
+      }
+    }
+  }
+
+  /** Every zebra mouth: an edge from walkable ground onto a zebra (x0 y0 x1 y1 nx ny, the normal pointing off the zebra), and its crossing. */
+  private mouths: number[] | null = null;
+  private mouthCrossing: number[] = [];
+  private mouthLayer: number[] = [];
+  private readonly mouthGrid = new Map<number, number[]>();
+
+  private indexMouths(): void {
+    const m: number[] = [];
+    for (let t = 0; t < this.count; t++) {
+      if (isZebra(this.region[t]!)) continue;
+      const c = this.centroid(t);
+      for (const p of this.portals[t]!) {
+        const z = this.region[p.to]!;
+        if (!isZebra(z)) continue;
+        const ex = p.rx - p.lx, ey = p.ry - p.ly;
+        const len = Math.hypot(ex, ey) || 1;
+        let nx = -ey / len, ny = ex / len;
+        if ((c.x - p.lx) * nx + (c.y - p.ly) * ny < 0) { nx = -nx; ny = -ny; }
+        const i = m.length / 6;
+        m.push(p.lx, p.ly, p.rx, p.ry, nx, ny);
+        this.mouthCrossing.push(z);
+        this.mouthLayer.push(this.layer[t]!);
+        for (let cx = wcell(Math.min(p.lx, p.rx)); cx <= wcell(Math.max(p.lx, p.rx)); cx++) {
+          for (let cy = wcell(Math.min(p.ly, p.ry)); cy <= wcell(Math.max(p.ly, p.ry)); cy++) {
+            const key = cellKey(cx, cy);
+            const list = this.mouthGrid.get(key);
+            if (list) list.push(i); else this.mouthGrid.set(key, [i]);
+          }
+        }
+      }
+    }
+    this.mouths = m;
+  }
+
+  /**
+   * Calls `visit` with the ends of every wall segment of deck `layer` that
+   * comes within `reach` of the point, and its normal pointing into the
+   * walkable side. Only that deck's: seen from above, the walls of a bridge
+   * lie across the pavement under it.
+   */
+  wallSegmentsNear(x: number, y: number, reach: number, layer: number, visit: (ax: number, ay: number, bx: number, by: number, nx: number, ny: number) => void): void {
+    const seen = new Set<number>();
+    for (let cx = wcell(x - reach); cx <= wcell(x + reach); cx++) {
+      for (let cy = wcell(y - reach); cy <= wcell(y + reach); cy++) {
+        for (const i of this.wallGrid.get(cellKey(cx, cy)) ?? []) {
+          if (seen.has(i)) continue;
+          seen.add(i);
+          if (this.wallLayer[i] !== layer) continue;
+          const w = this.walls;
+          const q = closestOnSegment(w[i * 4]!, w[i * 4 + 1]!, w[i * 4 + 2]!, w[i * 4 + 3]!, x, y);
+          if (Math.hypot(q.x - x, q.y - y) < reach) visit(w[i * 4]!, w[i * 4 + 1]!, w[i * 4 + 2]!, w[i * 4 + 3]!, this.wallNormals[i * 2]!, this.wallNormals[i * 2 + 1]!);
+        }
+      }
+    }
+  }
+
+  /** Like `mouthsNear`, with the mouth's ends: `visit(crossing, ax, ay, bx, by, nx, ny)`, the normal pointing off the zebra. */
+  mouthSegmentsNear(x: number, y: number, reach: number, layer: number, visit: (crossing: number, ax: number, ay: number, bx: number, by: number, nx: number, ny: number) => void): void {
+    if (!this.mouths) this.indexMouths();
+    const m = this.mouths!;
+    const seen = new Set<number>();
+    for (let cx = wcell(x - reach); cx <= wcell(x + reach); cx++) {
+      for (let cy = wcell(y - reach); cy <= wcell(y + reach); cy++) {
+        for (const i of this.mouthGrid.get(cellKey(cx, cy)) ?? []) {
+          if (seen.has(i)) continue;
+          seen.add(i);
+          if (this.mouthLayer[i] !== layer) continue;
+          const q = closestOnSegment(m[i * 6]!, m[i * 6 + 1]!, m[i * 6 + 2]!, m[i * 6 + 3]!, x, y);
+          if (Math.hypot(q.x - x, q.y - y) < reach) visit(this.mouthCrossing[i]!, m[i * 6]!, m[i * 6 + 1]!, m[i * 6 + 2]!, m[i * 6 + 3]!, m[i * 6 + 4]!, m[i * 6 + 5]!);
         }
       }
     }

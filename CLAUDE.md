@@ -66,3 +66,13 @@ crossings exactly as before.
   machine while they play and cannot be stopped cleanly. Run the specs you
   touched, in the foreground, a couple of minutes at most.
 - Do the work yourself. No parallel subagents unless the player asks for them.
+
+## After a compaction: read the session memory first
+
+The work in progress, its diagnosis, its measurements and what comes next are
+kept in the session memory, not only in the conversation. Read it before
+doing anything else after a compaction, and keep it up to date as work moves:
+
+- Index: `C:/Users/jonathanrodriguesti/.claude/projects/C--Codex-Shared-Road/memory/MEMORY.md`
+- Current work (agents: People locomotion rewrite, traffic locks):
+  `C:/Users/jonathanrodriguesti/.claude/projects/C--Codex-Shared-Road/memory/agents-engine-rewrite.md`

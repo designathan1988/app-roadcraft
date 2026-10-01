@@ -1,4 +1,4 @@
-import type { NavMesh, NavPortal } from './navmesh';
+import { closestOnSegment, type NavMesh, type NavPortal } from './navmesh';
 
 /**
  * A route across the mesh: the triangles it passes through, the portal it
@@ -24,8 +24,12 @@ export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: 
   cost: NavCost = () => 0, maxNodes = 20000): NavPath | null {
   if (st < 0 || gt < 0) return null;
   if (st === gt) return { tris: [st], portals: [], corners: [{ x: gx, y: gy, tri: 0 }] };
-  // A* over triangles; a triangle's position is the point it was entered at
-  // (the middle of the portal), which keeps costs close to walked distance.
+  // A* over triangles; a triangle's position is the point it was entered at:
+  // the point of the portal nearest where the walk came from, which keeps
+  // costs close to walked distance. (The portal's middle, used before, lay
+  // metres off any walked line on the long slivers of a kerb stone: from two
+  // neighbouring slivers the "shortest" routes ran opposite ways round, and
+  // a body between them turned to and fro.)
   const g = new Map<number, number>();
   const px = new Map<number, number>();
   const py = new Map<number, number>();
@@ -48,8 +52,9 @@ export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: 
     for (const portal of mesh.portals[t]!) {
       const u = portal.to;
       if (closed.has(u)) continue;
-      const mx = u === gt ? gx : (portal.lx + portal.rx) / 2;
-      const my = u === gt ? gy : (portal.ly + portal.ry) / 2;
+      const near = u === gt ? null : closestOnSegment(portal.lx, portal.ly, portal.rx, portal.ry, tx, ty);
+      const mx = near ? near.x : gx;
+      const my = near ? near.y : gy;
       const step = Math.hypot(mx - tx, my - ty);
       const ng = tg + step + cost(t, u, step);
       if (ng < (g.get(u) ?? Infinity)) {

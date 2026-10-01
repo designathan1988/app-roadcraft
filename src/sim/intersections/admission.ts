@@ -6,6 +6,7 @@ import type { Vehicle } from '../vehicles/state';
 import { canStopComfortably, type ObstacleKind } from '../vehicles/idm';
 import { pedestrianSignalState, signalStateFor } from '../signals/query';
 import { signalHolds } from '../signals/permission';
+import { PED_COURTESY, vehicleBodyIntersectsCrossing } from '../crossings/permission';
 import { hasDownstreamStorage } from './spillback';
 import { cycleFull } from './cycles';
 import { COARSE_EPS } from '@core/scalar';
@@ -1213,6 +1214,12 @@ function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
     const id = `${r.conn.node}:${segment}`;
     const state = w.crossingStates.get(id);
     if (!state || (state.waitingFrom === 0 && state.waitingTo === 0)) continue;
+    // A car standing on the zebra itself is what keeps them at the kerb
+    // (nobody steps off with a body on it): it clears the zebra first.
+    // Giving way there, the car waited for people who waited for the car - a
+    // bend of two roads was blocked for over a minute.
+    const edge = w.sidewalks.edges.get(w.sidewalks.crossings.get(id) ?? '');
+    if (edge && vehicleBodyIntersectsCrossing(w, r.v, edge)) continue;
     const span = w.crossingSpans.span(r.conn.id, id);
     if (span === null) continue;
     // Only people who would reach the vehicle's path soon after stepping off:
@@ -1225,6 +1232,9 @@ function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
       // held a car at a street widening into a boulevard for 74 s while people
       // kept arriving to cross in front of it.
       if (w.net.crosswalkDistanceAt(segment, r.conn.node) <= 0) continue;
+      // Waited its share giving way to people arriving at the kerb: its turn
+      // now (`PED_COURTESY`); they wait for it, it does not wait for them.
+      if (r.v.waited > PED_COURTESY) continue;
       // Uncontrolled zebra: give way to those who would soon be in the path;
       // somebody at the far kerb of a wide crossing lets the turn go first.
       if (span) {
@@ -1234,6 +1244,9 @@ function pedestrianHasPriority(w: SimWorld, r: Request): boolean {
       }
       return true;
     }
+    // At a signal too, a car that has waited its share is owed its turn
+    // (`PED_COURTESY`, and `mayEnterCrossing` keeps the kerb for it).
+    if (r.v.waited > PED_COURTESY) continue;
     if (pedestrianSignalState(controller, id, state.length) === 'walk') return true;
   }
   return false;
