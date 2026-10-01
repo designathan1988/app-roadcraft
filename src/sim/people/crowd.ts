@@ -10,6 +10,7 @@ import type { Boarder, PedestrianEngine } from './engine';
 import { PARTY_ARCHETYPES, type PartyView, type PedView, type PersonAgeClass, type PersonGender } from './view';
 import { planParty } from './party';
 import { AGENT_HEIGHT, AGENT_RADIUS, buildCrowdNav, WALK_FLAG, type CrowdNav, type Narrow, type Zebra } from './crowdNav';
+import { CrowdPointIndex } from './crowdIndex';
 
 /**
  * THE CROWD ENGINE: pedestrians walked by Detour's crowd (Recast/Detour,
@@ -128,6 +129,9 @@ interface Passage {
   waiting: Map<Way, { id: number; since: number }[]>;
 }
 
+interface WaitingFootprint extends Vec2 { readonly h: number }
+type WaitingCrossing = Pick<Zebra, 'id' | 'a' | 'b' | 'half' | 'kerb'> & { readonly h: number };
+
 interface State {
   nav: CrowdNav | null;
   crowd: Crowd | null;
@@ -140,6 +144,12 @@ interface State {
   clock: number;
   /** For each zebra and side, the waiting places taken. */
   slots: Map<string, (number | null)[]>;
+  /** Canonical, mutually exclusive footprints owned by zebra waiters. */
+  waitingPlaces: Map<number, { key: string; at: WaitingFootprint }>;
+  /** A full local region holds its waiter until the next ordinary intent look. */
+  waitingCapacity: Map<number, { key: string; at: Vec2; retryAt: number }>;
+  /** One failed capacity search suppresses the same region's retry wave. */
+  fullWaitingRegions: Map<string, number>;
   passages: Map<number, Passage>;
 }
 
@@ -147,7 +157,7 @@ const STATES = new WeakMap<SimWorld, State>();
 function stateOf(w: SimWorld): State {
   let s = STATES.get(w);
   if (!s) {
-    s = { nav: null, crowd: null, revision: -1, walkers: [], byId: new Map(), nextId: 1, spawnClock: 0, clock: 0, slots: new Map(), passages: new Map() };
+    s = { nav: null, crowd: null, revision: -1, walkers: [], byId: new Map(), nextId: 1, spawnClock: 0, clock: 0, slots: new Map(), waitingPlaces: new Map(), waitingCapacity: new Map(), fullWaitingRegions: new Map(), passages: new Map() };
     STATES.set(w, s);
   }
   return s;
@@ -194,9 +204,9 @@ const TURN_RATE = 4;
 const PIVOT_RATE = 2 * Math.PI;
 const TURN_TIME = 0.25;
 /** Ticks between looks at the way ahead (staggered across people). */
-const THINK_EVERY = 15;
+export const THINK_EVERY = 15;
 /** A zebra this close along the way ahead is asked for, u. */
-const ASK_AT = m(6);
+export const ASK_AT = m(6);
 /** Waiting places stand this far back from the kerb's edge, apart, and in rows this far apart, u. */
 // The zebra's closed area begins a body's radius before the kerb and Detour
 // keeps a body's radius off it: the front row stands two radii back, and a
@@ -335,6 +345,9 @@ function ensureNav(w: SimWorld, s: State): void {
   s.nav = buildCrowdNav(w);
   s.revision = w.net.revision;
   s.slots.clear();
+  s.waitingPlaces.clear();
+  s.waitingCapacity.clear();
+  s.fullWaitingRegions.clear();
   s.passages.clear();
   s.walkers = [];
   s.byId.clear();
@@ -829,16 +842,29 @@ function zebraAhead(s: State, p: Walker, path: readonly { x: number; z: number }
 
 /** A place to wait for a zebra: along the kerb's edge on this side, then in rows behind. */
 function waitSlot(s: State, p: Walker, z: Zebra, entry: Vec2): Vec2 {
-  const at0 = onBand(z, entry.x, entry.y, m(1)) ?? 0;
   const lx = z.b.x - z.a.x, ly = z.b.y - z.a.y, len = Math.hypot(lx, ly) || 1;
+  // A companion inherits a lateral waiting place, which may lie outside
+  // the painted band. Its longitudinal side must not change with its offset.
+  const at0 = ((entry.x - z.a.x) * lx + (entry.y - z.a.y) * ly) / len;
   const side = at0 < len / 2 ? 'a' : 'b';
   const key = `${z.id}:${side}`;
+  const owned = s.waitingPlaces.get(p.id);
+  if (owned?.key === key) return owned.at;
+  const full = s.waitingCapacity.get(p.id);
+  if ((owned && owned.key !== key) || (full && full.key !== key)) freeSlot(s, p);
   let taken = s.slots.get(key);
   if (!taken) { taken = []; s.slots.set(key, taken); }
   let index = taken.indexOf(p.id);
   if (index < 0) {
     index = taken.indexOf(null);
     if (index < 0) { index = taken.length; taken.push(p.id); } else taken[index] = p.id;
+  }
+  const fallback = full?.key === key ? full.at : p.holding ?? { x: p.x, y: p.y };
+  const regionRetry = s.fullWaitingRegions.get(key) ?? -Infinity;
+  const ownRetry = full?.key === key ? full.retryAt : -Infinity;
+  if (s.clock < Math.max(regionRetry, ownRetry)) {
+    s.waitingCapacity.set(p.id, { key, at: fallback, retryAt: Math.max(regionRetry, ownRetry) });
+    return fallback;
   }
   // Across the band: centre, then alternately either side; then a row back.
   const perRow = Math.max(1, Math.floor((2 * z.half) / WAIT_GAP));
@@ -848,13 +874,201 @@ function waitSlot(s: State, p: Walker, z: Zebra, entry: Vec2): Vec2 {
   const nx = -uy, ny = ux;
   // From the kerb's edge, back onto the footway, spread along the kerb.
   const at = side === 'a' ? z.kerb - WAIT_BACK - row * WAIT_GAP : len - z.kerb + WAIT_BACK + row * WAIT_GAP;
-  return { x: z.a.x + ux * at + nx * offset, y: z.a.y + uy * at + ny * offset };
+  const preferred = { x: z.a.x + ux * at + nx * offset, y: z.a.y + uy * at + ny * offset };
+  const front = side === 'a' ? z.kerb - WAIT_BACK : len - z.kerb + WAIT_BACK;
+  const kerbAt = side === 'a' ? z.kerb : len - z.kerb;
+  const kerb = { x: z.a.x + ux * kerbAt, y: z.a.y + uy * kerbAt };
+  const kerbLine = [
+    { x: kerb.x - nx * z.half, y: kerb.y - ny * z.half },
+    { x: kerb.x + nx * z.half, y: kerb.y + ny * z.half },
+  ];
+  const nav = s.nav!;
+  const filter = s.crowd!.getFilter(1);
+  const pathFilter = s.crowd!.getFilter(p.granted.size ? 0 : 1);
+  const crossings = p.granted.size ? nav.zebras.map(z => {
+    const x = (z.a.x + z.b.x) / 2, y = (z.a.y + z.b.y) / 2;
+    const segment = nav.roadOf[z.way];
+    return { ...z, h: segment === undefined ? nav.elevation.at(x, y) : nav.elevation.onSegment(segment, x, y) };
+  }) : [];
+  let unownedCapacity = 0;
+  const tryPlace = (candidate: Vec2): WaitingFootprint | null => {
+    const along = (candidate.x - z.a.x) * ux + (candidate.y - z.a.y) * uy;
+    if (side === 'a' ? along > front + 1e-5 : along < front - 1e-5) return null;
+    // Waiting capacity belongs to the region in which this crossing is
+    // requested. Remote pavement elsewhere in the city is not queue space.
+    if (distToLine(candidate, kerbLine) > ASK_AT + 1e-5) return null;
+    const height = nav.elevation.at(candidate.x, candidate.y);
+    const hit = nav.query.findNearestPoly({ x: candidate.x, y: height, z: candidate.y }, {
+      filter, halfExtents: { x: m(0.1), y: m(1), z: m(0.1) },
+    });
+    // The mesh is already eroded by the body radius. Outside cells are
+    // unavailable capacity, never extra rows projected onto the same edge.
+    if (!hit.success || !hit.nearestRef || !hit.isOverPoly ||
+      Math.hypot(hit.nearestPoint.x - candidate.x, hit.nearestPoint.z - candidate.y) > 1e-4) return null;
+    const at = { x: hit.nearestPoint.x, y: hit.nearestPoint.z, h: hit.nearestPoint.y };
+    for (const [id, place] of s.waitingPlaces) {
+      if (id !== p.id && waitingFootprintsOverlap(at, place.at)) return null;
+    }
+    // Geometry and ownership are shared. Bodies and access below depend on
+    // this requester and must never suppress another person's approach.
+    unownedCapacity++;
+    // Releasing a logical queue slot does not make the departing body vanish.
+    for (const q of s.walkers) {
+      if (q !== p && waitingFootprintsOverlap(at, q)) return null;
+    }
+    const path = nav.query.computePath({ x: p.x, y: p.h, z: p.y }, hit.nearestPoint, { filter: pathFilter });
+    const end = path.path.at(-1);
+    if (!path.success || !end || Math.hypot(end.x - at.x, end.y - at.h, end.z - at.y) > 1e-4) return null;
+    const approach = path.path.map(q => ({ x: q.x, y: q.z, h: q.y }));
+    if (!waitingApproachIsLocal(approach, kerbLine) || !waitingApproachHasPermission(approach, crossings, p.granted)) return null;
+    for (const [id, place] of s.waitingPlaces) {
+      if (id !== p.id && !approachClearsPlace(approach, place.at)) return null;
+    }
+    for (const q of s.walkers) {
+      if (q !== p && q.holding && !approachClearsPlace(approach, q)) return null;
+    }
+    return at;
+  };
+  let found = tryPlace(preferred);
+  if (!found) {
+    // Clip lattice indices before enumerating: even a far-off preferred row
+    // or a huge map cannot enlarge this finite local set. Preserve the old
+    // ring/back/across order for every candidate inside the request region.
+    const low = side === 'a' ? kerbAt - ASK_AT : front;
+    const high = side === 'a' ? front : kerbAt + ASK_AT;
+    const candidates: { back: number; across: number; ring: number }[] = [];
+    for (let back = Math.ceil((low - at) / WAIT_GAP); back <= Math.floor((high - at) / WAIT_GAP); back++) {
+      for (let across = Math.ceil((-z.half - ASK_AT - offset) / WAIT_GAP); across <= Math.floor((z.half + ASK_AT - offset) / WAIT_GAP); across++) {
+        if (back === 0 && across === 0) continue;
+        candidates.push({ back, across, ring: Math.max(Math.abs(back), Math.abs(across)) });
+      }
+    }
+    candidates.sort((a, b) => a.ring - b.ring || a.back - b.back || a.across - b.across);
+    for (const { back, across } of candidates) {
+      found = tryPlace({
+        x: preferred.x + WAIT_GAP * (ux * back + nx * across),
+        y: preferred.y + WAIT_GAP * (uy * back + ny * across),
+      });
+      if (found) break;
+    }
+  }
+  if (found) {
+    s.waitingCapacity.delete(p.id);
+    s.fullWaitingRegions.delete(key);
+    s.waitingPlaces.set(p.id, { key, at: found });
+    return found;
+  }
+  // The logical FIFO ownership remains when physical capacity is exhausted.
+  // Wait on the already valid body position, without inventing another place
+  // at an occupied boundary. Recheck at the existing intent cadence so both
+  // released claims and moving bodies can make room, without per-tick scans.
+  const retryAt = s.clock + THINK_EVERY * DT;
+  s.waitingCapacity.set(p.id, { key, at: fallback, retryAt });
+  if (unownedCapacity === 0) s.fullWaitingRegions.set(key, retryAt);
+  return fallback;
+}
+
+/** A local endpoint alone is not proof of a local approach. */
+export function waitingApproachIsLocal(path: readonly Vec2[], kerb: readonly Vec2[]): boolean {
+  if (!path.length || distToLine(path[path.length - 1]!, kerb) > ASK_AT + 1e-5) return false;
+  // A companion may start just outside its leader's request region. Admit
+  // that incoming approach, but never a detour farther away than its start.
+  const reach = Math.max(ASK_AT, distToLine(path[0]!, kerb));
+  return path.every(p => distToLine(p, kerb) <= reach + 1e-5);
+}
+
+/** A grant is attached to its crossing, not every crossing in a route. */
+export function waitingApproachHasPermission(path: readonly WaitingFootprint[], crossings: readonly WaitingCrossing[], granted: Pick<ReadonlySet<string>, 'has'>): boolean {
+  for (const z of crossings) {
+    if (granted.has(z.id)) continue;
+    const length = Math.hypot(z.b.x - z.a.x, z.b.y - z.a.y) || 1;
+    const ux = (z.b.x - z.a.x) / length, uy = (z.b.y - z.a.y) / length;
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1]!, b = path[i]!;
+      const vertical = waitingHeightInterval(a, b, z.h);
+      if (!vertical) continue;
+      const [start, end] = vertical.map(t => {
+        const x = a.x + (b.x - a.x) * t - z.a.x, y = a.y + (b.y - a.y) * t - z.a.y;
+        return { x: x * ux + y * uy, y: -x * uy + y * ux };
+      }) as [Vec2, Vec2];
+      const low = z.kerb, high = length - z.kerb;
+      if (Math.max(start.x, end.x) < low - AGENT_RADIUS || Math.min(start.x, end.x) > high + AGENT_RADIUS ||
+        Math.max(start.y, end.y) < -z.half - AGENT_RADIUS || Math.min(start.y, end.y) > z.half + AGENT_RADIUS) continue;
+      // Test the swept circular footprint against the physical rectangle.
+      // Inflating only along the zebra misses a body's lateral overlap;
+      // inflating both axes as a box would incorrectly close its corners.
+      const axes = [
+        [start.x, end.x, low, high], [start.y, end.y, -z.half, z.half],
+      ];
+      let from = 0, to = 1, intersects = true;
+      for (const axis of axes) {
+        const [start, end, low, high] = axis as [number, number, number, number];
+        const delta = end - start;
+        if (Math.abs(delta) < 1e-9) {
+          if (start <= low || start >= high) { intersects = false; break; }
+        } else {
+          const enter = (low - start) / delta, leave = (high - start) / delta;
+          from = Math.max(from, Math.min(enter, leave));
+          to = Math.min(to, Math.max(enter, leave));
+          if (from >= to) { intersects = false; break; }
+        }
+      }
+      if (intersects) return false;
+      const corners = [{ x: low, y: -z.half }, { x: high, y: -z.half }, { x: high, y: z.half }, { x: low, y: z.half }];
+      for (let j = 0; j < corners.length; j++) {
+        const edge = [corners[j]!, corners[(j + 1) % corners.length]!];
+        if (distToLine(corners[j]!, [start, end]) < AGENT_RADIUS - 1e-5 ||
+          distToLine(start, edge) < AGENT_RADIUS - 1e-5 || distToLine(end, edge) < AGENT_RADIUS - 1e-5) return false;
+      }
+    }
+  }
+  return true;
+}
+
+/** The two body centres whose standing footprints may not share queue space. */
+export function waitingFootprintsOverlap(a: WaitingFootprint, b: WaitingFootprint): boolean {
+  return Math.abs(a.h - b.h) < AGENT_HEIGHT && Math.hypot(a.x - b.x, a.y - b.y) < 2 * AGENT_RADIUS;
+}
+
+/** The segment interval over which two standing body heights overlap. */
+function waitingHeightInterval(a: WaitingFootprint, b: WaitingFootprint, height: number): [number, number] | null {
+  const dh = b.h - a.h;
+  if (Math.abs(dh) < 1e-9) return Math.abs(a.h - height) < AGENT_HEIGHT ? [0, 1] : null;
+  const enter = (height - AGENT_HEIGHT - a.h) / dh, leave = (height + AGENT_HEIGHT - a.h) / dh;
+  const from = Math.max(0, Math.min(enter, leave)), to = Math.min(1, Math.max(enter, leave));
+  return from < to ? [from, to] : null;
+}
+
+/** A queue place needs room for its approach, not just its final footprint. */
+export function approachClearsPlace(path: readonly WaitingFootprint[], place: WaitingFootprint): boolean {
+  const radius = 2 * AGENT_RADIUS;
+  let escaping = !!path[0] && waitingFootprintsOverlap(path[0], place);
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]!, b = path[i]!;
+    // Only the part of a sloped approach that overlaps this body's vertical
+    // span can conflict. Separate decks do not consume each other's space.
+    const vertical = waitingHeightInterval(a, b, place.h);
+    if (!vertical) { escaping = false; continue; }
+    const [from, to] = vertical;
+    // A body already inside a reservation may leave it monotonically. Making
+    // that overlap a wall in both directions would forbid its own recovery.
+    if (escaping && from === 0 && (a.x - place.x) * (b.x - a.x) + (a.y - place.y) * (b.y - a.y) >= -1e-5) {
+      escaping = waitingFootprintsOverlap(b, place);
+      continue;
+    }
+    const clipped = [from, to].map(t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }));
+    if (distToLine(place, clipped) < radius - 1e-5) return false;
+    escaping = false;
+  }
+  return !escaping;
 }
 
 function freeSlot(s: State, p: Walker): void {
-  for (const taken of s.slots.values()) {
+  s.waitingPlaces.delete(p.id);
+  s.waitingCapacity.delete(p.id);
+  for (const [key, taken] of s.slots) {
     const i = taken.indexOf(p.id);
-    if (i >= 0) taken[i] = null;
+    if (i >= 0) { taken[i] = null; s.fullWaitingRegions.delete(key); }
   }
 }
 
@@ -1020,6 +1234,7 @@ function trackPassages(s: State): void {
  * few seconds, then goes back to its place. Its destination never changes.
  */
 function makeWay(s: State): void {
+  const bodies = new CrowdPointIndex(s.walkers, p => ({ minX: p.x, maxX: p.x, minY: p.y, maxY: p.y }));
   for (const p of s.walkers) {
     if (p.holding) continue;
     const dv = p.agent.desiredVelocity();
@@ -1036,7 +1251,7 @@ function makeWay(s: State): void {
       if (p.blocked < MAKE_WAY_AFTER && d > 2 * AGENT_RADIUS + m(0.05)) continue;
       // The walker's way: from where it is, on past the one standing.
       const way = [{ x: p.x, y: p.y }, { x: p.x + ux * m(3), y: p.y + uy * m(3) }];
-      const spot = clearSpot(s, q, way);
+      const spot = standingPlace(s, q, p, way, bodies);
       if (!spot) continue;
       q.aside = { at: spot, until: s.clock + MAKE_WAY_HOLD };
       q.holding = null;
@@ -1111,21 +1326,87 @@ function flowBehind(s: State, p: Walker, dir: Vec2): number {
 /** A fixed order between two people where nothing else decides (scrambled ids: no side always wins). */
 const order = (p: Walker): number => Math.imul(p.id ^ 0x5bd1e995, 0x27d4eb2d) >>> 0;
 
-/** The nearest place to `q`, reachable in a straight line on the mesh, at least two bodies (and a little) from the line `way`. */
+/** A nearby place that leaves a navigable route around the standing body. */
+function standingPlace(s: State, q: Walker, passer: Walker, way: readonly Vec2[], bodies: CrowdPointIndex<Walker>): Vec2 | null {
+  const query = s.nav!.query;
+  const filter = s.crowd!.getFilter(q.onZebras ? 0 : 1);
+  const passFilter = s.crowd!.getFilter(passer.onZebras ? 0 : 1);
+  const extents = { x: m(0.3), y: m(1), z: m(0.3) };
+  const start = query.findClosestPoint({ x: q.x, y: q.h, z: q.y }, { halfExtents: extents, filter });
+  if (!start.success || !start.polyRef) return null;
+  const a = way[0]!;
+  const end = way[way.length - 1]!;
+  const target = passer.asked;
+  const b = target && Math.hypot(target.x - a.x, target.y - a.y) < Math.hypot(end.x - a.x, end.y - a.y) ? target : end;
+  const passStart = query.findClosestPoint({ x: a.x, y: passer.h, z: a.y }, { halfExtents: extents, filter: passFilter });
+  if (!passStart.success || !passStart.polyRef) return null;
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  if (length < 1e-6) return null;
+  const nx = -(b.y - a.y) / length, ny = (b.x - a.x) / length;
+  const clearance = 2 * AGENT_RADIUS + m(0.1);
+  const avoidsClosedRoad = (p: Walker, line: readonly Vec2[]): boolean => {
+    for (const pt of along(line.map(v => ({ x: v.x, z: v.y })), m(8))) {
+      for (const z of s.nav!.spatial.zebras.around(pt.x, pt.y, AGENT_RADIUS)) {
+        if (!p.granted.has(z.id) && onRoad(z, pt.x, pt.y, AGENT_RADIUS)) return false;
+      }
+    }
+    return true;
+  };
+  const passes = (c: Vec2): number => {
+    let best = Infinity;
+    for (const side of [-1, 1]) {
+      const via = { x: c.x + nx * clearance * side, y: c.y + ny * clearance * side };
+      const line = [a, via, b];
+      if (distToLine(c, line) < 2 * AGENT_RADIUS || !avoidsClosedRoad(passer, line)) continue;
+      const on = query.findClosestPoint({ x: via.x, y: passer.h, z: via.y }, { halfExtents: extents, filter: passFilter });
+      if (!on.success || !on.polyRef || Math.hypot(on.point.x - via.x, on.point.z - via.y) > 1e-4) continue;
+      const first = query.raycast(passStart.polyRef, passStart.point, on.point, { filter: passFilter });
+      const second = query.raycast(on.polyRef, on.point, { x: b.x, y: on.point.y, z: b.y }, { filter: passFilter });
+      if (first.success && first.t >= 1 && second.success && second.t >= 1) {
+        best = Math.min(best, Math.hypot(via.x - a.x, via.y - a.y) + Math.hypot(b.x - via.x, b.y - via.y));
+      }
+    }
+    return best;
+  };
+  // Both bodies can participate in avoiding: test a route round the new
+  // footprint, not an unchanged centreline that the giver must clear alone.
+  for (const r of [m(0.3), m(0.5), m(0.8), m(1.2), m(1.8)]) {
+    let best: Vec2 | null = null, bestDetour = Infinity;
+    for (let k = 0; k < 16; k++) {
+      const angle = (k / 16) * Math.PI * 2;
+      const c = { x: q.x + Math.cos(angle) * r, y: q.y + Math.sin(angle) * r };
+      if (!avoidsClosedRoad(q, [q, c])) continue;
+      const hit = query.raycast(start.polyRef, start.point, { x: c.x, y: q.h, z: c.y }, { filter });
+      if (!hit.success || hit.t < 1) continue;
+      let occupied = false;
+      for (const body of bodies.around((q.x + c.x) / 2, (q.y + c.y) / 2, r / 2 + 2 * AGENT_RADIUS)) {
+        if (body === q || Math.abs(body.h - q.h) >= AGENT_HEIGHT) continue;
+        const initial = Math.hypot(q.x - body.x, q.y - body.y);
+        const escaping = initial < 2 * AGENT_RADIUS && (q.x - body.x) * (c.x - q.x) + (q.y - body.y) * (c.y - q.y) >= 0;
+        if (!escaping && distToLine(body, [q, c]) < 2 * AGENT_RADIUS) { occupied = true; break; }
+        if (body.aside && Math.hypot(body.aside.at.x - c.x, body.aside.at.y - c.y) < 2 * AGENT_RADIUS) { occupied = true; break; }
+      }
+      if (occupied) continue;
+      const detour = passes(c);
+      if (detour < bestDetour) { bestDetour = detour; best = c; }
+    }
+    if (best) return best;
+  }
+  return null;
+}
+
+/** Existing recovery for two moving agents; distinct from parking a standing body. */
 function clearSpot(s: State, q: Walker, way: readonly Vec2[]): Vec2 | null {
   const query = s.nav!.query;
   const start = query.findClosestPoint({ x: q.x, y: q.h, z: q.y }, { halfExtents: { x: m(0.3), y: m(1), z: m(0.3) } });
   if (!start.success || !start.polyRef) return null;
   const clearance = 2 * AGENT_RADIUS + m(0.1);
-  // The nearest such place; at the same distance, the one most in front of
-  // the way it faces - a step to the side or forward, not backwards.
   for (const r of [m(0.3), m(0.5), m(0.8), m(1.2), m(1.8)]) {
     let best: Vec2 | null = null, bestTurn = Infinity;
     for (let k = 0; k < 16; k++) {
       const a = (k / 16) * Math.PI * 2;
       const c = { x: q.x + Math.cos(a) * r, y: q.y + Math.sin(a) * r };
       if (distToLine(c, way) < clearance) continue;
-      // Never out onto the road: a zebra is walkable ground, but not for somebody not let onto it.
       if (s.nav!.zebras.some((z) => !q.granted.has(z.id) && onRoad(z, c.x, c.y, AGENT_RADIUS))) continue;
       const hit = query.raycast(start.polyRef, start.point, { x: c.x, y: q.h, z: c.y });
       if (!hit.success || hit.t < 1) continue;
@@ -1391,6 +1672,7 @@ export function inspectCrowd(w: SimWorld): readonly {
   id: number; x: number; y: number; h: number; heading: number; vx: number; vy: number; dvx: number; dvy: number; speed: number; pace: number;
   mode: string; holding: boolean; leader: number | null; waited: number; target: Vec2 | null; goal: Vec2; zebra: string | null; state: number;
   narrow: number | null; passage: number | null; aside: Vec2 | null; blocked: number; replans: number; yields: number; granted: readonly string[]; onZebra: string | null;
+  waitingPlace: Vec2 | null;
   /** Detour's own view: its target, its target's state (0 none, 1 failed, 2 valid, 3 requesting, 4 waiting for queue, 5 waiting for path, 6 velocity), the corners ahead. */
   flags: number; eased: boolean; top: number; neighbours: readonly number[]; detourTarget: Vec2; targetState: number; corners: readonly Vec2[];
 }[] {
@@ -1405,6 +1687,7 @@ export function inspectCrowd(w: SimWorld): readonly {
       mode: p.mode, holding: p.holding !== null, leader: p.leader?.id ?? null, waited: p.waited, target: p.asked, goal: p.goal,
       zebra: p.zebra?.id ?? null, state: p.agent.state(), narrow: p.narrow?.n.id ?? null, passage: p.passage?.n.id ?? null, aside: p.aside?.at ?? null, blocked: p.blocked,
       replans: p.replans, yields: p.yields, granted: [...p.granted.keys()], onZebra: p.onZebra?.id ?? null,
+      waitingPlace: s.waitingPlaces.get(p.id)?.at ?? null,
       flags: p.agent.parameters().updateFlags, eased: p.eased !== null, top: p.topSpeed, neighbours, detourTarget: { x: t.x, y: t.z }, targetState: (p.agent.raw as unknown as { targetState: number }).targetState,
       corners: p.agent.corners().map((c) => ({ x: c.x, y: c.z })),
     };

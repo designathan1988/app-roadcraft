@@ -252,3 +252,5 @@ node scripts/probe-agents.mjs docs/audit/<date>/city-crowd --base=http://localho
 ## 11. Current implementation evidence
 
 2026-10-01: see [step 06](crowd-step-06.md) for the latest accepted city group-birth correction, authorized by the player. Full battery remains 9/19, byte-identical to step 04; city jumps 28 -> 0, slides 58 -> 1, backward samples 656 -> 540, native contact corrections 1019 -> 818. Mean people step 3.910 ms. Fixed-camera before/after photos are linked there and were shown in chat. The goal in section 8 remains incomplete. The latest user order is to work directly without agents.
+
+2026-10-01: [step 07](crowd-step-07.md) restores shared bypasses and bounded exclusive waiting footprints under the player's new net-gain acceptance rule. Battery 9 -> 12/19, all 161/161 arrive; backward 1067 -> 496, slides 103 -> 7. City backward 540 -> 529, contacts 818 -> 752, mean step 4.625 ms. Retained regressions include gap-one +13 backward samples and +8.4 s last arrival, crowd longest stop +3.1 s and starvation +12.4 s. Fix these next; do not discard the larger gains.

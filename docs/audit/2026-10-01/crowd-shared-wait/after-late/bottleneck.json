@@ -1,0 +1,5963 @@
+{
+  "name": "bottleneck",
+  "seed": 23783,
+  "placed": 12,
+  "frames": [
+    {
+      "secondsAfterSpawn": 30,
+      "tick": 1801,
+      "camera": {
+        "x": 63,
+        "y": 10.5,
+        "h": -3.6504692975726023,
+        "azimuth": 1.25,
+        "elevation": 1.05,
+        "distance": 23,
+        "fov": 35,
+        "width": 640,
+        "height": 480
+      },
+      "people": [
+        {
+          "id": 1,
+          "x": 55.821170806884766,
+          "y": 9.315120697021484,
+          "h": 0.42500001192092896,
+          "heading": -2.7063005525763044,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.431867203814909,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": {
+            "x": 55.496680804718096,
+            "y": 9.18361997882677
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.431867203814909,
+          "neighbours": [
+            7,
+            3,
+            5
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 55.496681213378906,
+              "y": 9.18362045288086
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": -56.00981903076172,
+          "y": 10.944097518920898,
+          "h": 0.42500001192092896,
+          "heading": 3.066277032175281,
+          "vx": -0.5985921621322632,
+          "vy": 0.041743792593479156,
+          "dvx": -0.3997139632701874,
+          "dvy": -0.001726085669361055,
+          "speed": 0.6000459322304128,
+          "pace": 3.47468269886449,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "goal": {
+            "x": -55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 1.2259951691000321,
+          "neighbours": [
+            12,
+            4,
+            8
+          ],
+          "detourTarget": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -56.43998718261719,
+              "y": 10.941500663757324
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 60.26020431518555,
+          "y": 10.785356521606445,
+          "h": 0.42500001192092896,
+          "heading": -0.0406780240231412,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.5480831862892956,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 60.630306243896484,
+            "y": 10.77019214630127
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.5480831862892956,
+          "neighbours": [
+            7,
+            5,
+            1
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 60.630306243896484,
+              "y": 10.77019214630127
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "x": -59.29121398925781,
+          "y": 10.677021026611328,
+          "h": 0.42500001192092896,
+          "heading": 0.5697547382177577,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.6060658543370665,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -58.955596515167315,
+            "y": 10.814389702874891
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.6060658543370665,
+          "neighbours": [
+            2,
+            12,
+            6
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -58.955596923828125,
+              "y": 10.8143892288208
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "x": 63.585201263427734,
+          "y": 10.200543403625488,
+          "h": 0.42500001192092896,
+          "heading": 0.2419587346694797,
+          "vx": 2.947301149368286,
+          "vy": 0.7754274010658264,
+          "dvx": 2.9634103775024414,
+          "dvy": 0.9106920957565308,
+          "speed": 3.047600977718593,
+          "pace": 3.846624034596607,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "goal": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.100187313647764,
+          "neighbours": [
+            3,
+            7,
+            1
+          ],
+          "detourTarget": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 65,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "x": -64.50952911376953,
+          "y": 10.838126182556152,
+          "h": 0.42500001192092896,
+          "heading": 2.122559218470201,
+          "vx": -0.05844004452228546,
+          "vy": 0.09928692877292633,
+          "dvx": -0.0534735806286335,
+          "dvy": 0.0908491313457489,
+          "speed": 0.1152090839687863,
+          "pace": 3.7056227856315673,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -64.60480499267578,
+            "y": 11
+          },
+          "goal": {
+            "x": -65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": true,
+          "top": 0.75,
+          "neighbours": [
+            4
+          ],
+          "detourTarget": {
+            "x": -64.60480499267578,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -64.60480499267578,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "x": 57.19071578979492,
+          "y": 10.373942375183105,
+          "h": 0.42500001192092896,
+          "heading": -0.28129328744295173,
+          "vx": 2.9169716835021973,
+          "vy": -0.9722903966903687,
+          "dvx": 3.336214065551758,
+          "dvy": -0.23605480790138245,
+          "speed": 3.0747475372540682,
+          "pace": 3.344554404169321,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 65.3891830444336,
+            "y": 9.806622505187988
+          },
+          "goal": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.344554404169321,
+          "neighbours": [
+            1,
+            3,
+            5
+          ],
+          "detourTarget": {
+            "x": 65.3891830444336,
+            "y": 9.806622505187988
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 65.3891830444336,
+              "y": 9.806622505187988
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "x": -49.36064910888672,
+          "y": 10.832880020141602,
+          "h": 0.42500001192092896,
+          "heading": 3.104355369599765,
+          "vx": -2.8032474517822266,
+          "vy": 0.14739681780338287,
+          "dvx": -2.914435386657715,
+          "dvy": 0.09840229153633118,
+          "speed": 2.80711989373844,
+          "pace": 2.9160961985122413,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -54.33637237548828,
+            "y": 11
+          },
+          "goal": {
+            "x": -70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.9160961985122413,
+          "neighbours": [
+            10,
+            12,
+            2
+          ],
+          "detourTarget": {
+            "x": -54.33637237548828,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -54.33637237548828,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "x": 46.021697998046875,
+          "y": 8.856354713439941,
+          "h": 0.42500001192092896,
+          "heading": 0.04556327502640005,
+          "vx": 2.9340336322784424,
+          "vy": 0.13438452780246735,
+          "dvx": 2.9340336322784424,
+          "dvy": 0.13438452780246735,
+          "speed": 2.9371095581632156,
+          "pace": 2.937109585525468,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 50.75,
+            "y": 9.072919845581055
+          },
+          "goal": {
+            "x": 75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.937109585525468,
+          "neighbours": [
+            11
+          ],
+          "detourTarget": {
+            "x": 50.75,
+            "y": 9.072919845581055
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 50.75,
+              "y": 9.072919845581055
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "x": -47.6808967590332,
+          "y": 10.86875057220459,
+          "h": 0.42500001192092896,
+          "heading": -3.091784958794143,
+          "vx": -3.12553071975708,
+          "vy": -0.6634952425956726,
+          "dvx": -3.2769691944122314,
+          "dvy": 0.0498867966234684,
+          "speed": 3.1951789022044292,
+          "pace": 3.2773490528576077,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -55.52396011352539,
+            "y": 11
+          },
+          "goal": {
+            "x": -75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.2773490528576077,
+          "neighbours": [
+            8,
+            12
+          ],
+          "detourTarget": {
+            "x": -55.52396011352539,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -55.52396011352539,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "x": 44.24884033203125,
+          "y": 8.696978569030762,
+          "h": 0.42500001192092896,
+          "heading": 0.04847508744911238,
+          "vx": 3.071664571762085,
+          "vy": 0.1573639214038849,
+          "dvx": 3.071664571762085,
+          "dvy": 0.1573639214038849,
+          "speed": 3.0756928723749324,
+          "pace": 3.0756929574068637,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 50.48146438598633,
+            "y": 9.016281127929688
+          },
+          "goal": {
+            "x": 80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.0756929574068637,
+          "neighbours": [
+            9
+          ],
+          "detourTarget": {
+            "x": 50.48146438598633,
+            "y": 9.016281127929688
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 50.48146438598633,
+              "y": 9.016281127929688
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "x": -55.60437774658203,
+          "y": 9.623380661010742,
+          "h": 0.42500001192092896,
+          "heading": -2.782863548538276,
+          "vx": -2.6422433853149414,
+          "vy": -0.6738616824150085,
+          "dvx": -3.616241455078125,
+          "dvy": 1.1231498718261719,
+          "speed": 2.7268185994429017,
+          "pace": 3.786643400695175,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -59.95652389526367,
+            "y": 11
+          },
+          "goal": {
+            "x": -80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.786643400695175,
+          "neighbours": [
+            2,
+            4,
+            8,
+            10
+          ],
+          "detourTarget": {
+            "x": -59.95652389526367,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -59.95652389526367,
+              "y": 11
+            }
+          ]
+        }
+      ],
+      "cast": [
+        {
+          "seed": 1,
+          "model": "mh_14",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 1,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 3,
+          "model": "mh_61",
+          "wardrobe": "traditional",
+          "company": "solo",
+          "companyId": 3,
+          "code": [
+            "traditional"
+          ]
+        },
+        {
+          "seed": 5,
+          "model": "mh_35",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 5,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 7,
+          "model": "mh_46",
+          "wardrobe": "smart-casual",
+          "company": "solo",
+          "companyId": 7,
+          "code": [
+            "smart-casual"
+          ]
+        },
+        {
+          "seed": 9,
+          "model": "mh_34",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 9,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 11,
+          "model": "mh_39",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 11,
+          "code": [
+            "casual"
+          ]
+        }
+      ]
+    },
+    {
+      "secondsAfterSpawn": 30.5,
+      "tick": 1831,
+      "camera": {
+        "x": 63,
+        "y": 10.5,
+        "h": -3.6504692975726023,
+        "azimuth": 1.25,
+        "elevation": 1.05,
+        "distance": 23,
+        "fov": 35,
+        "width": 640,
+        "height": 480
+      },
+      "people": [
+        {
+          "id": 1,
+          "x": 55.821170806884766,
+          "y": 9.315120697021484,
+          "h": 0.42500001192092896,
+          "heading": -2.7063005525763044,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.431867203814909,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": {
+            "x": 55.496680804718096,
+            "y": 9.18361997882677
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.431867203814909,
+          "neighbours": [
+            7,
+            3
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 55.496681213378906,
+              "y": 9.18362045288086
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": -56.16709899902344,
+          "y": 10.944921493530273,
+          "h": 0.42500001192092896,
+          "heading": 3.1224537673809847,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.47468269886449,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.47468269886449,
+          "neighbours": [
+            12,
+            4,
+            8,
+            10
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -56.43998718261719,
+              "y": 10.941500663757324
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 60.26020431518555,
+          "y": 10.785356521606445,
+          "h": 0.42500001192092896,
+          "heading": -0.0406780240231412,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.5480831862892956,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 60.630306243896484,
+            "y": 10.77019214630127
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.5480831862892956,
+          "neighbours": [
+            7,
+            5,
+            1
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 60.630306243896484,
+              "y": 10.77019214630127
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "x": -59.29121398925781,
+          "y": 10.677021026611328,
+          "h": 0.42500001192092896,
+          "heading": 0.5697547382177577,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.6060658543370665,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -58.955596515167315,
+            "y": 10.814389702874891
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.6060658543370665,
+          "neighbours": [
+            12,
+            2,
+            6
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -58.955596923828125,
+              "y": 10.8143892288208
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "x": 64.42526245117188,
+          "y": 10.450182914733887,
+          "h": 0.42500001192092896,
+          "heading": 0.29929226741869647,
+          "vx": 0.8002381324768066,
+          "vy": 0.2608119249343872,
+          "dvx": 0.7652960419654846,
+          "dvy": 0.24942365288734436,
+          "speed": 0.8416673504763906,
+          "pace": 3.846624034596607,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "goal": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 1.7568368661988458,
+          "neighbours": [
+            3,
+            7
+          ],
+          "detourTarget": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 65,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "x": -64.52363586425781,
+          "y": 10.86209487915039,
+          "h": 0.42500001192092896,
+          "heading": 2.122559218470201,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.7056227856315673,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": true,
+          "top": 0.75,
+          "neighbours": [
+            4,
+            12
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -64.60480499267578,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "x": 58.68041229248047,
+          "y": 9.871186256408691,
+          "h": 0.42500001192092896,
+          "heading": -0.3187386971456973,
+          "vx": 3.12793231010437,
+          "vy": -1.0063034296035767,
+          "dvx": 3.3443124294281006,
+          "dvy": -0.04023277759552002,
+          "speed": 3.2858190956026143,
+          "pace": 3.344554404169321,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 65.3891830444336,
+            "y": 9.806622505187988
+          },
+          "goal": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.344554404169321,
+          "neighbours": [
+            3,
+            1,
+            5
+          ],
+          "detourTarget": {
+            "x": 65.3891830444336,
+            "y": 9.806622505187988
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 65.3891830444336,
+              "y": 9.806622505187988
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "x": -50.72572326660156,
+          "y": 10.711848258972168,
+          "h": 0.42500001192092896,
+          "heading": -3.022556013705308,
+          "vx": -2.6167871952056885,
+          "vy": -0.5825781226158142,
+          "dvx": -2.9145991802215576,
+          "dvy": 0.09342769533395767,
+          "speed": 2.6808529414988467,
+          "pace": 2.9160961985122413,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -59.36848449707031,
+            "y": 11
+          },
+          "goal": {
+            "x": -70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.9160961985122413,
+          "neighbours": [
+            10,
+            2,
+            12
+          ],
+          "detourTarget": {
+            "x": -59.36848449707031,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -59.36848449707031,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "x": 47.432212829589844,
+          "y": 9.249086380004883,
+          "h": 0.42500001192092896,
+          "heading": 0.2552268949187246,
+          "vx": 2.8174126148223877,
+          "vy": 0.8299388885498047,
+          "dvx": 2.8174126148223877,
+          "dvy": 0.8299388885498047,
+          "speed": 2.93710953164631,
+          "pace": 2.937109585525468,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 55.919883728027344,
+            "y": 9.25003433227539
+          },
+          "goal": {
+            "x": 75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.937109585525468,
+          "neighbours": [
+            11
+          ],
+          "detourTarget": {
+            "x": 55.919883728027344,
+            "y": 9.25003433227539
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 51.25,
+              "y": 10
+            },
+            {
+              "x": 54.75,
+              "y": 10
+            },
+            {
+              "x": 55.919883728027344,
+              "y": 9.25003433227539
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "x": -49.051918029785156,
+          "y": 10.860797882080078,
+          "h": 0.42500001192092896,
+          "heading": 3.1354038128809285,
+          "vx": -2.36263108253479,
+          "vy": 0.09629791975021362,
+          "dvx": -3.276582956314087,
+          "dvy": 0.07085497677326202,
+          "speed": 2.3645927601825503,
+          "pace": 3.2773490528576077,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -55.52396011352539,
+            "y": 11
+          },
+          "goal": {
+            "x": -75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.2773490528576077,
+          "neighbours": [
+            8,
+            2
+          ],
+          "detourTarget": {
+            "x": -55.52396011352539,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -55.52396011352539,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "x": 45.784637451171875,
+          "y": 8.775656700134277,
+          "h": 0.42500001192092896,
+          "heading": 0.050844152753793004,
+          "vx": 3.071664333343506,
+          "vy": 0.15736520290374756,
+          "dvx": 3.071664571762085,
+          "dvy": 0.15736521780490875,
+          "speed": 3.0756926998352,
+          "pace": 3.0756929574068637,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 50.48146438598633,
+            "y": 9.016281127929688
+          },
+          "goal": {
+            "x": 80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.0756929574068637,
+          "neighbours": [
+            9
+          ],
+          "detourTarget": {
+            "x": 50.48146438598633,
+            "y": 9.016281127929688
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 50.48146438598633,
+              "y": 9.016281127929688
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "x": -57.2867431640625,
+          "y": 9.43294620513916,
+          "h": 0.42500001192092896,
+          "heading": -3.011352918523232,
+          "vx": -3.4711804389953613,
+          "vy": -0.26357296109199524,
+          "dvx": -3.728599786758423,
+          "dvy": 0.6604647040367126,
+          "speed": 3.481172840564345,
+          "pace": 3.786643400695175,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -65.55941009521484,
+            "y": 10.9129638671875
+          },
+          "goal": {
+            "x": -80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.786643400695175,
+          "neighbours": [
+            2,
+            4,
+            8,
+            6
+          ],
+          "detourTarget": {
+            "x": -65.55941009521484,
+            "y": 10.9129638671875
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -65.55941009521484,
+              "y": 10.9129638671875
+            }
+          ]
+        }
+      ],
+      "cast": [
+        {
+          "seed": 1,
+          "model": "mh_14",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 1,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 3,
+          "model": "mh_61",
+          "wardrobe": "traditional",
+          "company": "solo",
+          "companyId": 3,
+          "code": [
+            "traditional"
+          ]
+        },
+        {
+          "seed": 5,
+          "model": "mh_35",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 5,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 7,
+          "model": "mh_46",
+          "wardrobe": "smart-casual",
+          "company": "solo",
+          "companyId": 7,
+          "code": [
+            "smart-casual"
+          ]
+        },
+        {
+          "seed": 9,
+          "model": "mh_34",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 9,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 11,
+          "model": "mh_39",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 11,
+          "code": [
+            "casual"
+          ]
+        }
+      ]
+    },
+    {
+      "secondsAfterSpawn": 31,
+      "tick": 1861,
+      "camera": {
+        "x": 63,
+        "y": 10.5,
+        "h": -3.6504692975726023,
+        "azimuth": 1.25,
+        "elevation": 1.05,
+        "distance": 23,
+        "fov": 35,
+        "width": 640,
+        "height": 480
+      },
+      "people": [
+        {
+          "id": 1,
+          "x": 55.821170806884766,
+          "y": 9.315120697021484,
+          "h": 0.42500001192092896,
+          "heading": -2.7063005525763044,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.431867203814909,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": {
+            "x": 55.496680804718096,
+            "y": 9.18361997882677
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.431867203814909,
+          "neighbours": [
+            7,
+            3,
+            9
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 55.496681213378906,
+              "y": 9.18362045288086
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": -56.16709899902344,
+          "y": 10.944921493530273,
+          "h": 0.42500001192092896,
+          "heading": 3.1224537673809847,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.47468269886449,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.47468269886449,
+          "neighbours": [
+            4,
+            12,
+            8,
+            10
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -56.43998718261719,
+              "y": 10.941500663757324
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 60.26020431518555,
+          "y": 10.785356521606445,
+          "h": 0.42500001192092896,
+          "heading": -0.0406780240231412,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.5480831862892956,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 60.630306243896484,
+            "y": 10.77019214630127
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.5480831862892956,
+          "neighbours": [
+            7,
+            5,
+            1
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 60.630306243896484,
+              "y": 10.77019214630127
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "x": -59.29121398925781,
+          "y": 10.677021026611328,
+          "h": 0.42500001192092896,
+          "heading": 0.5697547382177577,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.6060658543370665,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -58.955596515167315,
+            "y": 10.814389702874891
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.6060658543370665,
+          "neighbours": [
+            12,
+            2,
+            6,
+            8
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -58.955596923828125,
+              "y": 10.8143892288208
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "x": 64.65453338623047,
+          "y": 10.523913383483887,
+          "h": 0.42500001192092896,
+          "heading": 0.31523401767446835,
+          "vx": 0.28891485929489136,
+          "vy": 0.09499289095401764,
+          "dvx": 0.2602355182170868,
+          "dvy": 0.08556336164474487,
+          "speed": 0.30413063846509897,
+          "pace": 3.846624034596607,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "goal": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 1.002960993068938,
+          "neighbours": [
+            3,
+            7
+          ],
+          "detourTarget": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 65,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "x": -64.52363586425781,
+          "y": 10.86209487915039,
+          "h": 0.42500001192092896,
+          "heading": 2.122559218470201,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.7056227856315673,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": true,
+          "top": 0.75,
+          "neighbours": [
+            4,
+            12
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -64.60480499267578,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "x": 60.11146926879883,
+          "y": 9.431639671325684,
+          "h": 0.42500001192092896,
+          "heading": -0.285920016183484,
+          "vx": 2.7204341888427734,
+          "vy": -0.5738953351974487,
+          "dvx": 3.3367013931274414,
+          "dvy": 0.22905811667442322,
+          "speed": 2.7803089813159314,
+          "pace": 3.344554404169321,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 65.3891830444336,
+            "y": 9.806622505187988
+          },
+          "goal": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.344554404169321,
+          "neighbours": [
+            3,
+            1,
+            5
+          ],
+          "detourTarget": {
+            "x": 65.3891830444336,
+            "y": 9.806622505187988
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 65.3891830444336,
+              "y": 9.806622505187988
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "x": -52.03711700439453,
+          "y": 10.422257423400879,
+          "h": 0.42500001192092896,
+          "heading": -2.9346952251172373,
+          "vx": -2.794262170791626,
+          "vy": -0.6321920156478882,
+          "dvx": -2.9075167179107666,
+          "dvy": 0.22352616488933563,
+          "speed": 2.8648853072620675,
+          "pace": 2.9160961985122413,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -59.36848449707031,
+            "y": 11
+          },
+          "goal": {
+            "x": -70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.9160961985122413,
+          "neighbours": [
+            10,
+            2,
+            12,
+            4
+          ],
+          "detourTarget": {
+            "x": -59.36848449707031,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -59.36848449707031,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "x": 48.84798049926758,
+          "y": 9.55797004699707,
+          "h": 0.42500001192092896,
+          "heading": 0.21359006972560346,
+          "vx": 2.831770896911621,
+          "vy": 0.5896260738372803,
+          "dvx": 2.8162450790405273,
+          "dvy": 0.833892285823822,
+          "speed": 2.892505024981705,
+          "pace": 2.937109585525468,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 55.919883728027344,
+            "y": 9.25003433227539
+          },
+          "goal": {
+            "x": 75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.937109585525468,
+          "neighbours": [
+            11,
+            1
+          ],
+          "detourTarget": {
+            "x": 55.919883728027344,
+            "y": 9.25003433227539
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 51.25,
+              "y": 10
+            },
+            {
+              "x": 54.75,
+              "y": 10
+            },
+            {
+              "x": 55.919883728027344,
+              "y": 9.25003433227539
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "x": -50.100616455078125,
+          "y": 10.888419151306152,
+          "h": 0.42500001192092896,
+          "heading": 3.118394088168383,
+          "vx": -1.9113823175430298,
+          "vy": 0.0393250435590744,
+          "dvx": -3.276655435562134,
+          "dvy": 0.06741435825824738,
+          "speed": 1.9117868141785805,
+          "pace": 3.2773490528576077,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -55.52396011352539,
+            "y": 11
+          },
+          "goal": {
+            "x": -75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.2773490528576077,
+          "neighbours": [
+            8,
+            2
+          ],
+          "detourTarget": {
+            "x": -55.52396011352539,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -55.52396011352539,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "x": 47.259864807128906,
+          "y": 9.192713737487793,
+          "h": 0.42500001192092896,
+          "heading": 0.260174578405656,
+          "vx": 2.945350170135498,
+          "vy": 0.8858888149261475,
+          "dvx": 2.945350170135498,
+          "dvy": 0.8858888149261475,
+          "speed": 3.0756928678150652,
+          "pace": 3.0756929574068637,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 55.66749572753906,
+            "y": 9.222738265991211
+          },
+          "goal": {
+            "x": 80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.0756929574068637,
+          "neighbours": [
+            9
+          ],
+          "detourTarget": {
+            "x": 55.66749572753906,
+            "y": 9.222738265991211
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 51.25,
+              "y": 10
+            },
+            {
+              "x": 54.75,
+              "y": 10
+            },
+            {
+              "x": 55.66749572753906,
+              "y": 9.222738265991211
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "x": -59.01152038574219,
+          "y": 9.333589553833008,
+          "h": 0.42500001192092896,
+          "heading": -3.077136576926725,
+          "vx": -3.7122256755828857,
+          "vy": -0.24260155856609344,
+          "dvx": -3.683472156524658,
+          "dvy": 0.8778967261314392,
+          "speed": 3.7201444841128835,
+          "pace": 3.786643400695175,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -65.55941009521484,
+            "y": 10.9129638671875
+          },
+          "goal": {
+            "x": -80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.786643400695175,
+          "neighbours": [
+            4,
+            2,
+            6,
+            8
+          ],
+          "detourTarget": {
+            "x": -65.55941009521484,
+            "y": 10.9129638671875
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -65.55941009521484,
+              "y": 10.9129638671875
+            }
+          ]
+        }
+      ],
+      "cast": [
+        {
+          "seed": 1,
+          "model": "mh_14",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 1,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 3,
+          "model": "mh_61",
+          "wardrobe": "traditional",
+          "company": "solo",
+          "companyId": 3,
+          "code": [
+            "traditional"
+          ]
+        },
+        {
+          "seed": 5,
+          "model": "mh_35",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 5,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 7,
+          "model": "mh_46",
+          "wardrobe": "smart-casual",
+          "company": "solo",
+          "companyId": 7,
+          "code": [
+            "smart-casual"
+          ]
+        },
+        {
+          "seed": 9,
+          "model": "mh_34",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 9,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 11,
+          "model": "mh_39",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 11,
+          "code": [
+            "casual"
+          ]
+        }
+      ]
+    },
+    {
+      "secondsAfterSpawn": 31.5,
+      "tick": 1891,
+      "camera": {
+        "x": 63,
+        "y": 10.5,
+        "h": -3.6504692975726023,
+        "azimuth": 1.25,
+        "elevation": 1.05,
+        "distance": 23,
+        "fov": 35,
+        "width": 640,
+        "height": 480
+      },
+      "people": [
+        {
+          "id": 1,
+          "x": 55.821170806884766,
+          "y": 9.315120697021484,
+          "h": 0.42500001192092896,
+          "heading": -2.7063005525763044,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.431867203814909,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": {
+            "x": 55.496680804718096,
+            "y": 9.18361997882677
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.431867203814909,
+          "neighbours": [
+            3,
+            9,
+            7,
+            11
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 55.496681213378906,
+              "y": 9.18362045288086
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": -56.16709899902344,
+          "y": 10.944921493530273,
+          "h": 0.42500001192092896,
+          "heading": 3.1224537673809847,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.47468269886449,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.47468269886449,
+          "neighbours": [
+            8,
+            4,
+            12,
+            10
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -56.43998718261719,
+              "y": 10.941500663757324
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 60.26020431518555,
+          "y": 10.785356521606445,
+          "h": 0.42500001192092896,
+          "heading": -0.0406780240231412,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.5480831862892956,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 60.630306243896484,
+            "y": 10.77019214630127
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.5480831862892956,
+          "neighbours": [
+            7,
+            5,
+            1
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 60.630306243896484,
+              "y": 10.77019214630127
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "x": -59.567848205566406,
+          "y": 10.78024673461914,
+          "h": 0.42500001192092896,
+          "heading": 2.3618187206594596,
+          "vx": -0.4036905765533447,
+          "vy": 0.17823010683059692,
+          "dvx": -0.40917548537254333,
+          "dvy": 0.1806517094373703,
+          "speed": 0.44128454831187763,
+          "pace": 3.6060658543370665,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -59.98412322998047,
+            "y": 10.964033126831055
+          },
+          "goal": {
+            "x": -60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -59.98412363864128,
+            "y": 10.964033600885145
+          },
+          "blocked": 0,
+          "replans": 19,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 1.3058665236237266,
+          "neighbours": [
+            12,
+            2,
+            6,
+            8
+          ],
+          "detourTarget": {
+            "x": -59.98412322998047,
+            "y": 10.964033126831055
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -59.98412322998047,
+              "y": 10.964033126831055
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "x": 64.66989135742188,
+          "y": 10.529422760009766,
+          "h": 0.42500001192092896,
+          "heading": 0.31568658238667024,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.846624034596607,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.846624034596607,
+          "neighbours": [
+            7,
+            3
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 65,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "x": -64.52363586425781,
+          "y": 10.86209487915039,
+          "h": 0.42500001192092896,
+          "heading": 2.122559218470201,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.7056227856315673,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": true,
+          "top": 0.75,
+          "neighbours": [
+            12,
+            4
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -64.60480499267578,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "x": 61.64093017578125,
+          "y": 9.339566230773926,
+          "h": 0.42500001192092896,
+          "heading": -0.07404398417360736,
+          "vx": 3.019817352294922,
+          "vy": -0.21570932865142822,
+          "dvx": 3.3056282997131348,
+          "dvy": 0.5087878704071045,
+          "speed": 3.027511743278424,
+          "pace": 3.344554404169321,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "goal": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.344554404169321,
+          "neighbours": [
+            3,
+            5,
+            1
+          ],
+          "detourTarget": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 70,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "x": -53.39729309082031,
+          "y": 10.127691268920898,
+          "h": 0.42500001192092896,
+          "heading": -2.9301570300184876,
+          "vx": -2.748258113861084,
+          "vy": -0.565554141998291,
+          "dvx": -2.8865649700164795,
+          "dvy": 0.4139552712440491,
+          "speed": 2.8058464227278557,
+          "pace": 2.9160961985122413,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -59.36848449707031,
+            "y": 11
+          },
+          "goal": {
+            "x": -70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.9160961985122413,
+          "neighbours": [
+            10,
+            2,
+            4,
+            12
+          ],
+          "detourTarget": {
+            "x": -59.36848449707031,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -59.36848449707031,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "x": 50.272457122802734,
+          "y": 9.903485298156738,
+          "h": 0.42500001192092896,
+          "heading": 0.22256961340470846,
+          "vx": 2.8891873359680176,
+          "vy": 0.5284003019332886,
+          "dvx": 2.8891873359680176,
+          "dvy": 0.5284003019332886,
+          "speed": 2.9371091810488013,
+          "pace": 2.937109585525468,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 55.919883728027344,
+            "y": 9.25003433227539
+          },
+          "goal": {
+            "x": 75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.937109585525468,
+          "neighbours": [
+            11,
+            1
+          ],
+          "detourTarget": {
+            "x": 55.919883728027344,
+            "y": 9.25003433227539
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 51.25,
+              "y": 10
+            },
+            {
+              "x": 54.75,
+              "y": 10
+            },
+            {
+              "x": 55.919883728027344,
+              "y": 9.25003433227539
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "x": -50.971832275390625,
+          "y": 10.9035005569458,
+          "h": 0.42500001192092896,
+          "heading": 3.1251515921170103,
+          "vx": -1.5442862510681152,
+          "vy": 0.06084994971752167,
+          "dvx": -3.2771806716918945,
+          "dvy": 0.033214520663022995,
+          "speed": 1.5454846300169534,
+          "pace": 3.2773490528576077,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "goal": {
+            "x": -75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.2773490528576077,
+          "neighbours": [
+            8,
+            2
+          ],
+          "detourTarget": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -60.567440032958984,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "x": 48.6990966796875,
+          "y": 9.634796142578125,
+          "h": 0.42500001192092896,
+          "heading": 0.28660571848194955,
+          "vx": 2.899038314819336,
+          "vy": 0.793933629989624,
+          "dvx": 2.997042179107666,
+          "dvy": 0.6911045908927917,
+          "speed": 3.0057867122633697,
+          "pace": 3.0756929574068637,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 55.66749572753906,
+            "y": 9.222738265991211
+          },
+          "goal": {
+            "x": 80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.0756929574068637,
+          "neighbours": [
+            9,
+            1
+          ],
+          "detourTarget": {
+            "x": 55.66749572753906,
+            "y": 9.222738265991211
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 51.25,
+              "y": 10
+            },
+            {
+              "x": 54.75,
+              "y": 10
+            },
+            {
+              "x": 55.66749572753906,
+              "y": 9.222738265991211
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "x": -60.75485610961914,
+          "y": 9.416305541992188,
+          "h": 0.42500001192092896,
+          "heading": 3.0675789039159853,
+          "vx": -3.438774347305298,
+          "vy": 0.664066731929779,
+          "dvx": -3.616724967956543,
+          "dvy": 1.1215919256210327,
+          "speed": 3.5023069020491153,
+          "pace": 3.786643400695175,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -65.55941009521484,
+            "y": 10.9129638671875
+          },
+          "goal": {
+            "x": -80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.786643400695175,
+          "neighbours": [
+            4,
+            6,
+            2,
+            8
+          ],
+          "detourTarget": {
+            "x": -65.55941009521484,
+            "y": 10.9129638671875
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -65.55941009521484,
+              "y": 10.9129638671875
+            }
+          ]
+        }
+      ],
+      "cast": [
+        {
+          "seed": 1,
+          "model": "mh_14",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 1,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 3,
+          "model": "mh_61",
+          "wardrobe": "traditional",
+          "company": "solo",
+          "companyId": 3,
+          "code": [
+            "traditional"
+          ]
+        },
+        {
+          "seed": 5,
+          "model": "mh_35",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 5,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 7,
+          "model": "mh_46",
+          "wardrobe": "smart-casual",
+          "company": "solo",
+          "companyId": 7,
+          "code": [
+            "smart-casual"
+          ]
+        },
+        {
+          "seed": 9,
+          "model": "mh_34",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 9,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 11,
+          "model": "mh_39",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 11,
+          "code": [
+            "casual"
+          ]
+        }
+      ]
+    },
+    {
+      "secondsAfterSpawn": 32,
+      "tick": 1921,
+      "camera": {
+        "x": 63,
+        "y": 10.5,
+        "h": -3.6504692975726023,
+        "azimuth": 1.25,
+        "elevation": 1.05,
+        "distance": 23,
+        "fov": 35,
+        "width": 640,
+        "height": 480
+      },
+      "people": [
+        {
+          "id": 1,
+          "x": 55.821170806884766,
+          "y": 9.315120697021484,
+          "h": 0.42500001192092896,
+          "heading": -2.7063005525763044,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.431867203814909,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": {
+            "x": 55.496680804718096,
+            "y": 9.18361997882677
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.431867203814909,
+          "neighbours": [
+            9,
+            3,
+            11,
+            7
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 55.496681213378906,
+              "y": 9.18362045288086
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": -56.16709899902344,
+          "y": 10.944921493530273,
+          "h": 0.42500001192092896,
+          "heading": 3.1224537673809847,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.47468269886449,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.47468269886449,
+          "neighbours": [
+            8,
+            4,
+            10,
+            12
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -56.43998718261719,
+              "y": 10.941500663757324
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 60.26020431518555,
+          "y": 10.785356521606445,
+          "h": 0.42500001192092896,
+          "heading": -0.0406780240231412,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.5480831862892956,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 60.630306243896484,
+            "y": 10.77019214630127
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.5480831862892956,
+          "neighbours": [
+            7,
+            5,
+            1
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 60.630306243896484,
+              "y": 10.77019214630127
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "x": -59.6551628112793,
+          "y": 10.81879711151123,
+          "h": 0.42500001192092896,
+          "heading": 2.5965091546306525,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.6060658543370665,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -59.98412363864128,
+            "y": 10.964033600885145
+          },
+          "blocked": 0,
+          "replans": 19,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.6060658543370665,
+          "neighbours": [
+            12,
+            2,
+            6,
+            8,
+            10
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -59.98412322998047,
+              "y": 10.964033126831055
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "x": 64.66989135742188,
+          "y": 10.529422760009766,
+          "h": 0.42500001192092896,
+          "heading": 0.31568658238667024,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.846624034596607,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.846624034596607,
+          "neighbours": [
+            7,
+            3
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 65,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "x": -64.52363586425781,
+          "y": 10.86209487915039,
+          "h": 0.42500001192092896,
+          "heading": 2.122559218470201,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.7056227856315673,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": true,
+          "top": 0.75,
+          "neighbours": [
+            12,
+            4
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -64.60480499267578,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "x": 63.191139221191406,
+          "y": 9.232422828674316,
+          "h": 0.42500001192092896,
+          "heading": -0.06307528610852002,
+          "vx": 3.1082499027252197,
+          "vy": -0.14024749398231506,
+          "dvx": 3.276764392852783,
+          "dvy": 0.6699711084365845,
+          "speed": 3.1114123509042733,
+          "pace": 3.344554404169321,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "goal": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.344554404169321,
+          "neighbours": [
+            5,
+            3,
+            1
+          ],
+          "detourTarget": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 70,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "x": -54.72909164428711,
+          "y": 9.85073184967041,
+          "h": 0.42500001192092896,
+          "heading": -2.9334680854014996,
+          "vx": -2.5696234703063965,
+          "vy": -0.5475423336029053,
+          "dvx": -2.833306074142456,
+          "dvy": 0.6899231672286987,
+          "speed": 2.6273118174736707,
+          "pace": 2.9160961985122413,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -59.36848449707031,
+            "y": 11
+          },
+          "goal": {
+            "x": -70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.9160961985122413,
+          "neighbours": [
+            2,
+            10,
+            4,
+            12
+          ],
+          "detourTarget": {
+            "x": -59.36848449707031,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -59.36848449707031,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "x": 51.68886184692383,
+          "y": 10.159805297851562,
+          "h": 0.42500001192092896,
+          "heading": 0.17954164240485854,
+          "vx": 2.8230466842651367,
+          "vy": 0.4001631438732147,
+          "dvx": 2.936558246612549,
+          "dvy": -0.056891314685344696,
+          "speed": 2.851266933006252,
+          "pace": 2.937109585525468,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 61.00409698486328,
+            "y": 9.410905838012695
+          },
+          "goal": {
+            "x": 75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.937109585525468,
+          "neighbours": [
+            11,
+            1
+          ],
+          "detourTarget": {
+            "x": 61.00409698486328,
+            "y": 9.410905838012695
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 54.75,
+              "y": 10
+            },
+            {
+              "x": 61.00409698486328,
+              "y": 9.410905838012695
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "x": -51.73904800415039,
+          "y": 10.902578353881836,
+          "h": 0.42500001192092896,
+          "heading": 3.134305837093542,
+          "vx": -1.2098941802978516,
+          "vy": 0.07506930828094482,
+          "dvx": -3.2771451473236084,
+          "dvy": 0.03654441609978676,
+          "speed": 1.2122208250002926,
+          "pace": 3.2773490528576077,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "goal": {
+            "x": -75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.2773490528576077,
+          "neighbours": [
+            8,
+            2,
+            4
+          ],
+          "detourTarget": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -60.567440032958984,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "x": 50.128204345703125,
+          "y": 9.9345121383667,
+          "h": 0.42500001192092896,
+          "heading": 0.19863786608131492,
+          "vx": 2.867551326751709,
+          "vy": 0.40864208340644836,
+          "dvx": 3.0578081607818604,
+          "dvy": 0.3312048316001892,
+          "speed": 2.896521873538373,
+          "pace": 3.0756929574068637,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 55.66749572753906,
+            "y": 9.222738265991211
+          },
+          "goal": {
+            "x": 80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.0756929574068637,
+          "neighbours": [
+            9,
+            1
+          ],
+          "detourTarget": {
+            "x": 55.66749572753906,
+            "y": 9.222738265991211
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 51.25,
+              "y": 10
+            },
+            {
+              "x": 54.75,
+              "y": 10
+            },
+            {
+              "x": 55.66749572753906,
+              "y": 9.222738265991211
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "x": -62.4761962890625,
+          "y": 9.56893539428711,
+          "h": 0.42500001192092896,
+          "heading": 3.1038612504091345,
+          "vx": -3.5834250450134277,
+          "vy": -0.11737002432346344,
+          "dvx": -3.7408316135406494,
+          "dvy": 0.5872378945350647,
+          "speed": 3.5853466744290117,
+          "pace": 3.786643400695175,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -71.52020263671875,
+            "y": 11
+          },
+          "goal": {
+            "x": -80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 21,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.786643400695175,
+          "neighbours": [
+            6,
+            4,
+            2,
+            8
+          ],
+          "detourTarget": {
+            "x": -71.52020263671875,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -71.52020263671875,
+              "y": 11
+            }
+          ]
+        }
+      ],
+      "cast": [
+        {
+          "seed": 1,
+          "model": "mh_14",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 1,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 3,
+          "model": "mh_61",
+          "wardrobe": "traditional",
+          "company": "solo",
+          "companyId": 3,
+          "code": [
+            "traditional"
+          ]
+        },
+        {
+          "seed": 5,
+          "model": "mh_35",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 5,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 7,
+          "model": "mh_46",
+          "wardrobe": "smart-casual",
+          "company": "solo",
+          "companyId": 7,
+          "code": [
+            "smart-casual"
+          ]
+        },
+        {
+          "seed": 9,
+          "model": "mh_34",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 9,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 11,
+          "model": "mh_39",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 11,
+          "code": [
+            "casual"
+          ]
+        }
+      ]
+    },
+    {
+      "secondsAfterSpawn": 32.5,
+      "tick": 1951,
+      "camera": {
+        "x": 63,
+        "y": 10.5,
+        "h": -3.6504692975726023,
+        "azimuth": 1.25,
+        "elevation": 1.05,
+        "distance": 23,
+        "fov": 35,
+        "width": 640,
+        "height": 480
+      },
+      "people": [
+        {
+          "id": 1,
+          "x": 55.821170806884766,
+          "y": 9.315120697021484,
+          "h": 0.42500001192092896,
+          "heading": -2.7063005525763044,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.431867203814909,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": {
+            "x": 55.496680804718096,
+            "y": 9.18361997882677
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.431867203814909,
+          "neighbours": [
+            9,
+            11,
+            3
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 55.496681213378906,
+              "y": 9.18362045288086
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": -56.16709899902344,
+          "y": 10.944921493530273,
+          "h": 0.42500001192092896,
+          "heading": 3.1224537673809847,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.47468269886449,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.47468269886449,
+          "neighbours": [
+            8,
+            4,
+            10,
+            12
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -56.43998718261719,
+              "y": 10.941500663757324
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 60.26020431518555,
+          "y": 10.785356521606445,
+          "h": 0.42500001192092896,
+          "heading": -0.0406780240231412,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.5480831862892956,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 60.630306243896484,
+            "y": 10.77019214630127
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.5480831862892956,
+          "neighbours": [
+            5,
+            7,
+            1,
+            9
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 60.630306243896484,
+              "y": 10.77019214630127
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "x": -59.6551628112793,
+          "y": 10.81879711151123,
+          "h": 0.42500001192092896,
+          "heading": 2.5965091546306525,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.6060658543370665,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -59.98412363864128,
+            "y": 10.964033600885145
+          },
+          "blocked": 0,
+          "replans": 19,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.6060658543370665,
+          "neighbours": [
+            2,
+            8,
+            12,
+            6,
+            10
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -59.98412322998047,
+              "y": 10.964033126831055
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "x": 64.5442886352539,
+          "y": 10.581450462341309,
+          "h": 0.42500001192092896,
+          "heading": 1.3666299919686085,
+          "vx": -0.7500437498092651,
+          "vy": 0.31067758798599243,
+          "dvx": -0.7227354049682617,
+          "dvy": 0.2993661165237427,
+          "speed": 0.8118412346664449,
+          "pace": 3.846624034596607,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 63.97698211669922,
+            "y": 10.816434860229492
+          },
+          "goal": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 63.97698170803841,
+            "y": 10.816435334283582
+          },
+          "blocked": 0,
+          "replans": 20,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 1.6827992157602345,
+          "neighbours": [
+            7,
+            3
+          ],
+          "detourTarget": {
+            "x": 63.97698211669922,
+            "y": 10.816434860229492
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 63.97698211669922,
+              "y": 10.816434860229492
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "x": -64.5340576171875,
+          "y": 10.86209487915039,
+          "h": 0.42500001192092896,
+          "heading": 2.3130807288584863,
+          "vx": -0.3125,
+          "vy": 0,
+          "dvx": -0.41377174854278564,
+          "dvy": 0,
+          "speed": 0.3125,
+          "pace": 3.7056227856315673,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -65.27363586425781,
+            "y": 10.86209487915039
+          },
+          "goal": {
+            "x": -65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -65.27363586425781,
+            "y": 10.86209487915039
+          },
+          "blocked": 0,
+          "replans": 19,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": true,
+          "top": 0.75,
+          "neighbours": [
+            12,
+            4
+          ],
+          "detourTarget": {
+            "x": -65.27363586425781,
+            "y": 10.86209487915039
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -65.27363586425781,
+              "y": 10.86209487915039
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "x": 64.71244049072266,
+          "y": 9.227965354919434,
+          "h": 0.42500001192092896,
+          "heading": 0.017243396588695968,
+          "vx": 3.1974165439605713,
+          "vy": 0.5852763056755066,
+          "dvx": 3.232368230819702,
+          "dvy": 0.8589761257171631,
+          "speed": 3.2505416332632833,
+          "pace": 3.344554404169321,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "goal": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.344554404169321,
+          "neighbours": [
+            5,
+            3
+          ],
+          "detourTarget": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 70,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "x": -56.06199264526367,
+          "y": 9.593046188354492,
+          "h": 0.42500001192092896,
+          "heading": -2.9584703746846324,
+          "vx": -2.669912099838257,
+          "vy": -0.24195502698421478,
+          "dvx": -2.878511428833008,
+          "dvy": 0.4666789770126343,
+          "speed": 2.680853009015165,
+          "pace": 2.9160961985122413,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -64.67082214355469,
+            "y": 11
+          },
+          "goal": {
+            "x": -70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.9160961985122413,
+          "neighbours": [
+            2,
+            4,
+            10
+          ],
+          "detourTarget": {
+            "x": -64.67082214355469,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -64.67082214355469,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "x": 53.10514831542969,
+          "y": 10.360816955566406,
+          "h": 0.42500001192092896,
+          "heading": 0.1402384805015417,
+          "vx": 2.825406551361084,
+          "vy": 0.3387174904346466,
+          "dvx": 2.916588068008423,
+          "dvy": -0.3465920090675354,
+          "speed": 2.8456373132921344,
+          "pace": 2.937109585525468,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 61.00409698486328,
+            "y": 9.410905838012695
+          },
+          "goal": {
+            "x": 75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.937109585525468,
+          "neighbours": [
+            11,
+            1,
+            3
+          ],
+          "detourTarget": {
+            "x": 61.00409698486328,
+            "y": 9.410905838012695
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 61.00409698486328,
+              "y": 9.410905838012695
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "x": -52.33445739746094,
+          "y": 10.916924476623535,
+          "h": 0.42500001192092896,
+          "heading": 3.129984848274946,
+          "vx": -1.3163259029388428,
+          "vy": -0.0808207243680954,
+          "dvx": -3.2771880626678467,
+          "dvy": 0.0324462354183197,
+          "speed": 1.3188047134565235,
+          "pace": 3.2773490528576077,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "goal": {
+            "x": -75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.2773490528576077,
+          "neighbours": [
+            2,
+            8,
+            4
+          ],
+          "detourTarget": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -60.567440032958984,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "x": 51.5418815612793,
+          "y": 10.156407356262207,
+          "h": 0.42500001192092896,
+          "heading": 0.15630697661619836,
+          "vx": 2.85019850730896,
+          "vy": 0.4171464443206787,
+          "dvx": 3.075547695159912,
+          "dvy": -0.029896166175603867,
+          "speed": 2.8805629114941422,
+          "pace": 3.0756929574068637,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 60.85706329345703,
+            "y": 9.379271507263184
+          },
+          "goal": {
+            "x": 80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.0756929574068637,
+          "neighbours": [
+            9,
+            1
+          ],
+          "detourTarget": {
+            "x": 60.85706329345703,
+            "y": 9.379271507263184
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 54.75,
+              "y": 10
+            },
+            {
+              "x": 60.85706329345703,
+              "y": 9.379271507263184
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "x": -64.18569946289062,
+          "y": 9.493775367736816,
+          "h": 0.42500001192092896,
+          "heading": -3.1144020243612376,
+          "vx": -3.4288151264190674,
+          "vy": -0.05705846846103668,
+          "dvx": -3.7104854583740234,
+          "dvy": 0.7556226849555969,
+          "speed": 3.429289844848832,
+          "pace": 3.786643400695175,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -71.52020263671875,
+            "y": 11
+          },
+          "goal": {
+            "x": -80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 21,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.786643400695175,
+          "neighbours": [
+            6,
+            4,
+            2
+          ],
+          "detourTarget": {
+            "x": -71.52020263671875,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -71.52020263671875,
+              "y": 11
+            }
+          ]
+        }
+      ],
+      "cast": [
+        {
+          "seed": 1,
+          "model": "mh_14",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 1,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 3,
+          "model": "mh_61",
+          "wardrobe": "traditional",
+          "company": "solo",
+          "companyId": 3,
+          "code": [
+            "traditional"
+          ]
+        },
+        {
+          "seed": 5,
+          "model": "mh_35",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 5,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 7,
+          "model": "mh_46",
+          "wardrobe": "smart-casual",
+          "company": "solo",
+          "companyId": 7,
+          "code": [
+            "smart-casual"
+          ]
+        },
+        {
+          "seed": 9,
+          "model": "mh_34",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 9,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 11,
+          "model": "mh_39",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 11,
+          "code": [
+            "casual"
+          ]
+        }
+      ]
+    },
+    {
+      "secondsAfterSpawn": 33,
+      "tick": 1981,
+      "camera": {
+        "x": 63,
+        "y": 10.5,
+        "h": -3.6504692975726023,
+        "azimuth": 1.25,
+        "elevation": 1.05,
+        "distance": 23,
+        "fov": 35,
+        "width": 640,
+        "height": 480
+      },
+      "people": [
+        {
+          "id": 1,
+          "x": 55.821170806884766,
+          "y": 9.315120697021484,
+          "h": 0.42500001192092896,
+          "heading": -2.7063005525763044,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.431867203814909,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": {
+            "x": 55.496680804718096,
+            "y": 9.18361997882677
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.431867203814909,
+          "neighbours": [
+            9,
+            11,
+            3
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 55.496681213378906,
+              "y": 9.18362045288086
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": -56.16709899902344,
+          "y": 10.944921493530273,
+          "h": 0.42500001192092896,
+          "heading": 3.1224537673809847,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.47468269886449,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.47468269886449,
+          "neighbours": [
+            8,
+            10,
+            4
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -56.43998718261719,
+              "y": 10.941500663757324
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 60.26020431518555,
+          "y": 10.785356521606445,
+          "h": 0.42500001192092896,
+          "heading": -0.0406780240231412,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.5480831862892956,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.5480831862892956,
+          "neighbours": [
+            5,
+            1,
+            9,
+            7,
+            11
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 60.630306243896484,
+              "y": 10.77019214630127
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "x": -59.6551628112793,
+          "y": 10.81879711151123,
+          "h": 0.42500001192092896,
+          "heading": 2.5965091546306525,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.6060658543370665,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -59.98412363864128,
+            "y": 10.964033600885145
+          },
+          "blocked": 0,
+          "replans": 19,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.6060658543370665,
+          "neighbours": [
+            8,
+            2,
+            6,
+            12,
+            10
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -59.98412322998047,
+              "y": 10.964033126831055
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "x": 64.31610870361328,
+          "y": 10.676580429077148,
+          "h": 0.42500001192092896,
+          "heading": 2.570274990740912,
+          "vx": -0.29201608896255493,
+          "vy": 0.12042635679244995,
+          "dvx": -0.26434454321861267,
+          "dvy": 0.10901471972465515,
+          "speed": 0.3158732398024392,
+          "pace": 3.846624034596607,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 63.97698211669922,
+            "y": 10.816434860229492
+          },
+          "goal": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 63.97698170803841,
+            "y": 10.816435334283582
+          },
+          "blocked": 0,
+          "replans": 20,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 1.0374163936291239,
+          "neighbours": [
+            7,
+            3
+          ],
+          "detourTarget": {
+            "x": 63.97698211669922,
+            "y": 10.816434860229492
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 63.97698211669922,
+              "y": 10.816434860229492
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "x": -64.71601867675781,
+          "y": 10.86120319366455,
+          "h": 0.42500001192092896,
+          "heading": 3.036872053628998,
+          "vx": -0.3157167434692383,
+          "vy": -0.013181759044528008,
+          "dvx": -0.3127119243144989,
+          "dvy": 0.00037352245999500155,
+          "speed": 0.3159918050809685,
+          "pace": 3.7056227856315673,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -65.27363586425781,
+            "y": 10.86209487915039
+          },
+          "goal": {
+            "x": -65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -65.27363586425781,
+            "y": 10.86209487915039
+          },
+          "blocked": 0,
+          "replans": 19,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": true,
+          "top": 0.75,
+          "neighbours": [
+            12,
+            4,
+            8
+          ],
+          "detourTarget": {
+            "x": -65.27363586425781,
+            "y": 10.86209487915039
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -65.27363586425781,
+              "y": 10.86209487915039
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "x": 66.32740783691406,
+          "y": 9.655723571777344,
+          "h": 0.42500001192092896,
+          "heading": 0.22978060026948485,
+          "vx": 3.2310948371887207,
+          "vy": 0.8637534976005554,
+          "dvx": 3.2310948371887207,
+          "dvy": 0.8637534976005554,
+          "speed": 3.344554372636929,
+          "pace": 3.344554404169321,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "goal": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.344554404169321,
+          "neighbours": [
+            5,
+            3
+          ],
+          "detourTarget": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 70,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "x": -57.397342681884766,
+          "y": 9.499872207641602,
+          "h": 0.42500001192092896,
+          "heading": -3.0634451872602937,
+          "vx": -2.6776084899902344,
+          "vy": -0.13185347616672516,
+          "dvx": -2.856862783432007,
+          "dvy": 0.5847662091255188,
+          "speed": 2.6808529547226256,
+          "pace": 2.9160961985122413,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -64.67082214355469,
+            "y": 11
+          },
+          "goal": {
+            "x": -70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.9160961985122413,
+          "neighbours": [
+            2,
+            4,
+            10,
+            6
+          ],
+          "detourTarget": {
+            "x": -64.67082214355469,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -64.67082214355469,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "x": 54.462215423583984,
+          "y": 10.61768627166748,
+          "h": 0.42500001192092896,
+          "heading": 0.18635486359586997,
+          "vx": 2.615514039993286,
+          "vy": 0.5416277050971985,
+          "dvx": 2.8897030353546143,
+          "dvy": -0.5255736112594604,
+          "speed": 2.671006226935995,
+          "pace": 2.937109585525468,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 61.00409698486328,
+            "y": 9.410905838012695
+          },
+          "goal": {
+            "x": 75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.937109585525468,
+          "neighbours": [
+            11,
+            1,
+            3
+          ],
+          "detourTarget": {
+            "x": 61.00409698486328,
+            "y": 9.410905838012695
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 61.00409698486328,
+              "y": 9.410905838012695
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "x": -53.05290603637695,
+          "y": 10.806282043457031,
+          "h": 0.42500001192092896,
+          "heading": -2.9810467858732856,
+          "vx": -2.1252498626708984,
+          "vy": -0.758345365524292,
+          "dvx": -3.276406764984131,
+          "dvy": 0.07858169823884964,
+          "speed": 2.2564961050697265,
+          "pace": 3.2773490528576077,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "goal": {
+            "x": -75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.2773490528576077,
+          "neighbours": [
+            2,
+            8,
+            4
+          ],
+          "detourTarget": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -60.567440032958984,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "x": 52.88425064086914,
+          "y": 10.344766616821289,
+          "h": 0.42500001192092896,
+          "heading": 0.13634588557602043,
+          "vx": 2.456191062927246,
+          "vy": 0.3111373484134674,
+          "dvx": 3.053844690322876,
+          "dvy": -0.36595043540000916,
+          "speed": 2.475819255757867,
+          "pace": 3.0756929574068637,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 60.85706329345703,
+            "y": 9.379271507263184
+          },
+          "goal": {
+            "x": 80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.0756929574068637,
+          "neighbours": [
+            9,
+            1,
+            3
+          ],
+          "detourTarget": {
+            "x": 60.85706329345703,
+            "y": 9.379271507263184
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 60.85706329345703,
+              "y": 9.379271507263184
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "x": -66.01760864257812,
+          "y": 9.778641700744629,
+          "h": 0.42500001192092896,
+          "heading": 2.979528449119442,
+          "vx": -3.6966772079467773,
+          "vy": 0.8205159306526184,
+          "dvx": -3.6966772079467773,
+          "dvy": 0.8205159306526184,
+          "speed": 3.7866434704376273,
+          "pace": 3.786643400695175,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -71.52020263671875,
+            "y": 11
+          },
+          "goal": {
+            "x": -80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 21,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.786643400695175,
+          "neighbours": [
+            6,
+            4
+          ],
+          "detourTarget": {
+            "x": -71.52020263671875,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -71.52020263671875,
+              "y": 11
+            }
+          ]
+        }
+      ],
+      "cast": [
+        {
+          "seed": 1,
+          "model": "mh_14",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 1,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 3,
+          "model": "mh_61",
+          "wardrobe": "traditional",
+          "company": "solo",
+          "companyId": 3,
+          "code": [
+            "traditional"
+          ]
+        },
+        {
+          "seed": 5,
+          "model": "mh_35",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 5,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 7,
+          "model": "mh_46",
+          "wardrobe": "smart-casual",
+          "company": "solo",
+          "companyId": 7,
+          "code": [
+            "smart-casual"
+          ]
+        },
+        {
+          "seed": 9,
+          "model": "mh_34",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 9,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 11,
+          "model": "mh_39",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 11,
+          "code": [
+            "casual"
+          ]
+        }
+      ]
+    },
+    {
+      "secondsAfterSpawn": 33.5,
+      "tick": 2011,
+      "camera": {
+        "x": 63,
+        "y": 10.5,
+        "h": -3.6504692975726023,
+        "azimuth": 1.25,
+        "elevation": 1.05,
+        "distance": 23,
+        "fov": 35,
+        "width": 640,
+        "height": 480
+      },
+      "people": [
+        {
+          "id": 1,
+          "x": 55.82485580444336,
+          "y": 9.31143856048584,
+          "h": 0.42500001192092896,
+          "heading": -2.508752633277418,
+          "vx": 0.14731398224830627,
+          "vy": -0.14731386303901672,
+          "dvx": 0.7589646577835083,
+          "dvy": -0.7589646577835083,
+          "speed": 0.20833334732906414,
+          "pace": 3.431867203814909,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 56.35150146484375,
+            "y": 8.784790992736816
+          },
+          "goal": {
+            "x": 55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": {
+            "x": 56.35150089277467,
+            "y": 8.784790611131573
+          },
+          "blocked": 0.03333333333333333,
+          "replans": 19,
+          "yields": 3,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 1.9364916731037054,
+          "neighbours": [
+            9,
+            11,
+            3
+          ],
+          "detourTarget": {
+            "x": 56.35150146484375,
+            "y": 8.784790992736816
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 56.35150146484375,
+              "y": 8.784790992736816
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": -56.16709899902344,
+          "y": 10.944921493530273,
+          "h": 0.42500001192092896,
+          "heading": 3.1224537673809847,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.47468269886449,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -55,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -56.43998718261719,
+            "y": 10.941500663757324
+          },
+          "blocked": 0,
+          "replans": 18,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.47468269886449,
+          "neighbours": [
+            10,
+            8,
+            4
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -56.43998718261719,
+              "y": 10.941500663757324
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 60.26020431518555,
+          "y": 10.785356521606445,
+          "h": 0.42500001192092896,
+          "heading": -0.0406780240231412,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.5480831862892956,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 18,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.5480831862892956,
+          "neighbours": [
+            5,
+            1,
+            9,
+            11,
+            7
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 60.630306243896484,
+              "y": 10.77019214630127
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "x": -59.6551628112793,
+          "y": 10.81879711151123,
+          "h": 0.42500001192092896,
+          "heading": 2.5965091546306525,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.6060658543370665,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -60,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -59.98412363864128,
+            "y": 10.964033600885145
+          },
+          "blocked": 0,
+          "replans": 19,
+          "yields": 2,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.6060658543370665,
+          "neighbours": [
+            8,
+            2,
+            6,
+            10
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -59.98412322998047,
+              "y": 10.964033126831055
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "x": 64.30337524414062,
+          "y": 10.681830406188965,
+          "h": 0.42500001192092896,
+          "heading": 2.5934969246650112,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.846624034596607,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": 65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": 63.97698170803841,
+            "y": 10.816435334283582
+          },
+          "blocked": 0,
+          "replans": 20,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.846624034596607,
+          "neighbours": [
+            7,
+            3
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": 63.97698211669922,
+              "y": 10.816434860229492
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "x": -64.78138732910156,
+          "y": 10.86110782623291,
+          "h": 0.42500001192092896,
+          "heading": 3.094717478570975,
+          "vx": 0,
+          "vy": 0,
+          "dvx": 0,
+          "dvy": 0,
+          "speed": 0,
+          "pace": 3.7056227856315673,
+          "mode": "walk",
+          "holding": true,
+          "leader": null,
+          "waited": 0,
+          "target": null,
+          "goal": {
+            "x": -65,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": {
+            "x": -65.27363586425781,
+            "y": 10.86209487915039
+          },
+          "blocked": 0,
+          "replans": 19,
+          "yields": 1,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": true,
+          "top": 0.75,
+          "neighbours": [
+            12,
+            4,
+            8
+          ],
+          "detourTarget": {
+            "x": 0,
+            "y": 0
+          },
+          "targetState": 0,
+          "corners": [
+            {
+              "x": -65.27363586425781,
+              "y": 10.86209487915039
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "x": 67.94285583496094,
+          "y": 10.087594985961914,
+          "h": 0.42500001192092896,
+          "heading": 0.25724470056169346,
+          "vx": 3.23110294342041,
+          "vy": 0.8637232184410095,
+          "dvx": 3.23110294342041,
+          "dvy": 0.8637232184410095,
+          "speed": 3.344554384227312,
+          "pace": 3.344554404169321,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "goal": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.344554404169321,
+          "neighbours": [
+            5,
+            3
+          ],
+          "detourTarget": {
+            "x": 70,
+            "y": 10.637499809265137
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 70,
+              "y": 10.637499809265137
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "x": -58.73722457885742,
+          "y": 9.46690845489502,
+          "h": 0.42500001192092896,
+          "heading": -3.1172092373324056,
+          "vx": -2.6808528900146484,
+          "vy": -0.00018532201647758484,
+          "dvx": -2.8246946334838867,
+          "dvy": 0.7243735790252686,
+          "speed": 2.680852896420119,
+          "pace": 2.9160961985122413,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -64.67082214355469,
+            "y": 11
+          },
+          "goal": {
+            "x": -70,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.9160961985122413,
+          "neighbours": [
+            4,
+            2,
+            10,
+            6
+          ],
+          "detourTarget": {
+            "x": -64.67082214355469,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -64.67082214355469,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "x": 55.533382415771484,
+          "y": 10.740360260009766,
+          "h": 0.42500001192092896,
+          "heading": 0.04761413183309424,
+          "vx": 1.8226122856140137,
+          "vy": -0.18999214470386505,
+          "dvx": 2.854546308517456,
+          "dvy": -0.6915041208267212,
+          "speed": 1.832488078738935,
+          "pace": 2.937109585525468,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 61.00409698486328,
+            "y": 9.410905838012695
+          },
+          "goal": {
+            "x": 75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 2.937109585525468,
+          "neighbours": [
+            1,
+            11,
+            3
+          ],
+          "detourTarget": {
+            "x": 61.00409698486328,
+            "y": 9.410905838012695
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 61.00409698486328,
+              "y": 9.410905838012695
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "x": -54.30082702636719,
+          "y": 10.272255897521973,
+          "h": 0.42500001192092896,
+          "heading": -2.7636587483570376,
+          "vx": -2.275745153427124,
+          "vy": -0.9360777735710144,
+          "dvx": -3.256638526916504,
+          "dvy": 0.36786049604415894,
+          "speed": 2.4607433026467254,
+          "pace": 3.2773490528576077,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "goal": {
+            "x": -75,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 19,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.2773490528576077,
+          "neighbours": [
+            2,
+            8,
+            4
+          ],
+          "detourTarget": {
+            "x": -60.567440032958984,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -60.567440032958984,
+              "y": 11
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "x": 53.918373107910156,
+          "y": 10.472533226013184,
+          "h": 0.42500001192092896,
+          "heading": 0.12392711358628299,
+          "vx": 1.8637349605560303,
+          "vy": 0.21444831788539886,
+          "dvx": 3.0387771129608154,
+          "dvy": -0.4750981330871582,
+          "speed": 1.876032005122158,
+          "pace": 3.0756929574068637,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": 60.85706329345703,
+            "y": 9.379271507263184
+          },
+          "goal": {
+            "x": 80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": 1,
+          "aside": null,
+          "blocked": 0,
+          "replans": 20,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.0756929574068637,
+          "neighbours": [
+            9,
+            1,
+            3
+          ],
+          "detourTarget": {
+            "x": 60.85706329345703,
+            "y": 9.379271507263184
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": 60.85706329345703,
+              "y": 9.379271507263184
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "x": -67.88172912597656,
+          "y": 10.09106731414795,
+          "h": 0.42500001192092896,
+          "heading": 3.0009781154011548,
+          "vx": -3.7674953937530518,
+          "vy": 0.3803265690803528,
+          "dvx": -3.7674953937530518,
+          "dvy": 0.3803265690803528,
+          "speed": 3.786643611577263,
+          "pace": 3.786643400695175,
+          "mode": "walk",
+          "holding": false,
+          "leader": null,
+          "waited": 0,
+          "target": {
+            "x": -76.88557434082031,
+            "y": 11
+          },
+          "goal": {
+            "x": -80,
+            "y": 10.637499809265137
+          },
+          "zebra": null,
+          "state": 1,
+          "narrow": null,
+          "passage": null,
+          "aside": null,
+          "blocked": 0,
+          "replans": 22,
+          "yields": 0,
+          "granted": [],
+          "onZebra": null,
+          "waitingPlace": null,
+          "flags": 27,
+          "eased": false,
+          "top": 3.786643400695175,
+          "neighbours": [
+            6
+          ],
+          "detourTarget": {
+            "x": -76.88557434082031,
+            "y": 11
+          },
+          "targetState": 2,
+          "corners": [
+            {
+              "x": -76.88557434082031,
+              "y": 11
+            }
+          ]
+        }
+      ],
+      "cast": [
+        {
+          "seed": 1,
+          "model": "mh_14",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 1,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 3,
+          "model": "mh_61",
+          "wardrobe": "traditional",
+          "company": "solo",
+          "companyId": 3,
+          "code": [
+            "traditional"
+          ]
+        },
+        {
+          "seed": 5,
+          "model": "mh_35",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 5,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 7,
+          "model": "mh_46",
+          "wardrobe": "smart-casual",
+          "company": "solo",
+          "companyId": 7,
+          "code": [
+            "smart-casual"
+          ]
+        },
+        {
+          "seed": 9,
+          "model": "mh_34",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 9,
+          "code": [
+            "casual"
+          ]
+        },
+        {
+          "seed": 11,
+          "model": "mh_39",
+          "wardrobe": "casual",
+          "company": "solo",
+          "companyId": 11,
+          "code": [
+            "casual"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": []
+}
