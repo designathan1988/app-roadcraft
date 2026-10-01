@@ -5,3 +5,4 @@ docs/screenshots/
 *.local
 .DS_Store
 .vite/
+.cache/

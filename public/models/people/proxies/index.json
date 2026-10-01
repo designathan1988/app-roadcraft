@@ -1,0 +1,9 @@
+{
+  "format": "roadcraft-people-proxies/1",
+  "source": {
+    "repo": "makehumancommunity/mpfb2",
+    "sha": "afb9f530a7c2741dedb8df0ebae2e0b183caec21"
+  },
+  "items": [],
+  "note": "MPFB2 ships no clothes, hair, eyebrow, eyelash or proxy (.mhclo/.proxy/.mhmat) files in src/mpfb/data at this commit; they live in the separate MakeHuman system asset pack, to be imported in step H3."
+}
