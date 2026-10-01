@@ -86,14 +86,21 @@ for EVERY photo or sequence you take:
   `![what it shows](C:/Codex-Shared/Road/docs/audit/...jpg)`. Also give the path as a clickable link.
   If the chat does not render it, open the file in your browser so the player sees it on screen.
 - Under it, write one or two plain Portuguese sentences: what appears, and what changed.
-- For every commit, show BEFORE and AFTER: the same scene and the same fixed camera, old version and
-  new version.
+- Photos are for the END OF A BATCH (about every hour) and the end of a stage, not for every commit.
+  Show before and after there, with the same scene and the same camera.
 - Write for someone who is not a programmer. Do not say "ticks", "sampling", "solver" or "filter".
   Say what the person in the game does: "parava e dava ré" → "agora contorna e segue".
-- When a defect is fixed, leave the game open in your browser with `?people=crowd`, at the place
-  where it happened, so the player can watch it live.
 
-A commit or a step reported without its pictures shown in the chat counts as not reported.
+## No overhead (player's order: the project must move, not the paperwork)
+
+- Do not write new photo or capture scripts. Use `scripts/crowd-shots.mjs`, `scripts/probe-agents.mjs`
+  and `scripts/inspect-scene.mjs` as they are.
+- Do not commit JSON dumps next to photos. Do not write a `crowd-step-NN.md` per step: the commit
+  message is the report.
+- Add a regression test only for a defect that came back or one that is hard to see. Not one for
+  every change.
+- Do not re-measure what has not changed.
+- Most of your time goes into code that changes the game.
 
 ## Tell the player what you are doing
 

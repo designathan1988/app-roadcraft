@@ -65,6 +65,22 @@ Update this table in every stage-closing commit.
 6. **Before every stage** do focused internet research: several sources, primary sources, not just
    the first result. Record it in `docs/research/<topic>.md`.
 
+## No overhead
+
+At 20:54 the player complained that the project had stopped while time went to extras:
+- 5 photo scripts;
+- JSON dumps of 100,000 lines;
+- a report per step;
+- a test per detail.
+
+So:
+- use the existing tools;
+- the commit message is the report;
+- photos at the end of a batch or stage only;
+- regression tests only where they matter.
+
+Measure every change, but spend most of the time on code that changes the game.
+
 ## Rules that never change
 
 - Never cheat a measurement: scenarios, thresholds, spawns and durations stay untouched unless the
