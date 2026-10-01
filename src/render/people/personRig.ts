@@ -40,6 +40,9 @@ import { PART_ORDER, facesFor, hemPlanes, tailor, toMetres, type Part, type Pers
  * draws the whole person.
  */
 
+/** The armature's scale: bones in centimetres, as the capture avatars have them. */
+const ARMATURE_SCALE = 0.01;
+
 /** game_engine bone -> the capture's name for it. */
 const CAPTURE_NAME: Readonly<Record<string, string>> = (() => {
   const names: Record<string, string> = {
@@ -100,6 +103,8 @@ export interface PersonRigInput {
   readonly look: PersonLook;
   /** The capture avatar's bind, by capture bone name (`captureBind`). */
   readonly capture: ReadonlyMap<string, Vector3>;
+  /** And its bones' own axes (`captureBindRotations`). */
+  readonly captureAxes?: ReadonlyMap<string, Quaternion>;
 }
 
 export interface PersonRig {
@@ -194,20 +199,34 @@ export function createPersonRig(input: PersonRigInput): PersonRig {
   for (let v = 0; v < data.vertexCount; v++) posed[v * 3 + 1] = posed[v * 3 + 1]! - lowest;
   for (const h of boneHead) h.y -= lowest;
 
-  // 3. Bones in the bind posture, axis-aligned, named as the captures name them.
-  const bones = meta.bones.map((b, i) => {
+  // 3. Bones in the bind posture, named as the captures name them, and built
+  //    as the capture avatar's are: each bone turned to that avatar's own
+  //    axes for it, in centimetres under an armature scaled to metres. Code
+  //    written for those bodies - the helmet fitted in the head's frame, the
+  //    rider's IK aiming a bone along its own axis - then holds on this one.
+  const armature = new Group();
+  armature.name = 'Armature';
+  armature.scale.setScalar(ARMATURE_SCALE);
+  armature.updateMatrixWorld(true);
+  const bones = meta.bones.map((b) => {
     const bone = new Bone();
     bone.name = CAPTURE_NAME[b.name] ?? b.name;
-    bone.position.copy(boneHead[i]!);
     return bone;
   });
-  meta.bones.forEach((b, i) => {
+  const worldOf = meta.bones.map((b, i) => new Matrix4().compose(
+    boneHead[i]!,
+    input.captureAxes?.get(CAPTURE_NAME[b.name] ?? '') ?? new Quaternion(),
+    new Vector3(ARMATURE_SCALE, ARMATURE_SCALE, ARMATURE_SCALE),
+  ));
+  for (const i of order) {
+    const b = meta.bones[i]!;
     const parent = b.parent === null ? undefined : index.get(b.parent);
-    if (parent === undefined) return;
-    bones[parent]!.add(bones[i]!);
-    bones[i]!.position.sub(boneHead[parent]!);
-  });
-  const roots = bones.filter((b) => !b.parent);
+    const parentWorld = parent === undefined ? armature.matrixWorld : worldOf[parent]!;
+    const local = parentWorld.clone().invert().multiply(worldOf[i]!);
+    local.decompose(bones[i]!.position, bones[i]!.quaternion, bones[i]!.scale);
+    (parent === undefined ? armature : bones[parent]!).add(bones[i]!);
+  }
+  const roots = [armature];
 
   const geometry = clothedGeometry(data, posed, look);
   const skeleton = new Skeleton(bones);
@@ -258,6 +277,10 @@ export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look:
     if (part === 'eyes') return eyeOf(v);
     return colourOf[part];
   };
+  // The skull is rigid: a vertex the head bone mostly owns moves with the
+  // head alone. Shared with the neck, it flexed when the neck turned, and a
+  // helmet fitted at rest no longer held it.
+  const headBone = data.boneNames.indexOf('head');
   const emitOriginal = (part: Part, v: number): number => {
     const key = `${part}:${v}`;
     const known = copied.get(key);
@@ -265,9 +288,16 @@ export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look:
     const at = out.positions.length / 3;
     out.positions.push(posed[v * 3]!, posed[v * 3 + 1]!, posed[v * 3 + 2]!);
     out.colours.push(...vertexColour(part, v));
+    let head = 0;
+    for (let k = 0; k < 4; k++) if (data.joints[v * 4 + k] === headBone) head += data.weights[v * 4 + k]! / 65535;
     for (let k = 0; k < 4; k++) {
-      out.joints.push(data.joints[v * 4 + k]!);
-      out.weights.push(data.weights[v * 4 + k]! / 65535);
+      if (head >= 0.5) {
+        out.joints.push(k === 0 ? headBone : 0);
+        out.weights.push(k === 0 ? 1 : 0);
+      } else {
+        out.joints.push(data.joints[v * 4 + k]!);
+        out.weights.push(data.weights[v * 4 + k]! / 65535);
+      }
     }
     copied.set(key, at);
     return at;
@@ -350,7 +380,42 @@ export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look:
   geometry.computeVertexNormals();
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
+  // Coarser levels for people further off (`riggedCitizens.ts` picks one per
+  // figure): the same vertices, fewer triangles.
+  geometry.userData['lodIndices'] = LOD_CELLS.map((cell) => new BufferAttribute(clusterIndex(out.positions, out.colours, out.index, cell), 1));
   return geometry;
+}
+
+/** Cell sizes of the coarser levels, metres. */
+const LOD_CELLS = [0.03, 0.08] as const;
+
+/**
+ * Vertex clustering: every vertex is replaced by the first one in its cell
+ * of a grid (a cell per colour, so a hem keeps its edge), and the triangles
+ * that collapse are dropped. The result indexes the same vertex buffers, so
+ * skinning and colours are untouched.
+ */
+export function clusterIndex(positions: readonly number[], colours: readonly number[], index: readonly number[], cell: number): Uint32Array {
+  const representative = new Map<string, number>();
+  const map = new Uint32Array(positions.length / 3);
+  for (let v = 0; v < map.length; v++) {
+    const key = `${Math.floor(positions[v * 3]! / cell)},${Math.floor(positions[v * 3 + 1]! / cell)},${Math.floor(positions[v * 3 + 2]! / cell)}`
+      + `|${Math.round(colours[v * 3]! * 8)},${Math.round(colours[v * 3 + 1]! * 8)},${Math.round(colours[v * 3 + 2]! * 8)}`;
+    let r = representative.get(key);
+    if (r === undefined) representative.set(key, (r = v));
+    map[v] = r;
+  }
+  const out: number[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const a = map[index[i]!]!, b = map[index[i + 1]!]!, c = map[index[i + 2]!]!;
+    if (a === b || b === c || a === c) continue;
+    const key = [a, b, c].sort((x, y) => x - y).join(',');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(a, b, c);
+  }
+  return Uint32Array.from(out);
 }
 
 function partColours(look: PersonLook): Record<Part, [number, number, number]> {

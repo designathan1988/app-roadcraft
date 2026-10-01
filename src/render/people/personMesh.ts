@@ -114,11 +114,14 @@ export function tailor(data: PersonMeshData, base: Float32Array): Tailoring {
   const height = new Float32Array(faceCount);
   const tights = data.faceGroups.indexOf('helper-tights');
   const hairShell = data.faceGroups.indexOf('helper-hair');
+  const skin = data.faceGroups.indexOf('body');
   const boneWeight = new Float64Array(data.boneNames.length);
   const longHair = new Set<number>();
   for (let f = 0; f < faceCount; f++) {
     const g = data.faceGroup[f]!;
-    if (g !== tights && g !== hairShell) continue;
+    // The skin is measured the same way as the cloth over it, so the skin a
+    // garment hides can be left out (`facesFor`).
+    if (g !== tights && g !== hairShell && g !== skin) continue;
     let px = 0, py = 0, pz = 0;
     for (let c = 0; c < 4; c++) {
       const v = data.faces[f * 4 + c]!;
@@ -204,13 +207,34 @@ export function facesFor(data: PersonMeshData, look: PersonLook, cut: Tailoring)
   const sleeve = sleeveEnd(look) + HEM_MARGIN;
   const leg = legEnd(look) + HEM_MARGIN;
 
+  /**
+   * Skin a garment covers whole: never seen, so never drawn. Kept back from
+   * every hem by a margin, so no gap shows where the cloth ends.
+   */
+  const hidden = (f: number): boolean => {
+    const limb = LIMBS[cut.limb[f]!]!;
+    const t = cut.along[f]!;
+    if (limb === 'leg') {
+      if (t > 2.06) return true; // in the shoe
+      return look.bottom !== 'skirt' && t < legEnd(look) - 0.15;
+    }
+    if (limb === 'arm') return look.top !== 'tank' && look.top !== 'none' && t < sleeveEnd(look) - 0.15 && t > 0.05;
+    if (limb === 'head') return false;
+    const y = cut.height[f]!;
+    const underTop = look.top !== 'none' && y > cut.waistY + 0.1 && y < cut.neckY - 0.35;
+    const underBottom = y < cut.waistY - 0.1 && y > cut.waistY - 1.6;
+    return underTop || underBottom;
+  };
+
   const out = new Map<Part, number[]>(PART_ORDER.map((p) => [p, []]));
   const add = (part: Part, f: number): void => {
     out.get(part)!.push(f);
   };
   for (let f = 0; f < data.faceGroup.length; f++) {
     const g = data.faceGroup[f]!;
-    if (g === body) add('skin', f);
+    if (g === body) {
+      if (!hidden(f)) add('skin', f);
+    }
     else if (g === hairShell) {
       if (look.hairStyle === 'long' && cut.longHair.has(f)) add('hair', f);
     } else if (eyes.has(g)) add('eyes', f);

@@ -71,7 +71,7 @@ const pick = <T>(r: () => number, list: readonly T[]): T => list[Math.floor(r() 
  * a toddler to the very old (weighted towards adults, as a street is), every
  * skin tone, and clothes and hair to go with them.
  */
-export function randomPerson(id: number, seed: number, keep: Partial<Pick<PersonSpec, 'body' | 'look'>> = {}): PersonSpec {
+export function randomPerson(id: number, seed: number, keep: { body?: Partial<PersonSpec['body']>; look?: Partial<PersonSpec['look']> } = {}): PersonSpec {
   const r = rng(seed);
   const years = r() < 0.12 ? 2 + r() * 14 : r() < 0.82 ? 18 + r() * 47 : 65 + r() * 25;
   const gender = r() < 0.5 ? r() * 0.25 : 0.75 + r() * 0.25;
@@ -82,7 +82,9 @@ export function randomPerson(id: number, seed: number, keep: Partial<Pick<Person
     age: ageFromYears(years),
     muscle: 0.3 + r() * 0.45,
     weight: 0.25 + r() * 0.55,
-    height: 0.3 + r() * 0.4,
+    // Narrow on purpose: the slider is steep (0.33 to 0.67 is 1.56 to 1.94 m
+    // for a man), and a street of giants and very short people is not a street.
+    height: 0.42 + r() * 0.18,
     proportions: 0.4 + r() * 0.5,
     african: shares[0]! / total,
     asian: shares[1]! / total,

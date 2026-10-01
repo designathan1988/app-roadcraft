@@ -73,19 +73,30 @@ export function stateWeights(parts: readonly MacroPart[], value: number): Map<st
   return out;
 }
 
-/** Slider value of an age in years, on MakeHuman's scale (1, 11, 25 and 90 at the four states). */
+/**
+ * Slider value of an age in years. MakeHuman's states sit at 1, 11, 25 and 90
+ * years and its slider is linear between them; but people grow up by about
+ * eighteen, and linear from 11 to 25 drew an eighteen-year-old with a
+ * thirteen-year-old's build. A knot at 18 puts most of the growing before it.
+ */
+const AGE_KNOTS: readonly (readonly [number, number])[] = [[1, 0], [11, 0.1875], [18, 0.44], [25, 0.5], [90, 1]];
+
 export function ageFromYears(years: number): number {
   const y = Math.min(90, Math.max(1, years));
-  if (y < 11) return ((y - 1) / 10) * 0.1875;
-  if (y < 25) return 0.1875 + ((y - 11) / 14) * (0.5 - 0.1875);
-  return 0.5 + ((y - 25) / 65) * 0.5;
+  for (let i = 1; i < AGE_KNOTS.length; i++) {
+    const [y0, a0] = AGE_KNOTS[i - 1]!, [y1, a1] = AGE_KNOTS[i]!;
+    if (y <= y1) return a0 + ((y - y0) / (y1 - y0)) * (a1 - a0);
+  }
+  return 1;
 }
 
 export function yearsFromAge(age: number): number {
   const a = Math.min(1, Math.max(0, age));
-  if (a < 0.1875) return 1 + (a / 0.1875) * 10;
-  if (a < 0.5) return 11 + ((a - 0.1875) / (0.5 - 0.1875)) * 14;
-  return 25 + ((a - 0.5) / 0.5) * 65;
+  for (let i = 1; i < AGE_KNOTS.length; i++) {
+    const [y0, a0] = AGE_KNOTS[i - 1]!, [y1, a1] = AGE_KNOTS[i]!;
+    if (a <= a1) return y0 + ((a - a0) / (a1 - a0)) * (y1 - y0);
+  }
+  return 90;
 }
 
 /**

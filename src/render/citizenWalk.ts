@@ -152,6 +152,12 @@ export function captureBind(sex: WalkSex): ReadonlyMap<string, Vector3> {
   return new Map(file.bones.map((name, i) => [name, vector(file.bind[i]?.p ?? [0, 0, 0])]));
 }
 
+/** The same avatar's bind ROTATIONS, world, by bone name: each bone's own axes. */
+export function captureBindRotations(sex: WalkSex): ReadonlyMap<string, Quaternion> {
+  const file = SOURCES[sex].file;
+  return new Map(file.bones.map((name, i) => [name, quaternion(file.bind[i]?.q ?? [0, 0, 0, 1])]));
+}
+
 /** The neutral walk of one sex as a transfer source, for `strideShare`. */
 export const walkSource = (sex: WalkSex): Source => SOURCES[sex];
 

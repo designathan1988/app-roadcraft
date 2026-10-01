@@ -8,7 +8,7 @@ import { Morpher, type PeoplePacks } from '@people/body/morph';
 import { randomPerson } from '@people/spec';
 import { createPersonRig, type SkeletonMeta } from '@render/people/personRig';
 import type { PersonMeshData } from '@render/people/personMesh';
-import { captureBind, neutralWalkFor, walkDuration } from '@render/citizenWalk';
+import { captureBind, captureBindRotations, neutralWalkFor, walkDuration } from '@render/citizenWalk';
 
 const DIR = join(__dirname, '..', '..', 'public', 'models', 'people');
 const buf = (f: string): ArrayBuffer => {
@@ -44,7 +44,7 @@ const rigFor = (seed: number) => {
   const person = seed === 0 ? { ...randomPerson(1, 1), body: DEFAULT_MACRO } : randomPerson(seed, seed);
   return createPersonRig({
     data, skeleton, bodyRange, positions: morpher.shape(person.body, person.features), look: person.look,
-    capture: captureBind('male'),
+    capture: captureBind('male'), captureAxes: captureBindRotations('male'),
   });
 };
 

@@ -1909,6 +1909,9 @@ function mountUnifiedChrome(): void {
   move(document.getElementById('hint'), hosts.hint);
   move(document.getElementById('mobileHint'), hosts.hint);
   document.getElementById('app')?.classList.add('bw-hide-legacy');
+  // The panel starts in the mode of the tool in hand: at boot nothing had set
+  // it, and the Builder's chips stood at the foot of the road panel.
+  setTool(tool);
 }
 // Mounted after this module has finished evaluating: moving the toolbar and
 // the panels is a layout change, and a pointer already over the canvas can fire

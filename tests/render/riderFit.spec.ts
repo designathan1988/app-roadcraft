@@ -4,7 +4,7 @@ import {
   BIKE_FIT, HELMET_MAX, HELMET_SEGMENTS, MOTO_FIT, NO_HELMET, RIDER_CLIPS, STEER_FULL, gripPoint, headPoints, helmetShape, pedalPoint,
   type RiderClipKey, type TwoWheelerFit,
 } from '@render/riderPoses';
-import { CITIZEN_MODELS } from '@render/citizenCatalog';
+import { CROWD } from '@render/citizenCasting';
 import { buildTwoWheelerModel } from '@render/vehicleModels';
 import { ARCHETYPES } from '@sim/vehicles/archetypes';
 import { m } from '@world/units';
@@ -25,7 +25,8 @@ import { bonePosition, citizenRig } from './support/citizenRig';
  * skeleton and mesh.
  */
 
-const ADULTS = CITIZEN_MODELS.filter((name) => !name.includes('_child'));
+// Every body the casting may put on a two-wheeler.
+const ADULTS = CROWD.filter((m) => m.ageBand !== 'child' && m.rides !== false).map((m) => m.id);
 const clip = (key: RiderClipKey) => RIDER_CLIPS.find((c) => c.key === key)!;
 
 /** A posed rig, pelvis-relative, rig frame (+X left, +Y up, +Z forward), metres. */

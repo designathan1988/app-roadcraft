@@ -14,7 +14,7 @@ import {
 import { loadPeopleAssets, type PeopleAssets } from '@people/body/assets';
 import { Morpher } from '@people/body/morph';
 import type { PersonLook, PersonSpec } from '@people/spec';
-import { captureBind, neutralWalkFor, walkDuration, type NeutralWalk, type WalkSex } from '../citizenWalk';
+import { captureBind, captureBindRotations, neutralWalkFor, walkDuration, type NeutralWalk, type WalkSex } from '../citizenWalk';
 import { createPersonRig, type PersonRig } from './personRig';
 
 /**
@@ -117,7 +117,7 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
     walkSex = person.body.gender >= 0.5 ? 'male' : 'female';
     const next = createPersonRig({
       data: assets.mesh, skeleton: assets.skeleton, bodyRange: assets.bodyRange,
-      positions, look: person.look, capture: captureBind(walkSex),
+      positions, look: person.look, capture: captureBind(walkSex), captureAxes: captureBindRotations(walkSex),
     });
     if (rig) {
       scene.remove(rig.scene);

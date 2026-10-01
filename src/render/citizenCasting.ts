@@ -1,5 +1,6 @@
-import manifest from './citizens.manifest.json';
 import { CITIZEN_MODELS } from './citizenCatalog';
+import { makeRoster } from '@people/roster';
+import type { PersonSpec } from '@people/spec';
 
 /**
  * WHO IS DRAWN AS WHOM - the only door into the citizen roster.
@@ -43,6 +44,10 @@ export interface CitizenModel {
   readonly sourceId?: string;
   /** Clothing palette of a visual variant; zero keeps its source texture. */
   readonly look?: number;
+  /** A MakeHuman person (`people/roster.ts`): built and rigged, not loaded. */
+  readonly person?: PersonSpec;
+  /** False for a body that cannot reach a two-wheeler's controls. */
+  readonly rides?: boolean;
 }
 
 const WARDROBES: readonly Wardrobe[] = ['casual', 'smart-casual', 'business', 'sport-casual', 'traditional'];
@@ -76,13 +81,14 @@ export function whitelist(entries: readonly ManifestEntry[], available: readonly
   return out;
 }
 
-/** The street roster, including distinct clothing looks of real child bodies. */
-const REVIEWED = whitelist(manifest.models as readonly ManifestEntry[]);
-export const CROWD: readonly CitizenModel[] = [
-  ...REVIEWED,
-  ...REVIEWED.filter((model) => model.ageBand === 'child').flatMap((model) =>
-    [1, 2, 3].map((look) => ({ ...model, id: `${model.id}_look${look}`, sourceId: model.id, look }))),
-];
+/**
+ * The street roster: MakeHuman people, each dressed for a wardrobe
+ * (`people/roster.ts`). The Rocketbox bodies it replaced are gone; their
+ * motion captures stay, and play on these bodies (`render/people/personRig.ts`).
+ */
+export const CROWD: readonly CitizenModel[] = makeRoster().map((entry) => ({
+  id: entry.id, wardrobe: entry.wardrobe, ageBand: entry.ageBand, gender: entry.gender, person: entry.person, rides: entry.rides,
+}));
 /** Their ids, in the same order: the renderer's model indices. */
 export const CROWD_IDS: readonly string[] = CROWD.map((model) => model.id);
 
@@ -232,7 +238,8 @@ export class CastingRegistry {
     const of = (band: AgeBand): number[] => {
       const out: number[] = [];
       this.roster.forEach((m, i) => {
-        if (m.gender === ctx.gender && m.ageBand === band && code.includes(m.wardrobe) && (!ctx.helmet || helmetFits(m.id))) out.push(i);
+        if (m.gender === ctx.gender && m.ageBand === band && code.includes(m.wardrobe) && (!ctx.helmet || helmetFits(m.id))
+          && (ctx.company !== 'rider' || m.rides !== false)) out.push(i);
       });
       return out;
     };

@@ -11,6 +11,11 @@ import { m } from '@world/units';
 import { CROWD, CROWD_IDS, CastingRegistry, type CastingContext, type Company } from './citizenCasting';
 import { NO_HELMET, RIDER_CLIPS, helmetShape, type RiderClip, type RiderClipKey } from './riderPoses';
 import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
+import type { CitizenModel } from './citizenCasting';
+import { loadPeopleAssets } from '@people/body/assets';
+import { Morpher } from '@people/body/morph';
+import { createPersonRig } from './people/personRig';
+import { captureBind, captureBindRotations } from './citizenWalk';
 import { type Gradient, shearMatrix } from './groundShear';
 import {
   WALK_ADVANCE, clipTransferFor, loadRocketboxLibrary, neutralWalkFor, strideShare, walkDuration, walkSource,
@@ -391,17 +396,39 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   const matrix = new Matrix4();
   const helmetBone = new Matrix4();
   let disposed = false;
+  let morpher: Morpher | null = null;
   let detail = 2;
   let lod = 0;
   group.userData.availableModels = models.length;
   group.userData.models = models;
   group.userData.licenses = CITIZEN_LICENSES;
 
+  /**
+   * A roster person (`people/roster.ts`) as a loaded asset would be: the
+   * MakeHuman body morphed, dressed and rigged for the captures.
+   */
+  async function personAsset(model: CitizenModel): Promise<GLTF> {
+    const people = await loadPeopleAssets();
+    morpher ??= new Morpher(people.packs);
+    const person = model.person!;
+    const rig = createPersonRig({
+      data: people.mesh, skeleton: people.skeleton, bodyRange: people.bodyRange,
+      positions: morpher.shape(person.body, person.features), look: person.look,
+      capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),
+    });
+    return { scene: rig.scene, parser: null } as unknown as GLTF;
+  }
+
   async function load(index: number): Promise<void> {
-    const loader = new GLTFLoader();
-    const url = CITIZEN_ASSET_URLS[CROWD[index]?.sourceId ?? models[index]!];
-    if (!url) throw new Error(`Missing citizen asset: ${models[index]}`);
-    const [asset, library] = await Promise.all([loader.loadAsync(url), loadRocketboxLibrary()]);
+    const model = CROWD[index];
+    const [asset, library] = await Promise.all([
+      model?.person ? personAsset(model) : (async () => {
+        const url = CITIZEN_ASSET_URLS[model?.sourceId ?? models[index]!];
+        if (!url) throw new Error(`Missing citizen asset: ${models[index]}`);
+        return new GLTFLoader().loadAsync(url);
+      })(),
+      loadRocketboxLibrary(),
+    ]);
       asset.scene.traverse(o => {
         if (!(o instanceof SkinnedMesh)) return;
         resources.add(o.geometry);
@@ -412,7 +439,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         }
       });
     if (disposed) { for (const resource of resources) resource.dispose(); return; }
-      const { clips, helmet } = await bake(asset, models[index]!.includes('female') ? 'female' : 'male', library);
+      const sex = model ? (model.gender === 'f' ? 'female' : 'male') : models[index]!.includes('female') ? 'female' : 'male';
+      const { clips, helmet } = await bake(asset, sex, library);
       if (disposed) { for (const resource of resources) resource.dispose(); return; }
       let reference: SkinnedMesh | undefined;
       asset.scene.updateMatrixWorld(true);
@@ -433,6 +461,17 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       for (const o of parts) {
         if (CROWD[index]?.look) markChildShirt(o);
         const variants = [o.geometry];
+        // A built person carries its levels ready-made (`personRig.ts`).
+        const ready: unknown = o.geometry.userData['lodIndices'];
+        if (Array.isArray(ready)) for (const indices of ready as BufferAttribute[]) {
+          const geometry = new BufferGeometry();
+          for (const name of Object.keys(o.geometry.attributes)) geometry.setAttribute(name, o.geometry.getAttribute(name));
+          geometry.setIndex(indices);
+          geometry.boundingBox = o.geometry.boundingBox;
+          geometry.boundingSphere = o.geometry.boundingSphere;
+          variants.push(geometry);
+          resources.add(geometry);
+        }
         const lodIndices: unknown = o.geometry.userData['roadcraftLods'];
         if (Array.isArray(lodIndices)) for (const accessor of lodIndices) {
           const indices = await asset.parser.getDependency('accessor', accessor) as BufferAttribute;
@@ -449,6 +488,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         const materials = original.map((source, materialIndex) => {
           const material = (source as MeshStandardMaterial).clone();
           material.color.setHex(0xffffff); // Preserve authored skin; never tint the whole citizen.
+          // A roster person's colours are its vertices' (`personRig.ts`).
           material.roughness = 0.88;
           material.metalness = 0;
           skinMaterial(material, uniform, o, materialIndex === 0 ? (CROWD[index]?.look ?? 0) : 0);
