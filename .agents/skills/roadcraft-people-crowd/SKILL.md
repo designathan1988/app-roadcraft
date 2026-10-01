@@ -5,92 +5,93 @@ description: Continue the Roadcraft pedestrian crowd engine (Recast/Detour, `?pe
 
 # Roadcraft: the pedestrian crowd engine
 
-The state, the map of files, the baseline numbers, what was REJECTED and the open work list are
-in `docs/handoff/people-crowd.md`. The player's two orders, which are binding, are in
-`docs/handoff/people-crowd-orders.md`. Read both, plus `AGENTS.md` and `CLAUDE.md`, before the
-first edit. Work through section 7 of the handoff **in order**.
+The state, the files, the baseline numbers, what was already tried and the known open work are in
+`docs/handoff/people-crowd.md`. The player's orders are in `docs/handoff/people-crowd-orders.md`.
 
-## The loop, for every defect (no exceptions)
+## You own the plan
 
-1. **Reproduce** it: a battery scenario, or the player city (`zzCity.spec.ts`), with a number.
-2. **Trace** it: `zzTrace.spec.ts` (`SC`, `T`, `FROM`, `EVERY` in ticks, `ONLY` ids), or a
-   classifier like `zzCity`. Find the person, the tick and the layer that went wrong:
-   - intent: destination, corridor, wait place, manoeuvre;
-   - the Detour solver;
-   - the readback or the gait.
-3. **Name the cause** in one sentence, with the trace lines that prove it.
-4. **Fix the cause** in the real implementation (`crowd.ts`, `crowdNav.ts`, `citizenGait.ts`...).
-   No new `*_fix3` files and no rule special to a scenario.
-5. **Run the whole battery** and compare with the last report line by line. A regression elsewhere
-   means the fix is wrong. Remove it completely rather than stacking another fix on top.
-6. **Look at it in the game** for anything about motion: `scripts/crowd-shots.mjs`, a FIXED camera,
-   approach → conflict → resolution → exit. Open each image and say in writing what you see.
-7. **Commit** (rules below), then report.
+The player decided (2026-10-01): **you work freely.** You decide:
+- the order of the work;
+- the approach and the technique;
+- which experiments to run;
+- how many agents to use and what each one does (you are in ultracode mode; use them whenever they
+  speed things up);
+- when to change course, go back, or rewrite a whole layer because that is the better path.
 
-If two attempts at the same defect fail, stop. Write down what each attempt measured and why it was
-wrong, then research how established crowd simulators solve it before a third attempt. Never try a
-new technique on the same broken base.
+Try things, measure, keep what works, throw away what does not. Nobody gives you a task list: the
+reviewer (Claude) only audits results.
 
-## Never
+**Only two things are fixed:** the GOAL and the INTEGRITY RULES below.
 
-- **Never move a body outside Detour.** No snap, push, teleport, clamp, or position or velocity
-  rewrite after `crowd.update`. Change intent (target, max speed, filter, wait place) only.
-- **Never let orientation feed back into movement.** Heading and gait only READ the velocity.
-- **Never tune for a counter.** You may not change a parameter, radius, geometry, spawn, destination
-  or duration so that a scenario turns green. If a scenario is objectively wrong:
-  - document the error in the fixture;
-  - keep its difficulty;
-  - tell the reviewer in the report.
+## The goal
 
-  The thresholds in `crowdScenarios.spec.ts` change only with the player's approval.
-- **Never have a preset per scenario.** There is one Detour configuration (`configureAvoidance`).
-- **Never retry an approach listed as REJECTED** in the handoff (section 5).
-- **Never touch vehicles** (`src/sim/vehicles`, `intersections`, `signals`) beyond reading them.
-- **Never delete the old engines or switch the default** without the player's explicit OK in the
-  chat.
+Section 8 of the handoff: what the player must see in the game, in the 19 scenarios and in the
+player city, with fixed-camera photos as proof. "Done" is that, not a green counter.
 
-## Machine limits (the player plays on this computer)
+## Integrity rules (the player's, not negotiable)
 
-- Run tests only through `node scripts/test-light.mjs <spec files>`: one worker, below-normal
-  priority, in the foreground, a couple of minutes at most.
-- No full suites of ten minutes or more, nothing heavy in the background, and one heavy job at a
-  time. No parallel subagents.
-- A dev server only while photographing: `PORT=5180 npm run dev`. Stop it afterwards. Never stop
-  servers you did not start.
-- Write scripts to files and run them; avoid shell heredocs.
+1. **Never cheat the measurement.** Do not change a scenario, threshold, radius, spawn, destination
+   or duration so that a counter turns green.
+   - If a scenario is objectively wrong, fix it, document the error and keep its difficulty.
+   - Changing a threshold needs the player's approval.
+2. **Detour is the only thing that moves a body.** No snap, push, teleport, clamp, or position or
+   velocity rewrite after `crowd.update`. You may change intent and constraints, the gait, or the
+   solver's configuration. You may even replace the solver with an established one if you show it is
+   better. What you may not do is add a second physics that corrects the result.
+3. **Orientation and animation only READ the velocity.** They never change it.
+4. **One coherent configuration** for every situation. No preset per scenario.
+5. **Not vehicles** (`src/sim/vehicles`, `intersections`, `signals`): pedestrians first.
+6. **Ask the player first** before:
+   - switching the default engine;
+   - deleting the old engines;
+   - changing a threshold.
+7. **Prove what you claim.** Battery numbers and photos looked at in the game. Never report from
+   numbers alone.
 
-## Commits and pushes
+Measuring before changing (reproduce, trace, find the cause) is the fastest way to a right fix, so
+use it. It is a tool, not a ritual: quick experiments are fine as long as you measure them and keep
+only what is better.
 
-- One commit per verified step: the fix, the battery report, and the photos (JPEG; convert PNGs).
-- Stage **explicit paths only**. Never `git add -A` or `git add .`.
-- Never commit any of these:
-  - `tests/**/zz*.spec.ts`, `zz-*.txt`, `zz-report.jsonl`, `.claude/_*.mjs`, `*.png` photos;
-  - other sessions' files: `.agents/skills/roadcraft-clothes/`, `docs/codex-prompts-modelos-3d.md`,
-    `docs/audit/2026-09-30/`.
-- Write the message in English and honestly. Its body states:
-  - what changed;
-  - the cause it removes;
-  - the battery numbers before and after;
-  - what is still failing.
-- End the message with `Co-Authored-By: Codex <noreply@openai.com>`.
-- `npx tsc --noEmit` must be clean, and eslint must be clean on the files you touched.
-- Push after every commit: `git push https://github.com/designathan1988/app-roadcraft master:main`.
-  - Never push to `origin`, which is a different repository.
-  - Never force-push, rebase or amend pushed commits.
-- Before any edit, run `git status`. If files outside your work changed (another session), do not
-  touch, stage or revert them. Tell the player.
+## Save the work
 
-## Report to the player after every step (in Portuguese, plain words)
+- Commit and push often. Every verified improvement is a commit; do not let work pile up.
+- Stage explicit paths only; never `git add -A` or `git add .`.
+- Never commit scratch (`zz*`, `.claude/_*`, `*.png`) or other sessions' files
+  (`.agents/skills/roadcraft-clothes/`, `docs/codex-prompts-modelos-3d.md`, `docs/audit/2026-09-30/`).
+- Write commit messages in English and honestly: what changed, why, numbers before and after, what
+  still fails.
+- `npx tsc --noEmit` and eslint must be clean on the files you touched.
+- Push: `git push https://github.com/designathan1988/app-roadcraft master:main`.
+  - Never push to `origin`.
+  - Never force-push or rewrite pushed history.
+- Subagents do not commit or push; you integrate.
+
+## Do not freeze the player's computer
+
+The player plays on this machine:
+- at most TWO test runs at once, each through `node scripts/test-light.mjs` (one worker);
+- at most ONE browser or dev server (`PORT=5180 npm run dev`), stopped when the photos are taken;
+- nothing that runs ten minutes or more;
+- never stop servers you did not start.
+
+Reading code, reading traces and planning have no limit. Two agents never edit the same file at
+the same time: use separate files or worktrees.
+
+## Tell the player what you are doing
+
+The player cannot see your work unless you write it.
+- Before each step, say in one line what and why.
+- After each result, say what it showed.
+- When you launch an agent, say what it is doing; when it returns, say what it found.
+- Never go more than 5 minutes silent.
+
+When a piece of work is finished, report in Portuguese, in plain words:
 
 ```
 O QUE ESTÁ NO JOGO AGORA: <com ?people=crowd / por padrão> ...
-O QUE MUDOU E POR QUÊ: causa encontrada (trace), correção estrutural
-NÚMEROS: bateria antes -> depois (cenários verdes, ré, deslizes, empurrões, starvation);
-         cidade do jogador se medida; custo ms/tick se medido
-FOTOS: caminhos dos .jpg, e o que se vê em cada um
-AINDA FALTA: próximos itens da seção 7 do handoff
-COMMIT: <hash> (push feito em app-roadcraft main)
+O QUE MUDOU E POR QUÊ
+NÚMEROS: antes -> depois (bateria, cidade, custo, se medidos)
+FOTOS: caminhos dos .jpg e o que se vê
+PRÓXIMO: o que você decidiu fazer em seguida
+COMMIT: <hash>
 ```
-
-"Seams landed, behaviour unchanged" means the player sees nothing new: say that plainly. Never
-report a step as done from numbers alone. The photos are the proof.

@@ -2,9 +2,16 @@
 
 Owner from 2026-10-01: **Codex**, working in this checkout (`C:\Codex-Shared\Road`, branch
 `master`). Reviewer: Claude, in a separate session, after every delivery (see the review log at the
-end). The method you must follow is the skill `.agents/skills/roadcraft-people-crowd/SKILL.md`.
-Read that, `AGENTS.md`, `CLAUDE.md` and the player's orders
-([people-crowd-orders.md](people-crowd-orders.md)) before you change anything.
+end). The rules are in the skill `.agents/skills/roadcraft-people-crowd/SKILL.md`. Read that,
+`AGENTS.md`, `CLAUDE.md` and the player's orders ([people-crowd-orders.md](people-crowd-orders.md)).
+
+**You own the plan (player's decision, 2026-10-01 16:20).** What is fixed:
+- the goal: section 8;
+- the integrity rules in the skill.
+
+Everything else is yours to decide: the order, the approach, the technique, experiments, how many
+agents and what they do, going back, and rewriting a layer when that is the better path. This
+document is information, not a script. The reviewer audits results; he does not assign tasks.
 
 ## 1. What is LIVE in the game, and what is not
 
@@ -94,7 +101,10 @@ There are also scratch tools in the checkout. They are **never committed**, but 
 - **Everybody always avoids.** Detour avoidance is reciprocal: switching it off for standing people
   made walkers shove them.
 
-## 5. REJECTED: measured worse, do not retry
+## 5. Already tried: measured worse in its context
+
+This is information, not a ban. Each of these made things worse where it was tried. If you have a
+reason to think one works in a different form or context, try it and measure it.
 
 - Pairwise yield with side spots. It piled people up at the passage mouth.
 - A face-to-face pause. Release-both went from 46 to 87 s and the crowd got worse.
@@ -103,7 +113,8 @@ There are also scratch tools in the checkout. They are **never committed**, but 
 - The `lanes.ts` lane engine. It was a chain of threshold patches and was deleted.
 - Patches on the ORCA engine: no-reverse, pivot, overshoot and companion rules.
 - A funnel "horizon" stand-in point.
-- Anything that moves a body after Detour.
+
+Moving a body after Detour is not on this list: it is one of the player's rules (see the skill).
 
 ## 6. Baseline at hand-off (`docs/handoff/crowd-baseline.jsonl`)
 
@@ -134,7 +145,11 @@ jumps are 0.
 - The city navmesh used to abort in the WebAssembly (too many tiles). That is fixed: `tileSizeFor`
   grows the tile size to fit `MAX_TILES`.
 
-## 7. Open work, in order
+## 7. Known open work at hand-off
+
+These are the known defects and the remaining steps. The ORDER, the APPROACH and the split between
+agents are yours. The numbering below only names the items. Item 7 (default and deletion) needs the
+player's OK; item 8 (vehicles) is out of scope.
 
 0. **Hygiene.**
    - `step()` carries profiling scratch (`__crowdProf`). Remove it, or make it a proper opt-in
