@@ -38,6 +38,9 @@ document is information, not a script. The reviewer audits results; he does not 
   unpublished moving poses from Detour velocity: battery 8/19 -> 9/19, city
   backward 1176 -> 656 over 60 s, other measured city defects unchanged.
   The queue-place candidate was discarded because it regressed city/queue.
+- Fifth continuation step: [crowd-step-05.md](crowd-step-05.md). Short and
+  directional footwork reduces slow static-pose motion in the current city
+  73.600 -> 5.117 person-seconds; physical trajectories/reports stay unchanged.
 
 ## 2. Architecture (keep it)
 

@@ -24,9 +24,10 @@ import {
   type LibraryClip, type LibraryClipName, type RocketboxLibrary, type WalkAmplitude, type WalkSex,
 } from './citizenWalk';
 import {
-  ELDER_AMPLITUDE, SHUFFLE_AMPLITUDE, bakeFps, createGait, gaitClipOf, gaitHeading, gaitPlays, stepGait,
+  ELDER_AMPLITUDE, SHUFFLE_AMPLITUDE, REST_AMPLITUDE, bakeFps, createGait, gaitClipOf, gaitHeading, gaitPlays, stepGait,
   type Gait, type GaitClipName, type GaitClips, type GaitPlay,
 } from './citizenGait';
+import { directionalWalkFor } from './citizenStride';
 
 export { CROWD_IDS } from './citizenCasting';
 /*
@@ -50,15 +51,18 @@ const LIBRARY = [
 type Played = (typeof LIBRARY)[number];
 const LIBRARY_AT = Object.fromEntries(LIBRARY.map((name, i) => [name, WALK_SHUFFLE + 1 + i])) as
   Readonly<Record<Played, number>>;
+const DIRECTIONAL = ['walkRest', 'walkBack', 'walkLeft', 'walkRight'] as const;
+const DIRECTIONAL_AT = Object.fromEntries(DIRECTIONAL.map((name, i) => [name, WALK_SHUFFLE + 1 + LIBRARY.length + i])) as
+  Readonly<Record<(typeof DIRECTIONAL)[number], number>>;
 /** Where each clip the gait plays (`citizenGait.ts`) is baked. */
 const GAIT_AT: Readonly<Record<GaitClipName, number>> = {
-  ...LIBRARY_AT, walk: WALK, walkElder: WALK_ELDER, walkShuffle: WALK_SHUFFLE,
+  ...LIBRARY_AT, ...DIRECTIONAL_AT, walk: WALK, walkElder: WALK_ELDER, walkShuffle: WALK_SHUFFLE,
 };
 /**
  * People in and on vehicles (`riderPoses.ts`): car seats reclined to fit a
  * cabin, astride a motorcycle, pedalling a bicycle. Baked after the library.
  */
-const RIDER_AT = Object.fromEntries(RIDER_CLIPS.map((clip, i) => [clip.key, WALK_SHUFFLE + 1 + LIBRARY.length + i])) as
+const RIDER_AT = Object.fromEntries(RIDER_CLIPS.map((clip, i) => [clip.key, WALK_SHUFFLE + 1 + LIBRARY.length + DIRECTIONAL.length + i])) as
   Readonly<Record<RiderClipKey, number>>;
 /** Anything `drawClip` can play. */
 export type CitizenClipKey = RiderClipKey | 'walk' | Played;
@@ -357,6 +361,17 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
   clips[WALK_ELDER] = await bakeWalk(body, sex, ELDER_AMPLITUDE);
   clips[WALK_SHUFFLE] = await bakeLibraryClip(body, library[sex].walkSlow, SHUFFLE_AMPLITUDE);
   for (const name of LIBRARY) clips[LIBRARY_AT[name]] = await bakeLibraryClip(body, library[sex][name]);
+  body.reset();
+  const rest = clipTransferFor(body.rig, body.mesh, library[sex].walkSlow, REST_AMPLITUDE);
+  const restFrames = await bakeFrames(body, () => rest.pose(0), 1, true, 1);
+  clips[DIRECTIONAL_AT.walkRest] = { ...restFrames, frames: 1, duration: 1, loop: true, stride: 0 };
+  for (const [name, angle] of [['walkBack', Math.PI], ['walkLeft', Math.PI / 2], ['walkRight', -Math.PI / 2]] as const) {
+    body.reset();
+    const warped = directionalWalkFor(body.rig, body.mesh, library[sex].walkSlow, SHUFFLE_AMPLITUDE, angle);
+    const facts = clips[WALK_SHUFFLE]!;
+    const frames = await bakeFrames(body, time => warped.pose(time), facts.duration, true);
+    clips[DIRECTIONAL_AT[name]] = { ...frames, duration: facts.duration, loop: true, stride: facts.stride * warped.strideScale };
+  }
   for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = await bakeRiderClip(body, clip);
   return { clips, helmet };
 }

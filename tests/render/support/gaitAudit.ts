@@ -25,8 +25,8 @@ import { fixtureDoc, simOf } from '../../sim/support/bodies';
  *                was captured at.
  *   unstepped    body rotation, while standing or nearly, with no stepping
  *                clip advancing: a figure swivelling on motionless legs.
- *   skate        the difference between how fast the body moves and how fast
- *                the stepping legs carry it.
+ *   skate        the vector difference between body velocity and the signed
+ *                forward/lateral velocity carried by the stepping legs.
  */
 
 const motion = (name: string): unknown =>
@@ -58,7 +58,7 @@ export interface GaitAudit {
   /** Body rotation, radians, while under 0.3 m/s, and of it, with no stepping clip advancing. */
   slowRotation: number;
   unsteppedRotation: number;
-  /** Mean |drawn speed - speed the stepping legs carry the body at| while moving, m/s. */
+  /** Mean length of drawn velocity minus signed stepping velocity while moving, m/s. */
   skateMean: number;
   /** Mean drawn speed while moving, m/s. */
   movingSpeedMean: number;
@@ -66,7 +66,9 @@ export interface GaitAudit {
   cadenceBySpeed: [number, number, number][];
 }
 
-const WALKS = new Set<GaitClipName>(['walk', 'walkElder', 'walkSlow', 'walkShuffle']);
+// The new cycles contain measured backward/lateral ankle travel. walkRest
+// carries zero ground and must never be counted as stepping merely by name.
+const WALKS = new Set<GaitClipName>(['walk', 'walkElder', 'walkSlow', 'walkShuffle', 'walkBack', 'walkLeft', 'walkRight']);
 const STEPPING = new Set<GaitClipName>([...WALKS, 'run', 'start', 'stop', 'turnLeft', 'turnRight']);
 const MOVING = 0.15;
 const SLOW = 0.75;
@@ -115,7 +117,7 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
       const speed = Math.hypot(pose.p.x - before.x, pose.p.y - before.y) / m(1) / DT;
       if (speed > 4) continue; // a re-seat, not motion
       let stepping = 0;
-      let carried = 0;
+      let carriedForward = 0, carriedLeft = 0;
       let walkWeight = 0;
       let cadence = 0;
       for (const p of out) {
@@ -129,14 +131,17 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
         stepping += p.weight;
         if (WALKS.has(p.name) || p.name === 'run') {
           const rate = delta / clip.frames / DT;
-          carried += p.weight * rate * clip.stride * size;
+          const travel = p.weight * rate * clip.stride * size;
+          if (p.name === 'walkLeft') carriedLeft += travel;
+          else if (p.name === 'walkRight') carriedLeft -= travel;
+          else carriedForward += p.name === 'walkBack' ? -travel : travel;
           if (p.name !== 'run') { walkWeight += p.weight; cadence += p.weight * rate * clip.duration; }
         } else if (clip.travel) {
           const at = (f: number): number => {
             const k = Math.min(clip.frames - 1, Math.max(0, Math.floor(f)));
             return clip.travel![k]! + (clip.travel![k + 1]! - clip.travel![k]!) * (f - k);
           };
-          carried += p.weight * (at(p.frame) - at(was)) * size / DT;
+          carriedForward += p.weight * (at(p.frame) - at(was)) * size / DT;
         }
       }
       const turned = Math.abs(Math.atan2(Math.sin(heading - before.heading), Math.cos(heading - before.heading)));
@@ -161,7 +166,13 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
             breakdown.set(key, (breakdown.get(key) ?? 0) + DT);
           }
         }
-        skateSum += Math.abs(speed - carried) * DT;
+        // Check direction as well as speed: magnitude alone misses a blend
+        // that puts too much distance into its longer forward component.
+        // Fractional weights already account for neutral-pose amplitude.
+        const vx = (pose.p.x - before.x) / m(1) / DT, vy = (pose.p.y - before.y) / m(1) / DT;
+        const forward = Math.cos(heading) * vx + Math.sin(heading) * vy;
+        const left = -Math.sin(heading) * vx + Math.cos(heading) * vy;
+        skateSum += Math.hypot(forward - carriedForward, left - carriedLeft) * DT;
         movedSum += speed * DT;
       }
       if (walkWeight > 0.5) {

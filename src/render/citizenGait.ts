@@ -36,9 +36,10 @@ import {
  * take precedence, and the figure swivelled on motionless legs to face a
  * crossing.
  *
- * THE BODY FACES WHERE IT GOES. Without a sideways step to play, somebody
- * stepping aside turns part way towards it, so the walk is played roughly the
- * way the feet are going rather than straight ahead of a body sliding sideways.
+ * DIRECTION BELONGS TO THE FEET. Sideways and backward displacement blends
+ * directional steps while the torso follows the published visual heading.
+ * Shortening a stride also blends its pose towards the mean walking stance;
+ * changing only the cycle's distance would leave full-length feet skating.
  */
 
 export interface GaitClip {
@@ -55,13 +56,13 @@ export interface GaitClip {
 }
 
 export const GAIT_CLIP_NAMES = [
-  'walk', 'walkElder', 'walkSlow', 'walkShuffle', 'run', 'start', 'stop', 'turnLeft', 'turnRight',
+  'walk', 'walkElder', 'walkSlow', 'walkShuffle', 'walkRest', 'walkBack', 'walkLeft', 'walkRight', 'run', 'start', 'stop', 'turnLeft', 'turnRight',
   'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp',
 ] as const;
 export type GaitClipName = (typeof GAIT_CLIP_NAMES)[number];
 export type GaitClips = Readonly<Record<GaitClipName, GaitClip>>;
 /** The walk and run cycles, which 'loco' blends on one phase. */
-type Cycle = 'walk' | 'walkElder' | 'walkSlow' | 'walkShuffle' | 'run';
+type Cycle = 'walk' | 'walkElder' | 'walkSlow' | 'walkShuffle' | 'walkRest' | 'walkBack' | 'walkLeft' | 'walkRight' | 'run';
 type Single = Exclude<GaitClipName, Cycle>;
 type PlayKey = 'loco' | Single;
 interface Play {
@@ -77,8 +78,6 @@ export interface Gait {
   time: number;
   /** The simulation's heading, followed smoothly. */
   base: number;
-  /** Turn of the drawn body towards the way it is moving, radians. */
-  lean: number;
   /** Drawn heading last frame. */
   drawn: number;
   /** Velocity of the drawn body, smoothed, m/s. */
@@ -96,6 +95,18 @@ export interface Gait {
   walkW: number;
   /** Ground the legs cover per cycle at this pace on this body, metres. */
   stride: number;
+  /** Physical travel relative to the drawn torso, radians; never writes to PedView. */
+  direction: number;
+  /** Actual pose amplitude below the shortest captured stride. */
+  stepScale: number;
+  backScale: number;
+  leftScale: number;
+  rightScale: number;
+  /** Directional group weights, calibrated by their effective ground travel. */
+  forwardWeight: number;
+  backWeight: number;
+  leftWeight: number;
+  rightWeight: number;
   cur: Play;
   prev: Play | null;
   /** Weight of `cur` against `prev`, rising to 1 over `fadeTime`. */
@@ -129,6 +140,8 @@ export const ELDER_AMPLITUDE: WalkAmplitude = { arms: 0.5, legs: 0.78, hips: 0.6
  * half the rate.
  */
 export const SHUFFLE_AMPLITUDE: WalkAmplitude = { arms: 0.4, legs: 0.5, hips: 0.55 };
+/** Mean walking stance, not the rig's T-pose; used to shorten actual foot travel. */
+export const REST_AMPLITUDE: WalkAmplitude = { arms: 0, legs: 0, hips: 0 };
 
 /** Baking rate of a clip: long, slow loops at 10 fps, everything else at the capture's 30. */
 export const bakeFps = (clip: { readonly loop: boolean; readonly duration: number }): number =>
@@ -185,6 +198,8 @@ export function gaitClipsOf(library: Readonly<Record<LibraryClipName, LibraryCli
   out.walk = walk;
   out.walkElder = { ...walk, stride: walk.stride * strideShare(walkSource(sex), ELDER_AMPLITUDE) };
   out.walkShuffle = { ...out.walkSlow, stride: out.walkSlow.stride * strideShare(library.walkSlow.source, SHUFFLE_AMPLITUDE) };
+  out.walkRest = { frames: 1, duration: 1, loop: true, stride: 0 };
+  out.walkBack = out.walkLeft = out.walkRight = out.walkShuffle;
   return out;
 }
 
@@ -283,9 +298,11 @@ function pace(g: Gait, clips: GaitClips, elder: boolean, size: number, speed: nu
   const last = clips[walks[walks.length - 1]!];
   g.walkA = g.walkB = walks[0];
   g.walkW = 0;
+  g.stepScale = 1;
   if (speed <= naturalPace(first, size)) {
     const own = naturalPace(first, size);
-    g.stride = first.stride * size * Math.pow(Math.max(speed, 0.02) / own, STRIDE_EXPONENT);
+    g.stepScale = Math.pow(Math.max(speed, Number.EPSILON) / own, STRIDE_EXPONENT);
+    g.stride = first.stride * size * g.stepScale;
     return;
   }
   for (let i = 0; i < walks.length - 1; i++) {
@@ -305,9 +322,6 @@ function pace(g: Gait, clips: GaitClips, elder: boolean, size: number, speed: nu
 
 // ---------------------------------------------------------------- tuning
 
-/** Drawn speeds, m/s, above which a body counts as moving — higher to start than to keep going. */
-const MOVE_FROM_STILL = 0.14;
-const KEEP_MOVING = 0.06;
 /** Body turning rate, rad/s, at which the feet have to step round. */
 const TURN_STEPS = 0.35;
 /** The same for a body standing or creeping, which no stride carries round. */
@@ -349,15 +363,6 @@ const RUN_TIME = 0.6;
 /** Smoothing of the drawn velocity and of its rate of change, seconds. */
 const VELOCITY_TIME = 0.12;
 const ACCEL_TIME = 0.2;
-/** Share of the angle between heading and motion the body turns into, its limit, and how fast. */
-const LEAN_SHARE = 0.85;
-const LEAN_MAX = 1.2;
-const LEAN_TIME = 0.25;
-/** Drawn speeds over which the lean fades in, m/s. */
-const LEAN_FROM = 0.12;
-const LEAN_FULL = 0.4;
-/** Beyond this angle the motion is backwards, and the body does not turn to face it. */
-const BACKWARDS = 1.9;
 /** A tick's displacement faster than this is a re-seat, not a step, m/s. */
 const JUMP = 4;
 
@@ -371,7 +376,7 @@ const approach = (dt: number, time: number): number => 1 - Math.exp(-dt / time);
 // ------------------------------------------------------------------- state
 
 /** The heading to draw the body at. */
-export const gaitHeading = (g: Gait): number => g.base + g.lean;
+export const gaitHeading = (g: Gait): number => g.base;
 
 /** Velocity of the drawn body over the last simulation tick, m/s. */
 function drawnVelocity(ped: PedView): { x: number; y: number } {
@@ -386,9 +391,11 @@ export function createGait(ped: PedView, time: number, heading: number, hash: nu
   const v = drawnVelocity(ped);
   const speed = Math.hypot(v.x, v.y);
   return {
-    time, base: heading, lean: 0, drawn: heading, vx: v.x, vy: v.y, speed, accel: 0,
-    cycle: (hash % 997) / 997, run: 0, walkA: 'walk', walkB: 'walk', walkW: 0, stride: 1,
-    cur: { key: speed > MOVE_FROM_STILL ? 'loco' : 'idle', phase: (hash % 613) / 613, acc: 0 },
+    time, base: heading, drawn: heading, vx: v.x, vy: v.y, speed, accel: 0,
+    cycle: (hash % 997) / 997, run: 0, walkA: 'walk', walkB: 'walk', walkW: 0, stride: 1, direction: 0,
+    stepScale: 1, backScale: 1, leftScale: 1, rightScale: 1,
+    forwardWeight: 1, backWeight: 0, leftWeight: 0, rightWeight: 0,
+    cur: { key: speed > 0 ? 'loco' : 'idle', phase: (hash % 613) / 613, acc: 0 },
     prev: null, fade: 1, fadeTime: FADE, settling: 0, armed: true, looked: null,
   };
 }
@@ -443,15 +450,9 @@ export function stepGait(g: Gait, ped: PedView, clips: GaitClips, time: number, 
   if (dt > 0) g.accel += ((speed - g.speed) / dt - g.accel) * approach(dt, ACCEL_TIME);
   g.speed = speed;
 
-  // The simulation already turns the body at a human rate; this only absorbs
-  // frame-to-frame interpolation. The lean turns it towards its motion.
-  if (speed < TURN_IN_PLACE && g.lean !== 0) {
-    // Coming to rest, the lean into the walk becomes part of where the body
-    // faces, and is stepped out like any other turn. Relaxing it freely
-    // turned a standing body on still feet.
-    g.base = wrap(g.base + g.lean);
-    g.lean = 0;
-  }
+  // The simulation turns the visual heading smoothly. Directional footwork
+  // represents motion before that turn is complete, without rotating the
+  // whole figure into a sideways step or suppressing a backward step.
   const want = wrap(heading - g.base);
   let swing = want * approach(dt, 1 / 18);
   if (speed < TURN_IN_PLACE) {
@@ -468,22 +469,14 @@ export function stepGait(g: Gait, ped: PedView, clips: GaitClips, time: number, 
     swing = Math.max(-limit, Math.min(limit, swing));
   }
   g.base = wrap(g.base + swing);
-  let lean = 0;
-  if (speed > LEAN_FROM) {
-    const off = wrap(Math.atan2(g.vy, g.vx) - g.base);
-    if (Math.abs(off) < BACKWARDS) {
-      lean = Math.max(-LEAN_MAX, Math.min(LEAN_MAX, off)) * LEAN_SHARE * smoothstep(LEAN_FROM, LEAN_FULL, speed);
-    }
-  }
-  g.lean += (lean - g.lean) * approach(dt, LEAN_TIME);
   const drawn = gaitHeading(g);
+  if (speed > 0) g.direction = wrap(Math.atan2(g.vy, g.vx) - drawn);
   const turned = Math.abs(wrap(drawn - g.drawn));
   g.drawn = drawn;
 
   const act = ped.gesture;
   const elder = ped.ageClass === 'elder';
   const cur = g.cur;
-  const isGait = cur.key === 'loco' || cur.key === 'start' || cur.key === 'stop';
   const isTurn = cur.key === 'turnLeft' || cur.key === 'turnRight';
   // Standing, a slower turn already needs the feet: the body is not carried
   // round by a stride, so any visible rotation is footwork or a swivel.
@@ -499,7 +492,7 @@ export function stepGait(g: Gait, ped: PedView, clips: GaitClips, time: number, 
     g.cur.phase = seat === 'sitDown' ? Math.min(1, act!.t / SIT_DOWN_SECONDS[ped.gender])
       : seat === 'standUp' ? Math.min(1, act!.t / STAND_UP_SECONDS[ped.gender])
         : (act!.t / clips.sitIdle.duration) % 1;
-  } else if (speed > (isGait ? KEEP_MOVING : MOVE_FROM_STILL) && (!spin || speed >= TURN_IN_PLACE)) {
+  } else if (Math.hypot(raw.x, raw.y) > 0 && (!spin || speed >= TURN_IN_PLACE)) {
     // A fast turn while barely creeping is a turn on the spot, even out of a
     // walk: it used to stay in the walk stop, feet planted, while the body
     // swung round to face the road at every kerb - most of the rotation the
@@ -571,16 +564,20 @@ function moving(g: Gait, ped: PedView, clips: GaitClips, dt: number, speed: numb
   hash: number, elder: boolean): void {
   g.settling = 0;
   const cur = g.cur;
+  // Start/stop captures have no lateral travel. Any actual direction change
+  // hands over to the directional cycles; epsilon only absorbs roundoff.
+  const forwardMotion = Math.abs(g.direction) < 1e-6;
+  if (!forwardMotion && (cur.key === 'start' || cur.key === 'stop')) play(g, 'loco', 0, GAIT_FADE);
   if (cur.key !== 'loco' && cur.key !== 'start' && cur.key !== 'stop') {
     // Setting off from a standstill: the walk start, joined where it moves at
     // this pace, unless already going too fast for it.
-    if (speed < START_BELOW && !elder) {
+    if (speed >= naturalPace(clips.walkShuffle, size) && speed < START_BELOW && !elder && forwardMotion) {
       play(g, 'start', startEntry(clips.start, speed, size), GAIT_FADE);
       g.cur.acc = travelAt(clips.start, g.cur.phase) * size;
     } else {
       play(g, 'loco', 0, GAIT_FADE);
     }
-  } else if (cur.key === 'loco' && g.armed && speed < STOP_BELOW && g.accel < -STOP_DECEL && !elder && g.run < 0.1) {
+  } else if (cur.key === 'loco' && g.armed && speed < STOP_BELOW && g.accel < -STOP_DECEL && !elder && g.run < 0.1 && forwardMotion) {
     // Braking to a stop: join the walk stop where it moves at this pace.
     const entry = stopEntry(clips.stop, speed, size);
     if (entry < 0.9) {
@@ -609,12 +606,35 @@ function moving(g: Gait, ped: PedView, clips: GaitClips, dt: number, speed: numb
   }
 
   pace(g, clips, elder, size, speed);
-  const runs = elder ? 0 : smoothstep(runAt(hash), runAt(hash) + 0.6, speed);
+  // Non-forward locomotion uses the short capture: long lateral strides
+  // would cross the legs. Cardinal blend weights share one footfall phase.
+  const x = Math.cos(g.direction), y = Math.sin(g.direction);
+  const share = (clip: GaitClip): number => Math.min(1, Math.pow(Math.max(speed, Number.EPSILON) / naturalPace(clip, size), STRIDE_EXPONENT));
+  g.backScale = share(clips.walkBack); g.leftScale = share(clips.walkLeft); g.rightScale = share(clips.walkRight);
+  // Running is a blend INSIDE the forward group. Treating its weight as a
+  // separate forward addition would rotate a diagonal stride towards it.
+  const runs = elder ? 0 : smoothstep(runAt(hash), runAt(hash) + 0.6, speed * Math.max(0, x));
   g.run += (runs - g.run) * approach(dt, RUN_TIME);
-  const stride = g.stride * (1 - g.run) + clips.run.stride * size * g.run;
+  const forwardStride = g.stride * (1 - g.run) + clips.run.stride * size * g.run;
+  const backStride = clips.walkBack.stride * size * g.backScale;
+  const leftStride = clips.walkLeft.stride * size * g.leftScale;
+  const rightStride = clips.walkRight.stride * size * g.rightScale;
+  // A shorter lateral capture needs more weight per metre. Angular weights
+  // alone match the vector's magnitude but give the wrong direction whenever
+  // the component strides differ. Normalise distance-calibrated weights,
+  // then use that exact resulting vector to set the shared phase rate.
+  const forward = Math.max(0, x) / Math.max(Number.EPSILON, forwardStride);
+  const back = Math.max(0, -x) / Math.max(Number.EPSILON, backStride);
+  const left = Math.max(0, y) / Math.max(Number.EPSILON, leftStride);
+  const right = Math.max(0, -y) / Math.max(Number.EPSILON, rightStride);
+  const total = forward + back + left + right;
+  g.forwardWeight = forward / total; g.backWeight = back / total;
+  g.leftWeight = left / total; g.rightWeight = right / total;
+  g.stride = Math.hypot(g.forwardWeight * forwardStride - g.backWeight * backStride,
+    g.leftWeight * leftStride - g.rightWeight * rightStride);
   // A turn made while barely moving is footwork too.
   const stepping = Math.hypot(speed, TURN_FOOT * ped.turnV);
-  g.cycle = (g.cycle + stepping * dt / Math.max(1e-3, stride)) % 1;
+  g.cycle = (g.cycle + stepping * dt / Math.max(1e-3, g.stride)) % 1;
 }
 
 /** Appends what the body plays now, as weighted clips at baked frames. */
@@ -627,16 +647,21 @@ export function gaitPlays(g: Gait, clips: GaitClips, out: GaitPlay[]): void {
 function add(g: Gait, clips: GaitClips, entry: Play, weight: number, out: GaitPlay[]): void {
   if (weight < 0.001) return;
   if (entry.key === 'loco') {
-    const walk = weight * (1 - g.run);
     const push = (name: Cycle, w: number): void => {
       if (w >= 0.001) out.push({ name, frame: g.cycle * clips[name].frames, weight: w });
     };
-    if (g.walkA === g.walkB) push(g.walkA, walk);
+    const forwardWalk = weight * g.forwardWeight * (1 - g.run);
+    const strideWeight = forwardWalk * g.stepScale;
+    push('walkRest', forwardWalk * (1 - g.stepScale) + weight * (g.backWeight * (1 - g.backScale) + g.leftWeight * (1 - g.leftScale) + g.rightWeight * (1 - g.rightScale)));
+    push('walkBack', weight * g.backScale * g.backWeight);
+    push('walkLeft', weight * g.leftScale * g.leftWeight);
+    push('walkRight', weight * g.rightScale * g.rightWeight);
+    if (g.walkA === g.walkB) push(g.walkA, strideWeight);
     else {
-      push(g.walkA, walk * (1 - g.walkW));
-      push(g.walkB, walk * g.walkW);
+      push(g.walkA, strideWeight * (1 - g.walkW));
+      push(g.walkB, strideWeight * g.walkW);
     }
-    push('run', weight * g.run);
+    push('run', weight * g.forwardWeight * g.run);
     return;
   }
   out.push({ name: entry.key, frame: entry.phase * clips[entry.key].frames, weight });
