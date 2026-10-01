@@ -14,8 +14,7 @@ The player decided (2026-10-01): **you work freely.** You decide:
 - the order of the work;
 - the approach and the technique;
 - which experiments to run;
-- how many agents to use and what each one does (you are in ultracode mode; use them whenever they
-  speed things up);
+- how to split the work (no subagents: the player ordered you to do the work yourself);
 - when to change course, go back, or rewrite a whole layer because that is the better path.
 
 Try things, measure, keep what works, throw away what does not. Nobody gives you a task list: the
@@ -64,7 +63,6 @@ only what is better.
 - Push: `git push https://github.com/designathan1988/app-roadcraft master:main`.
   - Never push to `origin`.
   - Never force-push or rewrite pushed history.
-- Subagents do not commit or push; you integrate.
 
 ## Do not freeze the player's computer
 
@@ -74,8 +72,11 @@ The player plays on this machine:
 - nothing that runs ten minutes or more;
 - never stop servers you did not start.
 
-Reading code, reading traces and planning have no limit. Two agents never edit the same file at
-the same time: use separate files or worktrees.
+Reading code, reading traces and planning have no limit.
+
+This skill covers Stage 1 (pedestrians). The whole program, stages 0–13, its status and the
+working mode (heavy coding, light tests, heavy verification per batch) are in
+`docs/handoff/codex-program.md`.
 
 ## SHOW the player everything (player's order, binding until the end)
 
@@ -99,7 +100,6 @@ A commit or a step reported without its pictures shown in the chat counts as not
 The player cannot see your work unless you write it.
 - Before each step, say in one line what and why.
 - After each result, say what it showed.
-- When you launch an agent, say what it is doing; when it returns, say what it found.
 - Never go more than 5 minutes silent.
 
 When a piece of work is finished, report in Portuguese, in plain words:

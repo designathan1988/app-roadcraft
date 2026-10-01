@@ -264,6 +264,10 @@ dev servers and browsers as soon as a check is done.
 
 ## 8. Working here
 
+* **The whole master plan is handed to Codex** (2026-10-01): stages 0-13,
+  people, vehicles, buildings and roads. Read
+  [docs/handoff/codex-program.md](docs/handoff/codex-program.md) first; the
+  plan itself is [docs/handoff/master-plan.md](docs/handoff/master-plan.md).
 * **Pedestrians are handed to Codex** (2026-10-01): any work on people
   movement follows the skill `.agents/skills/roadcraft-people-crowd/` and
   [docs/handoff/people-crowd.md](docs/handoff/people-crowd.md). That work is
