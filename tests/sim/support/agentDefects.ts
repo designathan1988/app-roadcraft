@@ -20,8 +20,15 @@ import { fixtureDoc, LAYOUTS, layoutDoc } from './bodies';
  *   a kerb, nor queueing for one, nor sitting or talking;
  * - `fidgets`: a standing body turning its head and shoulders to and fro -
  *   over 20 degrees swung back and forth within a second - per person-minute;
- * - `back`, `side`, `jump`, `flip`: steps against the heading, sideways faster
- *   than a shuffle, teleports, side-to-side pops;
+ * - `back`, `side`, `jump`, `flip`: steps against the heading (any faster
+ *   than 0.05 m/s - the body's own envelope allowed 0.15 m/s backwards, and a
+ *   threshold of 0.25 m/s could never see it), sideways faster than a
+ *   shuffle, teleports, side-to-side pops;
+ * - `milling`: a body that walks without getting anywhere - more than 0.6 m
+ *   walked in 2 s, less than 35 % of it as headway - as two friends circling
+ *   each other on a pavement do: share of person-time, and the longest spell;
+ * - `hotspots`: where on the map the back steps and milling happen (cells of
+ *   25 u), so a defect is looked at where it is;
  * - `closest`: the nearest two bodies came, metres;
  * - `junction`: longest a junction had a queue at its line and let nobody in;
  * - `still`: longest any one vehicle stood without moving (a red included).
@@ -45,7 +52,21 @@ export interface AgentDefects {
   ghost: number;
   /** Two bodies closer than 0.4 m, per person-minute (sampled every 0.1 s). */
   overlaps: number;
+  /** Share of person-time spent milling, and the longest spell of it, s. */
+  milling: number;
+  millingSpell: number;
+  /** Share of moving person-time spent stepping backwards. */
+  backShare: number;
+  /** The busiest cells for back steps and milling: "x,y" (cell centre, u) and count. */
+  hotspots: [string, number][];
 }
+
+/** Window, walked distance and headway share that make a spell of milling. */
+const MILL_WINDOW = 2;
+const MILL_PATH = 0.6;
+const MILL_NET = 0.35;
+/** Cell of the hotspot map, u. */
+const HOT_CELL = 25;
 
 export interface City {
   readonly name: string;
@@ -125,15 +146,23 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
   const r: AgentDefects = {
     name: city.name, people: 0, vehicles: 0, zebraStand: 0, pavementStand: 0, fidgets: 0,
     back: 0, side: 0, jump: 0, flip: 0, closest: Infinity, junction: 0, still: 0, urgent: 0, ghost: 0, overlaps: 0,
+    milling: 0, millingSpell: 0, backShare: 0, hotspots: [],
   };
-  let fidget = 0, personSeconds = 0;
+  let fidget = 0, personSeconds = 0, movingSeconds = 0, millSeconds = 0;
+  const hot = new Map<string, number>();
+  const spot = (x: number, y: number): void => {
+    const key = `${Math.round(x / HOT_CELL) * HOT_CELL},${Math.round(y / HOT_CELL) * HOT_CELL}`;
+    hot.set(key, (hot.get(key) ?? 0) + 1);
+  };
+  const mill = new Map<number, { steps: { x: number; y: number; d: number }[]; spell: number }>();
+  const millTicks = Math.round(MILL_WINDOW / DT);
   const ticks = Math.round(seconds / DT);
   for (let i = 0; i < ticks; i++) {
     step(sim, { traffic: true, pedestrians: true });
     const t = i * DT;
     const views = sim.pedViews;
     const alive = new Set(views.map((v) => v.id));
-    for (const map of [still, last, turns] as Map<number, unknown>[]) for (const id of [...map.keys()]) if (!alive.has(id)) map.delete(id);
+    for (const map of [still, last, turns, mill] as Map<number, unknown>[]) for (const id of [...map.keys()]) if (!alive.has(id)) map.delete(id);
     for (const v of views) {
       personSeconds += DT;
       const busy = v.gesture !== null;
@@ -158,9 +187,31 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
       const dx = (v.x - prev.x) / U, dy = (v.y - prev.y) / U;
       const hx = Math.cos(v.heading), hy = Math.sin(v.heading);
       const fwd = (dx * hx + dy * hy) / DT, lat = (-dx * hy + dy * hx) / DT;
-      if (Math.hypot(dx, dy) / DT > 3) r.jump++;
-      else if (fwd < -0.25) r.back++;
+      const speed = Math.hypot(dx, dy) / DT;
+      if (speed > 0.05) movingSeconds += DT;
+      if (speed > 3) r.jump++;
+      else if (speed > 0.05 && fwd < -0.05) { r.back++; spot(v.x, v.y); }
       else if (Math.abs(lat) > 0.5) r.side++;
+      // Milling: walking, but not getting anywhere. Waiting at a kerb, on a
+      // zebra, sitting or talking are not walks.
+      const m0 = mill.get(v.id) ?? { steps: [], spell: 0 };
+      m0.steps.push({ x: v.x, y: v.y, d: Math.hypot(dx, dy) });
+      if (m0.steps.length > millTicks) m0.steps.shift();
+      let milling = false;
+      if (m0.steps.length === millTicks && !busy && v.kerbWait === 0 && v.ground !== 'crossing') {
+        let path = 0;
+        for (const e of m0.steps) path += e.d;
+        const a = m0.steps[0]!, b = m0.steps[m0.steps.length - 1]!;
+        const net = Math.hypot(b.x - a.x, b.y - a.y) / U;
+        milling = path > MILL_PATH && net < MILL_NET * path;
+      }
+      if (milling) {
+        millSeconds += DT;
+        m0.spell += DT;
+        r.millingSpell = Math.max(r.millingSpell, m0.spell);
+        if (i % 30 === 0) spot(v.x, v.y);
+      } else m0.spell = 0;
+      mill.set(v.id, m0);
       if (Math.abs(lat) > 0.15 && prev.lat !== 0 && Math.sign(lat) !== Math.sign(prev.lat)) prev.flips.push(i);
       prev.flips = prev.flips.filter((k) => i - k < 1 / DT);
       if (prev.flips.length >= 3) { r.flip++; prev.flips.length = 0; }
@@ -208,10 +259,13 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
   r.overlaps = r.overlaps * 6 * DT / Math.max(1, personSeconds) * 60;
   r.urgent = r.urgent * 30 * DT / Math.max(1, personSeconds);
   r.ghost = r.ghost * 30 * DT / Math.max(1, personSeconds);
+  r.milling = millSeconds / Math.max(1, personSeconds);
+  r.backShare = r.back * DT / Math.max(1, movingSeconds);
+  r.hotspots = [...hot].sort((a, b) => b[1] - a[1]).slice(0, 5);
   return r;
 }
 
 export function formatDefects(r: AgentDefects): string {
   const f = (x: number, d = 1) => x.toFixed(d);
-  return `${r.name.padEnd(18)} people ${String(r.people).padStart(3)} cars ${String(r.vehicles).padStart(3)} | zebra ${f(r.zebraStand)}s pavement ${f(r.pavementStand)}s fidget ${f(r.fidgets, 2)}/min | back ${r.back} side ${f(r.side, 3)}/min jump ${r.jump} flip ${f(r.flip, 3)}/min closest ${f(r.closest, 2)}m overlap ${f(r.overlaps, 3)}/min | junction ${f(r.junction, 0)}s still ${f(r.still, 0)}s | nets urgent ${f(r.urgent * 100, 2)}% ghost ${f(r.ghost * 100, 2)}%`;
+  return `${r.name.padEnd(18)} people ${String(r.people).padStart(3)} cars ${String(r.vehicles).padStart(3)} | zebra ${f(r.zebraStand)}s pavement ${f(r.pavementStand)}s fidget ${f(r.fidgets, 2)}/min | back ${r.back} side ${f(r.side, 3)}/min jump ${r.jump} flip ${f(r.flip, 3)}/min closest ${f(r.closest, 2)}m overlap ${f(r.overlaps, 3)}/min | backShare ${f(r.backShare * 100, 2)}% mill ${f(r.milling * 100, 2)}% spell ${f(r.millingSpell)}s hot ${r.hotspots.map(([k, n]) => `${k}:${n}`).join(' ')} | junction ${f(r.junction, 0)}s still ${f(r.still, 0)}s | nets urgent ${f(r.urgent * 100, 2)}% ghost ${f(r.ghost * 100, 2)}%`;
 }

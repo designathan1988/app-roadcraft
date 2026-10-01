@@ -18,6 +18,11 @@ describe('agents in every city', () => {
       // and side-to-side pops only as the rarest slide along a wall.
       expect({ back: r.back, jump: r.jump }).toEqual({ back: 0, jump: 0 });
       expect(r.side).toBeLessThan(0.1);
+      // Walking means getting somewhere: no pair circling each other, no
+      // body treading the same spot (the study of 2026-10-01 measured 22 %
+      // of the player's city doing it within a minute).
+      expect(r.milling).toBeLessThan(0.001);
+      expect(r.millingSpell).toBeLessThan(1);
       expect(r.flip).toBeLessThan(0.1);
       // Nobody stands frozen: on a zebra (the cars wait for them) or on a
       // pavement, other than waiting at a kerb, sitting or talking.

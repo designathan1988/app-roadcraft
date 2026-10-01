@@ -134,7 +134,7 @@ async function shoot(name, spec, note, zoom = 60, settle = 0) {
 async function locate(kind, filter = {}) {
   return page.evaluate(async ({ kind, filter }) => {
     const R = window.__roadcraft;
-    const { vehiclePose, pedPose } = await import('/src/sim/pose.ts');
+    const { vehiclePose } = await import('/src/sim/pose.ts');
     const { FOOTWAY_RISE } = await import('/src/world/roadTypes.ts');
     const scene = R.scene();
     const M = window.__inspection;
@@ -158,17 +158,16 @@ async function locate(kind, filter = {}) {
           seated, junction: seg === undefined, h: scene.elevationAt(pose.p.x, pose.p.y, structure) });
       }
     } else {
-      for (const p of R.sim.pedsInIdOrder()) {
-        const edge = R.sim.sidewalks.edges.get(p.edge);
-        if (!edge) continue;
-        if (filter.segment && edge.segment !== M.segments[filter.segment]) continue;
-        if (filter.onFootway && edge.kind === 'crossing') continue;
-        if (filter.crossing && edge.kind !== 'crossing') continue;
-        const pose = pedPose(R.sim, p, 1);
-        if (!pose) continue;
-        out.push({ id: p.id, x: pose.p.x, y: pose.p.y, heading: pose.angle, party: p.party.size, partyId: p.party.id,
+      // The People engine publishes every walker as a PedView (the legacy
+      // model's sidewalk edges are gone: reading them found nobody).
+      for (const p of R.sim.pedViews) {
+        if (filter.segment && p.segment !== M.segments[filter.segment]) continue;
+        if (filter.onFootway && p.ground !== 'footway') continue;
+        if (filter.crossing && p.ground !== 'crossing') continue;
+        const structure = p.segment === undefined ? undefined : R.doc.segment(p.segment)?.structure;
+        out.push({ id: p.id, x: p.x, y: p.y, heading: p.heading, party: p.party.size, partyId: p.party.id,
           ageClass: p.ageClass, hasChild: p.party.hasChild,
-          h: scene.elevationAt(pose.p.x, pose.p.y) + (edge.kind === 'crossing' ? 0 : FOOTWAY_RISE) });
+          h: scene.elevationAt(p.x, p.y, structure) + (p.ground === 'footway' ? FOOTWAY_RISE : 0) });
       }
     }
     return out;
