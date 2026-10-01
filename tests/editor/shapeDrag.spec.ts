@@ -45,7 +45,7 @@ describe('dragging a footprint shape', () => {
     tool.updateShapeDrag({ x: 30, y: 50 }, end);
     tool.endShapeDrag(false);
     expect(doc.buildings.size).toBe(1);
-    const b = [...doc.buildings.items.values()][0]!;
+    const b = [...doc.buildings.all()][0]!;
     expect(b.rotation).toBeCloseTo(0, 6);
     const ring = localFootprint(b.volumes[0]!).map((p) => localToWorld(b, p.x, p.y));
     const xs = ring.map((p) => p.x), ys = ring.map((p) => p.y);

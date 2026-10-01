@@ -16,7 +16,7 @@ import { METERS_PER_UNIT, m } from '@world/units';
 import { MIN_SIZE, baysOn, footprintBox, levelElevation, levelHeight, localDirToWorld, localToWorld, reliefAt, worldToLocal } from '@world/buildings/geometry';
 import { type Handle, buildingHandles } from '@world/buildings/handles';
 import { type BuildingHit, type Ray3, pickBuilding } from '@world/buildings/pick';
-import { type MaterialSpec, type MaterialTarget, applyMaterial, applyStyle, materialAt } from '@world/buildings/materials';
+import { FINISH_COLOUR, type MaterialSpec, type MaterialTarget, applyMaterial, applyStyle, materialAt } from '@world/buildings/materials';
 import { ELEMENT_DEFAULTS, elementAt, elementsAgainstBay } from '@world/buildings/elements';
 import { type BuildingProblem, validateBuilding } from '@world/buildings/validate';
 import {
@@ -198,7 +198,7 @@ export class BuildingTool {
   component: BayComponent | null = null;
   scope: FacadeScope = 'bay';
   materialScope: MaterialScope = 'building';
-  paintBrush: Partial<MaterialSpec> = { finish: 'brick' };
+  paintBrush: Partial<MaterialSpec> = { finish: 'brick', colour: FINISH_COLOUR.brick };
   /** Alt held: drags follow the pointer freely, without snapping to the grid. */
   free = false;
   /**

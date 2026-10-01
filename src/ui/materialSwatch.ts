@@ -1,4 +1,4 @@
-import type { Finish } from '@world/buildings/materials';
+import { FINISHES, FINISH_COLOUR, type Finish } from '@world/buildings/materials';
 
 /**
  * A tile's picture for a finish: the surface itself, drawn rather than
@@ -9,21 +9,7 @@ import type { Finish } from '@world/buildings/materials';
  * painted - and the pattern is what tells one from another at 56 px.
  */
 
-const BASE: Readonly<Record<Finish, string>> = {
-  plaster: '#e6e0d4',
-  stucco: '#dcd4c4',
-  ceramic: '#cfd6da',
-  brick: '#a4563f',
-  stone: '#b7b2a6',
-  concrete: '#b4b4b0',
-  wood: '#9c6b43',
-  metal: '#9aa3a8',
-  glass: '#9db6c2',
-  tile: '#bd6a52',
-  slate: '#585b5f',
-  panel: '#8f9ba5',
-  roofing: '#7b4a37',
-};
+const BASE = Object.fromEntries(FINISHES.map((f) => [f, `#${FINISH_COLOUR[f].toString(16).padStart(6, '0')}`])) as Readonly<Record<Finish, string>>;
 
 /** A darker shade of a hex colour, for mortar, seams and shadow. */
 function shade(hex: string, amount: number): string {

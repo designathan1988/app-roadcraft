@@ -12,7 +12,7 @@ import {
   groupOfCategory,
 } from './catalog';
 import { FACADE_PATTERNS, ELEMENT_KINDS } from '@world/buildings/types';
-import { t } from '../i18n';
+import { plural, t } from '../i18n';
 import { builderIconSvg } from './icons';
 import { materialSwatch } from '../materialSwatch';
 import { planSwatch } from '../planSwatch';
@@ -849,7 +849,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   function planControls(state: BuilderState): HTMLElement {
     const row = el('div', 'bw-row bw-plan-body');
     const count = el('span', 'bw-plan-count');
-    count.textContent = t('builder.plan.points', { count: state.planPoints });
+    count.textContent = plural('builder.plan.points', state.planPoints);
     const finish = el('button', 'bw-tool bw-plan-finish');
     finish.type = 'button';
     finish.innerHTML = `${builderIconSvg('check', 15)}<span></span>`;
@@ -891,7 +891,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     inspector.classList.toggle('collapsed', !state.inspectorOpen);
     inspectorToggle.innerHTML = builderIconSvg(state.inspectorOpen ? 'collapse' : 'expand', 14);
     if (!state.inspectorOpen || !info) return;
-    const signature = `${info.titleKey}|${info.name}|${info.fields.map((f) => `${f.id}:${f.text ?? f.value}`).join(',')}`;
+    const signature = `${info.titleKey}|${info.name}|${info.material ?? ''}|${info.fields.map((f) => `${f.id}:${f.text ?? f.value}`).join(',')}`;
     if (inspectorBody.dataset['signature'] === signature) return;
     const focused = document.activeElement;
     inspectorBody.dataset['signature'] = signature;

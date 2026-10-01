@@ -6,6 +6,7 @@ import { bodyOf } from '@world/buildings/blueprints';
 import { DEFAULT_PITCH, baysOn, footprintBox, levelElevation, localDirToWorld, ridgeAlongX, topLevel } from '@world/buildings/geometry';
 import { type Building, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
+import { FINISH_COLOUR } from '@world/buildings/materials';
 import { METERS_PER_UNIT, m } from '@world/units';
 import { type EditResult, clearBuildingsOnRoads, deleteBuilding } from '@editor/buildings';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
@@ -451,16 +452,20 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     },
     // The finish tools paint the selected free part when there is one (a
     // stair, a pavement, a canopy), and the model's surface otherwise.
+    // A finish comes in its own colour, and is what the brush carries next.
     chooseFinish: (finish) => {
+      const colour = FINISH_COLOUR[finish];
+      tool.setPaintBrush({ finish, colour });
       const element = tool.selectedElement();
-      if (element) tool.updateElement({ material: { ...(element.material ?? { colour: 0xcfc9bd }), finish } });
-      else tool.paint({ finish });
+      if (element) tool.updateElement({ material: { ...(element.material ?? {}), finish, colour } });
+      else if (tool.selected()) tool.paint({ finish, colour });
       host.changed();
     },
     chooseColour: (colour) => {
+      tool.setPaintBrush({ colour });
       const element = tool.selectedElement();
       if (element) tool.updateElement({ material: { ...(element.material ?? { finish: 'concrete' as const }), colour } });
-      else tool.paint({ colour });
+      else if (tool.selected()) tool.paint({ colour });
       host.changed();
     },
     chooseStyle: (key) => {

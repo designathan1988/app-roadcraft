@@ -40,6 +40,27 @@ export interface VolumeMaterials {
   roof?: MaterialSpec;
 }
 
+/**
+ * Each finish's own colour, as its swatch shows it: brick is brick-red before
+ * it is painted. Choosing a finish brings it; a wall turned to brick kept its
+ * plaster's white, and the red brick picked in the gallery came out white.
+ */
+export const FINISH_COLOUR: Readonly<Record<Finish, number>> = {
+  plaster: 0xe6e0d4,
+  stucco: 0xdcd4c4,
+  ceramic: 0xcfd6da,
+  brick: 0xa4563f,
+  stone: 0xb7b2a6,
+  concrete: 0xb4b4b0,
+  wood: 0x9c6b43,
+  metal: 0x9aa3a8,
+  glass: 0x9db6c2,
+  tile: 0xbd6a52,
+  slate: 0x585b5f,
+  panel: 0x8f9ba5,
+  roofing: 0x7b4a37,
+};
+
 export const isFinish = (v: unknown): v is Finish => (FINISHES as readonly unknown[]).includes(v);
 
 export function isMaterialSpec(v: unknown): v is MaterialSpec {
