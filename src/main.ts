@@ -29,6 +29,7 @@ import { DEFAULT_AZIMUTH, DEFAULT_ELEVATION, isoZoomBounds } from '@render/isoVi
 
 import { SimWorld } from '@sim/world';
 import { createPeopleEngine } from '@sim/people/people';
+import { addScriptedWalker, createCrowdEngine, initCrowd, inspectCrowd } from '@sim/people/crowd';
 import { rebindAgents, rebindPeds, rebindVehicles, step } from '@sim/pipeline';
 import { DT, NARROW_SCREEN_SHARE, NARROW_SCREEN_WIDTH } from '@sim/params';
 import { summarize } from '@sim/audit';
@@ -155,7 +156,12 @@ const sim = new SimWorld(doc, net, 0x2024);
 sim.rebuildTopology();
 // Pedestrians are navmesh agents (the People engine); `?peds=legacy` runs the
 // old sidewalk-graph model instead, for comparison while it is retired.
-if (new URLSearchParams(location.search).get('peds') !== 'legacy') sim.usePedestrianEngine(createPeopleEngine());
+// `?people=crowd` runs pedestrians as Detour crowd agents (`sim/people/crowd.ts`).
+if (new URLSearchParams(location.search).get('people') === 'crowd') {
+  await initCrowd();
+  sim.usePedestrianEngine(createCrowdEngine());
+}
+else if (new URLSearchParams(location.search).get('peds') !== 'legacy') sim.usePedestrianEngine(createPeopleEngine());
 // Vehicles are driven by Drive v2 where it has replaced a layer of the
 // legacy model; `?drive=v1` runs the legacy model throughout, for comparison.
 if (new URLSearchParams(location.search).get('drive') !== 'v1') sim.driveModel = 'v2';
@@ -3424,4 +3430,12 @@ qualitySelect.onchange = () => {
   scene: () => scene,
   /** The building tool, for browser-driven checks. */
   buildings: buildings.tool,
+  /**
+   * The crowd engine's scenario hooks (`tests/fixtures/crowdScenarios.ts`),
+   * from the instance the game runs: a module imported again by a harness can
+   * be a second instance after a hot update.
+   */
+  crowd: { add: addScriptedWalker, inspect: inspectCrowd },
+  /** One fixed simulation step, as the game takes it, without traffic or new pedestrians if asked. */
+  step: (traffic = true, pedestrians = true) => step(sim, { traffic, pedestrians }),
 };

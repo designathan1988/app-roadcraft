@@ -1,5 +1,6 @@
 import { appendFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { initCrowd } from '@sim/people/crowd';
 import { CITIES, formatDefects, measureDefects } from '../support/agentDefects';
 
 /**
@@ -9,6 +10,8 @@ import { CITIES, formatDefects, measureDefects } from '../support/agentDefects';
  */
 const REPORT = process.env.AGENT_REPORT;
 describe('agents in every city', () => {
+  // The crowd engine runs on Recast/Detour's WebAssembly.
+  beforeAll(async () => { if (process.env.AGENT_ENGINE === 'crowd') await initCrowd(); });
   for (const city of CITIES) {
     it(city.name, () => {
       const r = measureDefects(city, Number(process.env.AGENT_SECONDS ?? city.seconds ?? 90));

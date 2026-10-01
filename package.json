@@ -53,6 +53,7 @@
     "clipper2-ts": "^2.0.1-18",
     "earcut": "^3.2.3",
     "polygon-clipping": "0.15.7",
+    "recast-navigation": "^0.43.1",
     "three": "^0.186.0"
   }
 }

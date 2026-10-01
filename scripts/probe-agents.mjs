@@ -4,7 +4,7 @@
  * running game, tick by tick, on the drawn bodies (`PedView`), and the worst
  * places photographed in sequence.
  *
- *   node scripts/probe-agents.mjs <out-dir> [--base=http://localhost:5173] [--seconds=120] [--map=player-city]
+ *   node scripts/probe-agents.mjs <out-dir> [--base=http://localhost:5173] [--seconds=120] [--map=player-city] [--query=people=crowd]
  *
  * Loads `tests/fixtures/<map>.json` into a RUNNING dev server, lets the city
  * fill for a minute, then steps the simulation itself (`src/sim/pipeline.ts`
@@ -30,6 +30,8 @@ const OUT = path.resolve(args.find((a) => !a.startsWith('--')) ?? 'docs/screensh
 const BASE = opt('base', 'http://localhost:5173');
 const SECONDS = Number(opt('seconds', '120'));
 const MAP = opt('map', 'player-city');
+/** Extra query for the game, e.g. `people=crowd`. */
+const QUERY = opt('query', '');
 fs.mkdirSync(OUT, { recursive: true });
 
 const browser = await chromium.launch({ channel: 'chrome',
@@ -37,7 +39,7 @@ const browser = await chromium.launch({ channel: 'chrome',
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e.message)));
-await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+await page.goto(`${BASE}/${QUERY ? `?${QUERY}` : ''}`, { waitUntil: 'networkidle' });
 await page.waitForFunction('Boolean(window.__roadcraft)', null, { timeout: 60_000 });
 const fixture = JSON.parse(fs.readFileSync(`tests/fixtures/${MAP}.json`, 'utf8'));
 

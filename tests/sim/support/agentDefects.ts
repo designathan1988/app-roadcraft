@@ -7,6 +7,7 @@ import { step } from '@sim/pipeline';
 import { DT } from '@sim/params';
 import { SimWorld } from '@sim/world';
 import { createPeopleEngine, inspectPeople } from '@sim/people/people';
+import { createCrowdEngine } from '@sim/people/crowd';
 import { blueprintByKey, instantiate } from '@world/buildings/blueprints';
 import { fixtureDoc, LAYOUTS, layoutDoc } from './bodies';
 
@@ -80,7 +81,8 @@ function people(sim: SimWorld, peds: number, traffic: number): SimWorld {
   sim.trafficIntensity = traffic;
   sim.demandMultiplier = traffic || 1;
   sim.clock.paused = false;
-  sim.usePedestrianEngine(createPeopleEngine());
+  // `AGENT_ENGINE=crowd` measures the Detour crowd engine (call `initCrowd` first).
+  sim.usePedestrianEngine(process.env.AGENT_ENGINE === 'crowd' ? createCrowdEngine() : createPeopleEngine());
   sim.driveModel = 'v2';
   return sim;
 }

@@ -10,6 +10,7 @@ import type { Network } from './network';
 import { Level } from './roadTypes';
 import { bandMid, bandWidth, sectionOf } from './section';
 import { orientedPolyline } from './geometry';
+import { CROSSWALK_DEPTH } from './approach';
 import { EndType, FillRule, JoinType, inflatePathsD, unionD, type PathsD } from 'clipper2-ts';
 import { surfaces } from './surfaces';
 import { pointInPolygon } from '@core/polygon';
@@ -59,8 +60,20 @@ export interface Walkway {
   readonly kind: WalkwayKind;
   /** Centreline, from node `a` to node `b`. People walk it either way. */
   readonly path: Polyline;
-  /** Usable width, world units: the lateral room a walker keeps within. */
+  /** Usable width, world units: the lateral room a walker keeps within (`hi - lo`). */
   readonly width: number;
+  /**
+   * How far a walker's centreline position may lie either side of the path,
+   * u, measured along the path's LEFT normal (walking from `a` to `b`):
+   * from `lo` (negative, its right) to `hi`. A footway reaches from the
+   * kerb's outer edge to the footway's outer edge - street furniture stands
+   * in part of it and is walked round - so people normally keep to the
+   * through zone the path runs down, and step aside into the rest to pass.
+   */
+  readonly lo: number;
+  readonly hi: number;
+  /** For a footway or corner, the side the kerb is on (-1 at `lo`, +1 at `hi`); 0 for a crossing. */
+  readonly kerb: -1 | 0 | 1;
   readonly a: number;
   readonly b: number;
   /** The road a footway or crossing belongs to. */
@@ -86,6 +99,9 @@ export function deckOf(doc: RoadDoc, id: SegmentId): RoadStructure {
   const lift = ((doc.node(seg.a)?.heightOffset ?? 0) + (doc.node(seg.b)?.heightOffset ?? 0)) / 2;
   return lift > RAISED_BY_HAND ? 'elevated' : 'ground';
 }
+
+/** Passes of smoothing over a corner's line. */
+const SMOOTH_PASSES = 3;
 
 /** Length over which a corner eases off its footway's straight run onto the walking contour, u. */
 const EASE = 1.5;
@@ -201,6 +217,10 @@ interface FootwayEnd {
   readonly side: 1 | -1;
   /** How far the walking line lies beyond the kerb's outer edge, u. */
   readonly inset: number;
+  /** How far the footway reaches beyond the walking line, away from the road, u. */
+  readonly outer: number;
+  /** Which side of a walker walking INTO the node the kerb is on: -1 its right, +1 its left. */
+  readonly kerbSide: 1 | -1;
   /** The end at this road node, and the direction walking INTO the node. */
   readonly p: Vec2;
   readonly into: Vec2;
@@ -334,13 +354,20 @@ export function buildWalkways(net: Network): WalkGraph {
     const mid = bandMid(section.side.through);
     const width = bandWidth(section.side.through);
     const inset = mid - section.side.curb.outer;
+    const outer = section.side.frontage.outer - mid;
     for (const side of [1, -1] as const) {
       // `offsetPolyline` offsets to the LEFT for a positive distance.
       const path = Polyline.fromPoints(offsetPolyline(pts, side * mid));
       const first = path.sampleAt(0), last = path.sampleAt(path.length);
-      const way = g.add({ kind: 'footway', path, width, segment: segId, structure: deckOf(doc, segId), a: g.node(first.p), b: g.node(last.p) });
-      endAt(seg.a, { way, node: way.a, side, inset, p: first.p, into: { x: -first.t.x, y: -first.t.y } });
-      endAt(seg.b, { way, node: way.b, side, inset, p: last.p, into: last.t });
+      // Along a to b, the path's left is away from the road on the left
+      // side (+1), towards it on the right side (-1).
+      const lo = side > 0 ? -inset : -outer, hi = side > 0 ? outer : inset;
+      const way = g.add({ kind: 'footway', path, width: hi - lo, lo, hi, kerb: side > 0 ? -1 : 1, segment: segId, structure: deckOf(doc, segId), a: g.node(first.p), b: g.node(last.p) });
+      void width;
+      // Walking into b along the path the kerb is on the right of the left
+      // footway; walking into a, the other way, on its left.
+      endAt(seg.a, { way, node: way.a, side, inset, outer, kerbSide: side > 0 ? 1 : -1, p: first.p, into: { x: -first.t.x, y: -first.t.y } });
+      endAt(seg.b, { way, node: way.b, side, inset, outer, kerbSide: side > 0 ? -1 : 1, p: last.p, into: last.t });
     }
   }
 
@@ -410,6 +437,15 @@ export function buildWalkways(net: Network): WalkGraph {
     });
     eased[0] = from.p;
     eased[count] = to.p;
+    // A few passes of neighbour averaging, the ends and their first steps
+    // held: the line's direction must not turn in one step anywhere, or a
+    // walker off its centre is thrown sideways there.
+    for (let pass = 0; pass < SMOOTH_PASSES; pass++) {
+      const prev = eased.map((p) => ({ x: p.x, y: p.y }));
+      for (let q = 2; q < count - 1; q++) {
+        eased[q] = { x: (prev[q - 1]!.x + 2 * prev[q]!.x + prev[q + 1]!.x) / 4, y: (prev[q - 1]!.y + 2 * prev[q]!.y + prev[q + 1]!.y) / 4 };
+      }
+    }
     const clean = eased.filter((p, q) => q === 0 || Math.hypot(p.x - eased[q - 1]!.x, p.y - eased[q - 1]!.y) > 1e-6);
     return clean.length >= 2 ? Polyline.fromPoints(clean) : null;
   };
@@ -417,10 +453,14 @@ export function buildWalkways(net: Network): WalkGraph {
   const join = (from: FootwayEnd, to: FootwayEnd, nodeId: NodeId, kerb: Vec2 | null, drawn: Polyline | null = null): void => {
     joined.add(from.node); joined.add(to.node);
     const out = { x: -to.into.x, y: -to.into.y };
+    // The corner keeps the kerb on the side it is on walking into the node
+    // along `from`, and the narrower of the two footways' reaches.
+    const inset = Math.min(from.inset, to.inset), outer = Math.min(from.outer, to.outer);
+    const lo = from.kerbSide < 0 ? -inset : -outer, hi = from.kerbSide < 0 ? outer : inset;
     if (Math.hypot(from.p.x - to.p.x, from.p.y - to.p.y) < JOIN) {
       // The same point: the two footways simply meet (a road carried straight on).
       g.add({ kind: 'corner', path: Polyline.fromPoints([from.p, { x: from.p.x + out.x * JOIN, y: from.p.y + out.y * JOIN }]),
-        width: Math.min(from.way.width, to.way.width), node: nodeId, structure: from.way.structure, a: from.node, b: to.node });
+        width: hi - lo, lo, hi, kerb: from.kerbSide < 0 ? -1 : 1, node: nodeId, structure: from.way.structure, a: from.node, b: to.node });
       return;
     }
     // Concentric with the kerb return: the radius is the walking line's own
@@ -428,7 +468,7 @@ export function buildWalkways(net: Network): WalkGraph {
     // inside of a corner, more round the outside of a bend.
     const radius = kerb ? Math.abs((kerb.x - from.p.x) * from.into.y - (kerb.y - from.p.y) * from.into.x) : 0;
     const path = drawn ?? cornerPath(from.p, from.into, to.p, out, radius);
-    g.add({ kind: 'corner', path, width: Math.min(from.way.width, to.way.width), node: nodeId,
+    g.add({ kind: 'corner', path, width: hi - lo, lo, hi, kerb: from.kerbSide < 0 ? -1 : 1, node: nodeId,
       structure: from.way.structure, a: from.node, b: to.node });
   };
   for (const [nodeId, here] of ends) {
@@ -482,7 +522,8 @@ export function buildWalkways(net: Network): WalkGraph {
       const b = landOn(g, right, segId, nodeId);
       if (a === null || b === null || a === b) continue;
       const pa = g.nodes[a]!, pb = g.nodes[b]!;
-      g.add({ kind: 'crossing', path: Polyline.fromPoints([pa, pb]), width: bandWidth(section.side.through),
+      // As wide as the zebra painted.
+      g.add({ kind: 'crossing', path: Polyline.fromPoints([pa, pb]), width: CROSSWALK_DEPTH, lo: -CROSSWALK_DEPTH / 2, hi: CROSSWALK_DEPTH / 2, kerb: 0,
         segment: segId, node: nodeId, structure: deckOf(doc, segId), a, b });
     }
   }
