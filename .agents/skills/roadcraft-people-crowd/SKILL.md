@@ -77,6 +77,23 @@ The player plays on this machine:
 Reading code, reading traces and planning have no limit. Two agents never edit the same file at
 the same time: use separate files or worktrees.
 
+## SHOW the player everything (player's order, binding until the end)
+
+The player cannot see your work: photos you only "view" yourself do not exist for them. From now on,
+for EVERY photo or sequence you take:
+- Put it in your chat message as an image, using markdown with the absolute path:
+  `![what it shows](C:/Codex-Shared/Road/docs/audit/...jpg)`. Also give the path as a clickable link.
+  If the chat does not render it, open the file in your browser so the player sees it on screen.
+- Under it, write one or two plain Portuguese sentences: what appears, and what changed.
+- For every commit, show BEFORE and AFTER: the same scene and the same fixed camera, old version and
+  new version.
+- Write for someone who is not a programmer. Do not say "ticks", "sampling", "solver" or "filter".
+  Say what the person in the game does: "parava e dava ré" → "agora contorna e segue".
+- When a defect is fixed, leave the game open in your browser with `?people=crowd`, at the place
+  where it happened, so the player can watch it live.
+
+A commit or a step reported without its pictures shown in the chat counts as not reported.
+
 ## Tell the player what you are doing
 
 The player cannot see your work unless you write it.
