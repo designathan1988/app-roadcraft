@@ -382,6 +382,7 @@ export const PT_BR: Dictionary = {
   'hint.road': 'Clique no início, mire, ajuste Page Up/Down e clique no fim · Esc: cancelar',
   'hint.road.gradeLimited': 'A via atingiu a inclinação segura; continue desenhando para chegar à altura escolhida.',
   'hint.road.invalid': 'Esta conexão precisa de mais distância ou outro ponto final.',
+  'hint.road.clearance': 'Não construída: cruzaria uma via com diferença de altura pequena demais para se unir a ela ou passar por cima. Suba ou desça a via (Page Up/Down).',
   'hint.road.tunnel':
     'Arraste atravessando o morro · a via desce, o terreno fecha em cima e surgem os portais',
   'hint.road.curve': 'Clique início, fim e ponto de curvatura · Page Up/Down: altura ±1 m · Esc: terminar',

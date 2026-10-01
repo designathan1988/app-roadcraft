@@ -392,6 +392,7 @@ export const EN: Dictionary = {
   'hint.road': 'Click a start, aim, Page Up/Down for height, then click the end · Esc: cancel',
   'hint.road.gradeLimited': 'The road reached its safe grade; continue drawing to reach the selected height.',
   'hint.road.invalid': 'This connection needs more distance or a different endpoint.',
+  'hint.road.clearance': 'Not built: it would cross a road too close in height to join it or to pass over it. Raise or lower it (Page Up/Down).',
   'hint.road.tunnel':
     'Drag right through the hill · it dives, the ground closes over it, portals appear',
   'hint.road.curve': 'Click start, end, then bend point · Page Up/Down: height ±1 m · Esc: finish',

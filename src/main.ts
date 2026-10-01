@@ -1225,7 +1225,7 @@ function commitRoadGesture(d: RoadDraft, chosenEnd?: Anchor): boolean {
     return result.committed;
   });
   if (!result.committed) {
-    flashHint('hint.road.invalid');
+    flashHint(result.reason === 'clearance' ? 'hint.road.clearance' : 'hint.road.invalid');
     return false;
   }
   const finalHeight = result.finalHeightOffset ?? endHeightOffset;

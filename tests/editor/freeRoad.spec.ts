@@ -6,6 +6,7 @@ import { buildRoadElevation } from '@world/elevation';
 import { Level } from '@world/roadTypes';
 import { surfaceMode } from '@world/junction/build';
 import { Network } from '@world/network';
+import { roadStructure } from '@world/structures';
 import { commitRoadPath, splitSegment } from '@editor/commit';
 import { restoreInto } from '@editor/history';
 import { roadPathFromGesture, type RoadPathPoint } from '@editor/roadPath';
@@ -21,6 +22,22 @@ function empty(): { doc: RoadDoc; net: Network } {
 }
 
 describe('free road gesture', () => {
+  it('joins a road at its height, passes over it with clearance, and refuses anything between', () => {
+    const across = (height: number) => {
+      const { doc, net } = empty();
+      const a = doc.addNode({ x: 0, y: -150 }), b = doc.addNode({ x: 0, y: 150 });
+      doc.addSegment(a.id, b.id, 1);
+      net.rebuild();
+      const start = point(-200, 0, height), end = point(200, 0, height);
+      const result = commitRoadPath(doc, net, { kind: 'free', at: start.at }, { kind: 'free', at: end.at }, 1,
+        [{ start, end, curve: null }]);
+      return { result, junction: [...doc.nodes.values()].some((node) => node.incident.length === 4) };
+    };
+    expect(across(0)).toMatchObject({ result: { committed: true }, junction: true });
+    expect(across(5).result).toMatchObject({ committed: false, reason: 'clearance' });
+    expect(across(roadStructure('elevated').clearance + 5)).toMatchObject({ result: { committed: true }, junction: false });
+  });
+
   it('raises the road mid-drag without leaving a gap or a stub', () => {
     // Page Up pressed with the pointer still: samples at almost one place
     // with rising heights, then the stroke goes on. It was committed with a

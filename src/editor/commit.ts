@@ -246,9 +246,13 @@ function commitDraftInPlace(
         if (heights) {
           const drafted = heights.start +
             (heights.end - heights.start) * (draftS / Math.max(1e-6, draft.length));
-          if (Math.abs(drafted - segmentOffsetAt(doc, seg, existingS, existing.length)) > CROSSING_CLEARANCE) {
-            continue;
-          }
+          const gap = Math.abs(drafted - segmentOffsetAt(doc, seg, existingS, existing.length));
+          if (gap > CROSSING_CLEARANCE) continue;
+          // Too far apart in height to meet, too close to pass over: refused,
+          // as moving a node already is. It was joined, and the junction had
+          // a step in it - or, drawn between the two, a deck a few metres
+          // over the other road with no room under it.
+          if (gap > HEIGHT_JOIN_EPS) return { committed: false, reason: 'clearance' };
         }
 
         // The start and end anchors already materialize these contacts.
