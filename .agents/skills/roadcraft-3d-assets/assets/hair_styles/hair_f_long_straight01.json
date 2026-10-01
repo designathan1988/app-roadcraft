@@ -1,0 +1,9 @@
+{
+ "name": "hair_f_long_straight01",
+ "seed": 11,
+ "part": {"type": "center", "x": 0.0},
+ "length": {"back_y": 2.7, "side_y": 3.3, "front_y": 4.0},
+ "layers": 0.05,
+ "clumps": 110,
+ "stiffness": 0.35
+}

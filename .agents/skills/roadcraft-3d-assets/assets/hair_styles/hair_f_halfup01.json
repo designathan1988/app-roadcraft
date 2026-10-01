@@ -1,0 +1,11 @@
+{
+ "name": "hair_f_halfup01",
+ "seed": 71,
+ "part": {"type": "none"},
+ "length": {"back_y": 3.0, "side_y": 3.5, "front_y": 4.2},
+ "layers": 0.06,
+ "clumps": 85,
+ "stiffness": 0.35,
+ "gather": {"type": "halfup", "point": [0.0, 7.85, -0.72], "dir": [0, -0.3, -1.0], "top_y": 7.8,
+            "scalp_clumps": 40, "tie_radius": 0.12, "bun_radius": 0.24}
+}

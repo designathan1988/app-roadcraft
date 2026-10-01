@@ -1,0 +1,4 @@
+interface:
+  display_name: "Roadcraft 3D assets"
+  short_description: "Generate hair, clothes, vehicles and props for Roadcraft by code, checked and rendered"
+  default_prompt: "Use $roadcraft-3d-assets to make the requested 3D assets for Roadcraft: follow SKILL.md, run the scripts, look at the previews, and deliver into incoming/."

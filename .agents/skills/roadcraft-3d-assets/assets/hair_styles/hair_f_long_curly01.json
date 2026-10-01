@@ -1,0 +1,28 @@
+{
+ "name": "hair_f_long_curly01",
+ "seed": 41,
+ "part": {
+  "type": "none"
+ },
+ "length": {
+  "back_y": 3.4,
+  "side_y": 3.8,
+  "front_y": 4.6
+ },
+ "layers": 0.12,
+ "clumps": 46,
+ "segments": 40,
+ "width": [
+  0.36,
+  0.18
+ ],
+ "thickness": 0.12,
+ "volume": 0.3,
+ "stiffness": 0.6,
+ "curl": {
+  "radius": 0.12,
+  "period": 0.85
+ },
+ "frizz": 0.0,
+ "root_bias": 1.0
+}

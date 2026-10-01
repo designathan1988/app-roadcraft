@@ -1,0 +1,11 @@
+{
+ "name": "hair_f_box_braids01",
+ "seed": 81,
+ "part": {"type": "center", "x": 0.0},
+ "length": {"back_y": 2.6, "side_y": 3.0, "front_y": 3.6},
+ "layers": 0.04,
+ "segments": 18,
+ "volume": 0.10,
+ "stiffness": 0.35,
+ "braids": {"count": 72, "radius": 0.065}
+}

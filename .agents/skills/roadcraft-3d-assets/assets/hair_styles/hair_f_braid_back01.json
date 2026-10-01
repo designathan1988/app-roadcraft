@@ -1,0 +1,8 @@
+{
+ "name": "hair_f_braid_back01",
+ "seed": 61,
+ "part": {"type": "center", "x": 0.0},
+ "clumps": 0,
+ "gather": {"type": "braid", "point": [0.0, 6.65, -0.72], "dir": [0, -1.0, -0.35], "end_y": 3.0,
+            "scalp_clumps": 75, "tie_radius": 0.14, "braid_width": 0.42, "braid_period": 0.55}
+}

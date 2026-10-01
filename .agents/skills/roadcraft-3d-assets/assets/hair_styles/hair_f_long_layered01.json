@@ -1,0 +1,11 @@
+{
+ "name": "hair_f_long_layered01",
+ "seed": 21,
+ "part": {"type": "center", "x": 0.0},
+ "length": {"back_y": 3.0, "side_y": 3.9, "front_y": 5.4},
+ "layers": 0.22,
+ "clumps": 105,
+ "stiffness": 0.4,
+ "wave": {"amp": 0.04, "wavelength": 1.6},
+ "bangs": {"type": "curtain", "end_y": 7.6, "clumps": 18}
+}

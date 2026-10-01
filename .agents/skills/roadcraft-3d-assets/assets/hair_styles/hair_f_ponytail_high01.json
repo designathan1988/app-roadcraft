@@ -1,0 +1,32 @@
+{
+ "name": "hair_f_ponytail_high01",
+ "seed": 51,
+ "part": {
+  "type": "none"
+ },
+ "clumps": 0,
+ "wave": {
+  "amp": 0.03,
+  "wavelength": 1.5
+ },
+ "gather": {
+  "type": "ponytail",
+  "point": [
+   0.0,
+   8.15,
+   -0.62
+  ],
+  "dir": [
+   0,
+   -0.75,
+   -0.65
+  ],
+  "end_y": 4.3,
+  "scalp_clumps": 70,
+  "tail_clumps": 40,
+  "tie_radius": 0.16,
+  "stiffness": 0.5,
+  "tail_width": 0.26
+ },
+ "segments": 18
+}

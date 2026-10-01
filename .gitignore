@@ -6,3 +6,7 @@ docs/screenshots/
 .DS_Store
 .vite/
 .cache/
+
+# 3D assets delivered by the roadcraft-3d-assets skill, imported by hand
+incoming/
+__pycache__/
