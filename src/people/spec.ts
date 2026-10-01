@@ -149,7 +149,8 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     skin: pick(r, SKIN_TONES),
     eyes: pick(r, EYE_COLOURS),
     hair: old && r() < 0.7 ? pick(r, [0x9a9a98, 0xdedcd8]) : pick(r, HAIR_COLOURS),
-    hairStyle: !female && r() < 0.12 ? 'none' : female && r() < 0.6 ? 'long' : 'short',
+    // Mostly long for women and short for men, never only that.
+    hairStyle: !female && r() < 0.12 ? 'none' : female ? (r() < 0.72 ? 'long' : 'short') : r() < 0.1 ? 'long' : 'short',
     top: pick(r, ['tank', 'tshirt', 'tshirt', 'longsleeve', 'longsleeve'] as const),
     topColour: pick(r, CLOTH_COLOURS),
     bottom: female && r() < 0.35 ? 'skirt' : r() < 0.25 ? 'shorts' : 'trousers',
@@ -174,7 +175,9 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     brows: pick(r, WARDROBE.brows),
     lashes: pick(r, WARDROBE.lashes),
     hat: !female && years > 30 && r() < 0.08 ? pick(r, WARDROBE.hats) : 'none',
-    outfitTint: r() < 0.35 ? pick(r, CLOTH_COLOURS) : null,
+    // Dyed more often than not: a dozen outfits make a street of uniforms
+    // in their own colours.
+    outfitTint: r() < 0.65 ? pick(r, CLOTH_COLOURS) : null,
     ...keep.look,
   };
   // A face with something in it: most people a gentle smile, some at rest,
@@ -186,9 +189,43 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     'mouth-laugh-lines-in-out': mood < 0.65 ? r() * 0.3 : 0,
     'eyebrows-angle-down-up': (r() - 0.5) * 0.5,
     'eyebrows-trans-down-up': (r() - 0.5) * 0.4,
+    ...faceShape(r, body, years),
   };
   return { id, name: '', body, features, look: finished };
 }
+
+/**
+ * A face of one's own: the head's shape, and the nose, mouth, eyes, chin,
+ * cheeks, forehead and ears each set a little differently. Values lean to the
+ * middle (the sum of two draws) so most faces are ordinary and a few
+ * striking, as in any street. Everybody wore MakeHuman's one default face
+ * before - the same face on every body, whatever its build or skin.
+ */
+function faceShape(r: () => number, body: MacroParams, years: number): Record<string, number> {
+  const around = (amp: number): number => (r() + r() - 1) * amp;
+  const shapes = ['head-oval', 'head-round', 'head-square', 'head-rectangular', 'head-diamond', 'head-triangular', 'head-invertedtriangular'];
+  const out: Record<string, number> = { [pick(r, shapes)]: 0.25 + r() * 0.5 };
+  for (const [name, amp] of FACE_SLIDERS) out[name] = around(amp);
+  // Folded eyelids with an East Asian heritage; bags under the eyes with age.
+  out['eye-epicanthus-in-out'] = -body.asian * (0.3 + r() * 0.5);
+  out['eye-bag-decr-incr'] = Math.max(-0.3, Math.min(0.8, (years - 35) / 50 + around(0.2)));
+  return out;
+}
+
+/** The face's sliders a stranger varies, and how far either way. */
+const FACE_SLIDERS: readonly (readonly [string, number])[] = [
+  ['head-fat-decr-incr', 0.4], ['head-scale-horiz-decr-incr', 0.3], ['head-scale-vert-decr-incr', 0.3],
+  ['nose-scale-horiz-decr-incr', 0.6], ['nose-scale-vert-decr-incr', 0.5], ['nose-hump-decr-incr', 0.6],
+  ['nose-point-width-decr-incr', 0.6], ['nose-curve-concave-convex', 0.5], ['nose-nostrils-width-decr-incr', 0.5],
+  ['nose-volume-decr-incr', 0.5], ['nose-point-down-up', 0.4], ['nose-greek-decr-incr', 0.4],
+  ['mouth-scale-horiz-decr-incr', 0.5], ['mouth-lowerlip-volume-decr-incr', 0.6], ['mouth-upperlip-volume-decr-incr', 0.6],
+  ['mouth-cupidsbow-decr-incr', 0.5], ['mouth-scale-vert-decr-incr', 0.3],
+  ['eye-scale-decr-incr', 0.4], ['eye-trans-in-out', 0.4], ['eye-corner1-down-up', 0.4], ['eye-height2-decr-incr', 0.4],
+  ['chin-width-decr-incr', 0.6], ['chin-prominent-decr-incr', 0.6], ['chin-height-decr-incr', 0.4], ['chin-cleft-decr-incr', 0.4],
+  ['cheek-bones-decr-incr', 0.6], ['cheek-volume-decr-incr', 0.5],
+  ['forehead-scale-vert-decr-incr', 0.4], ['forehead-temple-decr-incr', 0.3],
+  ['ear-scale-decr-incr', 0.5], ['ear-lobe-decr-incr', 0.5], ['ear-flap-decr-incr', 0.4],
+];
 
 const unit = (x: unknown, fallback: number): number =>
   typeof x === 'number' && Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : fallback;

@@ -45,7 +45,9 @@ export interface LocalMeta {
 export interface RegionalCategory {
   readonly name: string;
   readonly has_left_and_right: boolean;
-  readonly opposites: Readonly<Record<string, string>>;
+  /** Two-way sliders: the target either way. One-target sliders (`head-oval`) have none. */
+  readonly opposites?: Readonly<Record<string, string>>;
+  readonly targets?: readonly string[];
 }
 
 export interface PeoplePacks {
@@ -162,7 +164,10 @@ export class Morpher {
       const sign = value < 0 ? 'negative' : 'positive';
       const sides = slider.category.has_left_and_right ? (side ? [side] : ['left', 'right']) : ['unsided'];
       for (const s of sides) {
-        const target = slider.category.opposites[`${sign}-${s}`];
+        // A one-target slider (a head shape) only goes one way, 0..1.
+        const target = slider.category.opposites
+          ? slider.category.opposites[`${sign}-${s}`]
+          : value > 0 ? slider.category.targets?.[0] : undefined;
         if (target) this.addLocal(result, `${slider.group}/${target}`, Math.min(1, Math.abs(value)));
       }
     }

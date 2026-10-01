@@ -1,5 +1,5 @@
 import { ageFromYears } from './body/macro';
-import { WARDROBE, randomPerson, type BottomStyle, type PersonSpec, type TopStyle } from './spec';
+import { CLOTH_COLOURS, WARDROBE, randomPerson, type BottomStyle, type PersonSpec, type TopStyle } from './spec';
 
 /**
  * The street's people: a fixed roster of MakeHuman bodies, made once from
@@ -66,16 +66,41 @@ const PLAN: readonly (readonly [RosterAge, RosterWardrobe, number])[] = [
 
 /** The MakeHuman outfits each wardrobe dresses in. */
 const OUTFIT: Readonly<Record<RosterWardrobe, { female: readonly string[]; male: readonly string[] }>> = {
-  casual: { female: ['female_casualsuit01', 'female_casualsuit02'], male: ['male_casualsuit04', 'male_casualsuit06', 'male_casualsuit02'] },
+  casual: {
+    female: ['female_casualsuit01', 'female_casualsuit02', 'female_sportsuit01'],
+    male: ['male_casualsuit01', 'male_casualsuit02', 'male_casualsuit03', 'male_casualsuit04', 'male_casualsuit05', 'male_casualsuit06'],
+  },
   'smart-casual': { female: ['female_elegantsuit01', 'female_casualsuit01'], male: ['male_casualsuit01', 'male_casualsuit03', 'male_casualsuit05'] },
   business: { female: ['female_elegantsuit01'], male: ['male_elegantsuit01'] },
-  'sport-casual': { female: ['female_sportsuit01', 'female_casualsuit02'], male: ['male_casualsuit04', 'male_casualsuit06'] },
+  'sport-casual': { female: ['female_sportsuit01', 'female_casualsuit02'], male: ['male_casualsuit02', 'male_casualsuit04', 'male_casualsuit06', 'male_worksuit01'] },
   traditional: { female: ['female_elegantsuit01', 'female_casualsuit01'], male: ['male_worksuit01', 'male_casualsuit01'] },
 };
 void WARDROBE;
 
+/** Dyes a suit takes: never a party colour. */
+const SOBER: readonly number[] = [0x22252b, 0x2c3550, 0x3a3f47, 0x4a3a2c, 0x5c5c5c, 0x1f3a32];
+
+/**
+ * An outfit and its colour that nobody in the roster wears yet: undyed or dyed
+ * one of `palette`. Picked freely, 84 people came out in 44 combinations, and
+ * a street showed the same blue suit three times over.
+ */
+function dressUnlike(r: () => number, used: Set<string>, outfits: readonly string[], palette: readonly number[]): { outfit: string; outfitTint: number | null } {
+  const tints: (number | null)[] = [null, ...palette];
+  for (let attempt = 0; attempt < 64; attempt++) {
+    const outfit = pick(r, outfits);
+    const outfitTint = pick(r, tints);
+    const key = `${outfit}|${outfitTint}`;
+    if (used.has(key)) continue;
+    used.add(key);
+    return { outfit, outfitTint };
+  }
+  return { outfit: pick(r, outfits), outfitTint: pick(r, palette) };
+}
+
 export function makeRoster(): RosterEntry[] {
   const out: RosterEntry[] = [];
+  const used = new Set<string>();
   let n = 0;
   for (const [age, wardrobe, count] of PLAN) {
     for (const gender of ['f', 'm'] as const) {
@@ -105,8 +130,7 @@ export function makeRoster(): RosterEntry[] {
             shoes: wardrobe === 'business' ? pick(r, [0x22252b, 0x3a2418]) : wardrobe === 'sport-casual' ? pick(r, [0xf2f0ea, 0x22252b]) : base.look.shoes,
             // The MakeHuman outfit for the wardrobe: a suit for business, a
             // sports suit for sport, everyday clothes otherwise.
-            outfit: pick(r, OUTFIT[wardrobe][female ? 'female' : 'male']),
-            outfitTint: wardrobe === 'business' ? null : base.look.outfitTint ?? null,
+            ...dressUnlike(r, used, OUTFIT[wardrobe][female ? 'female' : 'male'], wardrobe === 'business' ? SOBER : CLOTH_COLOURS),
           },
         };
         // Riders reach the controls of the two-wheelers as they are drawn
