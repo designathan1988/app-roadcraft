@@ -390,7 +390,12 @@ export function buildScenery(
       case 'bin':
         put('bin', { ...at, yaw: item.seed * Math.PI * 2 });
         break;
-      case 'bench':
+      case 'bench': {
+        // Its seat faces where the layout says somebody sitting looks.
+        const faces = item.faces ?? { x: -item.outward.x, y: -item.outward.y };
+        put('bench', { ...at, yaw: angleOf({ x: -faces.y, y: faces.x }) });
+        break;
+      }
       case 'postbox':
       case 'hydrant':
         put(item.kind, { ...at, yaw: facing });

@@ -6,6 +6,9 @@ import { m } from './units';
 import { carriesPedestrians } from './pedestrianAccess';
 import { orientedPolyline } from './geometry';
 import { CROSSWALK_DEPTH } from './approach';
+import { BENCH_ZONE, LAMP_ZONE, TREE_KERB_SETBACK, TREE_MIN_FOOTWAY, TREE_PIT, sectionOf } from './section';
+
+export { TREE_PIT } from './section';
 
 /**
  * Where every piece of street furniture stands.
@@ -50,6 +53,11 @@ export interface FurnitureItem {
   readonly halfLength?: number;
   /** Set for a long thing: its half extent along `outward`. */
   readonly halfWidth?: number;
+  /**
+   * Set for a seat: the way somebody sitting on it faces. A bench by the kerb
+   * turns its back on the traffic and faces the footway, as on a street.
+   */
+  readonly faces?: Vec2;
   /** A per-item number in [0, 1), stable across rebuilds, for variety. */
   readonly seed: number;
 }
@@ -65,22 +73,6 @@ const BIN_EVERY = 3;
 const BENCH_EVERY = 4;
 const HYDRANT_EVERY = 7;
 const POSTBOX_EVERY = 11;
-
-/**
- * Street trees stand in the service strip beside the kerb, half way between
- * lamp columns so a canopy never swallows a lamp head, and only where the
- * footway is wide enough to keep a clear walking width past the tree pit: an
- * avenue's 2.4 m footway keeps 1.1 m clear, a street's 2 m would keep 0.7 m,
- * and a street does without.
- */
-const TREE_MIN_FOOTWAY = 6;
-/** Side of a tree pit. */
-export const TREE_PIT = m(0.8);
-/** Clear distance between the carriageway edge and the tree pit. */
-const TREE_KERB_SETBACK = m(0.15);
-
-/** Kerb band width, the same number `roadTypes.ts` builds the ring from. */
-const KERB_BAND = 0.9;
 
 /** Spacing of shrubs along a planted median. */
 const MEDIAN_SHRUB_SPACING = 11;
@@ -112,16 +104,21 @@ export function streetFurniture(net: Network): FurnitureItem[] {
     ) : 0;
     const built = (segment?.structure ?? 'ground') !== 'ground' || authoredLift > m(1.5);
 
+    // Everything stands in the furnishing zone beside the kerb
+    // (`section.ts`), at its own depth across it and spaced along the road
+    // from the lamp column it keys off.
+    const zone = sectionOf(road, segment?.direction ?? 'both').side.furnishing;
+    const depth = zone.outer - zone.inner;
+    const seats = depth >= BENCH_ZONE - 1e-9;
+
     for (let s = start; s < length - start; s += LAMP_SPACING) {
       const frame = ribbon.full.sampleAt(s);
       const side = (Math.floor(s / LAMP_SPACING) + ribbon.id) % 2 === 0 ? -1 : 1;
       const outward = { x: frame.n.x * side, y: frame.n.y * side };
-      const out = road.width / 2 + road.sidewalk * 0.95;
-      const x = frame.p.x + frame.n.x * out * side;
-      const y = frame.p.y + frame.n.y * out * side;
-      const at = (metres: number): Vec2 => ({
-        x: x + outward.x * m(metres),
-        y: y + outward.y * m(metres),
+      /** A point `along` the road from the column, `across` the furnishing zone from its kerb edge. */
+      const at = (along: number, across: number): Vec2 => ({
+        x: frame.p.x + frame.t.x * along + outward.x * (zone.inner + across),
+        y: frame.p.y + frame.t.y * along + outward.y * (zone.inner + across),
       });
       const base = {
         segment: ribbon.id,
@@ -131,34 +128,35 @@ export function streetFurniture(net: Network): FurnitureItem[] {
       };
       const seed = hash01(ribbon.id, column);
 
-      items.push({ ...base, kind: 'lamp', x, y, radius: m(0.13), seed });
+      items.push({ ...base, kind: 'lamp', ...at(0, LAMP_ZONE / 2), radius: m(0.13), seed });
       if (built) {
         column++;
         continue;
       }
 
-      // A bin beside every third column, set a little further from the kerb
-      // than the column so the two do not occupy the same spot.
-      if (column % BIN_EVERY === 0) items.push({ ...base, kind: 'bin', ...at(0.9), radius: m(0.33), seed });
-      if (column % BENCH_EVERY === 1) {
+      // A hydrant beside the column; bins, benches and post boxes only where
+      // the zone is deep enough to hold them clear of the through zone.
+      if (column % HYDRANT_EVERY === 2) items.push({ ...base, kind: 'hydrant', ...at(m(0.8), LAMP_ZONE / 2), radius: m(0.16), seed });
+      if (seats && column % BIN_EVERY === 0) items.push({ ...base, kind: 'bin', ...at(m(1.2), BENCH_ZONE / 2), radius: m(0.33), seed });
+      if (seats && column % BENCH_EVERY === 1) {
         items.push({
           ...base,
           kind: 'bench',
-          ...at(1.1),
+          ...at(-m(2), BENCH_ZONE / 2),
           radius: Math.hypot(m(0.9), m(0.26)),
           halfLength: m(0.9),
           halfWidth: m(0.26),
+          faces: outward,
           seed,
         });
       }
-      if (column % HYDRANT_EVERY === 2) items.push({ ...base, kind: 'hydrant', ...at(-0.35), radius: m(0.16), seed });
-      if (column % POSTBOX_EVERY === 3) items.push({ ...base, kind: 'postbox', ...at(1), radius: m(0.33), seed });
+      if (seats && column % POSTBOX_EVERY === 3) items.push({ ...base, kind: 'postbox', ...at(-m(1.2), BENCH_ZONE / 2), radius: m(0.33), seed });
 
       // Street trees, one each side, half a span on from the column.
       const mid = s + LAMP_SPACING / 2;
       if (road.sidewalk >= TREE_MIN_FOOTWAY && mid < length - start) {
         const treeFrame = ribbon.full.sampleAt(mid);
-        const offset = road.width / 2 + KERB_BAND + TREE_KERB_SETBACK + TREE_PIT / 2;
+        const offset = zone.inner + TREE_KERB_SETBACK + TREE_PIT / 2;
         for (const treeSide of [-1, 1]) {
           items.push({
             kind: 'streetTree',

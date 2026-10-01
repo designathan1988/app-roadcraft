@@ -111,7 +111,8 @@ export function buildWorldNav(w: SimWorld): WorldNav {
   const benches: { x: number; y: number; face: number; key: string }[] = [];
   for (const item of streetFurniture(net)) {
     if (item.kind === 'bench' && blocksPedestrians(item)) {
-      const face = Math.atan2(-item.outward.y, -item.outward.x);
+      const faces = item.faces ?? { x: -item.outward.x, y: -item.outward.y };
+      const face = Math.atan2(faces.y, faces.x);
       for (const k of [-1, 1]) {
         const sx = item.x + item.along.x * SEAT_OFFSET * k, sy = item.y + item.along.y * SEAT_OFFSET * k;
         benches.push({ x: sx + Math.cos(face) * STAND_IN_FRONT, y: sy + Math.sin(face) * STAND_IN_FRONT, face, key: `${Math.round(item.x * 10)}:${Math.round(item.y * 10)}:${k}` });

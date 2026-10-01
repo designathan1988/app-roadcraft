@@ -93,7 +93,7 @@ export const LANE_LINE = '#eee8d7';
 
 
 /** Extra half-width of the kerb band beyond the asphalt edge. */
-const CURB_BAND = 0.9;
+export const CURB_BAND = 0.9;
 
 /**
  * Height of the footway above the carriageway, world units.

@@ -156,7 +156,7 @@ function index(w: SimWorld): Index {
       return { x, y, stepOff: clamp(s + (s - best.s), 0, edge.length) };
     });
     const list = built.benches.get(best.edge.id) ?? [];
-    list.push({ id: id++, s: best.s, side: best.side, seats, face: Math.atan2(-item.outward.y, -item.outward.x) });
+    list.push({ id: id++, s: best.s, side: best.side, seats, face: Math.atan2((item.faces ?? { x: -item.outward.x, y: -item.outward.y }).y, (item.faces ?? { x: -item.outward.x, y: -item.outward.y }).x) });
     built.benches.set(best.edge.id, list);
   }
   for (const list of built.benches.values()) list.sort((a, b) => a.s - b.s);

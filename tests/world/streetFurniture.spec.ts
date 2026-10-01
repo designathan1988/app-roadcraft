@@ -4,6 +4,8 @@ import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { Level, halfWidth } from '@world/roadTypes';
 import { TREE_PIT, blocksPedestrians, streetFurniture } from '@world/streetFurniture';
+import { roadProfile } from '@world/roadTypes';
+import { sectionOf } from '@world/section';
 
 /**
  * The street furniture layout is read by two layers - the renderer draws it and
@@ -29,6 +31,22 @@ function crossroads(): Network {
 }
 
 describe('street furniture', () => {
+  it('stands wholly in the furnishing zone beside the kerb: never in the through zone, never off the footway (P1-16)', () => {
+    const net = crossroads();
+    const items = streetFurniture(net).filter((item) => item.on === 'footway');
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      const seg = net.doc.requireSegment(item.segment);
+      const zone = sectionOf(roadProfile(seg.type, seg.lanes, seg.direction), seg.direction).side.furnishing;
+      const centre = net.ribbons.get(item.segment)!.full;
+      const across = centre.distanceTo({ x: item.x, y: item.y });
+      // Its footprint across the road: a bench's half depth, anything else's radius.
+      const half = item.halfWidth ?? item.radius;
+      expect(across - half, `${item.kind} on segment ${item.segment}`).toBeGreaterThanOrEqual(zone.inner - 1e-6);
+      expect(across + half, `${item.kind} on segment ${item.segment}`).toBeLessThanOrEqual(zone.outer + 1e-6);
+    }
+  });
+
   it('is the same list on every call', () => {
     const net = crossroads();
     expect(streetFurniture(net)).toEqual(streetFurniture(net));
