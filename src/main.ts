@@ -1,3 +1,4 @@
+import { METERS_PER_UNIT } from '@world/units';
 import { type Vec2, dist } from '@core/vec2';
 import { COARSE_EPS, clamp } from '@core/scalar';
 import { flattenSegment, shapeFromControl, type CurveShape } from '@core/bezier';
@@ -3170,6 +3171,17 @@ function updateStatus(): void {
   text('nodeCount', nodeCountLabel(doc.nodes.size));
   text('vehicleCount', vehicleCountLabel(sim.vehicles.size));
   text('pedCount', peopleCountLabel(sim.pedViews.length));
+  // The city's numbers, computed all along and shown nowhere (audit P2-02).
+  text('metricTrips', String(sim.completedTrips));
+  text('metricLost', String(sim.entryDemandLost));
+  let speedSum = 0;
+  let queued = 0;
+  for (const v of sim.vehicles.values()) {
+    speedSum += v.v;
+    if (v.v < 0.5) queued++;
+  }
+  text('metricSpeed', sim.vehicles.size ? `${Math.round((speedSum / sim.vehicles.size) * METERS_PER_UNIT * 3.6)} km/h` : '—');
+  text('metricQueued', String(queued));
   text('zoomReadout', `${Math.round(view.zoom * 100)}%`);
   // From the seam, not the flat camera: under 3D that one never moves, so
   // the readout sat frozen at its start position through every pan and zoom.

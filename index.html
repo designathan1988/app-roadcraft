@@ -120,6 +120,12 @@
         <label class="density-control"><span data-i18n="sim.people">People</span> <input id="pedIntensity" type="range" min="0" max="200" value="100" step="10" /><output id="pedIntensityValue">100%</output></label>
         <label class="density-control"><span data-i18n="sim.demand">Demand</span> <select id="demandLevel" class="themed-select"><option value="0.55" data-i18n="sim.demand.low">Low</option><option value="1" selected data-i18n="sim.demand.normal">Normal</option><option value="1.55" data-i18n="sim.demand.peak">Peak</option></select></label>
         <button id="congestionToggle" class="toggle-row" type="button" data-i18n-title="sim.congestion" title="Colour the roads by congestion" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16c3-4 5-4 8 0s5 4 8 0"/><path d="M3 10c3-4 5-4 8 0s5 4 8 0"/></svg><span data-i18n="sim.congestionLabel">Congestion map</span><i class="switch" aria-hidden="true"></i></button>
+        <dl class="sim-metrics" aria-live="off">
+          <dt data-i18n="sim.metric.trips">Trips completed</dt><dd id="metricTrips">0</dd>
+          <dt data-i18n="sim.metric.lost">Arrivals turned away</dt><dd id="metricLost">0</dd>
+          <dt data-i18n="sim.metric.speed">Mean speed</dt><dd id="metricSpeed">—</dd>
+          <dt data-i18n="sim.metric.queued">Vehicles queued</dt><dd id="metricQueued">0</dd>
+        </dl>
       </div>
     </section>
 

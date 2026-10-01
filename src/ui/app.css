@@ -725,3 +725,8 @@ body { user-select: none; -webkit-user-select: none; }
 .bw-chip.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 12%, transparent); }
 .bw-exit { color: var(--bw-text); }
 
+
+/* The city's numbers, under the simulation's controls. */
+.sim-metrics { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--ui-border); font-size: 11.5px; }
+.sim-metrics dt { color: var(--muted); }
+.sim-metrics dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }

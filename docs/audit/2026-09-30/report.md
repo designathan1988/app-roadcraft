@@ -440,7 +440,7 @@ Format: **ID · title** — location — current → expected · cause · fix �
 ### 6.1 Simulation
 
 - **P2-01 · Traffic is born and dies at any dead end** — `spawn.ts:45-53,130-133,183-202`; `destination.ts:53-57` — an unfinished street mid-city spawns and swallows cars though the comment says "only at the map edge" · `world/bounds.ts` is not consulted · count as an entry/exit only near the map boundary or at a marked "external connection" — **open**.
-- **P2-02 · Metrics computed and not shown** — `spawn.ts:91,199`, `world.ts` — `completedTrips`, `entryDemandLost` and delay are hidden · show them in the Simulation panel — **open**.
+- **P2-02 · Metrics computed and not shown** — `spawn.ts:91,199`, `world.ts` — `completedTrips`, `entryDemandLost` and delay are hidden · show them in the Simulation panel — **fixed** (trips completed, arrivals turned away, mean speed and vehicles queued, in the Simulation menu).
 - **P2-03 · People slider/Demand: the population only grows slowly; `populationShare` sampled at boot only** — `peds/spawn.ts:11,38-44`; `main.ts:142` · recompute on resize — pedestrian part **replaced 7ec1994**, resize **open**.
 - **P2-04 · Kerb stops: a vehicle stage creates and deletes pedestrians with no cleanup or ceiling** — `kerbStops.ts:574, 609-651` — **replaced ab034a6, 7ec1994** (kerb stops go through the `PeopleBridge`).
 - **P2-05 · Stop planning scans the whole city per vehicle per tick** — `kerbStops.ts:221-227, 451-523` · a footway index per segment; replan only on lanelet entry — **open** (Drive v2 stop tasks).
