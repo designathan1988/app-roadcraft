@@ -72,6 +72,8 @@ interface Walker {
   leader: Walker | null;
   /** DESTINATION: where the trip ends, and whether it ends by leaving. */
   goal: Vec2;
+  /** Navigation frame of the trip, independent of the body's visual facing. */
+  routeDirection: Vec2;
   leaving: boolean;
   mode: Mode;
   /** Waiting: the place it waits at, and what for - a zebra, or a narrow passage (and the way it goes through). */
@@ -438,7 +440,7 @@ function create(w: SimWorld, s: State, id: number, at: Vec2, heading: number, tr
   const p: Walker = {
     id, view, agent, x: pos.x, y: pos.z, h: pos.y, prevX: pos.x, prevY: pos.z, prevHeading: heading, heading, turnV: 0, speed: 0, age: 0,
     pace, ageClass: cls, gender: sex, party, rank: traits.rank ?? 0, leader: traits.leader ?? null,
-    goal: { x: pos.x, y: pos.z }, leaving: false, mode: 'walk', waitAt: null, zebra: null, narrow: null, waited: 0, granted: new Map(),
+    goal: { x: pos.x, y: pos.z }, routeDirection: { x: 1, y: 0 }, leaving: false, mode: 'walk', waitAt: null, zebra: null, narrow: null, waited: 0, granted: new Map(),
     passage: null, aside: null, settle: null, asked: null, holding: null, think: id % THINK_EVERY, segment: undefined, onZebra: null, scripted: false,
     blocked: 0, rest: 0, onZebras: true, topSpeed: pace, eased: null, going: 0, replans: 0, yields: 0,
   };
@@ -604,6 +606,17 @@ function decide(w: SimWorld, s: State, p: Walker): void {
   // The way ahead from here to the destination, as Detour would walk it.
   const route = s.nav!.query.computePath({ x: p.x, y: p.h, z: p.y }, { x: p.goal.x, y: s.nav!.elevation.at(p.goal.x, p.goal.y), z: p.goal.y });
   const path = route.success ? route.path : [];
+  // Keep the trip's frame within its arrival radius, so the final approach
+  // to a stopping place does not turn the whole party around that place.
+  if (Math.hypot(p.goal.x - p.x, p.goal.y - p.y) > ARRIVED) {
+    for (let i = 1; i < path.length; i++) {
+      const dx = path[i]!.x - path[0]!.x, dy = path[i]!.z - path[0]!.z;
+      const length = Math.hypot(dx, dy);
+      if (length < 1e-6) continue;
+      p.routeDirection = { x: dx / length, y: dy / length };
+      break;
+    }
+  }
   // A zebra ahead not yet let onto: let on, or wait at the kerb.
   const zebra = zebraAhead(s, p, path);
   if (zebra && Math.hypot(zebra.entry.x - p.x, zebra.entry.y - p.y) < ASK_AT) {
@@ -656,7 +669,7 @@ function follow(s: State, p: Walker, lead: Walker): void {
     waitThere(s, p, waitSlot(s, p, lead.zebra, lead.waitAt));
     return;
   }
-  const hx = Math.cos(lead.heading), hy = Math.sin(lead.heading);
+  const { x: hx, y: hy } = lead.routeDirection;
   // Beside its leader; in single file behind it where there is no room
   // beside it - the leader waiting for, or going through, a passage one
   // person wide, or no walkable ground at the place beside it (a place
@@ -1165,8 +1178,6 @@ function step(w: SimWorld, s: State): void {
   if (!s.nav || !s.crowd) return;
   s.clock += DT;
   indexReservations(w);
-  const P = ((globalThis as unknown as { __crowdProf?: Record<string, number> }).__crowdProf ??= {});
-  const T0 = performance.now();
   const arrived: Walker[] = [];
   // Intent: staggered looks at the way ahead; every tick while waiting.
   for (const p of s.walkers) {
@@ -1193,9 +1204,7 @@ function step(w: SimWorld, s: State): void {
   }
   for (const p of s.walkers) zebraAccess(s, p);
   // Movement: Detour's crowd, one fixed step.
-  const T1 = performance.now(); P.decide = (P.decide ?? 0) + T1 - T0;
   s.crowd.update(DT);
-  const T2 = performance.now(); P.detour = (P.detour ?? 0) + T2 - T1;
   // Read back, and face the way moved.
   for (const p of s.walkers) {
     const pos = p.agent.position();
@@ -1236,11 +1245,8 @@ function step(w: SimWorld, s: State): void {
     if (p.age % 0.5 < DT) p.segment = roadUnder(s, p);
     if (!p.leader && Math.hypot(p.goal.x - p.x, p.goal.y - p.y) < ARRIVED) arrived.push(p);
   }
-  const T3 = performance.now(); P.readback = (P.readback ?? 0) + T3 - T2;
   trackPassages(s);
-  const T4 = performance.now(); P.passages = (P.passages ?? 0) + T4 - T3;
   makeWay(s);
-  P.makeWay = (P.makeWay ?? 0) + performance.now() - T4;
   for (const p of arrived) {
     if (!s.byId.has(p.id) || p.scripted) continue;
     const party = s.walkers.filter((q) => q.leader === p);

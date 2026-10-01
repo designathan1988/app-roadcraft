@@ -16,6 +16,10 @@ Read that, `AGENTS.md`, `CLAUDE.md` and the player's orders
   default.
 - Commit holding the work so far: `40f149b` ("People: Detour crowd engine behind ?people=crowd").
   It was pushed to `designathan1988/app-roadcraft` main.
+- First continuation step: [crowd-step-01.md](crowd-step-01.md). Companion places
+  use a navigation frame instead of the leader's visual heading; city backward
+  ticks 1395 -> 1176, battery still 8/19. Hygiene and movement work remain open.
+  The player's relayed Claude review at 16:06 approved committing this step.
 
 ## 2. Architecture (keep it)
 

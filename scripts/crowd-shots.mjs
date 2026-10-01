@@ -1,4 +1,4 @@
-/* global window, document, requestAnimationFrame, Image, setTimeout */
+/* global window, document, requestAnimationFrame, Image */
 // One crowd scenario (tests/fixtures/crowdScenarios.ts) in the RUNNING game
 // (`npm run dev`), photographed as a timed sequence from a FIXED camera, so
 // slides, jumps, swaying and uneven speed stay visible. Writes <out>/<name>.jpg.
@@ -12,6 +12,7 @@ const [BASE, OUTDIR, NAME, START = '4', STEP = '1', FRAMES = '8', DIST = '40', E
 const OUT = path.resolve(OUTDIR);
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', args: ['--use-gl=angle', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
+try {
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e.message)));
@@ -30,6 +31,8 @@ const placed = await page.evaluate(async ({ name, start, cx, cy }) => {
   step(R.sim, { traffic: false, pedestrians: true });
   const ids = [];
   for (const wk of sc.walkers(R.net)) ids.push(addScriptedWalker(R.sim, { x: wk.x, y: wk.y, goal: wk.goal, ...(wk.pace !== undefined ? { pace: wk.pace } : {}), ...(wk.leader !== undefined ? { leader: ids[wk.leader] } : {}) }));
+  // A zero-second photo still needs the initial bodies published; no tick is advanced.
+  R.sim.pedEngine.publish(R.sim);
   for (let i = 0; i < Math.round(start / R.DT); i++) step(R.sim, { traffic: false, pedestrians: true });
   window.__focus = sc.focus;
   if (cx !== undefined) window.__fixed = { x: Number(cx), y: Number(cy) };
@@ -48,8 +51,24 @@ for (let k = 0; k < Number(FRAMES); k++) {
     }
     const cx = window.__fixed.x, cy = window.__fixed.y;
     R.lookAt(cx, cy, 20);
+    R.scene().census();
     for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(r));
-    await new Promise((r) => setTimeout(r, 250));
+    // Casting precedes asynchronous model loading. Wait for the actual drawn
+    // meshes of the visible cast, with simulation time and camera held fixed.
+    const deadline = Date.now() + 30000;
+    for (;;) {
+      const drawn = [];
+      let assetError;
+      R.scene().scene.traverse((o) => {
+        if (o.userData.error) assetError = o.userData.error;
+        if (o.isInstancedMesh && o.count > 0 && o.visible) drawn.push(o.name);
+      });
+      if (assetError) throw new Error(`Citizen model failed to load: ${assetError}`);
+      const cast = R.scene().census();
+      if (cast.every((person) => drawn.some((name) => name.startsWith(`citizen-${person.model}-`)))) break;
+      if (Date.now() >= deadline) throw new Error('Timed out waiting for visible citizen meshes');
+      await new Promise((r) => requestAnimationFrame(r));
+    }
     const h = R.scene().elevationAt(cx, cy);
     const shot = R.scene().inspect.shot({ x: cx, y: cy, h: h + 1, azimuth: 1.25, elevation: elev, distance: dist, fov: 35, width: 640, height: 480 });
     for (let i = 0; i < Math.round(stepSeconds / R.DT); i++) step(R.sim, { traffic: false, pedestrians: true });
@@ -70,4 +89,7 @@ const sheet = await page.evaluate(async ({ urls, rows, step }) => {
 }, { urls: shots, rows, step: Number(STEP) });
 fs.writeFileSync(path.join(OUT, `${NAME}.jpg`), Buffer.from(sheet.split(',')[1], 'base64'));
 console.log('placed', placed, 'errors', errors.slice(0, 3));
+if (errors.length) throw new Error(`Scenario page errors: ${errors.join('; ')}`);
+} finally {
 await browser.close();
+}
