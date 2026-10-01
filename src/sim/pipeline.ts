@@ -81,7 +81,9 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
   const deps = w.signalDeps();
   for (const node of w.junctionNodesInOrder()) {
     const c = w.controllers.get(node);
-    if (c) stepController(c, deps);
+    // A junction with no lights (stop, priority, roundabout) runs no cycle:
+    // every reader of a controller asks `signalised` first (audit P1-44).
+    if (c && w.graph.junctions.get(node)?.signalised) stepController(c, deps);
   }
   lap('1 signals');
 
@@ -226,7 +228,7 @@ function updateStallCounters(w: SimWorld): void {
       continue;
     }
     const conn = nextConnector(w, v);
-    const c = conn ? w.controller(conn.node) : undefined;
+    const c = conn && w.graph.junctions.get(conn.node)?.signalised ? w.controller(conn.node) : undefined;
     const green = conn && c ? signalStateFor(c, conn.group) === 'green' : false;
     const impeded = v.constraints.obstacles.some(
       (o) =>

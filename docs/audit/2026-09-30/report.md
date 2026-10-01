@@ -191,12 +191,12 @@ Details in section 8.
 - **Cause:** the rectangle is the min/max of **world coordinates** while the camera has an azimuth (Q/E).
 - **Fix:** build the rectangle in the camera frame and apply that angle to the building.
 
-**P1-04 · The Road tool's tray (class, straight/curve/free, height, lanes) does not appear at boot [E2E] — `open` (new UI shell, Lot U)**
+**P1-04 · The Road tool's tray (class, straight/curve/free, height, lanes) does not appear at boot [E2E] — `fixed 83c45b0, 64ecfa1` (the side panel shows the tool in hand's tray, and is put in that mode at boot)**
 - **Location:** `workspace.ts` (tier 2 hidden), `main.ts` (`setTool`).
 - **Current:** the game opens with the Road tool active but its tray hidden; it opens only on a **second** click of the active tool, while Terrain and Buildings open theirs at once.
 - **Fix:** sync the tray at boot and on every `setTool`; a boot capture in `verify-ui`.
 
-**P1-05 · Move, Split, Upgrade and Junction control exist only on the keyboard [E2E][code] — `open` (Lot U)**
+**P1-05 · Move, Split, Upgrade and Junction control exist only on the keyboard [E2E][code] — `fixed 83c45b0, ba5d0a8` (buttons in the road panel, each with its key in the tooltip)**
 - **Location:** `index.html:84-89`; `main.ts:1270-1281` (shortcuts u, m, x, c).
 - **Current:** no button for move, split or control; pressing C highlights nothing and the **road** tray stays open; shortcuts appear nowhere.
 - **Fix:** an "Edit road" tool with buttons labelled "Name (Key)", its own tray for Control, correct `aria-pressed`.
@@ -386,7 +386,7 @@ Details in section 8.
 - **Location:** `sim/world.ts:236, 252, 471-485`; `fsm.ts:376-403`.
 - **Fix:** a plan signature; rebuild only the changed junctions; deferred adoption.
 
-**P1-44 · Junctions without lights run a light cycle; the inspector shows green/amber/red on Stop and Priority [code] — `open`**
+**P1-44 · Junctions without lights run a light cycle; the inspector shows green/amber/red on Stop and Priority [code] — `fixed` (no cycle is stepped without lights; the stall counters and the inspector's lamps ask `signalised`)**
 - **Location:** `signals/plan.ts:152-166, 406-418`; `pipeline.ts:85-88`; `ui/inspector.ts:327-331`.
 - **Fix:** skip `stepController` and demand when not signalised; guard the inspector.
 
@@ -487,7 +487,7 @@ Format: **ID · title** — location — current → expected · cause · fix �
 - **P2-40 · Relief and height are imperceptible; out-of-range values are clamped silently** [E2E] — "Road height" 9999 → 5.7 m with no notice; a junction at +5.7 m looks flat from above · show the limit; relief shading or an optional camera tilt — **partly fixed 603400c** (free camera tilt from 30° to straight down, and free turning); the silent clamp is still open.
 - **P2-41 · Bulldoze does not highlight what it will remove on hover** [E2E] — **open** (Lot U).
 - **P2-42 · The "Allowed movements" list is unreadable** [E2E] — repeats "Local road — Local road (straight)" · label by leg (N/S/E/W or bearing) and highlight on hover — **open** (Lot U).
-- **P2-43 · Control (C) and other tools show the road tray** [E2E] — a tray per tool — **open** (Lot U).
+- **P2-43 · Control (C) and other tools show the road tray** [E2E] — a tray per tool — **fixed 83c45b0** (each tool fills the side panel with its own tray or help card).
 - **P2-44 · A language change leaves parts in the old language** [E2E] — "Select" stays Portuguese; operation titles; lanes; an open menu — **open** (Lot U).
 - **P2-45 · The status bar shows raw audit codes to the player** — see P1-33 — **open**.
 - **P2-46 · Two hint systems; the one describing the canvas is dead in the editor; hints cut to one line on phones** — one hint source per mode — **open** (Lot U).

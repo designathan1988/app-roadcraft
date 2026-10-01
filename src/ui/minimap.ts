@@ -27,13 +27,20 @@ interface MinimapTransform {
 
 const transforms = new WeakMap<HTMLCanvasElement, MinimapTransform>();
 
+/**
+ * The caches are keyed on the revision AND the size of what they summarise: a
+ * map loaded in place starts its revision over at 1, so a revision alone could
+ * match the old map's, and the minimap kept drawing roads that were gone.
+ */
 interface DocumentBoundsCache {
   readonly revision: number;
+  readonly size: number;
   readonly bounds: Aabb | null;
 }
 
 interface RoadOrderCache {
   readonly revision: number;
+  readonly size: number;
   readonly order: readonly SegmentRibbon[];
 }
 
@@ -67,13 +74,14 @@ export function drawMinimap(
   const bounds = worldBounds(doc, camera);
   const scale = Math.min(w / spanX(bounds), h / spanY(bounds));
   const ox = w / 2 - ((bounds.minX + bounds.maxX) / 2) * scale;
-  const oy = h / 2 - ((bounds.minY + bounds.maxY) / 2) * scale;
+  // North (+Y) is up, as in the 3D view: the map was drawn upside down.
+  const oy = h / 2 + ((bounds.minY + bounds.maxY) / 2) * scale;
   transforms.set(canvas, { scale, ox, oy });
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = TERRAIN_SHADE;
   ctx.fillRect(0, 0, w, h);
-  ctx.setTransform(scale, 0, 0, scale, ox, oy);
+  ctx.setTransform(scale, 0, 0, -scale, ox, oy);
 
   // Building footprints, under the roads (docs/buildings.md).
   if (doc.buildings.size > 0) {
@@ -166,11 +174,11 @@ export function minimapToWorld(
   const fallbackBounds = worldBounds(doc, camera);
   const scale = transform?.scale ?? Math.min(w / spanX(fallbackBounds), h / spanY(fallbackBounds));
   const ox = transform?.ox ?? w / 2 - ((fallbackBounds.minX + fallbackBounds.maxX) / 2) * scale;
-  const oy = transform?.oy ?? h / 2 - ((fallbackBounds.minY + fallbackBounds.maxY) / 2) * scale;
+  const oy = transform?.oy ?? h / 2 + ((fallbackBounds.minY + fallbackBounds.maxY) / 2) * scale;
 
   const px = (clientX - rect.left) * dpr;
   const py = (clientY - rect.top) * dpr;
-  return { x: (px - ox) / scale, y: (py - oy) / scale };
+  return { x: (px - ox) / scale, y: (oy - py) / scale };
 }
 
 const spanX = (b: Aabb): number => Math.max(1, b.maxX - b.minX);
@@ -203,7 +211,7 @@ function worldBounds(doc: RoadDoc, camera: Camera | null): Aabb {
 /** Static document extent, rebuilt only after an authoring mutation. */
 function boundsOfDocument(doc: RoadDoc): Aabb | null {
   const cached = documentBoundsCache.get(doc);
-  if (cached?.revision === doc.revision) return cached.bounds;
+  if (cached?.revision === doc.revision && cached.size === doc.nodes.size) return cached.bounds;
 
   let minX = Infinity;
   let minY = Infinity;
@@ -216,15 +224,15 @@ function boundsOfDocument(doc: RoadDoc): Aabb | null {
     maxY = Math.max(maxY, n.y);
   }
   const bounds = Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
-  documentBoundsCache.set(doc, { revision: doc.revision, bounds });
+  documentBoundsCache.set(doc, { revision: doc.revision, size: doc.nodes.size, bounds });
   return bounds;
 }
 
 /** Draw order changes only when network geometry changes, never per tick. */
 function orderedRibbons(net: Network): readonly SegmentRibbon[] {
   const cached = roadOrderCache.get(net);
-  if (cached?.revision === net.revision) return cached.order;
+  if (cached?.revision === net.revision && cached.size === net.ribbons.size && cached.order.every((r) => net.ribbons.get(r.id) === r)) return cached.order;
   const order = [...net.ribbons.values()].sort((a, b) => b.road.width - a.road.width);
-  roadOrderCache.set(net, { revision: net.revision, order });
+  roadOrderCache.set(net, { revision: net.revision, size: net.ribbons.size, order });
   return order;
 }

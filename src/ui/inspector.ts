@@ -3,7 +3,7 @@ import { movementKey, type JunctionControl, type RoadDoc, type SegmentDirection 
 import type { Network } from '@world/network';
 import type { JunctionTopology } from '@world/lanelets';
 import type { CurveShape } from '@core/bezier';
-import { LAST_UPGRADE_CLASS, ROAD_TYPES, roadProfile, roadType, travelLanes } from '@world/roadTypes';
+import { LAST_UPGRADE_CLASS, ROAD_TYPES, roadProfile, travelLanes } from '@world/roadTypes';
 import { METERS_PER_UNIT, UNITS_PER_METER } from '@world/units';
 import type { SimWorld } from '@sim/world';
 import { signalStateFor } from '@sim/signals/query';
@@ -324,7 +324,8 @@ function nodeStats(doc: RoadDoc, sim: SimWorld, id: NodeId): string | null {
   // Each signal group as a lamp: the colour is read faster than the word, and
   // the word stays for anyone who cannot tell the lamps apart.
   let lamps = '';
-  if (controller && junction && junction.groups.length) {
+  // Lamps only where there are lights: a stop or priority junction has none.
+  if (controller && junction?.signalised && junction.groups.length) {
     lamps = `<div class="signal-chips">${junction.groups.map((g) => {
       const state = signalStateFor(controller, g.id);
       return `<span class="signal-chip" data-state="${state}"><i></i>${t('inspector.group', { id: g.id + 1 })} · ${signalLabel(state)}</span>`;
@@ -401,6 +402,18 @@ function renderNode(
   });
 }
 
+/** The compass point a leg runs towards from its junction (north is up the map). */
+function compassOf(doc: RoadDoc, nodeId: NodeId, seg: { a: NodeId; b: NodeId }): string {
+  const here = doc.node(nodeId);
+  const there = doc.node(seg.a === nodeId ? seg.b : seg.a);
+  if (!here || !there) return '?';
+  // North is +Y, up the map (`world/lanelets.ts`); 0 north, clockwise.
+  const angle = Math.atan2(there.x - here.x, there.y - here.y);
+  const points = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'] as const;
+  const i = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
+  return t(`compass.${points[i]}`);
+}
+
 function movementControls(
   doc: RoadDoc,
   junction: JunctionTopology | undefined,
@@ -418,7 +431,14 @@ function movementControls(
     movements.set(key, {
       from: connector.inSegment,
       to: connector.outSegment,
-      label: `${roadTypeName(roadType(from.type))} → ${roadTypeName(roadType(to.type))} (${turnLabel(connector.turn)})`,
+      // By the way each leg points from the junction - north, south-east... -
+      // not by class: at a crossroads of two avenues every row read
+      // "Avenue -> Avenue (left)" and could not be told apart (P2-42).
+      label: t('inspector.movementBy', {
+        from: compassOf(doc, connector.node, from),
+        to: compassOf(doc, connector.node, to),
+        turn: turnLabel(connector.turn),
+      }),
     });
   }
 

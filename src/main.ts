@@ -2102,7 +2102,8 @@ function updateCameraNeedle(): void {
   const { cssW: w, cssH: h } = surface;
   const c = view.centre;
   const a = view.toScreen(c, w, h);
-  const b = view.toScreen({ x: c.x, y: c.y - 10 }, w, h);
+  // North is +Y (`lanelets.ts`, `classifyTurn`): up the map.
+  const b = view.toScreen({ x: c.x, y: c.y + 10 }, w, h);
   const angle = Math.round((Math.atan2(b.x - a.x, a.y - b.y) * 180) / Math.PI);
   if (angle === needleAngle) return;
   needleAngle = angle;
