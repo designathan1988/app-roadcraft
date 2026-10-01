@@ -1,0 +1,247 @@
+{
+ "format": "roadcraft-people-skins/1",
+ "source": "https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip",
+ "license": "CC0-1.0",
+ "skins": [
+  {
+   "name": "middleage_african_female",
+   "age": "middleage",
+   "origin": "african",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    98,
+    56,
+    39
+   ]
+  },
+  {
+   "name": "middleage_african_male",
+   "age": "middleage",
+   "origin": "african",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    95,
+    59,
+    42
+   ]
+  },
+  {
+   "name": "middleage_asian_female",
+   "age": "middleage",
+   "origin": "asian",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    213,
+    168,
+    138
+   ]
+  },
+  {
+   "name": "middleage_asian_male",
+   "age": "middleage",
+   "origin": "asian",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    209,
+    163,
+    134
+   ]
+  },
+  {
+   "name": "middleage_caucasian_female",
+   "age": "middleage",
+   "origin": "caucasian",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    205,
+    161,
+    133
+   ]
+  },
+  {
+   "name": "middleage_caucasian_male",
+   "age": "middleage",
+   "origin": "caucasian",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    205,
+    160,
+    132
+   ]
+  },
+  {
+   "name": "old_african_female",
+   "age": "old",
+   "origin": "african",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    93,
+    41,
+    24
+   ]
+  },
+  {
+   "name": "old_african_male",
+   "age": "old",
+   "origin": "african",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    101,
+    57,
+    35
+   ]
+  },
+  {
+   "name": "old_asian_female",
+   "age": "old",
+   "origin": "asian",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    199,
+    144,
+    109
+   ]
+  },
+  {
+   "name": "old_asian_male",
+   "age": "old",
+   "origin": "asian",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    187,
+    126,
+    92
+   ]
+  },
+  {
+   "name": "old_caucasian_female",
+   "age": "old",
+   "origin": "caucasian",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    211,
+    172,
+    148
+   ]
+  },
+  {
+   "name": "old_caucasian_male",
+   "age": "old",
+   "origin": "caucasian",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    225,
+    177,
+    142
+   ]
+  },
+  {
+   "name": "young_african_female",
+   "age": "young",
+   "origin": "african",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    96,
+    56,
+    41
+   ]
+  },
+  {
+   "name": "young_african_male",
+   "age": "young",
+   "origin": "african",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    87,
+    56,
+    41
+   ]
+  },
+  {
+   "name": "young_asian_female",
+   "age": "young",
+   "origin": "asian",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    207,
+    158,
+    126
+   ]
+  },
+  {
+   "name": "young_asian_male",
+   "age": "young",
+   "origin": "asian",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    199,
+    155,
+    130
+   ]
+  },
+  {
+   "name": "young_caucasian_female",
+   "age": "young",
+   "origin": "caucasian",
+   "sex": "female",
+   "variant": 1,
+   "average": [
+    206,
+    158,
+    131
+   ]
+  },
+  {
+   "name": "young_caucasian_female2",
+   "age": "young",
+   "origin": "caucasian",
+   "sex": "female",
+   "variant": 2,
+   "average": [
+    205,
+    154,
+    127
+   ]
+  },
+  {
+   "name": "young_caucasian_male",
+   "age": "young",
+   "origin": "caucasian",
+   "sex": "male",
+   "variant": 1,
+   "average": [
+    224,
+    169,
+    137
+   ]
+  },
+  {
+   "name": "young_caucasian_male2",
+   "age": "young",
+   "origin": "caucasian",
+   "sex": "male",
+   "variant": 2,
+   "average": [
+    199,
+    155,
+    128
+   ]
+  }
+ ]
+}

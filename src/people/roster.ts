@@ -1,5 +1,5 @@
 import { ageFromYears } from './body/macro';
-import { randomPerson, type BottomStyle, type PersonSpec, type TopStyle } from './spec';
+import { WARDROBE, randomPerson, type BottomStyle, type PersonSpec, type TopStyle } from './spec';
 
 /**
  * The street's people: a fixed roster of MakeHuman bodies, made once from
@@ -64,6 +64,16 @@ const PLAN: readonly (readonly [RosterAge, RosterWardrobe, number])[] = [
   ['senior', 'casual', 3], ['senior', 'smart-casual', 3], ['senior', 'sport-casual', 1], ['senior', 'business', 1], ['senior', 'traditional', 2],
 ];
 
+/** The MakeHuman outfits each wardrobe dresses in. */
+const OUTFIT: Readonly<Record<RosterWardrobe, { female: readonly string[]; male: readonly string[] }>> = {
+  casual: { female: ['female_casualsuit01', 'female_casualsuit02'], male: ['male_casualsuit04', 'male_casualsuit06', 'male_casualsuit02'] },
+  'smart-casual': { female: ['female_elegantsuit01', 'female_casualsuit01'], male: ['male_casualsuit01', 'male_casualsuit03', 'male_casualsuit05'] },
+  business: { female: ['female_elegantsuit01'], male: ['male_elegantsuit01'] },
+  'sport-casual': { female: ['female_sportsuit01', 'female_casualsuit02'], male: ['male_casualsuit04', 'male_casualsuit06'] },
+  traditional: { female: ['female_elegantsuit01', 'female_casualsuit01'], male: ['male_worksuit01', 'male_casualsuit01'] },
+};
+void WARDROBE;
+
 export function makeRoster(): RosterEntry[] {
   const out: RosterEntry[] = [];
   let n = 0;
@@ -93,6 +103,10 @@ export function makeRoster(): RosterEntry[] {
             bottom: pick(r, dress.bottom(female)),
             bottomColour: pick(r, dress.bottomColours.filter((c) => c !== topColour)),
             shoes: wardrobe === 'business' ? pick(r, [0x22252b, 0x3a2418]) : wardrobe === 'sport-casual' ? pick(r, [0xf2f0ea, 0x22252b]) : base.look.shoes,
+            // The MakeHuman outfit for the wardrobe: a suit for business, a
+            // sports suit for sport, everyday clothes otherwise.
+            outfit: pick(r, OUTFIT[wardrobe][female ? 'female' : 'male']),
+            outfitTint: wardrobe === 'business' ? null : base.look.outfitTint ?? null,
           },
         };
         // Riders reach the controls of the two-wheelers as they are drawn

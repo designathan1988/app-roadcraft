@@ -8,6 +8,10 @@ import {
   PerspectiveCamera,
   Scene,
   SRGBColorSpace,
+  TextureLoader,
+  DoubleSide,
+  type Material,
+  type Texture,
   WebGLRenderer,
 } from 'three';
 
@@ -16,6 +20,8 @@ import { Morpher } from '@people/body/morph';
 import type { PersonLook, PersonSpec } from '@people/spec';
 import { captureBind, captureBindRotations, neutralWalkFor, walkDuration, type NeutralWalk, type WalkSex } from '../citizenWalk';
 import { createPersonRig, type PersonRig } from './personRig';
+import { loadProxyItem, proxyUrl, type ProxyItem } from '@people/body/proxy';
+import { wornItems } from '@people/spec';
 
 /**
  * The Person Creator's 3D preview: the person as the street will see them -
@@ -111,20 +117,78 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
   // A rejection nobody awaits is still reported, never thrown at boot.
   ready.catch(() => {});
 
+  /**
+   * Close up, each garment, the hair, brows and lashes are drawn with their
+   * own textures (see-through where the texture is), over the body's vertex
+   * colours; the crowd draws the colours sampled into the vertices.
+   */
+  const textures = new Map<string, Texture>();
+  const loader = new TextureLoader();
+  const textureOf = (file: string): Texture => {
+    let t = textures.get(file);
+    if (!t) {
+      t = loader.load(proxyUrl(file), () => requestDraw());
+      t.colorSpace = SRGBColorSpace;
+      // The packs' v runs down from the image's top row: drawn as it is.
+      t.flipY = false;
+      textures.set(file, t);
+    }
+    return t;
+  };
+  const texture = (r: PersonRig, look: PersonLook): void => {
+    const names = r.mesh.geometry.userData['wornGroups'] as string[] | undefined;
+    if (!names) return;
+    const base = r.mesh.material as MeshStandardMaterial;
+    const materials: Material[] = names.map((name, i) => {
+      if (i === 0) return base;
+      const item = proxies.get(name);
+      if (!item?.textureFile) return base;
+      const kind = item.pack.kind;
+      const m = new MeshStandardMaterial({ map: textureOf(item.textureFile), roughness: 0.85, metalness: 0, side: DoubleSide });
+      if (item.transparent) { m.alphaTest = 0.4; m.transparent = kind !== 'clothes'; m.depthWrite = kind === 'hair'; }
+      // Grey strands dyed the look's hair colour; an outfit dyed when asked.
+      if (kind === 'hair' || kind === 'eyebrows') m.color.setHex(look.hair).multiplyScalar(kind === 'eyebrows' ? 1.2 : 1.7);
+      else if (kind === 'eyelashes') m.color.setHex(0x221b16);
+      else if (name === look.outfit && look.outfitTint !== null && look.outfitTint !== undefined) m.color.setHex(look.outfitTint).lerp(new Color(0xffffff), 0.25);
+      (m.userData as Record<string, unknown>)['skinned'] = true;
+      return m;
+    });
+    r.mesh.material = materials;
+  };
+  /** Garments loaded so far, by name. */
+  const proxies = new Map<string, ProxyItem>();
+  const loadingItems = new Set<string>();
+  /** Garments that could not be loaded: never asked for again (drawn in the shells). */
+  const failedItems = new Set<string>();
   const rebuild = (): void => {
     if (!morpher || !assets || !person) return;
+    // The look's garments first: the person is rebuilt once they are to hand.
+    const missing = wornItems(person.look).filter((n) => !proxies.has(n) && !failedItems.has(n));
+    if (missing.length) {
+      const fresh = missing.filter((n) => !loadingItems.has(n));
+      for (const n of fresh) loadingItems.add(n);
+      if (fresh.length) {
+        void Promise.all(fresh.map(async (n) => {
+          try { proxies.set(n, await loadProxyItem(n)); } catch { failedItems.add(n); }
+        }))
+          .finally(() => { for (const n of fresh) loadingItems.delete(n); rebuild(); });
+      }
+      if (rig) return;
+    }
     const positions = morpher.shape(person.body, person.features);
     walkSex = person.body.gender >= 0.5 ? 'male' : 'female';
     const next = createPersonRig({
       data: assets.mesh, skeleton: assets.skeleton, bodyRange: assets.bodyRange,
-      positions, look: person.look, capture: captureBind(walkSex), captureAxes: captureBindRotations(walkSex),
+      positions, look: person.look, capture: captureBind(walkSex), captureAxes: captureBindRotations(walkSex), proxies,
     });
     if (rig) {
       scene.remove(rig.scene);
       rig.mesh.geometry.dispose();
-      (rig.mesh.material as MeshStandardMaterial).dispose();
+      const old = rig.mesh.material;
+      for (const m of Array.isArray(old) ? old : [old]) m.dispose();
     }
     rig = next;
+    texture(rig, person.look);
     rig.mesh.castShadow = true;
     scene.add(rig.scene);
     height = rig.height;

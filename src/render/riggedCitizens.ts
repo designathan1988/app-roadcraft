@@ -15,6 +15,8 @@ import type { CitizenModel } from './citizenCasting';
 import { loadPeopleAssets } from '@people/body/assets';
 import { Morpher } from '@people/body/morph';
 import { createPersonRig } from './people/personRig';
+import { loadProxyItem, type ProxyItem } from '@people/body/proxy';
+import { wornItems } from '@people/spec';
 import { captureBind, captureBindRotations } from './citizenWalk';
 import { type Gradient, shearMatrix } from './groundShear';
 import {
@@ -411,7 +413,14 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     const people = await loadPeopleAssets();
     morpher ??= new Morpher(people.packs);
     const person = model.person!;
+    // The garments it wears, loaded first; failing that it is drawn in the
+    // tailored shells rather than not at all.
+    const proxies = new Map<string, ProxyItem>();
+    try {
+      for (const [name, item] of await Promise.all(wornItems(person.look).map(async (n) => [n, await loadProxyItem(n)] as const))) proxies.set(name, item);
+    } catch { proxies.clear(); }
     const rig = createPersonRig({
+      proxies,
       data: people.mesh, skeleton: people.skeleton, bodyRange: people.bodyRange,
       positions: morpher.shape(person.body, person.features), look: person.look,
       capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),

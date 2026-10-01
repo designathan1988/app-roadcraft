@@ -1,9 +1,347 @@
 {
-  "format": "roadcraft-people-proxies/1",
-  "source": {
-    "repo": "makehumancommunity/mpfb2",
-    "sha": "afb9f530a7c2741dedb8df0ebae2e0b183caec21"
+ "format": "roadcraft-people-proxies/2",
+ "source": "https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip",
+ "license": "CC0-1.0 (MakeHuman system assets; each .mhclo states its CC0 release)",
+ "items": [
+  {
+   "name": "fedora01",
+   "kind": "clothes",
+   "vertices": 702,
+   "triangles": 1244,
+   "license": "CC0-1.0"
   },
-  "items": [],
-  "note": "MPFB2 ships no clothes, hair, eyebrow, eyelash or proxy (.mhclo/.proxy/.mhmat) files in src/mpfb/data at this commit; they live in the separate MakeHuman system asset pack, to be imported in step H3."
+  {
+   "name": "fedora_cocked",
+   "kind": "clothes",
+   "vertices": 702,
+   "triangles": 1244,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "female_casualsuit01",
+   "kind": "clothes",
+   "vertices": 2406,
+   "triangles": 4236,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "female_casualsuit02",
+   "kind": "clothes",
+   "vertices": 3204,
+   "triangles": 5488,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "female_elegantsuit01",
+   "kind": "clothes",
+   "vertices": 2446,
+   "triangles": 4192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "female_sportsuit01",
+   "kind": "clothes",
+   "vertices": 1986,
+   "triangles": 3436,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "male_casualsuit01",
+   "kind": "clothes",
+   "vertices": 8984,
+   "triangles": 16672,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "male_casualsuit02",
+   "kind": "clothes",
+   "vertices": 2349,
+   "triangles": 4120,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "male_casualsuit03",
+   "kind": "clothes",
+   "vertices": 2796,
+   "triangles": 4800,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "male_casualsuit04",
+   "kind": "clothes",
+   "vertices": 1887,
+   "triangles": 3240,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "male_casualsuit05",
+   "kind": "clothes",
+   "vertices": 3871,
+   "triangles": 5996,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "male_casualsuit06",
+   "kind": "clothes",
+   "vertices": 4035,
+   "triangles": 7168,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "male_elegantsuit01",
+   "kind": "clothes",
+   "vertices": 8522,
+   "triangles": 14956,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "male_worksuit01",
+   "kind": "clothes",
+   "vertices": 4166,
+   "triangles": 6986,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "shoes01",
+   "kind": "clothes",
+   "vertices": 1904,
+   "triangles": 3320,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "shoes02",
+   "kind": "clothes",
+   "vertices": 1744,
+   "triangles": 3064,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "shoes03",
+   "kind": "clothes",
+   "vertices": 2542,
+   "triangles": 4128,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "shoes04",
+   "kind": "clothes",
+   "vertices": 1904,
+   "triangles": 3320,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "shoes05",
+   "kind": "clothes",
+   "vertices": 1744,
+   "triangles": 3064,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "shoes06",
+   "kind": "clothes",
+   "vertices": 1744,
+   "triangles": 3064,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "afro01",
+   "kind": "hair",
+   "vertices": 2276,
+   "triangles": 2192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "bob01",
+   "kind": "hair",
+   "vertices": 5961,
+   "triangles": 8474,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "bob02",
+   "kind": "hair",
+   "vertices": 1759,
+   "triangles": 2248,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "braid01",
+   "kind": "hair",
+   "vertices": 4771,
+   "triangles": 5518,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "long01",
+   "kind": "hair",
+   "vertices": 3314,
+   "triangles": 4108,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "ponytail01",
+   "kind": "hair",
+   "vertices": 4049,
+   "triangles": 5352,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "short01",
+   "kind": "hair",
+   "vertices": 3177,
+   "triangles": 3678,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "short02",
+   "kind": "hair",
+   "vertices": 2061,
+   "triangles": 3344,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "short03",
+   "kind": "hair",
+   "vertices": 1071,
+   "triangles": 1922,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "short04",
+   "kind": "hair",
+   "vertices": 991,
+   "triangles": 1050,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow001",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow002",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow003",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow004",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow005",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow006",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow007",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow008",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow009",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow010",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow011",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyebrow012",
+   "kind": "eyebrows",
+   "vertices": 126,
+   "triangles": 192,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyelashes01",
+   "kind": "eyelashes",
+   "vertices": 250,
+   "triangles": 368,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyelashes02",
+   "kind": "eyelashes",
+   "vertices": 250,
+   "triangles": 368,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyelashes03",
+   "kind": "eyelashes",
+   "vertices": 250,
+   "triangles": 368,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyelashes04",
+   "kind": "eyelashes",
+   "vertices": 254,
+   "triangles": 368,
+   "license": "CC0-1.0"
+  },
+  {
+   "name": "eyes",
+   "kind": "eyes",
+   "vertices": 1076,
+   "triangles": 2040,
+   "license": "CC0-1.0",
+   "irises": [
+    "blue",
+    "bluegreen",
+    "brown",
+    "brownlight",
+    "deepblue",
+    "green",
+    "grey",
+    "ice",
+    "lightblue"
+   ]
+  }
+ ]
 }

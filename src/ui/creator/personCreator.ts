@@ -1,9 +1,10 @@
 import { ageFromYears, yearsFromAge, type MacroParams } from '@people/body/macro';
 import {
-  CLOTH_COLOURS, EYE_COLOURS, HAIR_COLOURS, SKIN_TONES, defaultPerson, randomPerson,
+  CLOTH_COLOURS, EYE_COLOURS, HAIR_COLOURS, SKIN_TONES, WARDROBE, defaultPerson, randomPerson,
   type BottomStyle, type HairStyle, type PersonLook, type PersonSpec, type TopStyle,
 } from '@people/spec';
 import { t } from '../i18n';
+import { proxyUrl } from '@people/body/proxy';
 import './personCreator.css';
 
 /**
@@ -257,6 +258,47 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     row.appendChild(list);
     into.appendChild(row);
   };
+  /**
+   * A gallery of MakeHuman items: a tile each, its own texture for a face, its
+   * name under it; 'none' as a plain tile when the item can be left off.
+   */
+  const gallery = (into: HTMLElement, label: string, names: readonly string[], current: string | undefined,
+    onPick: (name: string) => void, withNone = false): void => {
+    const row = el('div', 'pc-swatch-row');
+    row.appendChild(el('span', 'pc-slider-name', label));
+    const list = el('div', 'pc-gallery');
+    for (const name of withNone ? ['none', ...names] : names) {
+      const on = name === (current ?? (withNone ? 'none' : ''));
+      const b = el('button', 'pc-item' + (on ? ' active' : ''));
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(on));
+      const tile = el('span', 'pc-item-tile');
+      if (name !== 'none') {
+        try { tile.style.backgroundImage = `url("${proxyUrl(`${name}.webp`)}")`; } catch { /* no texture: a plain tile */ }
+      }
+      b.appendChild(tile);
+      b.appendChild(el('span', 'pc-item-name', name === 'none' ? t('person.option.none') : t(`person.item.${name}`)));
+      b.title = name === 'none' ? t('person.option.none') : t(`person.item.${name}`);
+      b.addEventListener('click', () => onPick(name));
+      list.appendChild(b);
+    }
+    row.appendChild(list);
+    into.appendChild(row);
+  };
+  /** Wearing MakeHuman garments: picking any of them dresses a person saved before in all of them. */
+  const wear = (patch: Partial<PersonLook>): void => {
+    const female = person.body.gender < 0.5;
+    setLook({
+      outfit: person.look.outfit ?? (female ? WARDROBE.outfits.female[0] : WARDROBE.outfits.male[0]),
+      footwear: person.look.footwear ?? WARDROBE.footwear[0],
+      hairCut: person.look.hairCut ?? (person.look.hairStyle === 'none' ? 'none' : person.look.hairStyle === 'long' ? WARDROBE.hair.long[0] : WARDROBE.hair.short[0]),
+      brows: person.look.brows ?? WARDROBE.brows[0],
+      lashes: person.look.lashes ?? WARDROBE.lashes[0],
+      hat: person.look.hat ?? 'none',
+      outfitTint: person.look.outfitTint ?? null,
+      ...patch,
+    });
+  };
   const pct = (v: number): string => `${Math.round(v * 100)}%`;
   const signed = (v: number): string => (v === 0 ? '0' : `${v > 0 ? '+' : ''}${Math.round(v * 100)}`);
   const openSections = new Set(['person.section.body']);
@@ -297,16 +339,39 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     swatches(skin, t('person.skin'), SKIN_TONES, person.look.skin, (c) => setLook({ skin: c }));
     swatches(skin, t('person.eyes'), EYE_COLOURS, person.look.eyes, (c) => setLook({ eyes: c }));
 
+    const dressed = !!person.look.outfit;
     const hair = sec('person.section.hair');
-    chips<HairStyle>(hair, t('person.style'), ['none', 'short', 'long'], person.look.hairStyle, (v) => setLook({ hairStyle: v }));
+    if (dressed) {
+      gallery(hair, t('person.hairstyle'), [...WARDROBE.hair.short, ...WARDROBE.hair.long], person.look.hairCut, (n) => wear({ hairCut: n }), true);
+    } else {
+      chips<HairStyle>(hair, t('person.style'), ['none', 'short', 'long'], person.look.hairStyle, (v) => setLook({ hairStyle: v }));
+    }
     swatches(hair, t('person.colour'), HAIR_COLOURS, person.look.hair, (c) => setLook({ hair: c }));
+    if (dressed) {
+      gallery(hair, t('person.brows'), WARDROBE.brows, person.look.brows, (n) => wear({ brows: n }));
+      gallery(hair, t('person.lashes'), WARDROBE.lashes, person.look.lashes, (n) => wear({ lashes: n }));
+    }
 
     const clothes = sec('person.section.clothes');
-    chips<TopStyle>(clothes, t('person.top'), ['none', 'tank', 'tshirt', 'longsleeve'], person.look.top, (v) => setLook({ top: v }));
-    swatches(clothes, t('person.topColour'), CLOTH_COLOURS, person.look.topColour, (c) => setLook({ topColour: c }));
-    chips<BottomStyle>(clothes, t('person.bottom'), ['trousers', 'shorts', 'skirt'], person.look.bottom, (v) => setLook({ bottom: v }));
-    swatches(clothes, t('person.bottomColour'), CLOTH_COLOURS, person.look.bottomColour, (c) => setLook({ bottomColour: c }));
-    swatches(clothes, t('person.shoes'), CLOTH_COLOURS, person.look.shoes, (c) => setLook({ shoes: c }));
+    gallery(clothes, t('person.outfit'), [...WARDROBE.outfits.female, ...WARDROBE.outfits.male], person.look.outfit, (n) => wear({ outfit: n }));
+    if (dressed) {
+      const tintRow = el('div', 'pc-swatch-row');
+      const own = el('button', 'pc-chip' + (person.look.outfitTint === null || person.look.outfitTint === undefined ? ' active' : ''), t('person.ownColours'));
+      own.type = 'button';
+      own.addEventListener('click', () => wear({ outfitTint: null }));
+      tintRow.appendChild(el('span', 'pc-slider-name', t('person.outfitColour')));
+      tintRow.appendChild(own);
+      clothes.appendChild(tintRow);
+      swatches(clothes, t('person.dye'), CLOTH_COLOURS, person.look.outfitTint ?? -1, (c) => wear({ outfitTint: c }));
+      gallery(clothes, t('person.footwear'), WARDROBE.footwear, person.look.footwear, (n) => wear({ footwear: n }));
+      gallery(clothes, t('person.hat'), WARDROBE.hats, person.look.hat, (n) => wear({ hat: n }), true);
+    } else {
+      chips<TopStyle>(clothes, t('person.top'), ['none', 'tank', 'tshirt', 'longsleeve'], person.look.top, (v) => setLook({ top: v }));
+      swatches(clothes, t('person.topColour'), CLOTH_COLOURS, person.look.topColour, (c) => setLook({ topColour: c }));
+      chips<BottomStyle>(clothes, t('person.bottom'), ['trousers', 'shorts', 'skirt'], person.look.bottom, (v) => setLook({ bottom: v }));
+      swatches(clothes, t('person.bottomColour'), CLOTH_COLOURS, person.look.bottomColour, (c) => setLook({ bottomColour: c }));
+      swatches(clothes, t('person.shoes'), CLOTH_COLOURS, person.look.shoes, (c) => setLook({ shoes: c }));
+    }
 
     const face = sec('person.section.face');
     for (const name of FACE_SLIDERS) {
