@@ -229,11 +229,12 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
   const wear = r();
   const extras: string[] = [];
   let outfit: string;
-  if (wear < 0.5 && tops.length && trousers.length) {
-    outfit = pick(r, tops);
-    extras.push(pick(r, female && skirts.length && r() < 0.35 ? skirts : trousers));
-  } else if (wear < 0.65 && female && dresses.length) outfit = pick(r, dresses);
-  else if (wear < 0.72 && suits.length) outfit = pick(r, suits);
+  // In the street only WHOLE outfits: a top and trousers from different packs
+  // were modelled apart and cut through each other when worn together (a
+  // waistband through the shirt). Separates stay in the Person Creator.
+  void tops; void trousers; void skirts;
+  if (wear < 0.3 && female && dresses.length) outfit = pick(r, dresses);
+  else if (wear < 0.4 && suits.length) outfit = pick(r, suits);
   else outfit = pick(r, (female ? WARDROBE.outfits.female : WARDROBE.outfits.male).filter((o) => o !== 'female_sportsuit01' || (years < 35 && r() < 0.25)));
   const glasses = itemsOf('glasses', { street: true, sex });
   if (glasses.length && r() < (years > 45 ? 0.35 : 0.15)) extras.push(pick(r, glasses));
@@ -282,7 +283,10 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     const bottomColour = keep.look?.bottomColour ?? pick(r, CHILD_COLOURS.filter((c) => c !== topColour));
     return { id, name: '', body, features, look: { ...childLook, top: 'tshirt', bottom: 'shorts', hat: 'none', topColour, bottomColour } };
   }
-  return { id, name: '', body, features, look: finished };
+  // The same temper drives the live face (`render/riggedCitizens.ts`): most a
+  // gentle smile, some at rest, a few serious.
+  const temper = mood < 0.65 ? 0.25 + r() * 0.35 : mood < 0.9 ? r() * 0.15 : -0.15 - r() * 0.25;
+  return { id, name: '', mood: temper, body, features, look: finished };
 }
 
 /**

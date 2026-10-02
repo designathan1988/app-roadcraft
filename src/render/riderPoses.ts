@@ -71,6 +71,9 @@ interface Targets {
 
 type V3 = readonly [number, number, number];
 
+/** Seconds of a seated person's idle loop (`occupants.ts` plays it from each person's own point). */
+export const SEATED_IDLE = 6;
+
 // ---------------------------------------------------------------- steering wheels
 
 /**
@@ -224,8 +227,10 @@ function hands(fit: TwoWheelerFit, steer = 0): Pick<Targets, 'leftHand' | 'right
  */
 const CAR_DRIVE: Targets = {
   // The rest pose already stoops about 0.2 rad forward; this reclines the
-  // trunk some 28 degrees back from upright, as a car seat holds it.
-  lean: -0.8,
+  // trunk some 14 degrees back from upright, as a car seat holds a driver.
+  // At -0.8 (34 degrees) people lay back as in a deckchair, and the head,
+  // pitched forward to see the road, dragged the face out of shape.
+  lean: -0.45,
   // Heels on the floor (the ankle 8 cm over it, the hip point 0.28 m up) and
   // 0.8 m ahead of the hip, on the pedals. The ankles were 0.6 m ahead and
   // 0.15 m down, closer to the hip than a leg reaches without folding: the
@@ -240,7 +245,7 @@ const CAR_DRIVE: Targets = {
   look: -0.12,
 };
 const CAR_RIDE: Targets = {
-  lean: -0.8,
+  lean: -0.45,
   // Legs out, the knees a little over the hips: a passenger's feet go under
   // the seat in front, 0.75 m ahead of the hip point.
   leftFoot: [0.16, -0.08, 0.61],
@@ -255,7 +260,7 @@ const CAR_RIDE: Targets = {
 /** A rear passenger folds their knees into the footwell beneath the front seat. */
 const CAR_REAR_RIDE: Targets = {
   ...CAR_RIDE,
-  lean: -0.55,
+  lean: -0.38,
   leftFoot: [0.15, -0.13, 0.43],
   rightFoot: [-0.15, -0.13, 0.44],
   leftHand: [0.14, 0.04, 0.23],
@@ -342,25 +347,25 @@ function steered<T extends Omit<Targets, 'leftFoot' | 'rightFoot'>>(t: T, fit: T
 }
 
 export const RIDER_CLIPS: readonly RiderClip[] = [
-  still('carDrive', CAR_DRIVE),
-  still('carDriveMirror', turned(CAR_DRIVE, 0.6, -0.05)),
-  still('carDriveRight', turned(CAR_DRIVE, -0.45)),
-  still('carRide', CAR_RIDE),
-  still('carRideLeft', turned(CAR_RIDE, 0.6)),
-  still('carRideRight', turned(CAR_RIDE, -0.6)),
-  still('carRearRide', CAR_REAR_RIDE),
-  still('carRearLeft', turned(CAR_REAR_RIDE, 0.6)),
-  still('carRearRight', turned(CAR_REAR_RIDE, -0.6)),
-  still('cabDrive', CAB_DRIVE),
-  still('cabDriveMirror', turned(CAB_DRIVE, 0.6, 0)),
-  still('cabDriveRight', turned(CAB_DRIVE, -0.5, 0)),
-  still('cabRide', CAB_RIDE),
-  still('cabRideLeft', turned(CAB_RIDE, 0.55)),
-  still('cabRideRight', turned(CAB_RIDE, -0.6)),
-  still('chairSit', CHAIR_SIT),
-  still('chairSitLeft', turned(CHAIR_SIT, 0.65)),
-  still('chairSitRight', turned(CHAIR_SIT, -0.65)),
-  still('chairSitPhone', { ...CHAIR_SIT, leftHand: [0.05, 0.14, 0.3], rightHand: [-0.05, 0.14, 0.3], elbowPole: [0.6, -1, -0.2], look: 0.55 }),
+  seated('carDrive', CAR_DRIVE),
+  seated('carDriveMirror', turned(CAR_DRIVE, 0.45, -0.05)),
+  seated('carDriveRight', turned(CAR_DRIVE, -0.45)),
+  seated('carRide', CAR_RIDE),
+  seated('carRideLeft', turned(CAR_RIDE, 0.45)),
+  seated('carRideRight', turned(CAR_RIDE, -0.45)),
+  seated('carRearRide', CAR_REAR_RIDE),
+  seated('carRearLeft', turned(CAR_REAR_RIDE, 0.45)),
+  seated('carRearRight', turned(CAR_REAR_RIDE, -0.45)),
+  seated('cabDrive', CAB_DRIVE),
+  seated('cabDriveMirror', turned(CAB_DRIVE, 0.6, 0)),
+  seated('cabDriveRight', turned(CAB_DRIVE, -0.5, 0)),
+  seated('cabRide', CAB_RIDE),
+  seated('cabRideLeft', turned(CAB_RIDE, 0.55)),
+  seated('cabRideRight', turned(CAB_RIDE, -0.6)),
+  seated('chairSit', CHAIR_SIT),
+  seated('chairSitLeft', turned(CHAIR_SIT, 0.65)),
+  seated('chairSitRight', turned(CHAIR_SIT, -0.65)),
+  seated('chairSitPhone', { ...CHAIR_SIT, leftHand: [0.05, 0.14, 0.3], rightHand: [-0.05, 0.14, 0.3], elbowPole: [0.6, -1, -0.2], look: 0.55 }),
   still('motoRide', MOTO),
   still('motoLeft', steered(MOTO, MOTO_FIT, 1)),
   still('motoRight', steered(MOTO, MOTO_FIT, -1)),
@@ -472,6 +477,26 @@ function still(key: RiderClipKey, targets: Targets): RiderClip {
   return { key, duration: 1, loop: true, pose: (rig) => apply(rig, targets) };
 }
 
+/**
+ * A seated pose that lives: breathing in the trunk, the head turning a little
+ * and nodding, over a loop of `SEATED_IDLE` seconds. Hands and feet stay on
+ * their targets (the wheel, the pedals, the lap), so only the body moves.
+ */
+function seated(key: RiderClipKey, targets: Targets): RiderClip {
+  return {
+    key, duration: SEATED_IDLE, loop: true,
+    pose: (rig, time) => {
+      const a = (time / SEATED_IDLE) * Math.PI * 2;
+      apply(rig, {
+        ...targets,
+        lean: targets.lean + 0.03 * Math.sin(a * 2),
+        turn: (targets.turn ?? 0) + 0.14 * Math.sin(a + 1.3),
+        look: (targets.look ?? 0) + 0.05 * Math.sin(a * 3 + 0.4),
+      });
+    },
+  };
+}
+
 // ---------------------------------------------------------------- solving
 
 const BONES = {
@@ -516,9 +541,15 @@ function apply(rig: Object3D, t: Targets): void {
   const head = find(BONES.head);
   // A turn of the head less the part the shoulders already took.
   const turn = (t.turn ?? 0) - (t.twist ?? 0);
-  if (neck && turn) rotateWorld(neck, new Vector3(0, 1, 0), turn * 0.4);
-  if (head && turn) rotateWorld(head, new Vector3(0, 1, 0), turn * 0.6);
-  if (head && t.look) rotateWorld(head, new Vector3(1, 0, 0), t.look - t.lean * 0.6);
+  // Most of a turn or a nod in the neck, the rest in the head. The body has no
+  // jaw bone: the inside of the mouth goes with the head while the cheek by
+  // the ear is shared with the neck, so a turn taken mostly by the head
+  // pushed the mouth out through the cheek.
+  if (neck && turn) rotateWorld(neck, new Vector3(0, 1, 0), turn * 0.7);
+  if (head && turn) rotateWorld(head, new Vector3(0, 1, 0), turn * 0.3);
+  const nod = t.look ? t.look - t.lean * 0.6 : 0;
+  if (neck && nod) rotateWorld(neck, new Vector3(1, 0, 0), nod * 0.6);
+  if (head && nod) rotateWorld(head, new Vector3(1, 0, 0), nod * 0.4);
   rig.updateMatrixWorld(true);
 
   limb(rig, BONES.leftLeg, worldOf(t.leftFoot), t.kneePole ?? [0, 0, 1]);

@@ -72,10 +72,12 @@ const OUTFIT: Readonly<Record<RosterWardrobe, { female: readonly string[]; male:
   },
   'smart-casual': { female: ['female_elegantsuit01', 'female_casualsuit01'], male: ['male_casualsuit01', 'male_casualsuit03', 'male_casualsuit05'] },
   business: { female: ['female_elegantsuit01', 'punkduck_black_cocktail_dress'], male: ['male_elegantsuit01', 'mindfront_m_suit_01'] },
-  'sport-casual': { female: ['female_sportsuit01', 'female_casualsuit02', 'elvs_sporty_tracksuit_hoodie_dress1'], male: ['male_casualsuit02', 'male_casualsuit04', 'male_casualsuit06', 'male_worksuit01', 'culturalibre_male_sport_suit'] },
+  'sport-casual': { female: ['female_sportsuit01', 'female_casualsuit02'], male: ['male_casualsuit02', 'male_casualsuit04', 'male_casualsuit06', 'male_worksuit01', 'culturalibre_male_sport_suit'] },
   traditional: { female: ['female_elegantsuit01', 'female_casualsuit01'], male: ['male_worksuit01', 'male_casualsuit01'] },
 };
 void WARDROBE;
+/** The system outfits: a casual person drawn a dress or a suit by the generator keeps it half the time. */
+const WARDROBE_SYSTEM = new Set<string>([...WARDROBE.outfits.male, ...WARDROBE.outfits.female]);
 
 /** Dyes a suit takes: never a party colour. */
 const SOBER: readonly number[] = [0x22252b, 0x2c3550, 0x3a3f47, 0x4a3a2c, 0x5c5c5c, 0x1f3a32];
@@ -130,9 +132,8 @@ export function makeRoster(): RosterEntry[] {
             shoes: wardrobe === 'business' ? pick(r, [0x22252b, 0x3a2418]) : wardrobe === 'sport-casual' ? pick(r, [0xf2f0ea, 0x22252b]) : base.look.shoes,
             // The MakeHuman outfit for the wardrobe: a suit for business, a
             // sports suit for sport, everyday clothes otherwise.
-            // Casual people mostly keep the separates the generator drew
-            // from the community packs (a top with trousers or a skirt).
-            ...(age === 'child' || (wardrobe === 'casual' && base.look.extras?.length && r() < 0.65) ? {}
+            // Casual people sometimes keep the dress or suit the generator drew.
+            ...(age === 'child' || (wardrobe === 'casual' && base.look.outfit && !WARDROBE_SYSTEM.has(base.look.outfit) && r() < 0.5) ? {}
               : dressUnlike(r, used, OUTFIT[wardrobe][female ? 'female' : 'male'].filter((o) => o !== 'female_sportsuit01' || age === 'young'), wardrobe === 'business' ? SOBER : CLOTH_COLOURS)),
           },
         };

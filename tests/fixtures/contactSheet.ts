@@ -12,6 +12,7 @@ import { createPersonRig } from '@render/people/personRig';
 import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from '@render/people/skinAppearance';
 import { attachFacialMorphs } from '@render/people/facialMorphs';
 import { expressionShapes } from '@people/body/expressions';
+import { RIDER_CLIPS } from '@render/riderPoses';
 
 /** The live MakeHuman roster, front and profile, with stable requested ids. */
 export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id), columns = 8, portraits = false): Promise<string> {
@@ -45,6 +46,10 @@ export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id)
         capture: captureBind(sex), captureAxes: captureBindRotations(sex), texturedSkin: true,
       };
       const rig = createPersonRig(input);
+      // ?pose=<rider clip key>: the person in a seated (or riding) pose, to
+      // check what a pose does to the body (e.g. the face in a driver's seat).
+      const pose = new URLSearchParams(location.search).get('pose');
+      if (pose) RIDER_CLIPS.find(c => c.key === pose)?.pose(rig.scene, Number(new URLSearchParams(location.search).get('poseTime') ?? 0));
       const expression = new URLSearchParams(location.search).get('expression');
       if (new URLSearchParams(location.search).get('expressions') === 'live') {
         await attachFacialMorphs(input, rig, await expressionShapes(person.body));

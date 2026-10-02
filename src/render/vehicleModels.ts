@@ -1070,6 +1070,12 @@ export function buildBusModel(a: Archetype): VehicleModel {
 /** A bus seat: a moulded shell on a pedestal, a grab handle on top. */
 function busSeat(x: number, hipY: number, floor: number, width: number, z: number): BufferGeometry[] {
   const parts = seatShell(x, hipY, floor, width - M(0.03), z, 0.14, M(0.52), BUS_SEAT);
+  // The car seat's runner is a block 0.3 m long ahead of the hip: in a bus,
+  // where the seat stands high, it sat over the passenger's legs. A bus seat
+  // stands on a slim post under the back of the cushion instead.
+  parts.pop();
+  const cushion = Math.max(floor + M(0.1), hipY - M(0.23));
+  parts.push(tint(box(M(0.05), cushion - floor, M(0.05), x - M(0.08), (cushion + floor) / 2, z), DASH));
   const backX = x - M(0.14) - M(0.52) * Math.sin(0.14) - M(0.08);
   parts.push(tint(box(M(0.03), M(0.03), width * 0.5, backX, hipY - M(0.1) + M(0.54), z), POLE_YELLOW));
   return parts;

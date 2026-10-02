@@ -20,6 +20,9 @@ import { fitProxy, proxySkin, sampleTexture, type ProxyItem } from '@people/body
 import { wornItems } from '@people/spec';
 import { garmentSlotOf } from './garmentSlots';
 
+/** Kinds of item that cover the skin under them: only these may hide it. */
+const COVERING = new Set(['clothes', 'shoes', 'top', 'bottom', 'skirt', 'dress', 'suit', 'gloves']);
+
 /**
  * A MakeHuman person rigged for the crowd (Person track, H2): a SkinnedMesh
  * the existing bake pipeline (`riggedCitizens.ts`) can play every Rocketbox
@@ -489,19 +492,30 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   const garmentSlot: number[] = new Array(out.positions.length / 3).fill(0);
   const groups: { start: number; count: number; name: string }[] = [];
   const headBone = data.boneNames.indexOf('head');
-  const pushSkin = (joints: ArrayLike<number>, weights: ArrayLike<number>, o: number, scale: number): void => {
+  const pushSkin = (joints: ArrayLike<number>, weights: ArrayLike<number>, o: number, scale: number, rigidSkull = true): void => {
     // The skull is rigid (as in `clothedGeometry`): hair and brows with it.
+    // Never the body's own skin: snapping its vertices over half the head's
+    // weight to the head alone tore the face where the weights cross a half,
+    // and a turned head opened the cheek onto the inside of the mouth.
     let head = 0;
     for (let k = 0; k < 4; k++) if (joints[o + k] === headBone) head += weights[o + k]! / scale;
     for (let k = 0; k < 4; k++) {
-      if (head >= 0.5) { out.joints.push(k === 0 ? headBone : 0); out.weights.push(k === 0 ? 1 : 0); }
+      if (rigidSkull && head >= 0.5) { out.joints.push(k === 0 ? headBone : 0); out.weights.push(k === 0 ? 1 : 0); }
       else { out.joints.push(joints[o + k]!); out.weights.push(weights[o + k]! / scale); }
     }
   };
 
   // --- the body: skin where no garment covers it, the scalp under the hair
   const hidden = new Set<number>();
-  for (const w of worn) for (const v of w.item.pack.deleteVerts) hidden.add(v);
+  // Only solid garments hide the skin under them. A beard (or hair) is cards
+  // with holes, and the crowd draws only its solid parts: the skin its file
+  // deleted left a hole in the cheek, through which the inside of the mouth
+  // and the eyeball showed - the "clown faces" in the cars; glasses cut the
+  // temple by the ear the same way.
+  for (const w of worn) {
+    if (w.item.transparent || !COVERING.has(w.item.pack.kind)) continue;
+    for (const v of w.item.pack.deleteVerts) hidden.add(v);
+  }
   const cut = tailor(data, posed.map((x) => x * 10));
   const skin = new Color(look.skin), hair = new Color(look.hair);
   const hairy = worn.some((w) => w.item.pack.kind === 'hair');
@@ -519,7 +533,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     out.colours.push(...colour);
     uvs.push(data.uvs?.[uv * 2] ?? 0, data.uvs?.[uv * 2 + 1] ?? 0);
     skinMask.push(skin);
-    pushSkin(data.joints, data.weights, v * 4, 65535);
+    pushSkin(data.joints, data.weights, v * 4, 65535, false);
     emitted.set(key, at);
     return at;
   };

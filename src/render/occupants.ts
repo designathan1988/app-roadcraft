@@ -1,3 +1,4 @@
+import { SEATED_IDLE } from './riderPoses';
 import type { RiderClipKey } from './riderPoses';
 import type { DoorModel, SeatModel, SeatPose } from './vehicleModels';
 import { m } from '@world/units';
@@ -83,8 +84,13 @@ export function occupantPlays(seat: Pick<SeatModel, 'pose' | 'driver' | 'row' | 
     ? (seat.z > 0 ? 'chairSitRight' : 'chairSitLeft')
     : clips[variant]!;
   if (glance < 0.001) glance = 0;
-  out.push({ key: clips[0], phase: 0, weight: 1 - glance });
-  if (glance > 0) out.push({ key, phase: 0, weight: glance });
+  // The idle loop from this person's own point in it: neighbours never breathe
+  // together. ONE pose at a time: the crowd blends bone matrices linearly, and
+  // a blend of a straight head with a turned one squashed the skull - the
+  // collapsed "clown" faces in the cars. The glance is the pose itself, held
+  // for the glance's span (its own idle loop turns the head in the meantime).
+  const idle = time / SEATED_IDLE + (h & 0xff) / 256;
+  out.push({ key: glance > 0.5 ? key : clips[0], phase: idle, weight: 1 });
   return out;
 }
 

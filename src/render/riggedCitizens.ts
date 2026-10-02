@@ -149,6 +149,17 @@ interface FacialExpression {
   readonly visemeM: number;
 }
 
+/**
+ * Whether somebody seated in a vehicle is talking now: in spells of a few
+ * seconds, now and then, each person on their own rhythm.
+ */
+function seatedChat(seed: number, time: number): boolean {
+  const hash = personHash(seed ^ 0x2f6b1d93);
+  if ((hash & 3) === 0) return false; // a quiet traveller
+  const cycle = 14 + (hash >>> 4 & 7) * 2;
+  return ((time + (hash >>> 8 & 255) / 10) % cycle) < cycle * 0.3;
+}
+
 /** Syllables per second of ordinary speech, and how far the jaw opens on one (full open is a shout). */
 const SYLLABLES = 4.2;
 const SPEECH_JAW = 0.16;
@@ -419,8 +430,10 @@ async function bakeRiderClip(body: BakeRig, clip: RiderClip): Promise<ClipFrames
     body.reset();
     clip.pose(body.rig, time);
   };
-  const still = clip.key !== 'bikePedal';
-  const baked = await bakeFrames(body, pose, clip.duration, clip.loop, still ? 2 : FPS);
+  // A held pose is two frames; a seated idle loop (`SEATED_IDLE` s) six a
+  // second, enough for breathing and a turn of the head.
+  const still = clip.key !== 'bikePedal' && clip.duration <= 1;
+  const baked = await bakeFrames(body, pose, clip.duration, clip.loop, still ? 2 : clip.key === 'bikePedal' ? FPS : 6);
   pose(0);
   const head = body.rig.getObjectByName('Bip01_Head')?.matrixWorld.clone();
   return { ...baked, duration: clip.duration, loop: clip.loop, stride: 1, ...(head ? { head } : {}) };
@@ -476,7 +489,9 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),
     };
     const rig = createPersonRig(input);
-    if (new URLSearchParams(location.search).get('expressions') === 'live') {
+    // Live faces: blinking, gaze, mood, speech (measured free in the player
+    // city: frame median 17 ms with and without). ?expressions=off for comparison.
+    if (new URLSearchParams(location.search).get('expressions') !== 'off') {
       await attachFacialMorphs(input, rig, await expressionShapes(person.body));
     }
     {
@@ -661,7 +676,9 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       matrix.multiplyMatrices(transform.matrix, batch.local[i]!);
       batch.meshes[i]!.setMatrixAt(batch.count, matrix);
     }
-    if (expression) setFacialExpression(batch, batch.count, expression);
+    // Faces are read only close up: from the nearest level of detail on, no
+    // expression is computed or uploaded.
+    if (expression && lod === 0) setFacialExpression(batch, batch.count, expression);
     batch.count++;
   }
 
@@ -739,7 +756,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         mixWeights.push(play.weight);
       }
       emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), 0, ground,
-        facialExpression(ped.id, time, ped.gesture?.kind, CROWD[index]?.person?.mood));
+        lod === 0 ? facialExpression(ped.id, time, ped.gesture?.kind, CROWD[index]?.person?.mood) : undefined);
     },
     /**
      * Somebody in or on a vehicle, or stepping between a vehicle and the
@@ -827,7 +844,10 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       emit(batch, mixClips, mixPhases, mixWeights,
         pelvisX - leftX * drop * Math.sin(lean) - leftX * shiftLeft - aheadX * shiftAhead, pelvisHeight - drop * Math.cos(lean),
         pelvisY - leftY * drop * Math.sin(lean) - leftY * shiftLeft - aheadY * shiftAhead, heading, scale, lean, null,
-        facialExpression(identity.seed, identity.seed * 0.13));
+        // In a seat a face lives too: blinking, glancing, a passenger
+        // chatting now and then (wall time: the render's own clock).
+        lod === 0 ? facialExpression(identity.seed, performance.now() / 1000 + identity.seed * 0.13,
+          seatedChat(identity.seed, performance.now() / 1000) ? 'talk' : undefined, CROWD[body.index]?.person?.mood) : undefined);
       if (helmet) {
         // This body's helmet on the head of the pose carrying the most
         // weight, through the transform `emit` just drew the body with: at
@@ -867,7 +887,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
           mesh.instanceMatrix.clearUpdateRanges();
           if (batch.count > 0) mesh.instanceMatrix.addUpdateRange(0, batch.count * 16);
           mesh.instanceMatrix.needsUpdate = true;
-          if (mesh.morphTexture) mesh.morphTexture.needsUpdate = true;
+          if (mesh.morphTexture && lod === 0) mesh.morphTexture.needsUpdate = true;
         }
       }
     },
