@@ -86,6 +86,8 @@ interface Person {
   talk: GestureView | null;
   /** A bench seat it is going to or sitting on. */
   sit: Sit | null;
+  /** Stopped a moment to do something (read, drink, take a photo...): the gesture, played to its end. */
+  pause: GestureView | null;
   goalX: number;
   goalY: number;
   goalTri: number;
@@ -242,6 +244,23 @@ const MIN_TRIP = m(40);
 const BENCH_CHANCE = { child: 0, adult: 0.16, elder: 0.45 } as const;
 /** Ticks between a walker's glances for a free bench, the reach of the glance, and the chance, by age, it sits. */
 const BENCH_LOOK = 60;
+/**
+ * How often somebody walking alone stops for a moment to do something, ticks
+ * between looks; and the chance, at each look, that they do. On a square or
+ * in a park (open ground) people dance, cheer, crouch to a child, take
+ * photos; on a footway they read, drink, check a phone, wave to somebody.
+ */
+const PAUSE_LOOK = 45;
+const PAUSE_CHANCE = { child: 0.03, adult: 0.05, elder: 0.04 } as const;
+const PAUSE_STREET: readonly [GestureView['kind'], number, number][] = [
+  // [what, shortest, longest] seconds
+  ['phone', 8, 20], ['read', 10, 25], ['drink', 8, 16], ['headphones', 8, 18], ['wave', 5, 6],
+  ['photo', 8, 9], ['bag', 6, 12], ['crouch', 7, 12], ['umbrella', 8, 14],
+];
+const PAUSE_OPEN: readonly [GestureView['kind'], number, number][] = [
+  ['photo', 8, 9], ['dance', 10, 22], ['cheer', 8, 15], ['crouch', 8, 14], ['read', 12, 30], ['drink', 8, 16],
+  ['laugh', 6, 10], ['wave', 5, 6],
+];
 const BENCH_PASS_REACH = m(8);
 const BENCH_PASS = { child: 0, adult: 0.05, elder: 0.2 } as const;
 /** Pace of the few steps between the footway and a seat, u/s. */
@@ -400,7 +419,7 @@ function create(w: SimWorld, s: State, id: number, x: number, y: number, tri: nu
   const p: Person = {
     id, x, y, heading, v: 0, vx: 0, vy: 0, nvx: 0, nvy: 0, turnV: 0, prevX: x, prevY: y, prevHeading: heading, age: 0, tri,
     pace, ageClass: cls, gender: sex, party, rank, leader: traits.leader ?? null, waitingForParty: 0,
-    blocked: 0, urgent: 0, ghost: 0, replanned: false, facingWalk: false, commitDir: NaN, commitLeft: 0, faceX: 0, faceY: 0, intent: null, queued: 0, queuedFor: -1, stoodTogether: 0, talk: null, sit: null,
+    blocked: 0, urgent: 0, ghost: 0, replanned: false, facingWalk: false, commitDir: NaN, commitLeft: 0, faceX: 0, faceY: 0, intent: null, queued: 0, queuedFor: -1, stoodTogether: 0, talk: null, sit: null, pause: null,
     goalX: x, goalY: y, goalTri: tri, leaving: false, path: null, ci: 0,
     mode: 'walk', crossing: -1, granted: [], waited: 0, atKerb: false, standX: x, standY: y, waitHeld: 0, view,
   };
@@ -665,6 +684,24 @@ function step(w: SimWorld, s: State): void {
     if (p.sit && p.sit.phase !== 'approach') {
       p.vx = 0; p.vy = 0;
       if (sitStep(w, s, p)) arrived.push(p);
+      continue;
+    }
+    // Stopped a moment to do something: standing where they are until done.
+    if (p.pause) {
+      // Standing still: the speed the body is drawn at too, or it was drawn walking on the spot.
+      p.vx = 0; p.vy = 0; p.v = 0;
+      p.pause.t += DT;
+      if (p.pause.t < (p.pause.hold ?? 0)) continue;
+      p.pause = null;
+    }
+    // Walking alone, now and then somebody stops to do something.
+    if (!p.sit && !p.leader && p.party.size === 1 && p.mode === 'walk' && p.tri >= 0 &&
+        (p.id * 7 + w.clock.tick) % PAUSE_LOOK === 0 && !isZebra(mesh.region[p.tri]!) &&
+        w.rng.people.float() < PAUSE_CHANCE[p.ageClass]) {
+      const menu = mesh.region[p.tri] === OPEN ? PAUSE_OPEN : PAUSE_STREET;
+      const [kind, lo, hi] = menu[Math.floor(w.rng.people.float() * menu.length) % menu.length]!;
+      p.pause = { kind, phase: 'hold', t: 0, hold: lo + (hi - lo) * w.rng.people.float() };
+      p.vx = 0; p.vy = 0; p.v = 0;
       continue;
     }
     // Passing a free bench, somebody alone may sit down on it for a while.
@@ -1527,7 +1564,7 @@ function publishViews(w: SimWorld, s: State): void {
         p.talk.t += DT;
       }
     } else { p.stoodTogether = 0; p.talk = null; }
-    v.gesture = p.sit && p.sit.phase !== 'approach' ? p.sit.gesture : p.talk;
+    v.gesture = p.sit && p.sit.phase !== 'approach' ? p.sit.gesture : p.pause ?? p.talk;
     const region = nav && p.tri >= 0 ? nav.mesh.region[p.tri]! : FOOTWAY;
     v.ground = isZebra(region) ? 'crossing' : region === OPEN ? 'open' : 'footway';
     const seg = nav && p.tri >= 0 ? nav.segment[p.tri]! : -1;

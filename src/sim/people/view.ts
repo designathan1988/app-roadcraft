@@ -28,13 +28,18 @@ export interface PartyView {
 }
 
 /** What someone standing is doing with their hands and face. */
-export type GestureKind = 'look' | 'phone' | 'talk' | 'bench';
+export type GestureKind = 'look' | 'phone' | 'talk' | 'bench'
+  // Something a person stops a moment to do (`people.ts` pauses).
+  | 'read' | 'drink' | 'photo' | 'wave' | 'headphones' | 'bag' | 'dance' | 'cheer' | 'crouch' | 'laugh'
+  | 'argue' | 'umbrella' | 'trolley' | 'knock' | 'eat' | 'work';
 export type GesturePhase = 'approach' | 'hold' | 'step' | 'turn' | 'sitDown' | 'seated' | 'standUp' | 'leave';
 export interface GestureView {
   kind: GestureKind;
   phase: GesturePhase;
   /** Seconds into the phase: a sit-down or stand-up clip is played to it. */
   t: number;
+  /** How long the whole gesture lasts, seconds, where it has an end (a pause). */
+  hold?: number;
 }
 
 /** Seconds a sit-down and a stand-up take, per sex: the engine holds the phase, the renderer plays the clip, to this clock. */

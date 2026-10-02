@@ -337,7 +337,11 @@ export type LibraryClipName =
   | 'start' | 'stop' | 'run' | 'walkSlow'
   | 'turnLeft' | 'turnRight' | 'turnLeft180' | 'turnRight180'
   | 'idle' | 'look' | 'phone' | 'talk' | 'listen'
-  | 'sitDown' | 'sitIdle' | 'standUp';
+  | 'sitDown' | 'sitIdle' | 'standUp'
+  // Things people do (`sim/people/view.ts` GestureKind).
+  | 'read' | 'bag' | 'trolley' | 'umbrella' | 'cheer' | 'dance' | 'wave' | 'drink' | 'photo'
+  | 'crouchDown' | 'crouchIdle' | 'crouchUp' | 'laugh' | 'angry' | 'argue' | 'knock' | 'headphones'
+  | 'eatIdle' | 'workTable' | 'walkDrunk' | 'runFast';
 
 /**
  * One clip of the library, decoded and ready to transfer.

@@ -70,6 +70,28 @@ const CLIPS = {
   sitIdle: ['sit_chair_idle_neutral_01', 'sit', true],
   standUp: ['sit_stand_up_chair_01', 'sit', false],
   walkSlow: ['walk_slow_01', 'cycle', true],
+  // Things people do (`citizenGait.ts`, the gestures of `sim/people`).
+  read: ['newspaper_hand_idle', 'static', true],
+  bag: [{ m: 'hold_bag_idle', f: 'hold_bag_idle_01' }, 'static', true],
+  trolley: ['trolley_idle', 'static', true],
+  umbrella: ['umbrella_idle_01', 'static', true],
+  cheer: ['cheer_01', 'static', false],
+  dance: ['dancing_neutral', 'static', true],
+  wave: ['wave_01', 'static', false],
+  drink: ['drink_drinking', 'static', true],
+  photo: ['take_picture', 'static', false],
+  crouchDown: ['crouch_in', 'static', false],
+  crouchIdle: ['crouch_idle', 'static', true],
+  crouchUp: ['crouch_out', 'static', false],
+  laugh: ['gestic_laugh_loud', 'static', true],
+  angry: ['idle_angry_01', 'static', true],
+  argue: ['gestic_talk_angry_01', 'static', true],
+  knock: ['knock_door', 'static', false],
+  headphones: ['headphones_idle', 'static', true],
+  eatIdle: ['sit_table_idle_neutral_01', 'sit', true],
+  workTable: ['work_table', 'static', true],
+  walkDrunk: ['walk_drunk', 'cycle', true],
+  runFast: ['run_fast_01', 'cycle', true],
 };
 /** Cycles phase-aligned to the neutral walk, because they are blended with it. */
 const ALIGN = new Set(['walkSlow']);
@@ -127,7 +149,7 @@ for (const [sex, [prefix, walkFile]] of Object.entries(LIBRARIES)) {
   };
   let seatBack = null;
   for (const [name, [stem, kind, loop]] of Object.entries(CLIPS)) {
-    const file = path.join(dir, `${prefix}_${stem}.fbx`);
+    const file = path.join(dir, `${prefix}_${typeof stem === 'string' ? stem : stem[prefix]}.fbx`);
     if (!fs.existsSync(file)) {
       const kept = existing?.clips?.[name];
       if (!kept) throw new Error(`${file} is missing and the library has no ${name} to keep`);

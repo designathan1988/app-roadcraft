@@ -58,6 +58,7 @@ export interface GaitClip {
 export const GAIT_CLIP_NAMES = [
   'walk', 'walkElder', 'walkSlow', 'walkShuffle', 'walkRest', 'walkBack', 'walkLeft', 'walkRight', 'run', 'start', 'stop', 'turnLeft', 'turnRight',
   'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp',
+  'read', 'bag', 'trolley', 'umbrella', 'cheer', 'dance', 'wave', 'drink', 'photo', 'crouchDown', 'crouchIdle', 'crouchUp', 'laugh', 'angry', 'argue', 'knock', 'headphones', 'eatIdle', 'workTable',
 ] as const;
 export type GaitClipName = (typeof GAIT_CLIP_NAMES)[number];
 export type GaitClips = Readonly<Record<GaitClipName, GaitClip>>;
@@ -181,6 +182,7 @@ export function gaitClipOf(clip: LibraryClip, scale: number, frames: number): Ga
 export const GAIT_LIBRARY = [
   'walkSlow', 'start', 'stop', 'run', 'turnLeft', 'turnRight',
   'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp',
+  'read', 'bag', 'trolley', 'umbrella', 'cheer', 'dance', 'wave', 'drink', 'photo', 'crouchDown', 'crouchIdle', 'crouchUp', 'laugh', 'angry', 'argue', 'knock', 'headphones', 'eatIdle', 'workTable',
 ] as const satisfies readonly (LibraryClipName & GaitClipName)[];
 
 /**
@@ -414,14 +416,31 @@ function play(g: Gait, key: PlayKey, phase = 0, fade = FADE): void {
  * are doing: talking or listening with their party, reading a phone,
  * looking round, or simply standing, each with a phase of their own.
  */
-function standingKey(ped: PedView, g: Gait, hash: number): Single {
+function standingKey(ped: PedView, g: Gait, hash: number, clips: GaitClips): Single {
   const act = ped.gesture;
   if (act?.kind === 'talk' && act.phase === 'hold') {
-    // One speaks at a time, and the turn passes round the party.
+    // One speaks at a time, and the turn passes round the party. Some
+    // parties are merry - the one speaking laughs now and then - and some
+    // are quarrelling.
     const turn = Math.floor((ped.age + (ped.party.id % 7) * 1.3) / 6.5) % Math.max(1, ped.party.size);
-    return turn === ped.rank ? 'talk' : 'listen';
+    const mood = ped.party.id % 11;
+    if (turn !== ped.rank) return mood === 3 ? 'angry' : 'listen';
+    const beat = Math.floor(ped.age / 4.3) % 5;
+    return mood === 3 ? 'argue' : mood % 4 === 1 && beat === 2 ? 'laugh' : 'talk';
   }
   if (act?.kind === 'phone') return 'phone';
+  if (act?.kind === 'crouch') {
+    // Down, a while there (tying a lace, a word to a child), and up again.
+    const hold = act.hold ?? 8;
+    if (act.t < clips.crouchDown.duration) return 'crouchDown';
+    if (hold - act.t < clips.crouchUp.duration) return 'crouchUp';
+    return 'crouchIdle';
+  }
+  const doing = act ? ACTIVITY[act.kind] : undefined;
+  if (doing) return doing;
+  // Waiting at a kerb a while, some find something to do with their hands.
+  if (ped.kerbWait > 3 && (hash & 7) === 5) return 'headphones';
+  if (ped.kerbWait > 3 && (hash & 7) === 6) return 'bag';
   const lookFor: unknown = act?.kind === 'look' ? act : (hash & 3) === 1 && ped.kerbWait > 1.5 ? ped.waitingFor : null;
   if (lookFor !== null && lookFor !== undefined) {
     if (g.looked !== lookFor) { g.looked = lookFor; return 'look'; }
@@ -430,6 +449,15 @@ function standingKey(ped: PedView, g: Gait, hash: number): Single {
   if ((hash & 3) === 0 && ped.kerbWait > 2.5) return 'phone';
   return 'idle';
 }
+
+/** What a person stopped to do plays (the gestures of `sim/people/view.ts`). */
+const ACTIVITY: Partial<Record<string, Single>> = {
+  // Reading: the book held up in both hands, as a phone is (the library's
+  // newspaper clip only carries one by the side).
+  read: 'phone', bag: 'bag', trolley: 'trolley', umbrella: 'umbrella', cheer: 'cheer', dance: 'dance',
+  wave: 'wave', drink: 'drink', photo: 'photo', laugh: 'laugh', argue: 'argue', knock: 'knock',
+  headphones: 'headphones', eat: 'eatIdle', work: 'workTable',
+};
 
 /**
  * Advances one pedestrian's gait to `time` (the pedestrian's own clock,
@@ -551,8 +579,9 @@ function standing(g: Gait, ped: PedView, clips: GaitClips, dt: number, turned: n
     cur.phase = Math.min(1, cur.phase + STOP_SETTLE * dt / clips.stop.duration);
     g.armed = true;
   } else {
-    const key = standingKey(ped, g, hash);
-    if (key !== g.cur.key) play(g, key, key === 'look' ? 0 : ((hash >>> 4) % 997) / 997, FADE);
+    const key = standingKey(ped, g, hash, clips);
+    // A one-shot (a wave, a photo, crouching down) plays from its start.
+    if (key !== g.cur.key) play(g, key, key === 'look' || !clips[key].loop ? 0 : ((hash >>> 4) % 997) / 997, FADE);
     const clip = clips[key];
     g.cur.phase = clip.loop ? (g.cur.phase + dt / clip.duration) % 1 : Math.min(1, g.cur.phase + dt / clip.duration);
     g.armed = true;

@@ -16,6 +16,7 @@ import { loadPeopleAssets } from '@people/body/assets';
 import { Morpher } from '@people/body/morph';
 import { createPersonRig, personSimplifier } from './people/personRig';
 import { compileAhead } from './uploads';
+import { HELD, createHeldProps } from './people/heldProps';
 import { attachFacialMorphs } from './people/facialMorphs';
 import { expressionShapes } from '@people/body/expressions';
 import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from './people/skinAppearance';
@@ -51,6 +52,7 @@ const WALK_SHUFFLE = 2;
 const LIBRARY = [
   'start', 'stop', 'run', 'turnLeft', 'turnRight',
   'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp', 'walkSlow',
+  'read', 'bag', 'trolley', 'umbrella', 'cheer', 'dance', 'wave', 'drink', 'photo', 'crouchDown', 'crouchIdle', 'crouchUp', 'laugh', 'angry', 'argue', 'knock', 'headphones', 'eatIdle', 'workTable',
 ] as const satisfies readonly LibraryClipName[];
 type Played = (typeof LIBRARY)[number];
 const LIBRARY_AT = Object.fromEntries(LIBRARY.map((name, i) => [name, WALK_SHUFFLE + 1 + i])) as
@@ -91,6 +93,8 @@ interface ClipFrames {
   yaw?: Float32Array;
   /** A rider's head bone in the first frame, in the model's frame: where a helmet goes. */
   head?: Matrix4;
+  /** Per baked frame, the right then the left hand bone, in the model's frame (16 + 16): where a held thing goes. */
+  hands?: Float32Array;
 }
 interface CitizenBatch {
   meshes: InstancedMesh[]; sources: SkinnedMesh[]; local: Matrix4[]; clips: ClipFrames[];
@@ -345,13 +349,16 @@ function restRig(asset: GLTF): BakeRig {
  * past the last frame reads a real pose.
  */
 async function bakeFrames(body: BakeRig, pose: (time: number) => void, duration: number,
-  loop: boolean, fps = FPS): Promise<{ data: Float32Array; frames: number; pelvisY: number; pelvisX: number; pelvisZ: number }> {
+  loop: boolean, fps = FPS, withHands = false): Promise<{ data: Float32Array; frames: number; pelvisY: number; pelvisX: number; pelvisZ: number; hands?: Float32Array }> {
   const { rig, mesh } = body;
   const skeleton = mesh.skeleton;
   const frames = Math.max(1, Math.round(duration * fps));
   const width = skeleton.bones.length * 16;
   const data = new Float32Array((frames + 2) * width);
   const pelvis = rig.getObjectByName('Bip01_Pelvis');
+  const handR = withHands ? rig.getObjectByName('Bip01_R_Hand') : undefined;
+  const handL = withHands ? rig.getObjectByName('Bip01_L_Hand') : undefined;
+  const hands = handR && handL ? new Float32Array((frames + 2) * 32) : undefined;
   const position = new Vector3();
   let pelvisY = 0;
   let pelvisX = 0;
@@ -361,6 +368,12 @@ async function bakeFrames(body: BakeRig, pose: (time: number) => void, duration:
     pose(loop ? (i % frames) * duration / frames : i * duration / frames);
     skeleton.update();
     data.set(skeleton.boneMatrices!, i * width);
+    if (hands) {
+      handR!.updateWorldMatrix(true, false);
+      handL!.updateWorldMatrix(true, false);
+      hands.set(handR!.matrixWorld.elements, i * 32);
+      hands.set(handL!.matrixWorld.elements, i * 32 + 16);
+    }
     if (i === 0 && pelvis) {
       pelvis.getWorldPosition(position);
       pelvisY = position.y;
@@ -369,7 +382,8 @@ async function bakeFrames(body: BakeRig, pose: (time: number) => void, duration:
     }
   }
   data.copyWithin((frames + 1) * width, frames * width, (frames + 1) * width);
-  return { data, frames, pelvisY, pelvisX, pelvisZ };
+  if (hands) hands.copyWithin((frames + 1) * 32, frames * 32, (frames + 1) * 32);
+  return { data, frames, pelvisY, pelvisX, pelvisZ, ...(hands ? { hands } : {}) };
 }
 
 /**
@@ -397,7 +411,8 @@ async function bakeLibraryClip(body: BakeRig, clip: LibraryClip, amplitude?: Wal
   const room = LIMB_ROOM[name ?? ''] ?? LIMB_ROOM_DEFAULT;
   // A long standing or seated loop is slow motion, captured at 10 fps in the
   // library; baking it at 30 tripled the memory and the load for nothing.
-  const baked = await bakeFrames(body, time => { transfer.pose(time); clearLimbs(body.rig, room[0], room[1]); }, clip.duration, clip.loop, bakeFps(clip));
+  const baked = await bakeFrames(body, time => { transfer.pose(time); clearLimbs(body.rig, room[0], room[1]); }, clip.duration, clip.loop, bakeFps(clip),
+    HELD_CLIPS.has(name ?? ''));
   const facts = gaitClipOf(clip, transfer.scale, baked.frames);
   const share = amplitude ? strideShare(clip.source, amplitude) : 1;
   return { ...baked, ...facts, stride: facts.stride * share };
@@ -416,6 +431,9 @@ const LIMB_ROOM: Readonly<Record<string, readonly [number, number]>> = {
   turnLeft: [7, 0], turnRight: [7, 0], turnLeft180: [7, 0], turnRight180: [7, 0],
 };
 const LIMB_ROOM_DEFAULT: readonly [number, number] = [6, 0];
+
+/** The clips whose hands hold something (`HELD`): their hand bones are baked too. */
+const HELD_CLIPS = new Set(['read', 'drink', 'phone', 'photo', 'bag', 'umbrella']);
 
 const limbA = new Vector3(), limbB = new Vector3(), limbAxis = new Vector3();
 const limbQ = new Quaternion(), limbWorld = new Quaternion(), limbParent = new Quaternion();
@@ -538,6 +556,11 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   const motion = new WeakMap<PedView, Gait>();
   const plays: GaitPlay[] = [];
   const transform = new Object3D();
+  // What people hold while they stop to do something (`heldProps.ts`).
+  const held = createHeldProps();
+  group.add(held.group);
+  resources.add(held);
+  const handMatrix = new Matrix4();
   const matrix = new Matrix4();
   const helmetBone = new Matrix4();
   let disposed = false;
@@ -811,6 +834,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   return {
     group,
     begin(level = 2, zoom = Infinity) {
+      held.begin();
       detail = level;
       registry.beginFrame();
       lod = zoom >= 8 ? 0 : zoom >= 2 ? 1 : 2;
@@ -869,6 +893,20 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       }
       emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), lean, ground,
         lod === 0 ? facialExpression(ped.id, time, ped.gesture?.kind, CROWD[index]?.person?.mood) : undefined);
+      // In the hand, what the gesture is done with, where the hand is in the
+      // clip carrying the most weight this frame.
+      const thing = ped.gesture ? HELD[ped.gesture.kind] : undefined;
+      if (thing && lod < 2) {
+        let best = -1;
+        for (let i = 0; i < mixWeights.length; i++) if (best < 0 || mixWeights[i]! > mixWeights[best]!) best = i;
+        const clip = best >= 0 ? mixClips[best] : undefined;
+        if (clip?.hands && mixWeights[best]! > 0.5) {
+          const frame = Math.min(clip.frames, Math.max(0, Math.round(mixPhases[best]!)));
+          handMatrix.fromArray(clip.hands, frame * 32 + (thing.left ? 16 : 0));
+          handMatrix.premultiply(transform.matrix);
+          held.place(thing.kind, handMatrix, m(scale));
+        }
+      }
     },
     /**
      * Somebody in or on a vehicle, or stepping between a vehicle and the
