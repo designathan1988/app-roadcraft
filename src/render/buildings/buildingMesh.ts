@@ -2,6 +2,9 @@ import earcut from 'earcut';
 import clipping from 'polygon-clipping';
 import { resolveBlocks } from '@world/buildings/blocks';
 import { lotSurfaces } from '@world/buildings/lots';
+import { deriveSpaces } from '@world/buildings/spaces';
+import { slotFor } from './lightSlots';
+import { worldToLocal } from '@world/buildings/geometry';
 import { FURNITURE_KINDS, FURNITURE_SIZE, type Furniture, type FurnitureKind, interiorAt } from '@world/buildings/interior';
 import { asPolygon, edgeFrame, localFootprint, volumeSides } from '@world/buildings/footprints';
 import {
@@ -9,6 +12,7 @@ import {
   Color,
   Float32BufferAttribute,
   Group,
+  InstancedBufferAttribute,
   InstancedMesh,
   Mesh,
   Uint32BufferAttribute,
@@ -96,6 +100,8 @@ interface Placement {
   sy: number;
   sz: number;
   colour?: Color;
+  /** A window pane's space (`lightSlots.ts`): lit when its room is. */
+  slot?: number;
 }
 
 type Rgb = readonly [number, number, number];
@@ -429,13 +435,31 @@ class Emitter {
   }
 
   /** An instance placed on a bay face, turned so its local +Z is the face's outward normal. */
+  /** The space of the bay being drawn, for its panes (-1: none). */
+  slot = -1;
+
   put(kind: PartKind, f: BayFace, a: number, h: number, depth: number, sx: number, sy: number, sz: number, colour?: Color): void {
     const p = this.P(f, a, h, depth);
     const n = this.N(f.nx, f.ny);
     const placement: Placement = { x: p[0], y: p[1], z: p[2], yaw: Math.atan2(n[0], -n[1]), sx, sy, sz };
     if (colour) placement.colour = colour;
+    if (kind === 'glass' || kind === 'glassDark') placement.slot = this.slot;
     this.parts[kind].push(placement);
   }
+}
+
+/** The light slot of a bay's window: the space on its floor behind it. */
+function slotOfBay(b: Building, v: Volume, bay: FacadeBay, spaces: ReturnType<typeof deriveSpaces>): number {
+  if (b.id < 0) return -1;
+  const floor = spaces.find((f) => f.volume === v.id && f.level === bay.level);
+  if (!floor) return -1;
+  // A step inside the facade, in the building's frame.
+  const inside = worldToLocal(b, { x: bay.x - bay.nx * m(0.6) + 0, y: bay.y - bay.ny * m(0.6) });
+  const along = (bay.width ?? 0) / 2;
+  void along;
+  const sp = floor.spaces.find((q) => inside.x >= q.x - 1 && inside.x <= q.x + q.w + 1 && inside.y >= q.y - 1 && inside.y <= q.y + q.d + 1)
+    ?? floor.spaces[0];
+  return sp ? slotFor(b.id, bay.level, v.id, sp.x, sp.y) : -1;
 }
 
 function emitBuilding(
@@ -504,6 +528,8 @@ function emitBuilding(
     }
   }
 
+  // The spaces of each floor, for which room a window lights.
+  const spacesOf = deriveSpaces(b);
   // ---- facades, bay by bay: only outside walls are in `bays`
   const componentAt = new Map<string, BayComponent>();
   for (const bay of bays) componentAt.set(`${bay.volume}:${bay.level}:${bay.side}:${bay.index}`, bay.component);
@@ -544,7 +570,9 @@ function emitBuilding(
       }
       e.rect(face, 0, face.W, 0, face.H, m(0.25), e.N(-face.nx, -face.ny), inner);
     }
+    e.slot = slotOfBay(b, v, bay, spacesOf);
     emitBay(e, face, bay, wallOf(v, bay.side, bay.storey), trim, awning, left === 'pillar', right === 'pillar', recess, controls);
+    e.slot = -1;
     const ribDepth = controls?.pierDepth ?? (grammar === 'artDecoCrown' ? m(.65) : grammar === 'artDeco' ? m(.3) : 0);
     if (ribDepth > 0 && bay.index % (controls?.pierEvery ?? 1) === 0) {
       // Shallow, continuous-looking stone pilasters give every mass a vertical
@@ -718,7 +746,9 @@ function emitInterior(e: Emitter, b: Building, floor: number, cut: number): void
     const top = facing > 0.6 ? z + m(0.9) : wallTop;
     e.box(Math.min(p.x0, p.x1) - t, Math.min(p.y0, p.y1) - t, Math.max(p.x0, p.x1) + t, Math.max(p.y0, p.y1) + t, z, top, PARTITION);
   }
-  for (const f of inside.furniture) placeFurniture(e, f, z);
+  // A ceiling light hangs from the ceiling; everything else stands on the floor.
+  const ceiling = z + levelHeight(b, cut) - m(0.06);
+  for (const f of inside.furniture) placeFurniture(e, f, f.kind === 'ceilingLamp' ? ceiling - f.h : z);
 }
 
 /**
@@ -2190,6 +2220,8 @@ export interface PartBatch {
   readonly matrices: Float32Array;
   readonly colours: Float32Array | null;
   readonly count: number;
+  /** Window panes: each one's light slot. */
+  readonly slots?: Float32Array;
 }
 
 /**
@@ -2256,7 +2288,10 @@ export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): B
         colours[i * 3 + 2] = p.colour.b;
       }
     });
-    batches[kind] = { matrices, colours, count: list.length };
+    const glassy = kind === 'glass' || kind === 'glassDark';
+    batches[kind] = glassy
+      ? { matrices, colours, count: list.length, slots: Float32Array.from(list, (p) => p.slot ?? -1) }
+      : { matrices, colours, count: list.length };
   }
   const shells: Partial<Record<Finish, ShellChunk>> = {};
   for (const [finish, part] of shell.parts) {
@@ -2343,7 +2378,23 @@ export function assembleBuildingMeshes(
     let count = 0;
     for (const chunk of chunks) count += chunk.parts[kind].count;
     if (count === 0) continue;
-    const mesh = new InstancedMesh(kit.geometry[kind], ghost ? kit.ghostParts : dim ? kit.dimParts : kit.material[kind], count);
+    // Window panes carry their room's light slot, per instance, on their own
+    // copy of the pane geometry (the kit's is shared by every batch).
+    const glassy = !ghost && (kind === 'glass' || kind === 'glassDark');
+    const geometry = glassy ? kit.geometry[kind].clone() : kit.geometry[kind];
+    if (glassy) {
+      const slots = new Float32Array(count);
+      let k = 0;
+      for (const chunk of chunks) {
+        const batch = chunk.parts[kind];
+        if (batch.slots) slots.set(batch.slots, k);
+        else slots.fill(-1, k, k + batch.count);
+        k += batch.count;
+      }
+      geometry.setAttribute('litSlot', new InstancedBufferAttribute(slots, 1));
+    }
+    const mesh = new InstancedMesh(geometry, ghost ? kit.ghostParts : dim ? kit.dimParts : kit.material[kind], count);
+    if (glassy) mesh.userData['ownGeometry'] = true;
     mesh.name = `building-${kind}${ghost ? '-preview' : ''}`;
     mesh.castShadow = !ghost && kit.castsShadow.has(kind);
     mesh.receiveShadow = !ghost;
@@ -2400,8 +2451,10 @@ export function assembleBuildingMeshes(
     dispose() {
       for (const mesh of meshes) {
         // The shell geometry is this build's own; the part geometries are the kit's.
-        if (mesh instanceof InstancedMesh) mesh.dispose();
-        else mesh.geometry.dispose();
+        if (mesh instanceof InstancedMesh) {
+          if (mesh.userData['ownGeometry']) mesh.geometry.dispose();
+          mesh.dispose();
+        } else mesh.geometry.dispose();
       }
       group.clear();
     },

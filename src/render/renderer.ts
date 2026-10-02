@@ -44,7 +44,34 @@ import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
 import { TERRAIN_CELL, createTerrainSurface, type TerrainSurface } from './terrain';
 import { buildingPads } from '@world/buildings/pads';
 import { Indoors } from './indoors';
+import { setLit, slotOf, slotsOnFloor } from './buildings/lightSlots';
 import { m } from '@world/units';
+/**
+ * Marks lit every space somebody is in, awake: a resident's own flat at home
+ * (none after bedtime), the floor of their job at work, the ground floor for
+ * a visitor, and the lobby of a block of flats with people in it after dark.
+ */
+function updateLitRooms(sim: SimWorld): void {
+  const lit = new Set<number>();
+  const hour = (sim.city.minutes(sim) % 1440) / 60;
+  const asleep = hour >= 23 || hour < 6.5;
+  const addFloor = (b: number, level: number): void => { for (const slot of slotsOnFloor(b, level)) lit.add(slot); };
+  for (const b of sim.doc.buildings.all()) {
+    const inside = sim.city.inside(b.id);
+    if (inside.length === 0) continue;
+    for (const r of inside) {
+      if (r.home === b.id) {
+        if (asleep) continue;
+        const flat = r.homeSpace;
+        const slot = flat ? slotOf(b.id, r.homeLevel, flat.volume, flat.x, flat.y) : -1;
+        if (slot >= 0) lit.add(slot); else addFloor(b.id, r.homeLevel);
+      } else addFloor(b.id, r.work === b.id ? r.workLevel : 0);
+    }
+    if (b.function === 'apartments' || b.function === 'residentialTower') addFloor(b.id, 0);
+  }
+  setLit(lit);
+}
+
 /** Room lights kept in the scene for the floors cut open (`indoors.ts`). */
 const ROOM_LIGHTS = 6;
 import { type BuildingPreviewInput, type CutawaySpec, createBuildingLayer } from './buildings/layer';
@@ -322,6 +349,7 @@ export function createSceneRenderer(
     roomLights.push(light);
   }
   let lampsKey = '';
+  let litAt = 0;
   let tallestFor = -1;
   let lastDark = -1;
   let tallestTop = 0;
@@ -611,6 +639,12 @@ export function createSceneRenderer(
         tallestFor = buildings.version;
         tallestBox.setFromObject(buildings.group);
         tallestTop = tallestBox.isEmpty() ? 0 : tallestBox.max.y;
+      }
+      // The windows of the rooms people are in, and awake in, are lit; the rest
+      // are dark (`buildings/lightSlots.ts`). Once a second of play is enough.
+      if (performance.now() - litAt > 1000) {
+        litAt = performance.now();
+        updateLitRooms(sim);
       }
       // Day and night, by the residents' clock (`sim/city`).
       const dark = environment.setTimeOfDay(sim.city.minutes(sim));

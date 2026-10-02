@@ -2,8 +2,8 @@ import type { SimWorld } from '@sim/world';
 import type { Resident } from '@sim/city/population';
 import type { GestureView, PedView } from '@sim/people/view';
 import { floorHeight, type GroundAt, type PavedAt } from '@world/buildings/foundation';
-import { levelElevation, localToWorld } from '@world/buildings/geometry';
-import { FURNITURE_SIZE, type Furniture, type FurnitureKind, interiorAt } from '@world/buildings/interior';
+import { levelElevation, levelHeight, localToWorld } from '@world/buildings/geometry';
+import { FURNITURE_SIZE, LAMP_KINDS, type Furniture, type FurnitureKind, interiorAt } from '@world/buildings/interior';
 import type { Building } from '@world/buildings/types';
 import { m } from '@world/units';
 import type { CutawaySpec } from './buildings/layer';
@@ -31,6 +31,9 @@ export interface IndoorFigure {
 type Use = 'sofa' | 'seat' | 'table' | 'desk' | 'counter' | 'kitchen' | 'shelf' | 'bed' | 'pew';
 
 interface Spot {
+  /** Where, in the building's own frame (to tell whose flat it is in). */
+  readonly lx: number;
+  readonly ly: number;
   readonly x: number;
   readonly y: number;
   readonly heading: number;
@@ -76,7 +79,7 @@ function spotsOf(b: Building, level: number): Spot[] {
       const p = localToWorld(b, f.x + fx * footOut, f.y + fy * footOut);
       const back = worldHeading(-fx, -fy);
       const [, , h] = FURNITURE_SIZE[f.kind];
-      out.push({ x: p.x, y: p.y, heading: back - Math.PI / 2, use, rise: m(h * 0.95 + 0.12), lean: Math.PI / 2 });
+      out.push({ lx: f.x, ly: f.y, x: p.x, y: p.y, heading: back - Math.PI / 2, use, rise: m(h * 0.95 + 0.12), lean: Math.PI / 2 });
       continue;
     }
     if (SITS.has(use)) {
@@ -85,13 +88,13 @@ function spotsOf(b: Building, level: number): Spot[] {
       // the body sank into the back of the sofa).
       const ahead = f.d / 2 + m(0.12);
       const p = localToWorld(b, f.x + fx * ahead, f.y + fy * ahead);
-      out.push({ x: p.x, y: p.y, heading: worldHeading(fx, fy), use, rise: 0, lean: 0 });
+      out.push({ lx: f.x, ly: f.y, x: p.x, y: p.y, heading: worldHeading(fx, fy), use, rise: 0, lean: 0 });
       continue;
     }
     // Standing in front of it, facing it.
     const away = f.d / 2 + m(0.45);
     const p = localToWorld(b, f.x + fx * away, f.y + fy * away);
-    out.push({ x: p.x, y: p.y, heading: worldHeading(-fx, -fy), use, rise: 0, lean: 0 });
+    out.push({ lx: f.x, ly: f.y, x: p.x, y: p.y, heading: worldHeading(-fx, -fy), use, rise: 0, lean: 0 });
   }
   return out;
 }
@@ -127,7 +130,7 @@ export class Indoors {
    * furniture (a living room, a kitchen, a row of desks), nearest the middle of
    * the view first, at most `max`.
    */
-  lamps(world: SimWorld, spec: CutawaySpec | null, groundAt: GroundAt, pavedAt: PavedAt, max: number): { x: number; y: number; z: number }[] {
+lamps(world: SimWorld, spec: CutawaySpec | null, groundAt: GroundAt, pavedAt: PavedAt, max: number): { x: number; y: number; z: number }[] {
     const out: { x: number; y: number; z: number }[] = [];
     if (!spec) return out;
     const near = [...world.doc.buildings.all()]
@@ -136,21 +139,19 @@ export class Indoors {
       .sort((a, c) => a.d - c.d);
     for (const { b } of near) {
       const key = `${b.id}:${spec.level}`;
-      let spots = this.spots.get(key);
-      if (!spots) { spots = spotsOf(b, spec.level); this.spots.set(key, spots); }
       let floor = this.floors.get(key);
       if (floor === undefined) {
         floor = floorHeight(b, groundAt, pavedAt) + levelElevation(b, spec.level) + m(0.05);
         this.floors.set(key, floor);
       }
-      const rooms: { x: number; y: number; n: number }[] = [];
-      for (const s of spots) {
-        const room = rooms.find((r) => Math.hypot(r.x / r.n - s.x, r.y / r.n - s.y) < m(4.5));
-        if (room) { room.x += s.x; room.y += s.y; room.n++; } else rooms.push({ x: s.x, y: s.y, n: 1 });
-      }
-      for (const r of rooms) {
+      // The light is where the fittings are: placed, moved and removed by the
+      // player like any other piece (`interior.ts`, the Interior tab).
+      for (const f of interiorAt(b, spec.level).furniture) {
+        if (!LAMP_KINDS.has(f.kind)) continue;
         if (out.length >= max) return out;
-        out.push({ x: r.x / r.n, y: r.y / r.n, z: floor + m(2.4) });
+        const p = localToWorld(b, f.x, f.y);
+        const up = f.kind === 'ceilingLamp' ? levelHeight(b, spec.level) - m(0.6) : f.h * 0.9;
+        out.push({ x: p.x, y: p.y, z: floor + up });
       }
     }
     return out;
@@ -191,12 +192,21 @@ export class Indoors {
       let shown = 0;
       for (const r of inside) {
         if (shown >= PER_BUILDING) break;
+        // Only the people on this floor: at home on their own floor, at work
+        // on their job's, visitors on the ground floor.
+        const home = r.home === b.id;
+        const floorOf = home ? r.homeLevel : r.work === b.id ? r.workLevel : 0;
+        if (floorOf !== spec.level) continue;
+        // At home, inside their own flat.
+        const flat = home ? r.homeSpace : null;
+        const inFlat = (sp: Spot): boolean => !flat ||
+          (sp.lx >= flat.x - 1 && sp.lx <= flat.x + flat.w + 1 && sp.ly >= flat.y - 1 && sp.ly <= flat.y + flat.d + 1);
         let pick = -1;
         for (const use of wants(r, b.id, hour)) {
           const start = (r.id * 7) % spots.length;
           for (let k = 0; k < spots.length; k++) {
             const i = (start + k) % spots.length;
-            if (!taken.has(i) && spots[i]!.use === use) { pick = i; break; }
+            if (!taken.has(i) && spots[i]!.use === use && inFlat(spots[i]!)) { pick = i; break; }
           }
           if (pick >= 0) break;
         }

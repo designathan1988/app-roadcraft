@@ -3,7 +3,7 @@ import type { Vec2 } from '@core/vec2';
 import { m } from '../units';
 import { localFootprint } from './footprints';
 import { deriveSpaces } from './spaces';
-import { type Building, type BuildingFunction, type Volume, volumeTop } from './types';
+import { type Building, type BuildingFunction, type Volume, volumeTop, type PlacedFurniture } from './types';
 
 /**
  * What is inside a building, floor by floor: rooms, the walls between them
@@ -23,6 +23,7 @@ export const FURNITURE_KINDS = [
   'bed', 'singleBed', 'sofa', 'armchair', 'table', 'chair', 'desk', 'officeChair', 'shelf', 'bookshelf', 'counter',
   'fridge', 'stove', 'sink', 'toilet', 'bath', 'wardrobe', 'tv', 'plant', 'pew', 'seat', 'wardBed', 'bars', 'screen',
   'altar', 'machine', 'rack', 'locker', 'atm', 'stage', 'barCounter', 'blackboard', 'checkout', 'treadmill', 'pallet',
+  'ceilingLamp', 'floorLamp', 'tableLamp',
 ] as const;
 export type FurnitureKind = (typeof FURNITURE_KINDS)[number];
 
@@ -62,7 +63,12 @@ export const FURNITURE_SIZE: Readonly<Record<FurnitureKind, readonly [number, nu
   seat: [0.6, 0.6, 1], wardBed: [1, 2.1, 0.75], bars: [3, 0.12, 2.6], screen: [8, 0.3, 4], altar: [2, 1, 1.1],
   machine: [1.6, 1.1, 1.6], rack: [4, 1.1, 3.2], locker: [0.5, 0.5, 1.9], atm: [0.7, 0.6, 1.6], stage: [5, 3, 0.6],
   barCounter: [4, 0.7, 1.1], blackboard: [4, 0.1, 1.2], checkout: [1.8, 0.8, 0.95], treadmill: [0.8, 1.9, 1.3], pallet: [1.2, 1, 1.2],
+  ceilingLamp: [0.6, 0.6, 0.35], floorLamp: [0.45, 0.45, 1.6], tableLamp: [0.35, 0.35, 0.55],
 };
+
+/** The pieces that give light: the room lights are where these are. */
+export const LAMP_KINDS: ReadonlySet<FurnitureKind> = new Set(['ceilingLamp', 'floorLamp', 'tableLamp']);
+export const isFurnitureKind = (v: unknown): v is FurnitureKind => (FURNITURE_KINDS as readonly unknown[]).includes(v);
 
 const RIGHT = Math.PI / 2;
 
@@ -97,7 +103,34 @@ export function interiorAt(b: Building, level: number): FloorInterior {
     out.push(...plan.items);
     walls.push(...plan.walls);
   }
-  return { level, furniture: out, partitions: walls };
+  // The player's own arrangement, where there is one; otherwise the one made
+  // for the function, with a light over each room.
+  const stored = b.furnishing?.[String(level)];
+  const furniture = stored ? stored.filter((p) => isFurnitureKind(p.kind)).map(placed) : [...out, ...roomLights(out)];
+  return { level, furniture, partitions: walls };
+}
+
+/** A placed piece at its kind's size. */
+function placed(p: PlacedFurniture): Furniture {
+  const kind = p.kind as FurnitureKind;
+  const [w, d, h] = FURNITURE_SIZE[kind];
+  return { kind, x: p.x, y: p.y, w: m(w), d: m(d), h: m(h), angle: p.angle };
+}
+
+/** A ceiling light over each group of furniture: a room's worth. */
+function roomLights(items: readonly Furniture[]): Furniture[] {
+  const rooms: { x: number; y: number; n: number }[] = [];
+  for (const f of items) {
+    const room = rooms.find((r) => Math.hypot(r.x / r.n - f.x, r.y / r.n - f.y) < m(4.5));
+    if (room) { room.x += f.x; room.y += f.y; room.n++; } else rooms.push({ x: f.x, y: f.y, n: 1 });
+  }
+  const [w, d, h] = FURNITURE_SIZE.ceilingLamp;
+  return rooms.map((r) => ({ kind: 'ceilingLamp' as const, x: r.x / r.n, y: r.y / r.n, w: m(w), d: m(d), h: m(h), angle: 0 }));
+}
+
+/** A floor's furniture as stored pieces: what an edit starts from. */
+export function furnishingOf(b: Building, level: number): PlacedFurniture[] {
+  return interiorAt(b, level).furniture.map((f) => ({ kind: f.kind, x: f.x, y: f.y, angle: f.angle }));
 }
 
 function defaultFunction(b: Building): BuildingFunction {

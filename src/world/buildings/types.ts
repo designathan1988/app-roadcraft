@@ -229,6 +229,15 @@ export const BUILDING_FUNCTIONS = [
 ] as const;
 export type BuildingFunction = (typeof BUILDING_FUNCTIONS)[number];
 
+/** One piece of furniture or a light placed by the player, in the building's local frame. */
+export interface PlacedFurniture {
+  readonly kind: string;
+  readonly x: number;
+  readonly y: number;
+  /** The way it faces, radians (0 faces -y). */
+  readonly angle: number;
+}
+
 export type BlockMode = 'void' | 'intersect' | 'xor';
 
 /** Free parts a building can be given besides its volumes. See docs/buildings.md, "Elements". */
@@ -324,6 +333,12 @@ export interface Building {
   cores: Core[];
   /** What the building is for (absent: a plain building of its `use`). */
   function?: BuildingFunction;
+  /**
+   * The furniture and lights of each floor as the player arranged them, by
+   * level. A floor with none here is furnished for the building's function
+   * (`interior.ts`); the first edit stores that arrangement and changes it.
+   */
+  furnishing?: Record<string, PlacedFurniture[]>;
   /**
    * Drawing only, never stored: the building cut open above this level, to
    * show its inside (the Construction tool's interior view).

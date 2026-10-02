@@ -277,8 +277,19 @@ function build(kind: FurnitureKind): BufferGeometry[] {
         rbox(W, 0.12, 0.25, 0, 1.15, back + 0.15, BLACK, 0.03)];
     case 'pallet':
       return [rbox(W, 0.14, D, 0, 0, 0, hex(0xb08a5a), 0.01), rbox(W - 0.1, H - 0.18, D - 0.1, 0, 0.14, 0, hex(0xc9a777), 0.03)];
+    // Lights: a shade lit warm from inside (the room's light is placed where
+    // these are), on a ceiling rose, a pole or a small base.
+    case 'ceilingLamp':
+      return [cyl(0.05, 0.12, 0, H - 0.12, 0, STEEL, 0.05, 10), cyl(W / 2, 0.2, 0, 0.02, 0, SHADE, W / 2 * 0.55, 20), ball(0.08, 0, 0.05, 0, BULB)];
+    case 'floorLamp':
+      return [cyl(0.16, 0.03, 0, 0, 0, BLACK, 0.16, 16), cyl(0.018, H - 0.35, 0, 0.03, 0, BLACK, 0.018, 8), cyl(W / 2 * 0.6, 0.32, 0, H - 0.34, 0, SHADE, W / 2, 20)];
+    case 'tableLamp':
+      return [cyl(0.09, 0.03, 0, 0, 0, OAK, 0.1, 14), cyl(0.02, H - 0.25, 0, 0.03, 0, OAK, 0.02, 8), cyl(W / 2 * 0.65, 0.22, 0, H - 0.24, 0, SHADE, W / 2, 18)];
   }
 }
+
+const SHADE = hex(0xfff0d0);
+const BULB = hex(0xfffbe8);
 
 /** One geometry per furniture kind, merged, vertex-coloured. */
 export function createFurnitureGeometries(): Record<FurnitureKind, BufferGeometry> {

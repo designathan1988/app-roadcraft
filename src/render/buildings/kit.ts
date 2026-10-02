@@ -15,6 +15,7 @@ import type { Finish } from '@world/buildings/materials';
 import { createFinishMaterials } from './finishes';
 import { createFurnitureGeometries, createFurnitureMaterial } from './furnitureKit';
 import type { FurnitureKind } from '@world/buildings/interior';
+import { SLOT_WIDTH, litTexture } from './lightSlots';
 
 /**
  * Everything the buildings layer draws with, built ONCE per renderer.
@@ -199,23 +200,31 @@ export function createBuildingKit(): BuildingKit {
   for (const kind of ['glass', 'glassDark'] as const) {
     const glassy = material[kind] as MeshStandardMaterial;
     glassy.onBeforeCompile = (shader) => {
+      shader.uniforms.litTable = { value: litTexture };
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying float vRoomLot;')
+        .replace('#include <common>', '#include <common>\nvarying float vRoomLot;\nvarying float vLit;\nattribute float litSlot;\nuniform sampler2D litTable;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
   vec3 roomAt = instanceMatrix[3].xyz;
 #else
   vec3 roomAt = vec3(0.0);
 #endif
-  vRoomLot = fract(sin(dot(floor(roomAt * 0.37), vec3(12.9898, 78.233, 37.719))) * 43758.5453);`);
+  vRoomLot = fract(sin(dot(floor(roomAt * 0.37), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+  // The room behind the pane (lightSlots.ts): lit exactly when somebody is
+  // in it and awake. -1: a pane with no room known, lit by lot.
+  vLit = -1.0;
+  if (litSlot > -0.5) {
+    vLit = texture2D(litTable, vec2((mod(litSlot, ${SLOT_WIDTH}.0) + 0.5) / ${SLOT_WIDTH}.0, (floor(litSlot / ${SLOT_WIDTH}.0) + 0.5) / 64.0)).r;
+  }`);
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vRoomLot;')
+        .replace('#include <common>', '#include <common>\nvarying float vRoomLot;\nvarying float vLit;')
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-  float roomLit = step(0.34, vRoomLot) * (0.45 + 0.9 * fract(vRoomLot * 7.13));
+  float roomLit = vLit >= 0.0 ? vLit * (0.55 + 0.7 * fract(vRoomLot * 7.13))
+    : step(0.34, vRoomLot) * (0.45 + 0.9 * fract(vRoomLot * 7.13));
   vec3 roomTint = mix(vec3(1.0), vec3(0.62, 0.78, 1.15), step(0.9, fract(vRoomLot * 3.71)));
   totalEmissiveRadiance *= roomLit * roomTint;`);
     };
-    glassy.customProgramCacheKey = () => `room-lights-${kind}`;
+    glassy.customProgramCacheKey = () => `room-lights-slots-${kind}`;
   }
   const shell = createFinishMaterials();
   const ghostShell = new MeshStandardMaterial({

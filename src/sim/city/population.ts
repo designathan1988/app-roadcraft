@@ -1,5 +1,7 @@
 import { Rng } from '@core/rng';
 import { localFootprint } from '@world/buildings/footprints';
+import { topLevel } from '@world/buildings/geometry';
+import { deriveSpaces } from '@world/buildings/spaces';
 import type { Building, BuildingFunction, BuildingId } from '@world/buildings/types';
 import { m } from '@world/units';
 
@@ -23,6 +25,14 @@ export interface Resident {
   readonly seed: number;
   readonly ageClass: AgeClass;
   readonly home: BuildingId;
+  /**
+   * The home within the building: its floor and the space (a flat) that is
+   * theirs - the unit a family owns or rents (`spaces.ts`).
+   */
+  readonly homeLevel: number;
+  readonly homeSpace: { readonly volume: number; readonly x: number; readonly y: number; readonly w: number; readonly d: number } | null;
+  /** The floor of the workplace their job is on. */
+  readonly workLevel: number;
   /** Where they spend the day: a job, a school; null for those at home all day. */
   readonly work: BuildingId | null;
   readonly hasCar: boolean;
@@ -146,6 +156,7 @@ export function jobsOf(b: Building): number {
 export function derivePopulation(buildings: Iterable<Building>): Population {
   const all = [...buildings].sort((a, b) => a.id - b.id);
   const workplaces = all.filter((b) => jobsOf(b) > 0);
+  const byIdAll = new Map(all.map((b) => [b.id, b]));
   const schools = all.filter((b) => roleOf(b).school);
   const outings = all.filter((b) => roleOf(b).outing);
   const eateries = all.filter((b) => b.function !== undefined && EATERIES.has(b.function));
@@ -165,12 +176,22 @@ export function derivePopulation(buildings: Iterable<Building>): Population {
   // Jobs handed out round the workplaces in turn, from a stream of its own,
   // so a new house does not reshuffle who works where in the rest of town.
   const jobRng = new Rng(0x10b5);
+  let lastJob = 0;
   const vacancies = (): BuildingId | null => {
     const open = workplaces.filter((b) => (taken.get(b.id) ?? 0) < offered.get(b.id)!);
     if (!open.length) return null;
     const pick = open[Math.floor(jobRng.float() * open.length)]!;
-    taken.set(pick.id, (taken.get(pick.id) ?? 0) + 1);
+    lastJob = taken.get(pick.id) ?? 0;
+    taken.set(pick.id, lastJob + 1);
     return pick.id;
+  };
+  /** The floor job number `n` of a workplace is on: the jobs filled floor by floor. */
+  const workFloor = (id: BuildingId | null, n: number): number => {
+    const w = id === null ? undefined : byIdAll.get(id);
+    if (!w) return 0;
+    const floors = Math.max(1, topLevel(w));
+    const perFloor = Math.max(1, Math.ceil((offered.get(id!) ?? 1) / floors));
+    return Math.min(floors - 1, Math.floor(n / perFloor));
   };
 
   for (const b of all) {
@@ -178,15 +199,26 @@ export function derivePopulation(buildings: Iterable<Building>): Population {
     if (!count) continue;
     const rng = new Rng(0xc17 ^ (b.id * 2654435761));
     const list: number[] = [];
+    // The flats: residential spaces, the ground floor of a block of flats
+    // left to its lobby. A family of two or three to each, in turn.
+    const tall = topLevel(b) > 1 && b.function !== 'house' && b.function !== 'townhouse';
+    const flats = deriveSpaces(b).flatMap((f) => (tall && f.level === 0) || f.use !== 'residential' && f.use !== 'mixed'
+      ? [] : f.spaces.filter((sp) => sp.kind === 'unit').map((sp) => ({ level: f.level, space: { volume: f.volume, x: sp.x, y: sp.y, w: sp.w, d: sp.d } })));
     for (let k = 0; k < count; k++) {
       const age = rng.float();
       const ageClass: AgeClass = age < 0.22 ? 'child' : age < 0.85 ? 'adult' : 'elder';
       let work: BuildingId | null = null;
+      let job = 0;
       if (ageClass === 'child' && schools.length) {
         work = schools[Math.floor(rng.float() * schools.length)]!.id;
+        job = Math.floor(rng.float() * 1000);
       } else if (ageClass === 'adult' && rng.float() < 0.82) {
         work = vacancies();
+        job = lastJob;
       }
+      const flat = flats.length ? flats[Math.floor(k / 2.6) % flats.length]! : null;
+      // A house is one home on every floor: its people are about the house.
+      const homeLevel = flat ? flat.level : (b.function === 'house' || b.function === 'townhouse' ? k % Math.max(1, topLevel(b)) : 0);
       const early = ageClass === 'child' ? 7 * 60 : 6 * 60 + 45;
       const leaveAt = Math.round(early + rng.range(0, 110));
       const stay = Math.round(ageClass === 'child' ? rng.range(300, 360) : rng.range(450, 560));
@@ -218,6 +250,9 @@ export function derivePopulation(buildings: Iterable<Building>): Population {
         seed: (b.id * 7919 + k * 104729) >>> 0,
         ageClass,
         home: b.id,
+        homeLevel,
+        homeSpace: flat && tall ? flat.space : null,
+        workLevel: work === null ? 0 : workFloor(work, job),
         work,
         hasCar: ageClass === 'adult' && rng.float() < 0.55,
         leaveAt,

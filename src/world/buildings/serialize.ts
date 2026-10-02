@@ -42,10 +42,12 @@ import {
   MAX_ELEMENTS,
   BUILDING_FUNCTIONS,
   type BuildingFunction,
+  type PlacedFurniture,
   LOT_SURFACES,
 } from './types';
 import { DEFAULT_GROUND_HEIGHT, DEFAULT_STOREY_HEIGHT } from './blueprints';
 import { MIN_SIZE } from './geometry';
+import { isFurnitureKind } from './interior';
 import { migrateBuildingMaterials, migrateMaterial, migrateVolumeMaterials } from './materials';
 
 /**
@@ -366,6 +368,19 @@ export function migrateBuilding(raw: unknown): Building | null {
   else delete building.blueprint;
   if ((BUILDING_FUNCTIONS as readonly unknown[]).includes(raw.function)) building.function = raw.function as BuildingFunction;
   else delete building.function;
+  // The player's furniture, floor by floor: known kinds at finite places.
+  const furnishing: Record<string, PlacedFurniture[]> = {};
+  if (raw.furnishing && typeof raw.furnishing === 'object') {
+    for (const [level, list] of Object.entries(raw.furnishing as Record<string, unknown>)) {
+      if (!/^\d+$/.test(level) || !Array.isArray(list)) continue;
+      const items = list.filter((it): it is PlacedFurniture => !!it && typeof it === 'object' && isFurnitureKind((it as PlacedFurniture).kind) &&
+        [(it as PlacedFurniture).x, (it as PlacedFurniture).y, (it as PlacedFurniture).angle].every(Number.isFinite))
+        .slice(0, 400).map((it) => ({ kind: it.kind, x: it.x, y: it.y, angle: it.angle }));
+      furnishing[level] = items;
+    }
+  }
+  if (Object.keys(furnishing).length) building.furnishing = furnishing;
+  else delete building.furnishing;
   delete building.cutaway;
   return building;
 }
