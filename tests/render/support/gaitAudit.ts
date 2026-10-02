@@ -11,7 +11,7 @@ import { m } from '@world/units';
 import { SIGNAL_POST_RADIUS, signalPosts } from '@world/signalPosts';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { decodeRocketboxLibrary } from '@render/citizenWalk';
-import { gaitClipsOf, type GaitClipName, type GaitClips, type GaitPlay } from '@render/citizenGait';
+import { WALK_STYLES, gaitClipsOf, type GaitClipName, type GaitClips, type GaitPlay } from '@render/citizenGait';
 import { fixtureDoc, simOf } from '../../sim/support/bodies';
 
 /**
@@ -68,7 +68,8 @@ export interface GaitAudit {
 
 // The new cycles contain measured backward/lateral ankle travel. walkRest
 // carries zero ground and must never be counted as stepping merely by name.
-const WALKS = new Set<GaitClipName>(['walk', 'walkElder', 'walkSlow', 'walkShuffle', 'walkBack', 'walkLeft', 'walkRight']);
+const WALKS = new Set<GaitClipName>(['walk', 'walkElder', 'walkSlow', 'walkShuffle', 'walkBack', 'walkLeft', 'walkRight',
+  'walkDrunk', 'walkHandL', 'walkHandR', ...WALK_STYLES]);
 const STEPPING = new Set<GaitClipName>([...WALKS, 'run', 'start', 'stop', 'turnLeft', 'turnRight']);
 const MOVING = 0.15;
 const SLOW = 0.75;

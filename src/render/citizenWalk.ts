@@ -341,7 +341,8 @@ export type LibraryClipName =
   // Things people do (`sim/people/view.ts` GestureKind).
   | 'read' | 'bag' | 'trolley' | 'umbrella' | 'cheer' | 'dance' | 'wave' | 'drink' | 'photo'
   | 'crouchDown' | 'crouchIdle' | 'crouchUp' | 'laugh' | 'angry' | 'argue' | 'knock' | 'headphones'
-  | 'eatIdle' | 'workTable' | 'walkDrunk' | 'runFast';
+  | 'eatIdle' | 'workTable' | 'walkDrunk' | 'runFast'
+  | 'walkN1' | 'walkN2' | 'walkN3' | 'walkStroll' | 'walkCool' | 'walkFast';
 
 /**
  * One clip of the library, decoded and ready to transfer.

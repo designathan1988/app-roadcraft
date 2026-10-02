@@ -92,9 +92,16 @@ const CLIPS = {
   workTable: ['work_table', 'static', true],
   walkDrunk: ['walk_drunk', 'cycle', true],
   runFast: ['run_fast_01', 'cycle', true],
+  // Other walks, so that not everybody walks alike (`citizenGait` WALK_STYLES).
+  walkN1: ['walk_neutral_01', 'cycle', true],
+  walkN2: ['walk_neutral_02', 'cycle', true],
+  walkN3: ['walk_neutral_03', 'cycle', true],
+  walkStroll: ['walk_stroll_01', 'cycle', true],
+  walkCool: ['walk_cool_01', 'cycle', true],
+  walkFast: ['walk_fast_01', 'cycle', true],
 };
 /** Cycles phase-aligned to the neutral walk, because they are blended with it. */
-const ALIGN = new Set(['walkSlow']);
+const ALIGN = new Set(['walkSlow', 'walkN1', 'walkN2', 'walkN3', 'walkStroll', 'walkCool', 'walkFast']);
 const LIBRARIES = { male: ['m', 'walkMale.json'], female: ['f', 'walkFemale.json'] };
 const out = path.join('src', 'render', 'motion');
 

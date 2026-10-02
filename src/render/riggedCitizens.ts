@@ -53,6 +53,7 @@ const LIBRARY = [
   'start', 'stop', 'run', 'turnLeft', 'turnRight',
   'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp', 'walkSlow', 'walkDrunk',
   'read', 'bag', 'trolley', 'umbrella', 'cheer', 'dance', 'wave', 'drink', 'photo', 'crouchDown', 'crouchIdle', 'crouchUp', 'laugh', 'angry', 'argue', 'knock', 'headphones', 'eatIdle', 'workTable',
+  'walkN1', 'walkN2', 'walkN3', 'walkStroll', 'walkCool', 'walkFast',
 ] as const satisfies readonly LibraryClipName[];
 type Played = (typeof LIBRARY)[number];
 const LIBRARY_AT = Object.fromEntries(LIBRARY.map((name, i) => [name, WALK_SHUFFLE + 1 + i])) as

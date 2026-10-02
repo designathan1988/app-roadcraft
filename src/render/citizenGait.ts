@@ -59,12 +59,13 @@ export const GAIT_CLIP_NAMES = [
   'walk', 'walkElder', 'walkSlow', 'walkShuffle', 'walkRest', 'walkBack', 'walkLeft', 'walkRight', 'run', 'walkDrunk', 'walkHandL', 'walkHandR', 'start', 'stop', 'turnLeft', 'turnRight',
   'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp', 'walkDrunk',
   'read', 'bag', 'trolley', 'umbrella', 'cheer', 'dance', 'wave', 'drink', 'photo', 'crouchDown', 'crouchIdle', 'crouchUp', 'laugh', 'angry', 'argue', 'knock', 'headphones', 'eatIdle', 'workTable',
+  'walkN1', 'walkN2', 'walkN3', 'walkStroll', 'walkCool', 'walkFast',
 ] as const;
 export type GaitClipName = (typeof GAIT_CLIP_NAMES)[number];
 export type GaitClips = Readonly<Record<GaitClipName, GaitClip>>;
 /** The walk and run cycles, which 'loco' blends on one phase. */
 type Cycle = 'walk' | 'walkElder' | 'walkSlow' | 'walkShuffle' | 'walkRest' | 'walkBack' | 'walkLeft' | 'walkRight' | 'run' | 'walkDrunk'
-  | 'walkHandL' | 'walkHandR';
+  | 'walkHandL' | 'walkHandR' | WalkStyle;
 type Single = Exclude<GaitClipName, Cycle>;
 type PlayKey = 'loco' | Single;
 interface Play {
@@ -184,6 +185,7 @@ export const GAIT_LIBRARY = [
   'walkSlow', 'start', 'stop', 'run', 'turnLeft', 'turnRight',
   'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp',
   'read', 'bag', 'trolley', 'umbrella', 'cheer', 'dance', 'wave', 'drink', 'photo', 'crouchDown', 'crouchIdle', 'crouchUp', 'laugh', 'angry', 'argue', 'knock', 'headphones', 'eatIdle', 'workTable',
+  'walkN1', 'walkN2', 'walkN3', 'walkStroll', 'walkCool', 'walkFast',
 ] as const satisfies readonly (LibraryClipName & GaitClipName)[];
 
 /**
@@ -295,6 +297,29 @@ const HAND_R_WALKS = ['walkHandR'] as const satisfies readonly Cycle[];
 /** Carrying a box: the clips the arms are baked holding it in (`riggedCitizens` CARRY_AT). */
 const CARRY_WALKS = ['walkShuffle', 'walk'] as const satisfies readonly Cycle[];
 
+/**
+ * The walks people walk in, one each for life (`walkStyle`): several
+ * Rocketbox captures of ordinary walking - neutral, strolling, easy, brisk -
+ * so a street is not a file of one gait.
+ */
+export const WALK_STYLES = ['walkN1', 'walkN2', 'walkN3', 'walkStroll', 'walkCool', 'walkFast'] as const;
+export type WalkStyle = (typeof WALK_STYLES)[number];
+/** Which walk somebody walks in, from their id. */
+export const walkStyle = (id: number): WalkStyle => WALK_STYLES[id % WALK_STYLES.length]!;
+/** A person's walks, slowest first: the shuffle, the slow walk, their own, and the brisk walk on top. */
+const styleWalks = new WeakMap<GaitClips, Map<WalkStyle, readonly Cycle[]>>();
+function walksOf(clips: GaitClips, style: WalkStyle): readonly Cycle[] {
+  let byStyle = styleWalks.get(clips);
+  if (!byStyle) styleWalks.set(clips, byStyle = new Map());
+  let walks = byStyle.get(style);
+  if (!walks) {
+    const set = [...new Set<Cycle>(['walkShuffle', 'walkSlow', style, 'walkFast'])];
+    walks = set.sort((a, b) => naturalPace(clips[a], 1) - naturalPace(clips[b], 1));
+    byStyle.set(style, walks);
+  }
+  return walks;
+}
+
 /** Natural pace of a walk cycle on a body of `size`, m/s. */
 const naturalPace = (clip: GaitClip, size: number): number => clip.stride * size / clip.duration;
 
@@ -305,12 +330,12 @@ const naturalPace = (clip: GaitClip, size: number): number => clip.stride * size
  * shuffle, its stride shortens with the pace as a person's does.
  */
 function pace(g: Gait, clips: GaitClips, elder: boolean, size: number, speed: number, drunk = false, hand?: 'L' | 'R',
-  carry = false): void {
+  carry = false, style?: WalkStyle): void {
   const walks = carry ? CARRY_WALKS : drunk ? DRUNK_WALKS : hand === 'L' ? HAND_L_WALKS : hand === 'R' ? HAND_R_WALKS
-    : elder ? ELDER_WALKS : ADULT_WALKS;
-  const first = clips[walks[0]];
+    : elder ? ELDER_WALKS : style ? walksOf(clips, style) : ADULT_WALKS;
+  const first = clips[walks[0]!];
   const last = clips[walks[walks.length - 1]!];
-  g.walkA = g.walkB = walks[0];
+  g.walkA = g.walkB = walks[0]!;
   g.walkW = 0;
   g.stepScale = 1;
   if (speed <= naturalPace(first, size)) {
@@ -650,7 +675,7 @@ function moving(g: Gait, ped: PedView, clips: GaitClips, dt: number, speed: numb
       now.phase + CLIP_FLOOR * dt / clips.stop.duration));
   }
 
-  pace(g, clips, elder, size, speed, ped.style === 'drunk', ped.hand, ped.carry !== undefined);
+  pace(g, clips, elder, size, speed, ped.style === 'drunk', ped.hand, ped.carry !== undefined, walkStyle(ped.id));
   // Non-forward locomotion uses the short capture: long lateral strides
   // would cross the legs. Cardinal blend weights share one footfall phase.
   const x = Math.cos(g.direction), y = Math.sin(g.direction);
