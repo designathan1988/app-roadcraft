@@ -166,6 +166,15 @@ export class SimWorld {
    * DOM inside `sim` and made the same seed grow a different city on a phone.
    */
   populationShare = 1;
+  /**
+   * Where the player is looking, world units, and whether people there are
+   * drawn large enough to see how they step round each other. SET BY THE
+   * RENDERER each frame; null (tests, harnesses) simulates everybody in full.
+   * Out of it, people still follow their routes and keep off walls, but skip
+   * negotiating with each other (`sim/people`): nobody can see that, and it
+   * was most of a frame's simulation in a town.
+   */
+  focus: { readonly x: number; readonly y: number; readonly r: number; readonly detail: boolean } | null = null;
 
   auditEnabled = false;
   auditLevel: 'cheap' | 'full' = 'cheap';

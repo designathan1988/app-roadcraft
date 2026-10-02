@@ -730,6 +730,14 @@ export function createSceneRenderer(
       }
       rig.camera.getWorldDirection(viewDirection);
       environment.follow(target, halfWidth, groundHalfDepth, viewDirection, Math.max(0, tallestTop - target.y));
+      // What the simulation must show in full: people step round each other
+      // only where they are seen, and big enough to see it (`SimWorld.focus`).
+      sim.focus = {
+        x: target.x,
+        y: -target.z,
+        r: Math.hypot(halfWidth, groundHalfDepth) + m(20),
+        detail: rig.viewport.zoom * m(1.7) >= 10,
+      };
 
       renderer.shadowMap.needsUpdate = true;
       // Cheap (a few hundred objects), and it follows meshes a rebuild or an

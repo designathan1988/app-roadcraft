@@ -678,6 +678,10 @@ function step(w: SimWorld, s: State): void {
   const near: Person[] = [];
   const arrived: Person[] = [];
   const decided: Decision[] = [];
+  // Avoidance between people only where it can be seen (`SimWorld.focus`).
+  const focus = w.focus;
+  const watched = (p: Person): boolean =>
+    !focus || (focus.detail && Math.hypot(p.x - focus.x, p.y - focus.y) <= focus.r);
 
   // ---- 1. everybody decides, from where everybody stands now
   for (const p of s.people) {
@@ -917,7 +921,7 @@ function step(w: SimWorld, s: State): void {
     // has none, so the one standing never saw a reason to move, and the two
     // stood there - a companion in its own leader's way most of all.
     let makingRoom = false;
-    if (prefX === 0 && prefY === 0) {
+    if (prefX === 0 && prefY === 0 && watched(p)) {
       for (const q of neighbours(g, p, ROOM_REACH, near)) {
         const qi = q.intent;
         if (!qi || qi.prefX === undefined || qi.prefY === undefined) continue;
@@ -995,7 +999,7 @@ function step(w: SimWorld, s: State): void {
     // all give way to it (`shareOf`). Still giving way itself, it stood
     // among bodies that did not move until the last resort. (Giving way only
     // enough to squeeze past held it just as long.)
-    if (p.ghost <= 0 && p.urgent <= 0) {
+    if (p.ghost <= 0 && p.urgent <= 0 && watched(p)) {
       const around = neighbours(g, p, ORCA_REACH, near)
         .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
       for (let k = 0; k < around.length && k < ORCA_NEIGHBOURS; k++) {

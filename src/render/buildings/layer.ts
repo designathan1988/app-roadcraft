@@ -255,7 +255,7 @@ function groundDigest(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): strin
   return out;
 }
 /** Side of the cells the buildings are batched in, world units. */
-const BATCH_CELL = m(120);
+const BATCH_CELL = m(240);
 
 /**
  * The buildings batched cell by cell, each cell its own meshes: a cell out of
