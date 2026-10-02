@@ -72,7 +72,7 @@ const OUTFIT: Readonly<Record<RosterWardrobe, { female: readonly string[]; male:
   },
   'smart-casual': { female: ['female_elegantsuit01', 'female_casualsuit01'], male: ['male_casualsuit01', 'male_casualsuit03', 'male_casualsuit05'] },
   business: { female: ['female_elegantsuit01', 'punkduck_black_cocktail_dress'], male: ['male_elegantsuit01', 'mindfront_m_suit_01'] },
-  'sport-casual': { female: ['female_sportsuit01', 'female_casualsuit02'], male: ['male_casualsuit02', 'male_casualsuit04', 'male_casualsuit06', 'male_worksuit01', 'culturalibre_male_sport_suit'] },
+  'sport-casual': { female: ['female_sportsuit01', 'female_casualsuit02'], male: ['male_casualsuit02', 'male_casualsuit04', 'male_casualsuit06', 'male_worksuit01'] },
   traditional: { female: ['female_elegantsuit01', 'female_casualsuit01'], male: ['male_worksuit01', 'male_casualsuit01'] },
 };
 void WARDROBE;
@@ -133,8 +133,13 @@ export function makeRoster(): RosterEntry[] {
             // The MakeHuman outfit for the wardrobe: a suit for business, a
             // sports suit for sport, everyday clothes otherwise.
             // Casual people sometimes keep the dress or suit the generator drew.
-            ...(age === 'child' || (wardrobe === 'casual' && base.look.outfit && !WARDROBE_SYSTEM.has(base.look.outfit) && r() < 0.5) ? {}
-              : dressUnlike(r, used, OUTFIT[wardrobe][female ? 'female' : 'male'].filter((o) => o !== 'female_sportsuit01' || age === 'young'), wardrobe === 'business' ? SOBER : CLOTH_COLOURS)),
+            // Children in the casual outfits (a T-shirt and jeans or shorts),
+            // fitted to their bodies like anyone's: the plain painted shells
+            // read as leotards.
+            ...(age === 'child' ? { ...dressUnlike(r, used, female ? ['female_casualsuit01', 'female_casualsuit02'] : ['male_casualsuit02', 'male_casualsuit04', 'male_casualsuit06'], CLOTH_COLOURS),
+              footwear: pick(r, ['shoes01', 'shoes02', 'shoes04', 'shoes05']) }
+              : (wardrobe === 'casual' && base.look.outfit && !WARDROBE_SYSTEM.has(base.look.outfit) && r() < 0.5) ? {}
+              : dressUnlike(r, used, OUTFIT[wardrobe][female ? 'female' : 'male'].filter((o) => o !== 'female_sportsuit01'), wardrobe === 'business' ? SOBER : CLOTH_COLOURS)),
           },
         };
         // Riders reach the controls of the two-wheelers as they are drawn

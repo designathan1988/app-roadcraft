@@ -235,7 +235,7 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
   void tops; void trousers; void skirts;
   if (wear < 0.3 && female && dresses.length) outfit = pick(r, dresses);
   else if (wear < 0.4 && suits.length) outfit = pick(r, suits);
-  else outfit = pick(r, (female ? WARDROBE.outfits.female : WARDROBE.outfits.male).filter((o) => o !== 'female_sportsuit01' || (years < 35 && r() < 0.25)));
+  else outfit = pick(r, (female ? WARDROBE.outfits.female : WARDROBE.outfits.male).filter((o) => o !== 'female_sportsuit01'));
   const glasses = itemsOf('glasses', { street: true, sex });
   if (glasses.length && r() < (years > 45 ? 0.35 : 0.15)) extras.push(pick(r, glasses));
   const jewels = itemsOf('jewelry', { street: true, sex });
