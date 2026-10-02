@@ -42,6 +42,7 @@ import { buildStructureDetails, type StructureDetails } from './structures';
 import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
 import { TERRAIN_CELL, createTerrainSurface, type TerrainSurface } from './terrain';
 import { buildingPads } from '@world/buildings/pads';
+import { Indoors } from './indoors';
 import { type BuildingPreviewInput, type CutawaySpec, createBuildingLayer } from './buildings/layer';
 import type { BuildingId } from '@world/buildings/types';
 import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } from './quality';
@@ -303,6 +304,9 @@ export function createSceneRenderer(
   scene.add(buildings.group);
   /** The scenery the building footprints were last cut out of. */
   let excludedFor: { scenery: Scenery | null; version: number } = { scenery: null, version: -1 };
+  /** The buildings cut open, for the people drawn inside them (`indoors.ts`). */
+  let cutSpec: CutawaySpec | null = null;
+  const indoors = new Indoors();
   let tallestFor = -1;
   let lastDark = -1;
   let tallestTop = 0;
@@ -502,6 +506,7 @@ export function createSceneRenderer(
     },
     setBuildingCutaway(spec) {
       buildings.setCutaway(spec);
+      cutSpec = spec;
     },
     setBuildingsDimmed(except) {
       buildings.setDimmed(except === undefined ? undefined : (except as BuildingId | null));
@@ -562,6 +567,7 @@ export function createSceneRenderer(
         pedestrianVisible,
         vehicleVisible,
         occupantZoom: quality.occupantZoom,
+        indoor: indoors.figures(sim, cutSpec, terrain.renderedHeightAt, pavedHeightAt),
       });
       signals.sync(sim, detailed);
 

@@ -37,6 +37,7 @@ import { kerbTransfer, seatPerson, type KerbStop } from '@sim/vehicles/kerbStops
 import { FOOTWAY_RISE } from '@world/roadTypes';
 import { groundGradient } from './groundShear';
 import { WheelOdometer, blinkOn, indicatorSide, pathCurvature, steerAngle } from './vehicleSignals';
+import type { IndoorFigure } from './indoors';
 import {
   axleStations, buildBusModel, buildTruckModel, buildTwoWheelerModel, seatFitScale, rimGeometry, spokedRimGeometry,
   merge, tyreGeometry, type TwoWheelerModel, type VehicleModel,
@@ -130,6 +131,8 @@ export interface AgentRenderOptions {
   readonly vehicleVisible?: (x: number, y: number, height: number, radius: number) => boolean;
   /** Zoom from which vehicle cabins and occupants are drawn. */
   readonly occupantZoom?: number;
+  /** Residents inside the buildings cut open (`indoors.ts`), drawn where they are on the floor shown. */
+  readonly indoor?: readonly IndoorFigure[];
 }
 
 export interface AgentMeshes {
@@ -1339,6 +1342,13 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
           const ground = groundGradient(land,
             pose.p.x, pose.p.y, deck - (open ? m(0.04) : ped.ground === 'crossing' ? 0 : FOOTWAY_RISE));
           pedestrians.draw(ped, pose.p.x, pose.p.y, pose.angle, deck, alpha, ground);
+          pedCount++;
+        }
+        // And the people indoors, on the floors that are cut open.
+        for (const figure of options.indoor ?? []) {
+          if (pedCount >= MAX_PEDS) break;
+          frameAt(figure.x, figure.y, figure.heading, figure.z);
+          pedestrians.draw(figure.view, figure.x, figure.y, figure.heading, figure.z, alpha, null);
           pedCount++;
         }
       }
