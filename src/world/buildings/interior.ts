@@ -2,7 +2,7 @@ import { pointInPolygon } from '@core/polygon';
 import type { Vec2 } from '@core/vec2';
 import { m } from '../units';
 import { localFootprint } from './footprints';
-import { deriveSpaces } from './spaces';
+import { deriveSpaces, flatPlan } from './spaces';
 import { type Building, type BuildingFunction, type Volume, volumeTop, type PlacedFurniture } from './types';
 
 /**
@@ -236,6 +236,8 @@ function furnish(p: Plan, fn: BuildingFunction, level: number, b: Building): voi
   const yStart = p.y0 + front;
   switch (fn) {
     case 'house': case 'townhouse': case 'apartments': case 'residentialTower': case 'hotel':
+      // A block of flats is laid out as flats; a house, a hotel as before.
+      if ((fn === 'apartments' || fn === 'residentialTower') && level > 0 && flatFloor(p, b)) break;
       if (fn === 'hotel' || level > 0 || fn === 'house' || fn === 'townhouse') homeUnits(p, b, fn === 'hotel');
       else lobby(p);
       return;
@@ -360,6 +362,70 @@ function lobby(p: Plan): void {
 }
 
 /** Homes (or hotel rooms) along the floor, each a few rooms with their furniture. */
+/**
+ * A floor of flats, from its plan (`spaces.ts`): the corridor's two walls with
+ * a door into every home, the walls between homes on the boundaries between
+ * window bays, and in each home a living room with its kitchen, a bedroom and
+ * a bathroom, furnished.
+ */
+function flatFloor(p: Plan, b: Building): boolean {
+  const plan = flatPlan(b, p.v);
+  if (!plan.corridor && plan.flats.length < 2) return false;
+  const DOOR = m(0.5);
+  for (const f of plan.flats) {
+    const P = (u: number, s: number): { x: number; y: number } => ({ x: f.ox + f.tx * u + f.nx * s, y: f.oy + f.ty * u + f.ny * s });
+    const line = (u0: number, s0: number, u1: number, s1: number): void => {
+      const a = P(u0, s0), c = P(u1, s1);
+      p.wall(a.x, a.y, c.x, c.y);
+    };
+    // Facing a direction given in the home's own axes.
+    const facing = (du: number, ds: number): number => {
+      const fx = f.tx * du + f.nx * ds, fy = f.ty * du + f.ny * ds;
+      return Math.atan2(fx, -fy);
+    };
+    const W = f.width, D = f.depth;
+    const living = W - f.bay; // the bedroom takes the last bay
+    const door = Math.min(living * 0.8, living - m(0.8));
+    // The wall to the corridor (or the back), with the front door.
+    if (plan.corridor) {
+      if (door - DOOR > 0) line(0, D, door - DOOR, D);
+      line(door + DOOR, D, W, D);
+    }
+    // The wall to the next home, between two windows.
+    line(0, 0, 0, D);
+    // Bedroom off the living room, its door near the corridor end.
+    const bedDoor = D - m(1.4);
+    line(living, 0, living, bedDoor - DOOR);
+    line(living, bedDoor + DOOR, living, D - m(2.3));
+    // The bathroom in the corridor corner of the bedroom bay.
+    line(living, D - m(2.3), living + m(0.9) - DOOR, D - m(2.3));
+    line(living + m(0.9) + DOOR, D - m(2.3), W, D - m(2.3));
+    line(living, D - m(2.3), living, D);
+    const put = (kind: FurnitureKind, u: number, s: number, angle: number): void => {
+      const at = P(u, s);
+      p.put(kind, at.x, at.y, angle);
+    };
+    // Living room: the TV on the side wall, the sofa facing it, a table by
+    // the window, the kitchen along the corridor wall.
+    put('tv', m(0.35), D * 0.42, facing(1, 0));
+    put('sofa', Math.min(living - m(0.6), m(3.4)), D * 0.42, facing(-1, 0));
+    put('table', living * 0.5, m(1.5), facing(0, -1));
+    put('chair', living * 0.5 - m(0.6), m(2.2), facing(0, -1));
+    put('chair', living * 0.5 + m(0.6), m(2.2), facing(0, -1));
+    put('fridge', m(0.5), D - m(0.45), facing(0, -1));
+    put('stove', m(1.3), D - m(0.4), facing(0, -1));
+    put('sink', m(2.2), D - m(0.4), facing(0, -1));
+    put('plant', living - m(0.4), m(0.45), 0);
+    // Bedroom: the bed's head to the far wall, a wardrobe.
+    put('bed', W - m(1.15), m(2.1), facing(-1, 0));
+    put('wardrobe', living + f.bay / 2, D - m(2.65), facing(0, -1));
+    // Bathroom.
+    put('toilet', W - m(0.4), D - m(0.5), facing(-1, 0));
+    put('bath', living + m(0.5), D - m(1.0), facing(0, -1));
+  }
+  return true;
+}
+
 function homeUnits(p: Plan, b: Building, hotel: boolean): void {
   const floor = deriveSpaces(b).find((s) => s.volume === p.v.id && s.level === p.level);
   const units = floor?.spaces.length ? floor.spaces : [{ x: p.v.x, y: p.v.y, w: p.v.w, d: p.v.d }];
