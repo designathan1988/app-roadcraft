@@ -162,12 +162,21 @@ export function derivePopulation(buildings: Iterable<Building>): Population {
   const eateries = all.filter((b) => b.function !== undefined && EATERIES.has(b.function));
   const errands = all.filter((b) => b.function !== undefined && ERRANDS.has(b.function));
   const byId = new Map(all.map((b) => [b.id, b]));
-  /** The nearest few of `places` to building `from`, by their anchors. */
+  /**
+   * The nearest few of `places` to building `from`, by their anchors; worked
+   * out once per building and list (it was sorted afresh for every resident).
+   */
+  const nearest = new Map<readonly Building[], Map<BuildingId, Building[]>>();
   const near = (from: BuildingId, places: readonly Building[]): Building[] => {
+    let known = nearest.get(places);
+    if (!known) { known = new Map(); nearest.set(places, known); }
+    const hit = known.get(from);
+    if (hit) return hit;
     const o = byId.get(from);
-    if (!o) return [];
-    return [...places].filter((p) => p.id !== from)
+    const found = !o ? [] : [...places].filter((p) => p.id !== from)
       .sort((a, b) => Math.hypot(a.x - o.x, a.y - o.y) - Math.hypot(b.x - o.x, b.y - o.y)).slice(0, 3);
+    known.set(from, found);
+    return found;
   };
   const offered = new Map(workplaces.map((b) => [b.id, jobsOf(b)]));
   const taken = new Map<BuildingId, number>();
@@ -177,12 +186,17 @@ export function derivePopulation(buildings: Iterable<Building>): Population {
   // so a new house does not reshuffle who works where in the rest of town.
   const jobRng = new Rng(0x10b5);
   let lastJob = 0;
+  // The workplaces with a job left, in their order; one that fills is taken
+  // out. (Filtered from every workplace for each adult, it was workplaces
+  // times residents; the list and the picks are the same.)
+  const open = workplaces.filter((b) => (taken.get(b.id) ?? 0) < offered.get(b.id)!);
   const vacancies = (): BuildingId | null => {
-    const open = workplaces.filter((b) => (taken.get(b.id) ?? 0) < offered.get(b.id)!);
     if (!open.length) return null;
-    const pick = open[Math.floor(jobRng.float() * open.length)]!;
+    const at = Math.floor(jobRng.float() * open.length);
+    const pick = open[at]!;
     lastJob = taken.get(pick.id) ?? 0;
     taken.set(pick.id, lastJob + 1);
+    if (lastJob + 1 >= offered.get(pick.id)!) open.splice(at, 1);
     return pick.id;
   };
   /** The floor job number `n` of a workplace is on: the jobs filled floor by floor. */

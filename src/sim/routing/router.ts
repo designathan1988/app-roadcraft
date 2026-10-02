@@ -202,7 +202,7 @@ function routeCost(
   w: SimWorld,
   connectorId: LaneletId,
   body: ReturnType<typeof bodyClassOfArchetype>,
-  visited: ReadonlySet<LaneletId>,
+  visited: Set<LaneletId>,
   remaining: number,
 ): number {
   const connector = w.connector(connectorId);
@@ -218,18 +218,21 @@ function routeCost(
   const here = connectorTravel + travel * (1 + density * 2.6) + turnPenalty;
   if (remaining <= 1) return here;
 
-  const nextVisited = new Set(visited);
-  nextVisited.add(out.id);
   const next = w.graph.exitsOf(out.id);
   if (!next.length) return here;
 
+  // One set for the whole search, the lane added on the way down and taken
+  // out on the way back (it was not in it: checked above): a copy of the set
+  // at every node of a five-deep search was thousands of sets a decision.
+  visited.add(out.id);
   let continuation = Infinity;
   for (const nextConnector of next) {
     continuation = Math.min(
       continuation,
-      routeCost(w, nextConnector, body, nextVisited, remaining - 1),
+      routeCost(w, nextConnector, body, visited, remaining - 1),
     );
   }
+  visited.delete(out.id);
   // Keep the immediate choice meaningful even when a far-away branch is a
   // marginally better fit; local congestion and speed still dominate.
   return here + (Number.isFinite(continuation) ? continuation * 0.72 : 0);

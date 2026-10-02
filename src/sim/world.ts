@@ -67,8 +67,8 @@ export class SimWorld {
   readonly sidewalks = new SidewalkGraph();
   readonly claims = new ClaimTable();
 
-  readonly vehicles = new Map<VehicleId, Vehicle>();
-  readonly peds = new Map<PedId, Ped>();
+  readonly vehicles = new VersionedMap<VehicleId, Vehicle>();
+  readonly peds = new VersionedMap<PedId, Ped>();
   /** What moves the people (`people/engine.ts`); everything else reaches them through it. */
   pedEngine: PedestrianEngine = legacyPedestrians;
   /** Which vehicle model drives: the legacy one, or Drive v2 (`drive/*`) as it replaces it layer by layer. */
@@ -299,13 +299,26 @@ export class SimWorld {
   }
 
   /** Deterministic iteration order for any pass with cross-agent effects. */
-  vehiclesInIdOrder(): Vehicle[] {
-    return [...this.vehicles.values()].sort((a, b) => a.id - b.id);
+  //
+  // Sorted once per change of the fleet, not on every call: a tick asked for
+  // it about ten times, each a copy and a sort. The array handed out is never
+  // changed afterwards - a change of the fleet makes a new one - so a pass
+  // that adds or removes vehicles while walking it walks what it was given.
+  vehiclesInIdOrder(): readonly Vehicle[] {
+    if (this.vehicleOrder.version !== this.vehicles.version) {
+      this.vehicleOrder = { version: this.vehicles.version, list: [...this.vehicles.values()].sort((a, b) => a.id - b.id) };
+    }
+    return this.vehicleOrder.list;
   }
+  private vehicleOrder: { version: number; list: readonly Vehicle[] } = { version: -1, list: [] };
 
-  pedsInIdOrder(): Ped[] {
-    return [...this.peds.values()].sort((a, b) => a.id - b.id);
+  pedsInIdOrder(): readonly Ped[] {
+    if (this.pedOrder.version !== this.peds.version) {
+      this.pedOrder = { version: this.peds.version, list: [...this.peds.values()].sort((a, b) => a.id - b.id) };
+    }
+    return this.pedOrder.list;
   }
+  private pedOrder: { version: number; list: readonly Ped[] } = { version: -1, list: [] };
 
   junctionNodesInOrder(): NodeId[] {
     return [...this.graph.junctions.keys()].sort((a, b) => a - b);
@@ -692,4 +705,21 @@ function buildingAccessSignature(doc: RoadDoc): string {
     }
   }
   return parts.join('|');
+}
+
+/** A Map that counts its changes of membership, for caches over it (`vehiclesInIdOrder`). */
+export class VersionedMap<K, V> extends Map<K, V> {
+  version = 0;
+  override set(key: K, value: V): this {
+    this.version++;
+    return super.set(key, value);
+  }
+  override delete(key: K): boolean {
+    this.version++;
+    return super.delete(key);
+  }
+  override clear(): void {
+    this.version++;
+    super.clear();
+  }
 }

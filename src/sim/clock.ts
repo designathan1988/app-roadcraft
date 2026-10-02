@@ -48,7 +48,7 @@ export class SimClock {
     // clock that jumps BACKWARDS — a resumed tab, a rAF timestamp from a
     // different origin — must not drive the accumulator negative and silently
     // stop the simulation.
-    this.acc += clamp(wallDelta, 0, MAX_FRAME) * this.speed;
+    this.acc += snapToTicks(clamp(wallDelta, 0, MAX_FRAME)) * this.speed;
 
     let n = 0;
     while (this.acc >= DT && n < MAX_SUBSTEPS) {
@@ -73,4 +73,23 @@ export class SimClock {
   since(tick: number): number {
     return (this.tick - tick) * DT;
   }
+}
+
+/**
+ * A frame's measured time, snapped to a whole number of ticks when it is
+ * within `SNAP` of one.
+ *
+ * The time between two frames is never exactly the screen's refresh: on a
+ * 59.94 Hz screen (Windows calls it 59) or with a little jitter, the
+ * accumulator took one tick on most frames and two on some - a frame of
+ * double simulation cost now and then, and an uneven step. Snapped, a
+ * vsynced frame runs the same whole number of ticks every time (Tyler Glaiel,
+ * "How to make your game run at 60fps"; Frank Force, "Frame rate delta
+ * buffering"; the accumulator itself is Glenn Fiedler's "Fix your timestep").
+ * The time lost or gained is under a thousandth of the frame.
+ */
+const SNAP = 0.0005;
+export function snapToTicks(seconds: number): number {
+  for (let k = 1; k <= 4; k++) if (Math.abs(seconds - k * DT) < SNAP) return k * DT;
+  return seconds;
 }

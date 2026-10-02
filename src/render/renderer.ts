@@ -370,6 +370,10 @@ export function createSceneRenderer(
   const compiledMaterials = new WeakSet<Material>();
   let compileCheckedAt = 0;
   let compiling = false;
+  /** The look for new materials in progress: objects still to see, and whether one was found. */
+  const scanStack: Object3D[] = [];
+  let scanFresh = false;
+  const SCAN_PER_FRAME = 1500;
   /** The buildings cut open, for the people drawn inside them (`indoors.ts`). */
   let cutSpec: CutawaySpec | null = null;
   let skyMode: SkyMode = 'day';
@@ -687,30 +691,36 @@ export function createSceneRenderer(
         for (const mesh of gardens.meshes) world.add(mesh);
       }
       // Every shader the scene needs, compiled ahead and in parallel (the
-      // browser's KHR_parallel_shader_compile): checked every two seconds for
-      // materials not seen yet - hidden ones too, and what was added since (a
-      // vehicle model, a body). Left to the first frame a material is drawn
-      // in, that frame stalled for a quarter to half a second.
-      if (!compiling && performance.now() - compileCheckedAt > 2000) {
-        compileCheckedAt = performance.now();
-        const hidden: Object3D[] = [];
-        let fresh = false;
-        scene.traverse((o) => {
+      // browser's KHR_parallel_shader_compile): looked for every two seconds
+      // among materials not seen yet - hidden ones too, and what was added
+      // since (a vehicle model, a body). Left to the first frame a material is
+      // drawn in, that frame stalled for a quarter to half a second.
+      //
+      // The look is spread over frames, SCAN_PER_FRAME objects a frame: the
+      // whole scene walked in one frame every two seconds was a beat of its
+      // own in a big town. Hidden objects are not shown for it: three's
+      // `compile` prepares the materials of every object, shown or not
+      // (WebGLRenderer.compile walks the scene with \`traverse\`).
+      if (!compiling) {
+        if (scanStack.length === 0 && performance.now() - compileCheckedAt > 2000) {
+          compileCheckedAt = performance.now();
+          scanStack.push(scene);
+        }
+        for (let n = 0; n < SCAN_PER_FRAME && scanStack.length; n++) {
+          const o = scanStack.pop()!;
           const material = (o as Mesh).material as Material | Material[] | undefined;
-          if (material) for (const m of Array.isArray(material) ? material : [material]) if (!compiledMaterials.has(m)) { compiledMaterials.add(m); fresh = true; }
-          if (!o.visible) { hidden.push(o); o.visible = true; }
-        });
-        if (fresh) {
+          if (material) for (const m of Array.isArray(material) ? material : [material]) if (!compiledMaterials.has(m)) { compiledMaterials.add(m); scanFresh = true; }
+          for (const child of o.children) scanStack.push(child);
+        }
+        if (scanStack.length === 0 && scanFresh) {
+          scanFresh = false;
           compiling = true;
-          // compileAsync gathers what to compile at once; the scene is shown
-          // as it was straight after.
           // For the target the scene is drawn into (`drainCompiles`).
           const previous = renderer.getRenderTarget();
           renderer.setRenderTarget(post.target);
           void renderer.compileAsync(scene, rig.camera).catch(() => {}).finally(() => { compiling = false; });
           renderer.setRenderTarget(previous);
         }
-        for (const o of hidden) o.visible = false;
       }
 
       const detailed = rig.viewport.zoom >= quality.detailCutoffZoom;

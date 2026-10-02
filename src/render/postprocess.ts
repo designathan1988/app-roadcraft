@@ -1,4 +1,4 @@
-import { DepthTexture, HalfFloatType, Vector2, WebGLRenderTarget, type Camera, type Scene, type WebGLRenderer } from 'three';
+import { DepthTexture, HalfFloatType, Mesh, PlaneGeometry, Scene, Vector2, WebGLRenderTarget, type Camera, type WebGLRenderer } from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
@@ -134,6 +134,22 @@ export function createPostChain(
   const bloom = new UnrealBloomPass(new Vector2(size.x, size.y), bloomStrength, 0.55, 0.92);
   bloom.enabled = false;
   composer.addPass(bloom);
+  // Its shaders built now, in parallel (KHR_parallel_shader_compile), not at
+  // the first dusk: the bloom is off by day, and the frame it first came on
+  // stopped while its fourteen passes' programs were built. Compiled for one
+  // of its own targets, as it draws them (render targets are part of a
+  // program's key).
+  {
+    const quad = new PlaneGeometry();
+    const warm = new Scene();
+    for (const material of [bloom.materialHighPassFilter, ...bloom.separableBlurMaterials, bloom.compositeMaterial, bloom.blendMaterial]) {
+      warm.add(new Mesh(quad, material));
+    }
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(bloom.renderTargetsHorizontal[0]!);
+    void renderer.compileAsync(warm, camera).catch(() => {}).finally(() => quad.dispose());
+    renderer.setRenderTarget(previous);
+  }
   if (quality.smaa) composer.addPass(new SMAAPass());
   composer.addPass(new OutputPass());
   // The grade, on the finished image: a film's contrast and colour.
