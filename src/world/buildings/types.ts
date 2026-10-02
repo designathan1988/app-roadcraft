@@ -219,6 +219,7 @@ export const ELEMENT_KINDS = [
   'flowers',
   'rocks',
   'parking',
+  'clock',
 ] as const;
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 

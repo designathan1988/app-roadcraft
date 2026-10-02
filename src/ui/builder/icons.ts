@@ -138,6 +138,7 @@ const P = {
   floorDown: '<path d="M4 8h16M4 14h16"/><path d="m9 17 3 3 3-3"/>',
   floorUp: '<path d="M4 10h16M4 16h16"/><path d="m9 7 3-3 3 3"/>',
   coreLift: '<path d="M6 3h12v18H6Z"/><path d="M12 3v18"/><path d="m9 8 1.5-2L12 8m3 8-1.5 2-1.5-2"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',
   blockVoid: '<path d="M4 4h16v16H4Z"/><path d="M9 9h6v6H9Z" stroke-dasharray="2 2"/>',
   blockIntersect: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/><path d="M12 7.2a6 6 0 0 1 0 9.6a6 6 0 0 1 0-9.6Z" fill="currentColor" opacity=".45"/>',
   blockXor: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',

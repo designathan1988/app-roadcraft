@@ -89,7 +89,7 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
       { title: 'structure', tools: [mode('stair'), mode('ramp'), mode('pillar'), mode('canopy'), mode('wall'), mode('slab')] },
       { title: 'runs', tools: [mode('wallRun'), mode('fenceRun'), mode('pavementRun'), mode('railing'), mode('stairRun')] },
       { title: 'greenery', tools: [mode('tree'), mode('flowers'), mode('rocks')] },
-      { title: 'furniture', tools: [mode('bench'), mode('planter'), mode('parking'), mode('ac'), mode('awning')] },
+      { title: 'furniture', tools: [mode('bench'), mode('planter'), mode('parking'), mode('ac'), mode('awning'), mode('clock')] },
       { title: 'roofGear', tools: [mode('solar'), mode('skylight'), mode('vent'), mode('chimney'), mode('waterTank'), mode('spire')] },
     ],
   },

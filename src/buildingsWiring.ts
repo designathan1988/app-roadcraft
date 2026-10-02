@@ -359,7 +359,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     if (
       id === 'stair' || id === 'ramp' || id === 'pillar' || id === 'canopy' || id === 'wall'
       || id === 'slab' || id === 'pavement' || id === 'tree' || id === 'bench' || id === 'ac' || id === 'planter'
-      || id === 'railing' || id === 'awning' || id === 'flowers' || id === 'rocks' || id === 'parking'
+      || id === 'railing' || id === 'awning' || id === 'flowers' || id === 'rocks' || id === 'parking' || id === 'clock'
     ) {
       clearArming('element');
       tool.armElement(id);

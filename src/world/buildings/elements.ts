@@ -57,11 +57,12 @@ export const ELEMENT_DEFAULTS: Readonly<Record<ElementKind, readonly [number, nu
   flowers: [m(1.4), m(1.4), m(0.4)],
   rocks: [m(1.6), m(1.6), m(0.7)],
   parking: [m(6), m(5), m(0.12)],
+  clock: [m(3), m(0.25), m(3)],
 };
 
 /** Whether an element's foot stands on the ground (rather than on a floor, or hung on a wall). */
 /** Parts hung on a facade rather than standing on the ground. */
-export const ON_FACADE: ReadonlySet<ElementKind> = new Set<ElementKind>(['canopy', 'ac', 'awning']);
+export const ON_FACADE: ReadonlySet<ElementKind> = new Set<ElementKind>(['canopy', 'ac', 'awning', 'clock']);
 
 /**
  * Parts that dress a lot rather than raise a building. They may stand on the
@@ -273,6 +274,13 @@ function elementsAgainstBayAxis(b: Building, v: Volume, bay: BayRef, kind: Eleme
     case 'planter': {
       const c = at(along, m(1.1));
       return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: 0, h: dh }];
+    }
+    case 'clock': {
+      // A dial on the wall, centred on the bay, in the middle of the storey.
+      const c = at(along, dd / 2 + m(0.02));
+      const storeyH = levelElevation(b, v.base + bay.storey + 1) - floorZ;
+      const size = Math.min(dw, width * 0.9, storeyH * 0.9);
+      return [{ kind, x: c.x, y: c.y, facing, w: size, d: dd, z: floorZ + (storeyH - size) / 2, h: size }];
     }
     case 'ac': {
       // Hung on the facade, a metre above the storey's floor.

@@ -993,6 +993,44 @@ function elementPaint(b: Building, kind: BuildingElement['kind']): Paint {
   }
 }
 
+const CLOCK_FACE = paint({ finish: 'plaster', colour: 0xf4f1e8 });
+const CLOCK_INK = paint({ finish: 'metal', colour: 0x23272b });
+
+/**
+ * A facade clock: a pale dial on a dark rim, twelve marks and two hands
+ * standing just proud of it, on whichever side the element faces.
+ */
+function emitClock(e: Emitter, el: BuildingElement, x0: number, y0: number, x1: number, y1: number, z0: number, z1: number): void {
+  e.box(x0, y0, x1, y1, z0, z1, CLOCK_INK);
+  const along = el.facing === 0 || el.facing === 2;
+  const a0 = along ? x0 : y0;
+  const a1 = along ? x1 : y1;
+  // The front plane and the way out of it.
+  const front = el.facing === 0 ? y0 : el.facing === 2 ? y1 : el.facing === 1 ? x1 : x0;
+  const out = el.facing === 0 || el.facing === 3 ? -1 : 1;
+  const size = Math.min(a1 - a0, z1 - z0);
+  const ca = (a0 + a1) / 2;
+  const cz = (z0 + z1) / 2;
+  const layer = (u0: number, u1: number, h0: number, h1: number, d0: number, d1: number, c: Paint): void => {
+    const p0 = front + out * d0;
+    const p1 = front + out * d1;
+    if (along) e.box(u0, Math.min(p0, p1), u1, Math.max(p0, p1), h0, h1, c);
+    else e.box(Math.min(p0, p1), u0, Math.max(p0, p1), u1, h0, h1, c);
+  };
+  const r = size * 0.42;
+  layer(ca - r, ca + r, cz - r, cz + r, 0, m(0.04), CLOCK_FACE);
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    const ua = ca + Math.sin(a) * r * 0.82;
+    const uz = cz + Math.cos(a) * r * 0.82;
+    const t = size * (k % 3 === 0 ? 0.05 : 0.03);
+    layer(ua - t, ua + t, uz - t, uz + t, m(0.04), m(0.07), CLOCK_INK);
+  }
+  const w = size * 0.03;
+  layer(ca - w, ca + w, cz, cz + r * 0.55, m(0.07), m(0.1), CLOCK_INK);
+  layer(ca, ca + r * 0.78, cz - w, cz + w, m(0.1), m(0.12), CLOCK_INK);
+}
+
 /**
  * One free element. A stair is a block per step, every riser the same; a
  * ramp a slope with its cheeks; the rest are boxes. Whatever stands on the
@@ -1003,6 +1041,10 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
   const zb = onGround(el) ? bottom : floor + el.z;
   const z0 = floor + el.z;
   const z1 = z0 + el.h;
+  if (el.kind === 'clock') {
+    emitClock(e, el, x0, y0, x1, y1, z0, z1);
+    return;
+  }
   if (el.kind === 'stair' || el.kind === 'ramp') {
     // The run measured from the foot (the `facing` end) inwards.
     const sub = (u0: number, u1: number): [number, number, number, number] => {
