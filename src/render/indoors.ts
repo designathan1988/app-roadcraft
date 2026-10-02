@@ -1,8 +1,9 @@
 import type { SimWorld } from '@sim/world';
+import type { Resident } from '@sim/city/population';
 import type { GestureView, PedView } from '@sim/people/view';
 import { floorHeight, type GroundAt, type PavedAt } from '@world/buildings/foundation';
 import { levelElevation, localToWorld } from '@world/buildings/geometry';
-import { type Furniture, type FurnitureKind, interiorAt } from '@world/buildings/interior';
+import { FURNITURE_SIZE, type Furniture, type FurnitureKind, interiorAt } from '@world/buildings/interior';
 import type { Building } from '@world/buildings/types';
 import { m } from '@world/units';
 import type { CutawaySpec } from './buildings/layer';
@@ -10,9 +11,11 @@ import type { CutawaySpec } from './buildings/layer';
 /**
  * The residents inside the buildings that are cut open: The Sims inside
  * SimCity. Whoever the city has in a building now (`sim/city`) is drawn on
- * the floor shown, at its furniture - sitting on the sofas, at the desks, at
- * the tables and in the pews, standing at the counters and the shelves - with
- * the same bodies that walk the streets.
+ * the floor shown, using its furniture as the hour of the day has them use
+ * it - breakfast at the kitchen counter and the table, the sofa in front of
+ * the television in the evening, asleep in bed at night; at work at the desks,
+ * behind the counters, at the tables and in the pews, some talking, some on
+ * the phone - with the same bodies that walk the streets.
  */
 export interface IndoorFigure {
   readonly view: PedView;
@@ -20,50 +23,138 @@ export interface IndoorFigure {
   readonly y: number;
   readonly z: number;
   readonly heading: number;
+  /** Tipped on to its side (radians): somebody asleep in bed. */
+  readonly lean: number;
 }
 
-/** Furniture people sit at, and furniture they stand at. */
-const SEATS: ReadonlySet<FurnitureKind> = new Set(['sofa', 'armchair', 'chair', 'officeChair', 'seat', 'pew', 'bench' as FurnitureKind]);
-const STANDS: ReadonlySet<FurnitureKind> = new Set(['counter', 'shelf', 'bookshelf', 'fridge', 'stove', 'sink', 'desk', 'table', 'machine', 'rack', 'atm', 'tv']);
-/** Most people drawn in one building: a stadium's crowd is not this layer's job. */
-const PER_BUILDING = 24;
+/** What a place at a piece of furniture is used for. */
+type Use = 'sofa' | 'seat' | 'table' | 'desk' | 'counter' | 'kitchen' | 'shelf' | 'bed' | 'pew';
+
+interface Spot {
+  readonly x: number;
+  readonly y: number;
+  readonly heading: number;
+  readonly use: Use;
+  /** Height of the body's base over the floor (a mattress). */
+  readonly rise: number;
+  readonly lean: number;
+}
+
+const USE: Partial<Record<FurnitureKind, Use>> = {
+  sofa: 'sofa', armchair: 'sofa', chair: 'seat', officeChair: 'desk', seat: 'seat', pew: 'pew',
+  table: 'table', counter: 'counter', stove: 'kitchen', sink: 'kitchen', fridge: 'kitchen',
+  shelf: 'shelf', bookshelf: 'shelf', machine: 'counter', rack: 'shelf', atm: 'counter',
+  bed: 'bed', singleBed: 'bed', wardBed: 'bed',
+};
+/** Uses a body sits at. */
+const SITS: ReadonlySet<Use> = new Set(['sofa', 'seat', 'pew', 'desk']);
+/** Most people drawn in one building. */
+const PER_BUILDING = 28;
+/** Most people drawn indoors in all: they share the crowd's ceiling with the street. */
+const MAX_INDOOR = 140;
 /** Ids of the indoor bodies, clear of the street's people and of anyone in a car. */
 const INDOOR_BASE = 1 << 23;
 
-interface Spot { readonly x: number; readonly y: number; readonly heading: number; readonly sit: boolean }
-
 const SEATED: GestureView = { kind: 'bench', phase: 'seated', t: 0 };
 const PHONE: GestureView = { kind: 'phone', phase: 'hold', t: 0 };
+const TALK: GestureView = { kind: 'talk', phase: 'hold', t: 0 };
+const LOOK: GestureView = { kind: 'look', phase: 'hold', t: 0 };
 
-/** Where people can be on one floor of a building, in world axes. */
+/** Every place a body can be at the furniture of one floor, in world axes. */
 function spotsOf(b: Building, level: number): Spot[] {
   const out: Spot[] = [];
-  const turn = (f: Furniture): { fx: number; fy: number } => ({ fx: Math.sin(f.angle), fy: -Math.cos(f.angle) });
-  for (const f of interiorAt(b, level).furniture) {
-    const { fx, fy } = turn(f);
-    let lx: number, ly: number, sit: boolean;
-    if (SEATS.has(f.kind)) {
-      // On the seat, facing the way it faces.
-      lx = f.x; ly = f.y; sit = true;
-    } else if (STANDS.has(f.kind)) {
-      // In front of it, facing it.
-      const out0 = f.d / 2 + m(0.5);
-      lx = f.x + fx * out0; ly = f.y + fy * out0; sit = false;
-    } else continue;
-    const p = localToWorld(b, lx, ly);
-    // Facing out of a seat; facing in to a counter. World heading of the
-    // local direction, turned with the building.
-    const dx = sit ? fx : -fx, dy = sit ? fy : -fy;
-    const c = Math.cos(b.rotation), s = Math.sin(b.rotation);
-    out.push({ x: p.x, y: p.y, heading: Math.atan2(dx * s + dy * c, dx * c - dy * s), sit });
+  const c = Math.cos(b.rotation), s = Math.sin(b.rotation);
+  const worldHeading = (dx: number, dy: number): number => Math.atan2(dx * s + dy * c, dx * c - dy * s);
+  for (const f of interiorAt(b, level).furniture as Furniture[]) {
+    const use = USE[f.kind];
+    if (!use) continue;
+    // The piece's front, in the building's frame (angle 0 faces -y).
+    const fx = Math.sin(f.angle), fy = -Math.cos(f.angle);
+    if (use === 'bed') {
+      // Lying on the side along the bed, head on the pillow (the back end).
+      const footOut = f.d / 2 - m(0.15);
+      const p = localToWorld(b, f.x + fx * footOut, f.y + fy * footOut);
+      const back = worldHeading(-fx, -fy);
+      const [, , h] = FURNITURE_SIZE[f.kind];
+      out.push({ x: p.x, y: p.y, heading: back - Math.PI / 2, use, rise: m(h * 0.95 + 0.12), lean: Math.PI / 2 });
+      continue;
+    }
+    if (SITS.has(use)) {
+      // Where somebody stands to sit down: just in front of the seat. The
+      // seated clip carries the hips back on to it (set at the seat itself,
+      // the body sank into the back of the sofa).
+      const ahead = f.d / 2 + m(0.12);
+      const p = localToWorld(b, f.x + fx * ahead, f.y + fy * ahead);
+      out.push({ x: p.x, y: p.y, heading: worldHeading(fx, fy), use, rise: 0, lean: 0 });
+      continue;
+    }
+    // Standing in front of it, facing it.
+    const away = f.d / 2 + m(0.45);
+    const p = localToWorld(b, f.x + fx * away, f.y + fy * away);
+    out.push({ x: p.x, y: p.y, heading: worldHeading(-fx, -fy), use, rise: 0, lean: 0 });
   }
   return out;
+}
+
+/** The uses a resident looks for, in order, by where they are and the hour. */
+function wants(r: Resident, building: number, hour: number): readonly Use[] {
+  const home = r.home === building;
+  if (home) {
+    if (hour >= 23 || hour < 6.5) return ['bed'];
+    // Breakfast: cooking at the counter, or seated at the table.
+    if (hour < 8.5) return r.id % 2 ? ['kitchen', 'seat', 'counter'] : ['seat', 'kitchen', 'table'];
+    // Supper at the table, then the evening in front of the television.
+    if (hour >= 19 && hour < 20) return ['seat', 'sofa', 'kitchen'];
+    if (hour >= 19) return ['sofa', 'seat', 'table'];
+    return r.id % 3 === 0 ? ['seat', 'sofa', 'kitchen'] : ['sofa', 'seat', 'kitchen'];
+  }
+  if (r.work === building) {
+    // Staff: at a desk, behind the counter, at the shelves.
+    return r.id % 4 === 0 ? ['counter', 'shelf', 'desk', 'kitchen'] : ['desk', 'counter', 'seat', 'shelf', 'kitchen'];
+  }
+  // Out for a meal, a film, a service, a prayer: seated where there are seats.
+  return ['seat', 'pew', 'sofa', 'shelf', 'counter', 'table'];
 }
 
 export class Indoors {
   private readonly spots = new Map<string, Spot[]>();
   private readonly floors = new Map<string, number>();
+  private readonly views = new Map<number, PedView>();
   private revision = -1;
+
+  /**
+   * Where the room lights go on the floors cut open: one over each group of
+   * furniture (a living room, a kitchen, a row of desks), nearest the middle of
+   * the view first, at most `max`.
+   */
+  lamps(world: SimWorld, spec: CutawaySpec | null, groundAt: GroundAt, pavedAt: PavedAt, max: number): { x: number; y: number; z: number }[] {
+    const out: { x: number; y: number; z: number }[] = [];
+    if (!spec) return out;
+    const near = [...world.doc.buildings.all()]
+      .map((b) => ({ b, d: Math.hypot(b.x - spec.x, b.y - spec.y) }))
+      .filter((e) => e.d <= spec.radius)
+      .sort((a, c) => a.d - c.d);
+    for (const { b } of near) {
+      const key = `${b.id}:${spec.level}`;
+      let spots = this.spots.get(key);
+      if (!spots) { spots = spotsOf(b, spec.level); this.spots.set(key, spots); }
+      let floor = this.floors.get(key);
+      if (floor === undefined) {
+        floor = floorHeight(b, groundAt, pavedAt) + levelElevation(b, spec.level) + m(0.05);
+        this.floors.set(key, floor);
+      }
+      const rooms: { x: number; y: number; n: number }[] = [];
+      for (const s of spots) {
+        const room = rooms.find((r) => Math.hypot(r.x / r.n - s.x, r.y / r.n - s.y) < m(4.5));
+        if (room) { room.x += s.x; room.y += s.y; room.n++; } else rooms.push({ x: s.x, y: s.y, n: 1 });
+      }
+      for (const r of rooms) {
+        if (out.length >= max) return out;
+        out.push({ x: r.x / r.n, y: r.y / r.n, z: floor + m(2.4) });
+      }
+    }
+    return out;
+  }
 
   /** Everybody to draw inside the buildings cut open by `spec`. */
   figures(world: SimWorld, spec: CutawaySpec | null, groundAt: GroundAt, pavedAt: PavedAt): IndoorFigure[] {
@@ -73,9 +164,16 @@ export class Indoors {
       this.spots.clear();
       this.floors.clear();
     }
+    const hour = (world.city.minutes(world) % 1440) / 60;
     const out: IndoorFigure[] = [];
-    for (const b of world.doc.buildings.all()) {
-      if (Math.hypot(b.x - spec.x, b.y - spec.y) > spec.radius) continue;
+    // Nearest the middle of the view first: the crowd has a ceiling, and the
+    // buildings in id order filled it with people nobody was looking at.
+    const near = [...world.doc.buildings.all()]
+      .map((b) => ({ b, d: Math.hypot(b.x - spec.x, b.y - spec.y) }))
+      .filter((e) => e.d <= spec.radius)
+      .sort((a, c) => a.d - c.d);
+    for (const { b } of near) {
+      if (out.length >= MAX_INDOOR) break;
       const inside = world.city.inside(b.id);
       if (inside.length === 0) continue;
       const key = `${b.id}:${spec.level}`;
@@ -87,23 +185,51 @@ export class Indoors {
         floor = floorHeight(b, groundAt, pavedAt) + levelElevation(b, spec.level) + m(0.05);
         this.floors.set(key, floor);
       }
-      // The same people in the same places from one frame to the next: by
-      // resident, round the spots of the floor.
-      const shown = Math.min(inside.length, spots.length, PER_BUILDING);
-      for (let k = 0; k < shown; k++) {
-        const r = inside[k]!;
-        const spot = spots[(r.id * 7 + k) % spots.length]!;
-        const view: PedView = {
-          id: INDOOR_BASE + r.id,
-          x: spot.x, y: spot.y, heading: spot.heading,
-          prev: { x: spot.x, y: spot.y, heading: spot.heading },
-          v: 0, turnV: 0, age: 30 + (r.id % 17),
-          ageClass: r.ageClass, gender: r.seed % 2 ? 'f' : 'm',
-          party: { id: INDOOR_BASE + r.id, size: 1, archetype: 'solo', hasChild: false },
-          rank: 0, ground: 'open', segment: undefined, stretch: '', walking: false, kerbWait: 0, waitingFor: null,
-          gesture: spot.sit ? SEATED : r.id % 4 === 0 ? PHONE : null,
-        };
-        out.push({ view, x: spot.x, y: spot.y, z: floor, heading: spot.heading });
+      // Each resident takes the first free place of the uses they want, in a
+      // stable order: the same people in the same places frame to frame.
+      const taken = new Set<number>();
+      let shown = 0;
+      for (const r of inside) {
+        if (shown >= PER_BUILDING) break;
+        let pick = -1;
+        for (const use of wants(r, b.id, hour)) {
+          const start = (r.id * 7) % spots.length;
+          for (let k = 0; k < spots.length; k++) {
+            const i = (start + k) % spots.length;
+            if (!taken.has(i) && spots[i]!.use === use) { pick = i; break; }
+          }
+          if (pick >= 0) break;
+        }
+        if (pick < 0) continue;
+        taken.add(pick);
+        shown++;
+        const spot = spots[pick]!;
+        const sitting = SITS.has(spot.use);
+        // Something to do: a seated pair talks, somebody checks the phone,
+        // somebody at a shelf looks along it.
+        const gesture = spot.use === 'bed' ? null
+          : sitting ? (r.id % 5 === 0 ? PHONE : SEATED)
+            : r.id % 3 === 0 ? TALK : r.id % 3 === 1 ? (spot.use === 'shelf' ? LOOK : PHONE) : null;
+        // One view per resident, kept from frame to frame: the renderer keeps
+        // each body's animation by its view, and a new one every frame started
+        // the clip over every frame - nobody ever finished sitting down.
+        let view = this.views.get(r.id);
+        if (!view || view.x !== spot.x || view.y !== spot.y) {
+          view = {
+            id: INDOOR_BASE + r.id,
+            x: spot.x, y: spot.y, heading: spot.heading,
+            prev: { x: spot.x, y: spot.y, heading: spot.heading },
+            v: 0, turnV: 0, age: 0,
+            ageClass: r.ageClass, gender: r.seed % 2 ? 'f' : 'm',
+            party: { id: INDOOR_BASE + r.id, size: 1, archetype: 'solo', hasChild: false },
+            rank: 0, ground: 'open', segment: undefined, stretch: '', walking: false, kerbWait: 0, waitingFor: null,
+            gesture,
+          };
+          this.views.set(r.id, view);
+        }
+        view.gesture = gesture;
+        view.age = world.clock.time + (r.id % 17);
+        out.push({ view, x: spot.x, y: spot.y, z: floor + spot.rise, heading: spot.heading, lean: spot.lean });
       }
     }
     return out;

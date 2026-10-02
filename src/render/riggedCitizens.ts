@@ -378,15 +378,84 @@ async function bakeWalk(body: BakeRig, sex: WalkSex, amplitude?: WalkAmplitude):
  * resampled to the baked frames (`gaitClipOf`). A cycle baked with its swing
  * shrunk to `amplitude` covers that much less ground.
  */
-async function bakeLibraryClip(body: BakeRig, clip: LibraryClip, amplitude?: WalkAmplitude): Promise<ClipFrames> {
+async function bakeLibraryClip(body: BakeRig, clip: LibraryClip, amplitude?: WalkAmplitude, name?: string): Promise<ClipFrames> {
   body.reset();
   const transfer = clipTransferFor(body.rig, body.mesh, clip, amplitude);
+  const room = LIMB_ROOM[name ?? ''] ?? LIMB_ROOM_DEFAULT;
   // A long standing or seated loop is slow motion, captured at 10 fps in the
   // library; baking it at 30 tripled the memory and the load for nothing.
-  const baked = await bakeFrames(body, time => transfer.pose(time), clip.duration, clip.loop, bakeFps(clip));
+  const baked = await bakeFrames(body, time => { transfer.pose(time); clearLimbs(body.rig, room[0], room[1]); }, clip.duration, clip.loop, bakeFps(clip));
   const facts = gaitClipOf(clip, transfer.scale, baked.frames);
   const share = amplitude ? strideShare(clip.source, amplitude) : 1;
   return { ...baked, ...facts, stride: facts.stride * share };
+}
+
+/**
+ * Room for the arms, by clip: how far the upper arms are carried out from the
+ * body and the forearms lifted, degrees. The captures were taken on slimmer
+ * bodies than the people they are played on: seated, the hands sank into the
+ * thighs and the arms into the sides.
+ */
+const LIMB_ROOM: Readonly<Record<string, readonly [number, number]>> = {
+  sitIdle: [13, 16], sitDown: [11, 12], standUp: [11, 12],
+  idle: [8, 0], look: [8, 0], listen: [8, 0], talk: [6, 0], phone: [5, 0],
+  start: [6, 0], stop: [6, 0], run: [6, 0], walkSlow: [6, 0],
+  turnLeft: [7, 0], turnRight: [7, 0], turnLeft180: [7, 0], turnRight180: [7, 0],
+};
+const LIMB_ROOM_DEFAULT: readonly [number, number] = [6, 0];
+
+const limbA = new Vector3(), limbB = new Vector3(), limbAxis = new Vector3();
+const limbQ = new Quaternion(), limbWorld = new Quaternion(), limbParent = new Quaternion();
+
+/** Turns `bone` in world space by `q`, keeping its parent where it is. */
+function turnInWorld(bone: Object3D, q: Quaternion): void {
+  bone.getWorldQuaternion(limbWorld);
+  if (bone.parent) bone.parent.getWorldQuaternion(limbParent); else limbParent.identity();
+  bone.quaternion.copy(limbParent.invert().multiply(q.clone().multiply(limbWorld)));
+  bone.updateMatrixWorld(true);
+}
+
+/**
+ * Carries each upper arm out from the chest by `abduct` degrees and lifts each
+ * forearm by `lift`, on the pose the rig is in, so a body broader than the
+ * capture's keeps its limbs outside itself.
+ */
+function clearLimbs(rig: Object3D, abduct: number, lift: number): void {
+  if (abduct <= 0 && lift <= 0) return;
+  rig.updateMatrixWorld(true);
+  const chest = rig.getObjectByName('Bip01_Spine2');
+  if (!chest) return;
+  chest.getWorldPosition(limbB);
+  for (const side of ['L', 'R']) {
+    const upper = rig.getObjectByName(`Bip01_${side}_UpperArm`);
+    const fore = rig.getObjectByName(`Bip01_${side}_Forearm`);
+    const hand = rig.getObjectByName(`Bip01_${side}_Hand`);
+    if (!upper || !fore) continue;
+    if (abduct > 0) {
+      // Out, away from the chest: about the axis that turns "down" towards it.
+      upper.getWorldPosition(limbA);
+      const out = limbA.sub(limbB).setY(0);
+      if (out.lengthSq() > 1e-8) {
+        out.normalize();
+        limbAxis.set(0, -1, 0).cross(out).normalize();
+        turnInWorld(upper, limbQ.setFromAxisAngle(limbAxis, (abduct * Math.PI) / 180));
+      }
+    }
+    if (lift > 0 && hand) {
+      // The forearm turned up, about the axis across its own length.
+      fore.getWorldPosition(limbA);
+      hand.getWorldPosition(limbB.clone());
+      const along = new Vector3();
+      hand.getWorldPosition(along);
+      along.sub(limbA);
+      if (along.lengthSq() > 1e-8) {
+        along.normalize();
+        limbAxis.copy(along).cross(new Vector3(0, 1, 0)).normalize();
+        if (limbAxis.lengthSq() > 1e-8) turnInWorld(fore, limbQ.setFromAxisAngle(limbAxis, (-lift * Math.PI) / 180));
+      }
+      chest.getWorldPosition(limbB);
+    }
+  }
 }
 
 /**
@@ -404,7 +473,7 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
   clips[WALK] = await bakeWalk(body, sex);
   clips[WALK_ELDER] = await bakeWalk(body, sex, ELDER_AMPLITUDE);
   clips[WALK_SHUFFLE] = await bakeLibraryClip(body, library[sex].walkSlow, SHUFFLE_AMPLITUDE);
-  for (const name of LIBRARY) clips[LIBRARY_AT[name]] = await bakeLibraryClip(body, library[sex][name]);
+  for (const name of LIBRARY) clips[LIBRARY_AT[name]] = await bakeLibraryClip(body, library[sex][name], undefined, name);
   body.reset();
   const rest = clipTransferFor(body.rig, body.mesh, library[sex].walkSlow, REST_AMPLITUDE);
   const restFrames = await bakeFrames(body, () => rest.pose(0), 1, true, 1);
@@ -723,7 +792,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
      * round by the angle turned, and the stands, talk, phone and bench.
      */
     /** `ground`: the footway's gradient under the walker, so both feet stand on it (`groundShear.ts`). */
-    draw(ped: PedView, x: number, y: number, heading: number, deck: number, alpha: number, ground: Gradient | null = null) {
+    draw(ped: PedView, x: number, y: number, heading: number, deck: number, alpha: number, ground: Gradient | null = null, lean = 0) {
       const hash = personHash(ped.id);
       const body = bodyFor({ seed: ped.id, gender: ped.gender, ageClass: ped.ageClass, company: companyOf(ped.party),
         companyId: ped.party.id, hasChild: ped.party.hasChild, x, y });
@@ -755,7 +824,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         mixPhases.push(play.frame);
         mixWeights.push(play.weight);
       }
-      emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), 0, ground,
+      emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), lean, ground,
         lod === 0 ? facialExpression(ped.id, time, ped.gesture?.kind, CROWD[index]?.person?.mood) : undefined);
     },
     /**

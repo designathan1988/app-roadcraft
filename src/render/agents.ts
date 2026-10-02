@@ -1348,7 +1348,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         for (const figure of options.indoor ?? []) {
           if (pedCount >= MAX_PEDS) break;
           frameAt(figure.x, figure.y, figure.heading, figure.z);
-          pedestrians.draw(figure.view, figure.x, figure.y, figure.heading, figure.z, alpha, null);
+          pedestrians.draw(figure.view, figure.x, figure.y, figure.heading, figure.z, alpha, null, figure.lean);
           pedCount++;
         }
       }

@@ -1,6 +1,7 @@
 import {
   ACESFilmicToneMapping,
   Box3,
+  PointLight,
   Group,
   Frustum,
   Matrix4,
@@ -43,6 +44,9 @@ import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
 import { TERRAIN_CELL, createTerrainSurface, type TerrainSurface } from './terrain';
 import { buildingPads } from '@world/buildings/pads';
 import { Indoors } from './indoors';
+import { m } from '@world/units';
+/** Room lights kept in the scene for the floors cut open (`indoors.ts`). */
+const ROOM_LIGHTS = 6;
 import { type BuildingPreviewInput, type CutawaySpec, createBuildingLayer } from './buildings/layer';
 import type { BuildingId } from '@world/buildings/types';
 import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } from './quality';
@@ -307,6 +311,17 @@ export function createSceneRenderer(
   /** The buildings cut open, for the people drawn inside them (`indoors.ts`). */
   let cutSpec: CutawaySpec | null = null;
   const indoors = new Indoors();
+  // Room lights for the floors cut open: a fixed set, so switching them on and
+  // off never changes the scene's light count (which recompiles every shader).
+  const roomLights: PointLight[] = [];
+  for (let i = 0; i < ROOM_LIGHTS; i++) {
+    const light = new PointLight(0xffd6a0, 0, m(8), 2);
+    light.name = 'room-light';
+    light.castShadow = false;
+    scene.add(light);
+    roomLights.push(light);
+  }
+  let lampsKey = '';
   let tallestFor = -1;
   let lastDark = -1;
   let tallestTop = 0;
@@ -569,6 +584,18 @@ export function createSceneRenderer(
         occupantZoom: quality.occupantZoom,
         indoor: indoors.figures(sim, cutSpec, terrain.renderedHeightAt, pavedHeightAt),
       });
+      // The rooms cut open are lit from inside: brighter as the day goes.
+      const key = cutSpec ? `${cutSpec.level}@${cutSpec.x},${cutSpec.y}:${sim.doc.buildings.revision}` : '';
+      if (key !== lampsKey) {
+        lampsKey = key;
+        const lamps = indoors.lamps(sim, cutSpec, terrain.renderedHeightAt, pavedHeightAt, ROOM_LIGHTS);
+        roomLights.forEach((light, i) => {
+          const at = lamps[i];
+          light.userData['used'] = !!at;
+          if (at) light.position.set(at.x, at.z, -at.y);
+        });
+      }
+      for (const light of roomLights) light.intensity = cutSpec && light.userData['used'] ? 55 * (0.25 + 0.75 * lastDark) : 0;
       signals.sync(sim, detailed);
 
       target.copy(rig.target);

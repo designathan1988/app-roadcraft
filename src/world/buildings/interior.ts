@@ -214,7 +214,7 @@ function furnish(p: Plan, fn: BuildingFunction, level: number, b: Building): voi
         if (fn === 'courthouse') { p.put('altar', cx, p.y1 - m(2), Math.PI); p.grid('pew', p.x0 + m(1), yStart + m(3), p.x1 - m(1), p.y1 - m(5), m(3.6), m(1.4)); }
       } else {
         p.grid('desk', p.x0 + m(0.5), yStart + m(0.5), p.x1 - m(0.5), p.y1 - m(0.5), m(2.4), m(2.6));
-        for (const it of [...p.items]) if (it.kind === 'desk') p.put('officeChair', it.x, it.y - m(0.75), 0);
+        for (const it of [...p.items]) if (it.kind === 'desk') p.put('officeChair', it.x, it.y - m(0.75), Math.PI);
         p.alongBack('plant', p.x0 + m(1), p.x1 - m(1), m(6));
       }
       return;
@@ -350,11 +350,14 @@ function homeUnits(p: Plan, b: Building, hotel: boolean): void {
     }
     // Living room at the front, bedroom at the back, kitchen and bath on the side.
     p.wallAcross(mid, ux0, ux1, ux0 + w * 0.3);
-    p.put('sofa', ux0 + w * 0.45, mid - m(1.1), Math.PI);
-    p.put('tv', ux0 + w * 0.45, uy0 + m(0.4), 0);
+    // The sofa's back to the wall behind it, facing the television on the
+    // front wall, which faces it back (angle 0 faces -y).
+    p.put('sofa', ux0 + w * 0.45, mid - m(1.1), 0);
+    p.put('tv', ux0 + w * 0.45, uy0 + m(0.4), Math.PI);
     p.put('table', ux0 + w * 0.75, uy0 + (mid - uy0) / 2, 0);
-    p.put('chair', ux0 + w * 0.75 - m(0.6), uy0 + (mid - uy0) / 2 + m(0.7), Math.PI);
-    p.put('chair', ux0 + w * 0.75 + m(0.6), uy0 + (mid - uy0) / 2 + m(0.7), Math.PI);
+    // Chairs at the table, facing it.
+    p.put('chair', ux0 + w * 0.75 - m(0.6), uy0 + (mid - uy0) / 2 + m(0.7), 0);
+    p.put('chair', ux0 + w * 0.75 + m(0.6), uy0 + (mid - uy0) / 2 + m(0.7), 0);
     p.put('fridge', ux1 - m(0.5), uy0 + m(0.5), 0);
     p.put('stove', ux1 - m(1.4), uy0 + m(0.4), 0);
     p.put('sink', ux1 - m(2.4), uy0 + m(0.4), 0);
@@ -382,7 +385,10 @@ function classrooms(p: Plan, from: number): void {
     if (x > p.x0) p.wallAlong(x, from, p.y1, from + m(1));
     p.put('blackboard', (x + x1) / 2, p.y1 - m(0.2), Math.PI);
     p.put('desk', (x + x1) / 2, p.y1 - m(1.6), Math.PI);
+    const before = p.items.length;
     p.grid('desk', x + m(0.5), from + m(1), x1 - m(0.5), p.y1 - m(3), m(1.8), m(1.7), Math.PI);
+    // A chair at every pupil's desk, on the side the pupil sits.
+    for (const it of p.items.slice(before)) if (it.kind === 'desk') p.put('chair', it.x, it.y - m(0.7), Math.PI);
   }
 }
 
