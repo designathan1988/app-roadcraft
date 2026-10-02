@@ -5,7 +5,7 @@ import { texturedGarments } from './garmentSlots';
 import index from '../../../public/models/people/skins/index.json';
 const urls = import.meta.glob('../../../public/models/people/skins/*.webp', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
 
-export interface SkinAppearance { texture: Texture; tint: Color; hair: Color; hairTexture?: Texture; garments: (Texture | null)[]; outfitTint: Color | null; beard: number; makeup: number }
+export interface SkinAppearance { texture: Texture; tint: Color; hair: Color; hairTexture?: Texture; browTexture?: Texture; lashTexture?: Texture; beardTexture?: Texture; garments: (Texture | null)[]; outfitTint: Color | null; beard: number; makeup: number }
 
 /** Existing CC0 skin pack, selected by the authored body; no new asset downloads. */
 export async function loadSkinAppearance(person: PersonSpec): Promise<SkinAppearance> {
@@ -50,17 +50,28 @@ export async function loadSkinAppearance(person: PersonSpec): Promise<SkinAppear
     map.colorSpace = SRGBColorSpace; map.flipY = false;
     return map;
   }));
-  if (person.look.hairCut && person.look.hairCut !== 'none') {
-    const hair = await loadProxyItem(person.look.hairCut);
-    if (hair.textureFile) {
-      hairTexture = await new TextureLoader().loadAsync(proxyUrl(hair.textureFile));
-      hairTexture.colorSpace = SRGBColorSpace;
-      hairTexture.flipY = false;
-    }
-  }
+  // Every card item - hair, brows, lashes, a beard - with its own texture,
+  // so its strands are drawn per pixel.
+  const cardTexture = async (name: string | undefined): Promise<Texture | undefined> => {
+    if (!name || name === 'none') return undefined;
+    const item = await loadProxyItem(name);
+    if (!item.textureFile) return undefined;
+    const map = await new TextureLoader().loadAsync(proxyUrl(item.textureFile));
+    map.colorSpace = SRGBColorSpace;
+    map.flipY = false;
+    return map;
+  };
+  hairTexture = await cardTexture(person.look.hairCut);
+  const browTexture = await cardTexture(person.look.brows);
+  const lashTexture = await cardTexture(person.look.lashes);
+  const beardName = (person.look.extras ?? []).find((e) => /beard|moustache|goatee|stubble|sideburn/i.test(e));
+  const beardTexture = await cardTexture(beardName);
   return { texture, tint, hair: new Color(person.look.hair), garments,
     outfitTint: person.look.outfitTint == null ? null : new Color(person.look.outfitTint),
     ...(hairTexture ? { hairTexture } : {}),
+    ...(browTexture ? { browTexture } : {}),
+    ...(lashTexture ? { lashTexture } : {}),
+    ...(beardTexture ? { beardTexture } : {}),
     beard: ['none', 'stubble', 'moustache', 'beard'].indexOf(person.look.beard ?? 'none'), makeup: person.look.makeup ?? 0 };
 }
 
@@ -71,7 +82,7 @@ export function applySkinAppearance(material: MeshStandardMaterial, geometry: Bu
   const key = material.customProgramCacheKey();
   const detail = { value: 1 };
   material.userData['appearanceDetail'] = detail;
-  const texturedHair = skin.hairTexture && geometry.hasAttribute('hairMask');
+  const texturedHair = (skin.hairTexture || skin.browTexture || skin.beardTexture || skin.lashTexture) && geometry.hasAttribute('hairMask');
   const texturedGarments = geometry.hasAttribute('garmentSlot') && skin.garments.some(Boolean);
   if (texturedHair) { material.alphaToCoverage = true; material.alphaTest = 0.35; }
   material.onBeforeCompile = (shader, renderer) => {
@@ -89,7 +100,12 @@ export function applySkinAppearance(material: MeshStandardMaterial, geometry: Bu
       shader.uniforms.outfitDyed = { value: skin.outfitTint ? 1 : 0 };
       skin.garments.forEach((map, i) => { if (map) shader.uniforms[`garment${i}`] = { value: map }; });
     }
-    if (texturedHair) shader.uniforms.personHair = { value: skin.hairTexture };
+    if (texturedHair) {
+      shader.uniforms.personHair = { value: skin.hairTexture ?? null };
+      shader.uniforms.personBrow = { value: skin.browTexture ?? null };
+      shader.uniforms.personLash = { value: skin.lashTexture ?? null };
+      shader.uniforms.personBeard = { value: skin.beardTexture ?? null };
+    }
     shader.vertexShader = `attribute float skinMask; uniform vec3 faceOrigin; uniform float faceScale; varying float vSkinMask; varying vec2 vSkinUv; varying vec3 vFace;\n${shader.vertexShader}`
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSkinMask = skinMask; vSkinUv = uv; vFace = (position - faceOrigin) / faceScale;');
     shader.fragmentShader = `uniform float appearanceDetail; uniform sampler2D personSkin; uniform vec3 personSkinTint; uniform vec3 beardColour; uniform float beardStyle; uniform float makeupAmount; varying float vSkinMask; varying vec2 vSkinUv; varying vec3 vFace;\n${shader.fragmentShader}`
@@ -113,12 +129,28 @@ export function applySkinAppearance(material: MeshStandardMaterial, geometry: Bu
     if (texturedHair) {
       shader.vertexShader = `attribute float hairMask; varying float vHairMask;\n${shader.vertexShader}`
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHairMask = hairMask;');
-      shader.fragmentShader = `uniform sampler2D personHair; varying float vHairMask;\n${shader.fragmentShader}`
+      const has = (t: Texture | undefined): string => (t ? '1' : '0');
+      shader.fragmentShader = `uniform sampler2D personHair; uniform sampler2D personBrow; uniform sampler2D personLash; uniform sampler2D personBeard; varying float vHairMask;\n${shader.fragmentShader}`
         .replace('#include <alphatest_fragment>', `
-          vec4 hairTexel = texture2D(personHair, vSkinUv);
-          diffuseColor.rgb = mix(diffuseColor.rgb, hairTexel.rgb * beardColour * 1.7, vHairMask * appearanceDetail);
-          diffuseColor.a *= mix(1.0, hairTexel.a, vHairMask);
-          #include <alphatest_fragment>`);
+          // A card: hair (1), brows (2), lashes (3) or a beard (4), each from its
+          // own texture. The strands take the person's hair colour, shaded by
+          // the texture's own light and dark; where the card fades out its
+          // colour stays the hair's, not the texture's white backing (the white
+          // fringe round every head of hair).
+          if (vHairMask > 0.5 && appearanceDetail > 0.5) {
+            vec4 cardTexel = vec4(0.0);
+            float slot = floor(vHairMask + 0.5);
+            if (slot < 1.5) { cardTexel = ${has(skin.hairTexture)} == 1 ? texture2D(personHair, vSkinUv) : vec4(0.5, 0.5, 0.5, 1.0); }
+            else if (slot < 2.5) { cardTexel = ${has(skin.browTexture)} == 1 ? texture2D(personBrow, vSkinUv) : vec4(0.5, 0.5, 0.5, 1.0); }
+            else if (slot < 3.5) { cardTexel = ${has(skin.lashTexture)} == 1 ? texture2D(personLash, vSkinUv) : vec4(0.2, 0.2, 0.2, 1.0); }
+            else { cardTexel = ${has(skin.beardTexture)} == 1 ? texture2D(personBeard, vSkinUv) : vec4(0.5, 0.5, 0.5, 1.0); }
+            float strand = dot(cardTexel.rgb, vec3(0.3, 0.59, 0.11));
+            vec3 hairCol = slot > 2.5 && slot < 3.5 ? vec3(0.03) : beardColour * (0.55 + 0.95 * strand);
+            diffuseColor.rgb = mix(beardColour * 0.55, hairCol, smoothstep(0.25, 0.75, cardTexel.a));
+            diffuseColor.a = cardTexel.a;
+          }
+          #include <alphatest_fragment>`)
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vHairMask > 0.5) roughnessFactor = 0.42;');
     }
     if (texturedGarments) {
       shader.vertexShader = `attribute float garmentSlot; varying float vGarmentSlot;\n${shader.vertexShader}`

@@ -21,6 +21,9 @@ import { wornItems } from '@people/spec';
 import { garmentSlotOf } from './garmentSlots';
 
 /** Kinds of item that cover the skin under them: only these may hide it. */
+/** Card items drawn with their own texture, by slot (see `skinAppearance.ts`). */
+export const CARD_SLOT: Readonly<Record<string, number>> = { hair: 1, eyebrows: 2, eyelashes: 3, beard: 4 };
+
 const COVERING = new Set(['clothes', 'shoes', 'top', 'bottom', 'skirt', 'dress', 'suit', 'gloves']);
 
 /**
@@ -568,7 +571,8 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     for (let v = 0; v < n; v++) {
       out.positions.push(w.positions[v * 3]!, w.positions[v * 3 + 1]!, w.positions[v * 3 + 2]!);
       uvs.push(pack.uvs?.[v * 2] ?? 0, pack.uvs?.[v * 2 + 1] ?? 0);
-      hairMask.push(kind === 'hair' ? 1 : 0);
+      // Which card texture this vertex reads (`skinAppearance.ts`): hair, brows, lashes, beard.
+      hairMask.push(CARD_SLOT[kind] ?? 0);
       garmentSlot.push(garmentSlotOf(look, w.name, kind));
       // Texture pixels are sRGB; vertex colours are drawn as linear (as
       // `Color` converts the look's colours). Taken raw, every garment came
@@ -596,7 +600,10 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     for (let i = 0; i + 2 < idx.length; i += 3) {
       const a = idx[i]!, b = idx[i + 1]!, c = idx[i + 2]!;
       // A crowd draws no see-through cloth: of a hair card only what is hair.
-      if (transparent && texture && !(texturedSkin && pack.kind === 'hair') && (alpha[a]! + alpha[b]! + alpha[c]!) / 3 < SOLID) continue;
+      // Cards drawn with their own texture keep every triangle: the alpha is
+      // per pixel. Thinned to their solid triangles, beards and brows were
+      // drawn as black spikes.
+      if (transparent && texture && !(texturedSkin && CARD_SLOT[pack.kind] !== undefined) && (alpha[a]! + alpha[b]! + alpha[c]!) / 3 < SOLID) continue;
       out.index.push(base + a, base + b, base + c);
     }
     groups.push({ start, count: out.index.length - start, name: w.name });
