@@ -52,6 +52,14 @@ export function cutOutline(source: readonly Vec2[], cut: readonly Vec2[]): Vec2[
   return signedArea(points) < 0 ? points.reverse() : points;
 }
 
+/** The share (0..1) of `ring`'s area that lies over `supports`. */
+export function supportShare(ring: readonly Vec2[], supports: readonly Vec2[][]): number {
+  const area = Math.abs(signedArea(ring));
+  if (supports.length === 0 || area < 1e-9) return 0;
+  const remaining = clipping.difference(asPolygon(ring), ...supports.map(asPolygon));
+  return Math.max(0, 1 - polygonArea(remaining) / area);
+}
+
 export function supportedBy(ring: readonly Vec2[], supports: readonly Vec2[][]): boolean {
   if (supports.length === 0) return false;
   const remaining = clipping.difference(asPolygon(ring), ...supports.map(asPolygon));

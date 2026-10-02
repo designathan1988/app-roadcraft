@@ -45,7 +45,11 @@ describe('free building plans', () => {
     top.storeys = [top.storeys[0]!];
     b.volumes.push(top);
     expect(isSupported(b, top)).toBe(true);
+    // A box over the L overhangs its notch: allowed, most of it bears.
     delete top.outline;
+    expect(isSupported(b, top)).toBe(true);
+    // Set off the L altogether, it stands on nothing.
+    top.x += first.w * 2;
     expect(isSupported(b, top)).toBe(false);
   });
 

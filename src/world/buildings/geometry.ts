@@ -1,6 +1,6 @@
 import type { Vec2 } from '@core/vec2';
 import { m } from '../units';
-import { localFootprint, edgeFrame, volumeSides, offsetRing, overlapArea, supportedBy } from './footprints';
+import { localFootprint, edgeFrame, volumeSides, offsetRing, overlapArea, supportShare } from './footprints';
 import {
   type BayComponent,
   type Building,
@@ -183,7 +183,6 @@ export function buildingBounds(b: Building, grow = 0): { minX: number; minY: num
 
 // ------------------------------------------------------------------ solids
 
-type Rect = readonly [number, number, number, number];
 
 /** Whether two volumes share floor area in plan (touching is not sharing). */
 export const planOverlap = (a: Volume, c: Volume): boolean =>
@@ -203,21 +202,6 @@ export function clashes(b: Building): [number, number][] {
   return out;
 }
 
-/** What is left of `rect` once `cut` is taken out of it: up to four rectangles. */
-function subtract(rect: Rect, cut: Rect): Rect[] {
-  const [x0, y0, x1, y1] = rect;
-  const [cx0, cy0, cx1, cy1] = cut;
-  if (cx0 >= x1 - EPS || cx1 <= x0 + EPS || cy0 >= y1 - EPS || cy1 <= y0 + EPS) return [rect];
-  const out: Rect[] = [];
-  if (cy0 > y0 + EPS) out.push([x0, y0, x1, cy0]);
-  if (cy1 < y1 - EPS) out.push([x0, cy1, x1, y1]);
-  const my0 = Math.max(y0, cy0);
-  const my1 = Math.min(y1, cy1);
-  if (cx0 > x0 + EPS) out.push([x0, my0, cx0, my1]);
-  if (cx1 < x1 - EPS) out.push([cx1, my0, x1, my1]);
-  return out;
-}
-
 /**
  * Whether a volume above the ground has something under every part of it:
  * its rectangle is covered by the volumes that have a storey on the level
@@ -226,16 +210,14 @@ function subtract(rect: Rect, cut: Rect): Rect[] {
 export function isSupported(b: Building, v: Volume): boolean {
   // A cut or a clip carries nothing and needs nothing under it.
   if (v.base === 0 || !isMass(v)) return true;
-  if (b.volumes.some((o) => o.outline)) return supportedBy(localFootprint(v), b.volumes.filter((o) => o.id !== v.id && isMass(o) && occupiesLevel(o, v.base - 1)).map(localFootprint));
-  let left: Rect[] = [[v.x, v.y, v.x + v.w, v.y + v.d]];
-  for (const o of b.volumes) {
-    if (o.id === v.id || !isMass(o) || !occupiesLevel(o, v.base - 1)) continue;
-    const cut: Rect = [o.x, o.y, o.x + o.w, o.y + o.d];
-    left = left.flatMap((r) => subtract(r, cut));
-    if (left.length === 0) return true;
-  }
-  return left.every(([x0, y0, x1, y1]) => x1 - x0 < EPS * 10 || y1 - y0 < EPS * 10);
+  // A block may overhang - a cantilever, a balcony block, a brick set half
+  // over the edge - as long as a good part of it bears on what is under it.
+  const supports = b.volumes.filter((o) => o.id !== v.id && isMass(o) && occupiesLevel(o, v.base - 1)).map(localFootprint);
+  return supportShare(localFootprint(v), supports) >= MIN_BEARING;
 }
+
+/** The share of a block's plan that must bear on the blocks under it. */
+export const MIN_BEARING = 0.3;
 
 // ------------------------------------------------------------------ facades
 
