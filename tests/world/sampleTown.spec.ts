@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { RoadDoc } from '@world/doc';
 import { buildSampleTown } from '@world/sampleTown';
 import { footprintRects } from '@world/buildings/geometry';
-import { structuralProblem } from '@world/buildings/validate';
+import { structuralProblem, validateBuilding } from '@world/buildings/validate';
+import { Network } from '@world/network';
 
 /** The sample town: dense blocks, fronts on the pavement, nothing on a road or on a neighbour. */
 describe('sample town', () => {
@@ -29,5 +30,11 @@ describe('sample town', () => {
         expect(a.x0 < c.x1 - 0.5 && a.x1 > c.x0 + 0.5 && a.y0 < c.y1 - 0.5 && a.y1 > c.y0 + 0.5).toBe(false);
       }
     }
+  });
+
+  it('stands every building where it may be edited: clear of the roads by the rules', () => {
+    const net = new Network(doc);
+    net.rebuild();
+    for (const a of boxes) expect(validateBuilding({ doc, net, groundAt: null }, a.b, a.b.id), String(a.b.function)).toBeNull();
   });
 });

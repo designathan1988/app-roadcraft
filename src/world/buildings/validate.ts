@@ -66,6 +66,14 @@ export const BUILDING_MAP_MARGIN = 8;
  * verge, which read as a gap between the pavement and the wall.
  */
 export const ROAD_CLEARANCE = 0.02;
+/**
+ * Area a footprint may share with a junction's footway plate and still only
+ * touch it, square units (2.5 m2). A building on the corner of a block stands
+ * on the point where the backs of the two footways meet, and on the inside of
+ * a bend the footway's rounded corner reaches a sliver into the block; the
+ * carriageway itself is kept clear by the distance test above.
+ */
+const JUNCTION_TOUCH = 16;
 /** Overlap two footprints may have and still count as touching (terraces). */
 const TOUCH = 0.05;
 
@@ -176,7 +184,10 @@ export function touchesRoad(net: Network, rect: readonly Vec2[]): boolean {
     if (!junction || junction.ring.isEmpty) continue;
     const jb = junction.ring.bbox;
     if (jb.minX > box.maxX || jb.maxX < box.minX || jb.minY > box.maxY || jb.maxY < box.minY) continue;
-    if (polygonsOverlap(junction.ring.flatten(), rect)) return true;
+    // A real overlap, not a corner touching: a building on the corner of a
+    // block stands on the point where the backs of the two footways meet.
+    const ring = junction.ring.flatten();
+    if (polygonsOverlap(ring, rect) && overlapArea(ring, rect) > JUNCTION_TOUCH) return true;
   }
   return false;
 }

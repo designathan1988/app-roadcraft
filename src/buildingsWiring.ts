@@ -190,6 +190,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     if (keep !== 'model') tool.armModelTool(null);
     if (tool.primitive) tool.armPrimitive(null);
     if (tool.coreKind) tool.armCore(null);
+    if (tool.furnitureKind) tool.armFurniture(null);
   }
 
   /** The floor the floor chip shows: the picked face's storey, or the ground. */
@@ -283,6 +284,19 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       clearArming(null);
       tool.armModelTool('select');
       tool.armPrimitive(primitive);
+      toolId = id;
+      return;
+    }
+    // Furnishing: a piece or a light in hand, moving, removing, turning.
+    if (id === 'furnTurn') {
+      tool.turnFurniture();
+      return;
+    }
+    const furniture = id.startsWith('furn_') ? id.slice(5) : id === 'furnMove' ? 'move' : id === 'furnRemove' ? 'remove' : null;
+    if (furniture) {
+      clearArming(null);
+      tool.armModelTool('select');
+      tool.armFurniture(furniture as Parameters<typeof tool.armFurniture>[0]);
       toolId = id;
       return;
     }

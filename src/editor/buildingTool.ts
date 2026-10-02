@@ -10,7 +10,7 @@ import {
   instantiate,
 } from '@world/buildings/blueprints';
 import { cityBuilding } from '@world/buildings/cityBuildings';
-import { cutOpen } from '@world/buildings/interior';
+import { FURNITURE_SIZE, type FurnitureKind, cutOpen, furnishingOf } from '@world/buildings/interior';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
 import { edgeFrame, localFootprint, overlapArea } from '@world/buildings/footprints';
 import { GRID } from '@world/buildings/geometry';
@@ -960,6 +960,90 @@ export class BuildingTool {
       });
       return true;
     });
+  }
+
+  /**
+   * Furnishing, as in The Sims: a piece (or a light) in hand is put down where
+   * the cut floor is clicked; 'move' picks a piece up with one click and puts
+   * it down with the next; 'remove' takes away the one clicked. R turns the
+   * piece in hand, or the one being moved, a quarter turn.
+   */
+  furnitureKind: FurnitureKind | 'move' | 'remove' | null = null;
+  furnitureAngle = 0;
+  /** The piece picked up by 'move', by index on the floor shown. */
+  private carried: number | null = null;
+
+  armFurniture(kind: FurnitureKind | 'move' | 'remove' | null): void {
+    this.furnitureKind = kind;
+    this.carried = null;
+    if (kind !== null && this.cutLevel === null) this.cutLevel = 0;
+    this.host.changed();
+  }
+
+  /** A quarter turn for the piece in hand, or for the one being moved. */
+  turnFurniture(): void {
+    this.furnitureAngle = (this.furnitureAngle + Math.PI / 2) % (Math.PI * 2);
+    const carried = this.carried;
+    if (carried !== null) {
+      const level = this.cutLevel ?? 0;
+      this.onSelected((draft) => {
+        const list = [...(draft.furnishing?.[String(level)] ?? furnishingOf(draft, level))];
+        const it = list[carried];
+        if (!it) return false;
+        list[carried] = { ...it, angle: (it.angle + Math.PI / 2) % (Math.PI * 2) };
+        draft.furnishing = { ...(draft.furnishing ?? {}), [String(level)]: list };
+        return true;
+      });
+    }
+    this.host.changed();
+  }
+
+  private editFurniture(screen: Vec2): void {
+    const b = this.selected();
+    const kind = this.furnitureKind;
+    if (!b || !kind) return;
+    const level = this.cutLevel ?? 0;
+    const p = worldToLocal(b, this.view.planeAt(screen, this.floorOf(b) + levelElevation(b, level)));
+    const snap = (v: number): number => Math.round(v / (GRID / 2)) * (GRID / 2);
+    // The piece under the pointer: the nearest whose footprint holds it.
+    const under = (list: readonly { kind: string; x: number; y: number }[]): number => {
+      let best = -1;
+      let bestD = Infinity;
+      list.forEach((it, i) => {
+        const size = FURNITURE_SIZE[it.kind as FurnitureKind];
+        const reach = size ? m(Math.max(size[0], size[1])) / 2 + m(0.25) : m(0.6);
+        const d = Math.hypot(it.x - p.x, it.y - p.y);
+        if (d < reach && d < bestD) { best = i; bestD = d; }
+      });
+      return best;
+    };
+    if (kind === 'move' && this.carried === null) {
+      const list = b.furnishing?.[String(level)] ?? furnishingOf(b, level);
+      const i = under(list);
+      if (i >= 0) this.carried = i;
+      this.host.changed();
+      return;
+    }
+    const carried = this.carried;
+    this.onSelected((draft) => {
+      // The first change to a floor keeps what was there: the arrangement made
+      // for the building's function becomes the player's own.
+      const list = [...(draft.furnishing?.[String(level)] ?? furnishingOf(draft, level))];
+      if (kind === 'remove') {
+        const i = under(list);
+        if (i < 0) return false;
+        list.splice(i, 1);
+      } else if (kind === 'move') {
+        const it = carried === null ? undefined : list[carried];
+        if (!it) return false;
+        list[carried!] = { ...it, x: snap(p.x), y: snap(p.y) };
+      } else {
+        list.push({ kind, x: snap(p.x), y: snap(p.y), angle: this.furnitureAngle });
+      }
+      draft.furnishing = { ...(draft.furnishing ?? {}), [String(level)]: list };
+      return true;
+    });
+    if (kind === 'move') this.carried = null;
   }
 
   /** A basic shape in hand: the next click drops it on a roof, against a wall, or on the ground. */
@@ -1959,7 +2043,7 @@ export class BuildingTool {
     const selected = this.selected();
     // A part in hand goes where it is clicked: the handles stand aside (the
     // floor arrow, just over a small roof, swallowed the click meant for it).
-    if (this.mode === 'edit' && selected && this.selection && !this.roofDetailKind && !this.armed && !this.component && !this.primitive && !this.coreKind) {
+    if (this.mode === 'edit' && selected && this.selection && !this.roofDetailKind && !this.armed && !this.component && !this.primitive && !this.coreKind && !this.furnitureKind) {
       const handle = this.handleAt(screen);
       if (handle) {
         this.hoverHandle = handle;
@@ -2275,7 +2359,7 @@ export class BuildingTool {
 
   /** Nothing is in hand: the pointer selects, and drags what it selected. */
   freeHand(): boolean {
-    return !this.coreKind && !this.primitive && !this.component && !this.armed && !this.roofDetailKind && !this.massMoveArmed && !this.planPoints &&
+    return !this.coreKind && !this.furnitureKind && !this.primitive && !this.component && !this.armed && !this.roofDetailKind && !this.massMoveArmed && !this.planPoints &&
       (this.activeModelTool === null || this.activeModelTool === 'select');
   }
 
@@ -2297,6 +2381,10 @@ export class BuildingTool {
     }
     if (this.primitive) {
       this.dropPrimitive(hit, this.lastWorld ?? { x: 0, y: 0 });
+      return;
+    }
+    if (this.furnitureKind && this.lastScreen) {
+      this.editFurniture(this.lastScreen);
       return;
     }
     if (this.coreKind && this.lastScreen) {
@@ -2462,6 +2550,10 @@ export class BuildingTool {
   /** Returns true when the tool used the key. */
   key(key: string, ctrl: boolean, shift: boolean): boolean {
     const lower = key.toLowerCase();
+    if (this.furnitureKind) {
+      if (lower === 'r') { this.turnFurniture(); return true; }
+      if (key === 'Escape') { this.armFurniture(null); return true; }
+    }
     if (this.planPoints) {
       if (key === 'Enter') { this.finishPlan(); return true; }
       if (key === 'Escape') { this.cancelPlan(); return true; }

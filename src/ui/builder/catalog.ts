@@ -107,6 +107,8 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
     sections: [
       { title: 'interiorView', tools: [action('interiorView'), action('floorDown'), action('floorUp')] },
       { title: 'cores', tools: [mode('coreLift'), mode('coreStair'), mode('coreBoth'), mode('coreRemove')] },
+      { title: 'furnishing', tools: [mode('furnMove'), action('furnTurn'), mode('furnRemove')] },
+      { title: 'furniture', tools: [mode('furn_sofa'), mode('furn_armchair'), mode('furn_table'), mode('furn_chair'), mode('furn_bed'), mode('furn_singleBed'), mode('furn_wardrobe'), mode('furn_tv'), mode('furn_desk'), mode('furn_officeChair'), mode('furn_bookshelf'), mode('furn_shelf'), mode('furn_counter'), mode('furn_fridge'), mode('furn_stove'), mode('furn_sink'), mode('furn_bath'), mode('furn_toilet'), mode('furn_plant'), mode('furn_ceilingLamp'), mode('furn_floorLamp'), mode('furn_tableLamp')] },
     ],
   },
   {

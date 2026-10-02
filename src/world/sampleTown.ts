@@ -26,7 +26,7 @@ const YS = [-180, 0, 180];
 const LOCAL = ROAD_TYPES.findIndex((t) => t.id === 'local');
 const URBAN = ROAD_TYPES.findIndex((t) => t.id === 'urban');
 /** Between the pavement's edge and a facade; between two neighbours. */
-const FRONT_GAP = 0.05;
+const FRONT_GAP = 0.12;
 const PARTY_GAP = 0;
 
 /** What stands on each block, in order round it from its first corner. */
@@ -60,7 +60,7 @@ const overlaps = (a: Box, b: Box, gap: number): boolean =>
   a.x0 < b.x1 + gap && a.x1 > b.x0 - gap && a.y0 < b.y1 + gap && a.y1 > b.y0 - gap;
 
 const inside = (a: Box, b: Box): boolean =>
-  a.x0 >= b.x0 - 0.5 && a.x1 <= b.x1 + 0.5 && a.y0 >= b.y0 - 0.5 && a.y1 <= b.y1 + 0.5;
+  a.x0 >= b.x0 - 0.05 && a.x1 <= b.x1 + 0.05 && a.y0 >= b.y0 - 0.05 && a.y1 <= b.y1 + 0.05;
 
 interface Edge { readonly start: Vec2; readonly along: Vec2; readonly inward: Vec2; readonly length: number }
 
