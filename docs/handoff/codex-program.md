@@ -14,8 +14,8 @@ in the plan's order.
 | 0 | measurement base (harness, probe) | **done**, 1c431c3 |
 | 1 | new base for roads and pedestrians | **deferred by player**: remaining work at the end of this file |
 | 1b | vehicle motion: measure and fix on the new base | **default in Drive v2**, player approved; b43bd33, 2695613 |
-| 2 | skin, phenotype, sex profiles, child clothes | **in progress** |
-| 3 | live expression | not started |
+| 2 | skin, phenotype, sex profiles, child clothes | **verified behind `?appearance=natural`**, default approval pending |
+| 3 | live expression | **in progress** |
 | 4 | crowd without repetition, plus memory | not started |
 | 5 | citizen registry, day clock, day/night | not started |
 | 6 | mind, schedule, inhabited buildings (abstract) | not started |
@@ -41,6 +41,15 @@ Stage 1 in detail:
   - deleting the old engines.
 
 Update this table in every stage-closing commit.
+
+Stage 2: textured CC0 skin and clothes at close range, vertex colors farther
+away, continuous pigment controls, age-aware hair, reviewed brow profiles,
+facial hair/makeup overlays, and procedural child clothing with fitted hair.
+Forty portrait pairs reviewed; street and all eight creator sections photographed
+without page errors. The fixed 64-adult mesh cohort exceeds 95% pairwise rank
+separation on lower-jaw width, chin projection and lip thickness. This measures
+the authored geometric profiles, not human visual recognition. Fifteen focused
+people checks pass. Photos: `docs/audit/2026-10-01/appearance/`.
 
 Stage 1b: the 90-second player-city measurement changed emergency-braking
 violations 7 -> 0 and instant stops 2 -> 0. Jerk p95 stays 2.5 m/s3; pose jumps
@@ -88,6 +97,11 @@ Read it before every batch.
 Agents: at most ONE at a time (player's order, 2026-10-01 23:20, to save credits).
 
 ## No overhead
+
+Conversation B was closed by the player. Its final READY is already contained
+in master (`c311939`). A resumes the remaining Stage 12, then 13 and 10 after
+its current stages. B's unfinished drafts remain in stash `732311e`; inspect
+them only when resuming those stages. At most one subagent may run at a time.
 
 At 20:54 the player complained that the project had stopped while time went to extras:
 - 5 photo scripts;

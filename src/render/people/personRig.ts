@@ -485,6 +485,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   const uvs: number[] = shell?.hasAttribute('uv') ? values('uv') : new Array(out.positions.length / 3 * 2).fill(0);
   const skinMask: number[] = shell?.hasAttribute('skinMask') ? values('skinMask') : new Array(out.positions.length / 3).fill(0);
   const hairMask: number[] = new Array(out.positions.length / 3).fill(0);
+  const garmentSlot: number[] = new Array(out.positions.length / 3).fill(0);
   const groups: { start: number; count: number; name: string }[] = [];
   const headBone = data.boneNames.indexOf('head');
   const pushSkin = (joints: ArrayLike<number>, weights: ArrayLike<number>, o: number, scale: number): void => {
@@ -539,6 +540,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   }
 
   while (hairMask.length < out.positions.length / 3) hairMask.push(0);
+  while (garmentSlot.length < out.positions.length / 3) garmentSlot.push(0);
   groups.push({ start: 0, count: out.index.length, name: 'body' });
   // --- the items
   const tint = look.outfitTint === null || look.outfitTint === undefined ? null : new Color(look.outfitTint);
@@ -552,6 +554,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
       out.positions.push(w.positions[v * 3]!, w.positions[v * 3 + 1]!, w.positions[v * 3 + 2]!);
       uvs.push(pack.uvs?.[v * 2] ?? 0, pack.uvs?.[v * 2 + 1] ?? 0);
       hairMask.push(kind === 'hair' ? 1 : 0);
+      garmentSlot.push(w.name === look.outfit ? 1 : w.name === look.footwear ? 2 : w.name === look.hat ? 3 : 0);
       // Texture pixels are sRGB; vertex colours are drawn as linear (as
       // `Color` converts the look's colours). Taken raw, every garment came
       // out pale and washed out.
@@ -590,6 +593,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     while (skinMask.length < out.positions.length / 3) skinMask.push(0);
     geometry.setAttribute('skinMask', new BufferAttribute(new Float32Array(skinMask), 1));
     geometry.setAttribute('hairMask', new BufferAttribute(new Float32Array(hairMask), 1));
+    geometry.setAttribute('garmentSlot', new BufferAttribute(new Float32Array(garmentSlot), 1));
   }
   groups.forEach((g, i) => geometry.addGroup(g.start, g.count, i));
   geometry.userData['wornGroups'] = groups.map((g) => g.name);

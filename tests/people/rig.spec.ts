@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_MACRO } from '@people/body/macro';
+import { ageFromYears, DEFAULT_MACRO } from '@people/body/macro';
 import { Morpher, type PeoplePacks } from '@people/body/morph';
 import { randomPerson } from '@people/spec';
 import { createPersonRig, type SkeletonMeta } from '@render/people/personRig';
@@ -115,4 +115,91 @@ it('builds a rigged person in a fraction of a second', () => {
   const each = (performance.now() - t0) / 3;
   console.log(`rig ${each.toFixed(0)} ms per person`);
   expect(each).toBeLessThan(400);
+});
+
+
+it('separates adult sex profile mesh distributions at 95%', () => {
+  // Anatomy is measured on the generated body, before clothes or hair can
+  // provide clues. Fixed topology regions are selected once on the neutral
+  // base; no per-person slider value participates in measurement or scoring.
+  const centre = (positions: Float32Array, name: string, axis: number): number => {
+    let sum = 0, count = 0;
+    for (const [a, b] of base.vertexGroups[name]!) for (let v = a; v <= b; v++) {
+      sum += positions[v * 3 + axis]!; count++;
+    }
+    return sum / count;
+  };
+  const bodyVertices = new Set<number>();
+  for (const [a, b] of bodyRange) for (let v = a; v <= b; v++) bodyVertices.add(v);
+  const localIndices = new Uint16Array(packs.localBin, packs.local.layout.indices.byteOffset, packs.local.entryCount);
+  const localDeltas = new Int16Array(packs.localBin, packs.local.layout.deltas.byteOffset, packs.local.entryCount * 3);
+  // Broad support-region extrema were invalid: untouched peripheral vertices
+  // owned the measured width/height, so even a full chin-width or lip-volume
+  // target changed those measurements by zero. Fix anatomical landmarks once
+  // from the authored target's strongest positive/negative axis displacement.
+  // Selection never reads a generated body, label, seed or desired test result.
+  const landmarks = (name: string, axis: number): [number, number] => {
+    const target = packs.local.targets.find(t => t.name === name)!;
+    let lo = Infinity, hi = -Infinity, lowVertex = -1, highVertex = -1;
+    for (let i = target.start; i < target.start + target.count; i++) {
+      const v = localIndices[i]!;
+      if (!bodyVertices.has(v)) continue;
+      const delta = localDeltas[i * 3 + axis]! * target.scale;
+      if (delta < lo) { lo = delta; lowVertex = v; }
+      if (delta > hi) { hi = delta; highVertex = v; }
+    }
+    expect(highVertex).toBeGreaterThanOrEqual(0);
+    expect(lowVertex).toBeGreaterThanOrEqual(0);
+    expect(hi - lo).toBeGreaterThan(0);
+    return [lowVertex, highVertex];
+  };
+  const jaw = landmarks('chin/chin-width-incr', 0);
+  const [, chin] = landmarks('chin/chin-prominent-incr', 2);
+  const upperLip = landmarks('mouth/mouth-upperlip-volume-incr', 1);
+  const lowerLip = landmarks('mouth/mouth-lowerlip-volume-incr', 1);
+  const bounds = (positions: Float32Array, vertices: Iterable<number>, axis: number): [number, number] => {
+    let lo = Infinity, hi = -Infinity;
+    for (const v of vertices) { const x = positions[v * 3 + axis]!; lo = Math.min(lo, x); hi = Math.max(hi, x); }
+    return [lo, hi];
+  };
+  const cohort = Array.from({ length: 64 }, (_, i) => {
+    const sex = i % 2;
+    const person = randomPerson(i, 0x52a900 + i * 7919,
+      { body: { gender: sex === 0 ? 0.1 : 0.9, age: ageFromYears(32) } }, { appearance: 'natural' });
+    const positions = morpher.shape(person.body, person.features);
+    const [feet, crown] = bounds(positions, bodyVertices, 1);
+    const height = crown - feet;
+    const jawWidth = positions[jaw[1] * 3]! - positions[jaw[0] * 3]!;
+    const chinProjection = positions[chin * 3 + 2]! - centre(positions, 'joint-head', 2);
+    const lipThickness = [upperLip, lowerLip].reduce((sum, [low, high]) =>
+      sum + positions[high * 3 + 1]! - positions[low * 3 + 1]!, 0);
+    const measures = [jawWidth / height, chinProjection / height, lipThickness / height];
+    expect(measures.every(Number.isFinite)).toBe(true);
+    return { sex, measures };
+  });
+  // Direct pairwise rank separation: no classifier, fitted threshold or
+  // parameter signs. Direction is specified before sampling. This measures
+  // geometric distributions, not recognition of a rendered person's sex.
+  const female = cohort.filter(row => row.sex === 0);
+  const male = cohort.filter(row => row.sex === 1);
+  const dimensions = ['lower jaw width / height', 'chin projection / height', 'lip thickness / height'];
+  const distributions = dimensions.map((dimension, axis) => {
+    const summarize = (rows: typeof cohort) => {
+      const values = rows.map(row => row.measures[axis]!).sort((a, b) => a - b);
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      return { mean, min: values[0], median: (values[15]! + values[16]!) / 2, max: values.at(-1),
+        standardDeviation: Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1)) };
+    };
+    let ordered = 0;
+    for (const f of female) for (const m of male) {
+      const difference = (axis === 2 ? -1 : 1) * (m.measures[axis]! - f.measures[axis]!);
+      ordered += difference > 0 ? 1 : difference === 0 ? 0.5 : 0;
+    }
+    return { dimension, female: summarize(female), male: summarize(male),
+      rankSeparation: ordered / (female.length * male.length) };
+  });
+  console.log('Natural adult mesh profile distributions', JSON.stringify(distributions));
+  for (const result of distributions) {
+    expect(result.rankSeparation, result.dimension).toBeGreaterThanOrEqual(0.95);
+  }
 });

@@ -35,6 +35,7 @@ import { chromium } from '@playwright/test';
 const args = process.argv.slice(2);
 const OUT = path.resolve(args.find((a) => !a.startsWith('--')) ?? 'docs/screenshots/inspect');
 const BASE = (args.find((a) => a.startsWith('--base=')) ?? '--base=http://localhost:5176').slice(7);
+const QUERY = (args.find((a) => a.startsWith('--query=')) ?? '').slice(8);
 const SETS = args.filter((a) => !a.startsWith('--')).slice(1);
 const LIMIT = Number((args.find((a) => a.startsWith('--limit=')) ?? '--limit=20').slice(8));
 const want = (set) => SETS.length === 0 || SETS.includes(set);
@@ -50,7 +51,7 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(String(e.message)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
-await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+await page.goto(`${BASE}/?${QUERY}`, { waitUntil: 'networkidle' });
 await page.waitForFunction('Boolean(window.__roadcraft)', null, { timeout: 60_000 });
 const stamp = await page.evaluate(async () => (await fetch('/__build', { cache: 'no-store' })).json());
 const stampText = `${stamp.branch} · ${stamp.hash}${stamp.dirty ? '+' : ''} · ${stamp.date.slice(0, 16).replace('T', ' ')}`;
@@ -341,6 +342,21 @@ if (want('people')) {
     if (i++ >= LIMIT) break;
     await shoot(`solo-${w.id}`, { x: w.x, y: w.y, h: w.h + M(0.9), azimuth: w.heading + 1.0, elevation: 0.1,
       distance: M(4.5), fov: 30, width: 1000, height: 1200 }, `walker #${w.id}`, 60, 1200);
+  }
+}
+
+if (want('creator')) {
+  await page.keyboard.press('k');
+  await page.locator('.person-creator').waitFor({ state: 'visible' });
+  await page.waitForTimeout(1500);
+  const sections = page.locator('.person-creator .pc-section');
+  const count = await sections.count();
+  for (let i = 0; i < count; i++) {
+    await sections.evaluateAll((boxes, active) => boxes.forEach((box, index) => { box.open = index === active; }), i);
+    await sections.nth(i).scrollIntoViewIfNeeded();
+    await frames(6);
+    const screenshot = await page.screenshot();
+    await save(`creator-${i}`, `data:image/png;base64,${screenshot.toString('base64')}`, await sections.nth(i).locator('summary').innerText());
   }
 }
 

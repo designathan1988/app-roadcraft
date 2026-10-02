@@ -72,6 +72,7 @@ export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id)
       } finally {
         skin?.texture.dispose();
         skin?.hairTexture?.dispose();
+        skin?.garments.forEach(map => map?.dispose());
         rig.mesh.geometry.dispose();
         rig.mesh.skeleton.dispose();
         for (const material of Array.isArray(rig.mesh.material) ? rig.mesh.material : [rig.mesh.material]) material.dispose();

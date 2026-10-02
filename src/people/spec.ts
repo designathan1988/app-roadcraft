@@ -82,6 +82,11 @@ export function outfitsForAge(years: number, outfits: readonly string[]): readon
 }
 
 export interface AppearanceOptions { readonly appearance?: 'legacy' | 'natural' }
+/** Reviewed silhouettes from the shipped eyebrow textures; all remain in the creator. */
+const BROW_PROFILES = {
+  arched: ['eyebrow001', 'eyebrow003', 'eyebrow008', 'eyebrow010'],
+  straightOrFull: ['eyebrow002', 'eyebrow004', 'eyebrow005', 'eyebrow009', 'eyebrow012'],
+} as const;
 
 /** Every outfit, either sex's. */
 export const ALL_OUTFITS: readonly string[] = [...WARDROBE.outfits.male, ...WARDROBE.outfits.female];
@@ -200,7 +205,7 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     // Heels (shoes03) only ever on a woman.
     footwear: pick(r, female ? WARDROBE.footwear : WARDROBE.footwear.filter((f) => f !== 'shoes03')),
     hairCut,
-    brows: pick(r, WARDROBE.brows),
+    brows: pick(r, natural ? (female ? BROW_PROFILES.arched : BROW_PROFILES.straightOrFull) : WARDROBE.brows),
     lashes: pick(r, WARDROBE.lashes),
     hat: !female && years > 30 && r() < 0.08 ? pick(r, WARDROBE.hats) : 'none',
     // Dyed more often than not: a dozen outfits make a street of uniforms
@@ -238,7 +243,13 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
 function faceShape(r: () => number, body: MacroParams, years: number, natural = false): Record<string, number> {
   const around = (amp: number): number => (r() + r() - 1) * amp;
   const shapes = ['head-oval', 'head-round', 'head-square', 'head-rectangular', 'head-diamond', 'head-triangular', 'head-invertedtriangular'];
-  const out: Record<string, number> = { [pick(r, shapes)]: 0.25 + r() * 0.5 };
+  // Whole-head shape and local contours should tell the same story. Unrelated
+  // large shape presets previously overwhelmed the much smaller jaw profile.
+  const grown = Math.max(0, Math.min(1, (years - 10) / 10));
+  const profileShapes = natural && r() < grown * 0.7
+    ? (r() < body.gender ? ['head-square', 'head-rectangular', 'head-oval'] : ['head-oval', 'head-round', 'head-invertedtriangular'])
+    : shapes;
+  const out: Record<string, number> = { [pick(r, profileShapes)]: natural ? 0.2 + r() * 0.3 : 0.25 + r() * 0.5 };
   for (const [name, amp] of FACE_SLIDERS) out[name] = around(amp);
   // Folded eyelids with an East Asian heritage; bags under the eyes with age.
   out['eye-epicanthus-in-out'] = -body.asian * (0.3 + r() * 0.5);
@@ -247,10 +258,11 @@ function faceShape(r: () => number, body: MacroParams, years: number, natural = 
     // Overlapping artistic profiles, strongest after puberty; not a classifier.
     const adult = Math.max(0, Math.min(1, (years - 10) / 10));
     const sex = (body.gender * 2 - 1) * adult;
-    out['chin-width-decr-incr'] = sex * 0.22 + around(0.3);
-    out['chin-prominent-decr-incr'] = sex * 0.14 + around(0.25);
-    out['mouth-lowerlip-volume-decr-incr'] = -sex * 0.12 + around(0.3);
-    out['mouth-upperlip-volume-decr-incr'] = -sex * 0.12 + around(0.3);
+    out['chin-width-decr-incr'] = sex * 0.32 + around(0.22);
+    out['chin-bones-decr-incr'] = sex * 0.24 + around(0.2);
+    out['chin-prominent-decr-incr'] = sex * 0.24 + around(0.2);
+    out['mouth-lowerlip-volume-decr-incr'] = -sex * 0.85 + around(0.1);
+    out['mouth-upperlip-volume-decr-incr'] = -sex * 0.85 + around(0.1);
     out['cheek-bones-decr-incr'] = -sex * 0.12 + around(0.3);
     out['measure-neck-circ-decr-incr'] = sex * 0.12 + around(0.15);
     out['measure-waist-circ-decr-incr'] = sex * 0.1 + around(0.15);

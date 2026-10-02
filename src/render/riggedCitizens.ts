@@ -447,6 +447,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       const skin = await loadSkinAppearance(person);
       resources.add(skin.texture);
       if (skin.hairTexture) resources.add(skin.hairTexture);
+      for (const map of skin.garments) if (map) resources.add(map);
       rig.mesh.geometry.userData['skinAppearance'] = skin;
     }
     return { scene: rig.scene, parser: null } as unknown as GLTF;
@@ -652,6 +653,11 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         for (let i = 0; i < batch.meshes.length; i++) {
           const variants = batch.lods[i]!;
           batch.meshes[i]!.geometry = variants[Math.min(lod, variants.length - 1)]!;
+          const material = batch.meshes[i]!.material;
+          for (const m of Array.isArray(material) ? material : [material]) {
+            const detail = m.userData['appearanceDetail'] as { value: number } | undefined;
+            if (detail) detail.value = lod === 0 ? 1 : 0;
+          }
         }
       }
     },

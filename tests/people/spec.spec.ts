@@ -1,10 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { defaultPerson, normalizePerson, randomPerson } from '@people/spec';
+import { defaultPerson, normalizePerson, randomPerson, wornItems } from '@people/spec';
+import { ageFromYears } from '@people/body/macro';
 import { RoadDoc } from '@world/doc';
 import { isSerializedDoc } from '@editor/persistence';
 
 describe('people saved with the city', () => {
+  it('keeps natural children clothed without adult outfits and preserves saved pigment', () => {
+    for (let seed = 0; seed < 64; seed++) {
+      const person = randomPerson(seed, seed * 7919, { body: { age: ageFromYears(8) } }, { appearance: 'natural' });
+      expect(person.look.outfit).toBeUndefined();
+      expect(person.look.top).not.toBe('none');
+      expect(wornItems(person.look).some(name => name.includes('suit'))).toBe(false);
+      expect(normalizePerson(person)?.look.melanin).toBe(person.look.melanin);
+      expect(normalizePerson(person)?.look.skin).toBe(person.look.skin);
+    }
+  });
   it('come back from a save exactly as they were', () => {
     const doc = new RoadDoc();
     const a = randomPerson(doc.nextPersonId(), 7);

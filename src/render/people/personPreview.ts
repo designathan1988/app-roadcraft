@@ -167,7 +167,7 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
   const failedItems = new Set<string>();
   const skinKey = (p: PersonSpec): string => {
     const b = p.body;
-    return `${p.look.hairCut ?? 'none'}|${b.gender < 0.5}|${b.age > 0.8 ? 2 : b.age > 0.6 ? 1 : 0}|${b.african > b.asian && b.african > b.caucasian ? 0 : b.asian > b.caucasian ? 1 : 2}`;
+    return `${p.look.outfit}|${p.look.footwear}|${p.look.hat}|${p.look.hairCut ?? 'none'}|${b.gender < 0.5}|${b.age > 0.8 ? 2 : b.age > 0.6 ? 1 : 0}|${b.african > b.asian && b.african > b.caucasian ? 0 : b.asian > b.caucasian ? 1 : 2}`;
   };
   const ensureSkin = (p: PersonSpec): void => {
     const key = skinKey(p);
@@ -176,11 +176,11 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
     const request = ++skinRequest;
     void loadSkinAppearance(p).then((loaded) => {
       if (request !== skinRequest || !active || !person || skinKey(person) !== key) {
-        loaded.texture.dispose(); loaded.hairTexture?.dispose();
+        loaded.texture.dispose(); loaded.hairTexture?.dispose(); loaded.garments.forEach(map => map?.dispose());
         if (request === skinRequest) pendingSkin = '';
         return;
       }
-      skin?.value.texture.dispose(); skin?.value.hairTexture?.dispose();
+      skin?.value.texture.dispose(); skin?.value.hairTexture?.dispose(); skin?.value.garments.forEach(map => map?.dispose());
       skin = { key, value: loaded, colour: new Color(p.look.skin) };
       pendingSkin = '';
       rebuild();
@@ -224,7 +224,7 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
         desired.b / Math.max(0.0001, skin.colour.b)));
       const material = Array.isArray(rig.mesh.material) ? rig.mesh.material[0]! : rig.mesh.material;
       applySkinAppearance(material as MeshStandardMaterial, rig.mesh.geometry, {
-        ...skin.value, tint, hair: new Color(person.look.hair),
+        ...skin.value, tint, hair: new Color(person.look.hair), outfitTint: person.look.outfitTint == null ? null : new Color(person.look.outfitTint),
         beard: ['none', 'stubble', 'moustache', 'beard'].indexOf(person.look.beard ?? 'none'), makeup: person.look.makeup ?? 0,
       });
     }
@@ -242,7 +242,7 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
       if (!on) {
         ++skinRequest;
         pendingSkin = '';
-        skin?.value.texture.dispose(); skin?.value.hairTexture?.dispose();
+        skin?.value.texture.dispose(); skin?.value.hairTexture?.dispose(); skin?.value.garments.forEach(map => map?.dispose());
         skin = null;
         return;
       }
