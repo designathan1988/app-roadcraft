@@ -1,7 +1,7 @@
 import { clamp } from '@core/scalar';
 import { m } from '@world/units';
 import type { DriverParams } from '../vehicles/driver';
-import { safeSpeed, type Obstacle } from '../vehicles/idm';
+import type { Obstacle } from '../vehicles/idm';
 
 /**
  * DRIVE v2, OPERATIONAL: how hard to press the pedals this tick.
@@ -78,8 +78,7 @@ export function accAccel(p: DriverParams, v: number, v0: number, o: Obstacle): n
  *
  * `lastAccel` is what the driver did last tick: the new acceleration moves
  * from it at a driver's pace, braking harder faster than easing on. The safe
- * speed against every hard obstacle then caps the result, whatever comfort
- * would have liked.
+ * physical controller applies the collision-free stopping cap separately.
  */
 export function nextSpeed(p: DriverParams, v: number, v0: number, lastAccel: number,
   obstacles: readonly Obstacle[], dt: number): { v: number; a: number } {
@@ -87,10 +86,9 @@ export function nextSpeed(p: DriverParams, v: number, v0: number, lastAccel: num
   // Above the wanted speed (a slower stretch just entered, a turn), it is
   // shed at a comfortable deceleration, never in one tick as a hard cap at
   // the wanted speed did; what is physically ahead is the hard cap.
-  let cap = Math.max(v0, v - p.b * dt);
+  const cap = Math.max(v0, v - p.b * dt);
   for (const o of obstacles) {
     target = Math.min(target, accAccel(p, v, v0, o));
-    if (o.hard !== false) cap = Math.min(cap, safeSpeed(p, o, dt));
   }
   target = clamp(target, -p.bEmergency, p.a);
   // From what the driver's foot was doing, which is never harder than an

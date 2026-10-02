@@ -72,7 +72,6 @@ export class SimWorld {
   pedEngine: PedestrianEngine = legacyPedestrians;
   /** Which vehicle model drives: the legacy one, or Drive v2 (`drive/*`) as it replaces it layer by layer. */
   driveModel: 'v1' | 'v2' = 'v1';
-  motionModel: 'legacy' | 'physical' = 'legacy';
   readonly runtime = new Map<LaneletId, LaneletRuntime>();
   readonly controllers = new Map<NodeId, SignalController>();
 

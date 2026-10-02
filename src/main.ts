@@ -169,7 +169,6 @@ else if (new URLSearchParams(location.search).get('peds') !== 'legacy') sim.useP
 // Vehicles are driven by Drive v2 where it has replaced a layer of the
 // legacy model; `?drive=v1` runs the legacy model throughout, for comparison.
 if (new URLSearchParams(location.search).get('drive') !== 'v1') sim.driveModel = 'v2';
-if (new URLSearchParams(location.search).get('motion') === 'physical') sim.motionModel = 'physical';
 sim.auditEnabled = true;
 sim.auditLevel = 'cheap';
 /** The simulation never reads the screen; the screen's size is handed to it. */
