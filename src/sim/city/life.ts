@@ -371,11 +371,23 @@ export function diaryOf(r: Resident): Entry[] {
   const out: Entry[] = [];
   if (r.work !== null && r.work !== r.home) {
     out.push({ at: r.leaveAt, from: r.home, to: r.work });
+    // Lunch out, inside the working day.
+    const l = r.lunch;
+    if (l && l.at > r.leaveAt + 30 && l.at + l.stay < r.leaveAt + r.stay - 30) {
+      out.push({ at: l.at, from: r.work, to: l.to });
+      out.push({ at: l.at + l.stay, from: l.to, to: r.work });
+    }
     out.push({ at: r.leaveAt + r.stay, from: r.work, to: r.home });
+  }
+  // A morning errand, home and back before anything else.
+  const e = r.errand;
+  if (e && r.work === null && e.to !== r.home) {
+    out.push({ at: e.at, from: r.home, to: e.to });
+    out.push({ at: e.at + e.stay, from: e.to, to: r.home });
   }
   const o = r.outing;
   if (o && o.to !== r.home) {
-    const busyUntil = r.work !== null ? r.leaveAt + r.stay + 30 : -1;
+    const busyUntil = r.work !== null ? r.leaveAt + r.stay + 30 : e ? e.at + e.stay + 30 : -1;
     if (o.at > busyUntil && o.at + o.stay < 24 * 60) {
       out.push({ at: o.at, from: r.home, to: o.to });
       out.push({ at: o.at + o.stay, from: o.to, to: r.home });

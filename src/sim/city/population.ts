@@ -31,6 +31,10 @@ export interface Resident {
   readonly stay: number;
   /** An evening out: where, when (minutes after midnight) and for how long; null when they stay in. */
   readonly outing: { readonly to: BuildingId; readonly at: number; readonly stay: number } | null;
+  /** Lunch out from work: a place to eat near the job; null when they eat in. */
+  readonly lunch: { readonly to: BuildingId; readonly at: number; readonly stay: number } | null;
+  /** A morning errand for somebody at home all day: the shop, the bank, the post. */
+  readonly errand: { readonly to: BuildingId; readonly at: number; readonly stay: number } | null;
 }
 
 export interface Population {
@@ -58,6 +62,12 @@ const OUTINGS: ReadonlySet<BuildingFunction> = new Set([
   'pharmacy', 'gym', 'club', 'park', 'square', 'playground', 'sportsCourt', 'church', 'library',
 ]);
 const SCHOOLS: ReadonlySet<BuildingFunction> = new Set(['school']);
+/** Where people eat at midday. */
+const EATERIES: ReadonlySet<BuildingFunction> = new Set(['restaurant', 'snackBar', 'bakery', 'bar', 'mall']);
+/** Where a morning's errands are run. */
+const ERRANDS: ReadonlySet<BuildingFunction> = new Set([
+  'supermarket', 'shop', 'pharmacy', 'bakery', 'bank', 'postOffice', 'mall', 'clinic', 'library', 'cityHall',
+]);
 
 /** Square metres of floor per person at home. */
 const FLOOR_PER_PERSON = 32;
@@ -138,6 +148,16 @@ export function derivePopulation(buildings: Iterable<Building>): Population {
   const workplaces = all.filter((b) => jobsOf(b) > 0);
   const schools = all.filter((b) => roleOf(b).school);
   const outings = all.filter((b) => roleOf(b).outing);
+  const eateries = all.filter((b) => b.function !== undefined && EATERIES.has(b.function));
+  const errands = all.filter((b) => b.function !== undefined && ERRANDS.has(b.function));
+  const byId = new Map(all.map((b) => [b.id, b]));
+  /** The nearest few of `places` to building `from`, by their anchors. */
+  const near = (from: BuildingId, places: readonly Building[]): Building[] => {
+    const o = byId.get(from);
+    if (!o) return [];
+    return [...places].filter((p) => p.id !== from)
+      .sort((a, b) => Math.hypot(a.x - o.x, a.y - o.y) - Math.hypot(b.x - o.x, b.y - o.y)).slice(0, 3);
+  };
   const offered = new Map(workplaces.map((b) => [b.id, jobsOf(b)]));
   const taken = new Map<BuildingId, number>();
   const residents: Resident[] = [];
@@ -178,6 +198,20 @@ export function derivePopulation(buildings: Iterable<Building>): Population {
           outing = { to, at, stay: Math.round(rng.range(50, 140)) };
         }
       }
+      let lunch: Resident['lunch'] = null;
+      if (work !== null && ageClass === 'adult' && rng.float() < 0.45) {
+        const options = near(work, eateries);
+        const to = options.length ? options[Math.floor(rng.float() * options.length)]!.id : null;
+        if (to !== null && to !== work) {
+          lunch = { to, at: Math.round(11 * 60 + 50 + rng.range(0, 70)), stay: Math.round(rng.range(30, 55)) };
+        }
+      }
+      let errand: Resident['errand'] = null;
+      if (work === null && ageClass !== 'child' && rng.float() < 0.6) {
+        const options = near(b.id, errands);
+        const to = options.length ? options[Math.floor(rng.float() * options.length)]!.id : null;
+        if (to !== null) errand = { to, at: Math.round(8 * 60 + 30 + rng.range(0, 150)), stay: Math.round(rng.range(15, 50)) };
+      }
       const id = residents.length + 1;
       residents.push({
         id,
@@ -189,6 +223,8 @@ export function derivePopulation(buildings: Iterable<Building>): Population {
         leaveAt,
         stay,
         outing,
+        lunch,
+        errand,
       });
       list.push(id);
     }
