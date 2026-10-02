@@ -50,6 +50,7 @@ import { buildTown } from '@world/town';
 import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
 import { roadSwatch } from '@ui/roadSwatch';
 import { mountBuildStamp } from '@ui/buildStamp';
+import { runLoadingScreen } from '@ui/loadingScreen';
 import { mountAbout } from '@ui/about';
 import { LANGUAGES, hasKey, initLanguage, language, onLanguageChange, setLanguage, t } from '@ui/i18n';
 import {
@@ -436,6 +437,13 @@ const scene: SceneHandle = createSceneRenderer(canvas3d, { x: camera.x, y: camer
 view = scene.viewport;
 restoreOrbit(savedSession?.settings.camera);
 canvas.style.opacity = '0';
+// The people built and baked before play, behind the loading screen.
+// Nothing is drawn behind it: the frame is the baking's.
+let loadingPeople = true;
+void runLoadingScreen((progress) => scene.preloadPeople(progress)).finally(() => {
+  loadingPeople = false;
+  requestDraw();
+});
 
 overlayCanvas.id = 'game-overlay';
 overlayCanvas.setAttribute('aria-hidden', 'true');
@@ -2615,6 +2623,7 @@ function requestDraw(): void {
 
 function frame(now: number): void {
   pending = false;
+  if (loadingPeople) { last = now; return; }
   const wall = (now - last) / 1000;
   last = now;
 

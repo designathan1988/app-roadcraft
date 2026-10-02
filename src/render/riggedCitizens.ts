@@ -120,6 +120,9 @@ interface CitizenBatch {
   lods: BufferGeometry[][];
   /** This body's helmet in its head bone's frame (`riderPoses.helmetShape`), or null. */
   helmet: Matrix4 | null;
+  /** Clips still to bake, on first use (`Deferred`), one at a time. */
+  deferred: Deferred;
+  baking: Promise<void>;
 }
 
 /** The company a walker is dressed with (`citizenCasting.codesFor`): their party's kind, or alone. */
@@ -312,7 +315,9 @@ function fallLean(t: number, hold: number): number {
 }
 
 /** Longest stretch of baking between two frames, milliseconds. */
-const SLICE_MS = 4;
+let SLICE_MS = 4;
+/** While the loading screen is up nothing else is drawn: baking takes the frame. */
+const LOADING_SLICE_MS = 45;
 let sliceStart = 0;
 
 /**
@@ -605,7 +610,40 @@ function clearLimbs(rig: Object3D, abduct: number, lift: number): void {
  * clips, a few milliseconds at a time. No skeleton traversal occurs during
  * drawing.
  */
-async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promise<{ clips: ClipFrames[]; helmet: Matrix4 | null }> {
+/**
+ * The library clips every walker plays all the time (starting, stopping,
+ * turning, standing, the walks); the rest - gestures, sitting, crouching -
+ * are baked the first time this body plays them (`Deferred`).
+ */
+const CORE_LIBRARY: ReadonlySet<Played> = new Set<Played>([
+  'start', 'stop', 'run', 'turnLeft', 'turnRight', 'idle', 'walkSlow',
+  'walkN1', 'walkN2', 'walkN3', 'walkStroll', 'walkCool', 'walkFast',
+]);
+
+/**
+ * A clip baked on first use: what to bake, and what stands in for it the
+ * moment before (the standing idle for a gesture, the bare walk for a carried
+ * one). Baking all of them at load was some 8,000 frames a body, 2.5 GB and
+ * a minute and a half of the main thread for the roster; most bodies never
+ * play most of them (load on demand, as engines stream animation).
+ */
+/**
+ * The seated poses with the head turned (or a phone in hand), baked on first
+ * use like the gestures: until then the same seat looking ahead stands in.
+ * Each is a seated loop solved by IK frame by frame, the dearest bake there is.
+ */
+const RIDER_BASE: Readonly<Partial<Record<RiderClipKey, RiderClipKey>>> = {
+  carDriveMirror: 'carDrive', carDriveRight: 'carDrive',
+  carRideLeft: 'carRide', carRideRight: 'carRide',
+  carRearLeft: 'carRearRide', carRearRight: 'carRearRide',
+  cabDriveMirror: 'cabDrive', cabDriveRight: 'cabDrive',
+  cabRideLeft: 'cabRide', cabRideRight: 'cabRide',
+  chairSitLeft: 'chairSit', chairSitRight: 'chairSit', chairSitPhone: 'chairSit',
+};
+
+type Deferred = Map<number, { readonly make: () => Promise<ClipFrames>; readonly standIn: number }>;
+
+async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promise<{ clips: ClipFrames[]; helmet: Matrix4 | null; deferred: Deferred }> {
   const body = restRig(asset);
   // A helmet is fitted to this head, at rest, once.
   const helmet = helmetShape(body.rig);
@@ -615,7 +653,14 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
   clips[WALK] = await bakeWalk(body, sex);
   clips[WALK_ELDER] = await bakeWalk(body, sex, ELDER_AMPLITUDE);
   clips[WALK_SHUFFLE] = await bakeLibraryClip(body, library[sex].walkSlow, SHUFFLE_AMPLITUDE);
-  for (const name of LIBRARY) clips[LIBRARY_AT[name]] = await bakeLibraryClip(body, library[sex][name], undefined, name);
+  const deferred: Deferred = new Map();
+  for (const name of LIBRARY) {
+    if (CORE_LIBRARY.has(name)) clips[LIBRARY_AT[name]] = await bakeLibraryClip(body, library[sex][name], undefined, name);
+    else deferred.set(LIBRARY_AT[name], {
+      make: () => bakeLibraryClip(body, library[sex][name], undefined, name),
+      standIn: name === 'walkDrunk' ? WALK : LIBRARY_AT.idle,
+    });
+  }
   body.reset();
   const rest = clipTransferFor(body.rig, body.mesh, library[sex].walkSlow, REST_AMPLITUDE);
   const restFrames = await bakeFrames(body, () => rest.pose(0), 1, true, 1);
@@ -629,17 +674,27 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
   };
   const SIDEWAYS = [['walkBack', Math.PI], ['walkLeft', Math.PI / 2], ['walkRight', -Math.PI / 2]] as const;
   for (const [name, angle] of SIDEWAYS) clips[DIRECTIONAL_AT[name]] = await directional(angle, false);
-  for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = await bakeRiderClip(body, clip);
+  for (const clip of RIDER_CLIPS) {
+    const base = RIDER_BASE[clip.key];
+    if (base) deferred.set(RIDER_AT[clip.key], { make: () => bakeRiderClip(body, clip), standIn: RIDER_AT[base] });
+    else clips[RIDER_AT[clip.key]] = await bakeRiderClip(body, clip);
+  }
   clips[HAND_WALK_AT.walkHandL] = await bakeWalk(body, sex, undefined, 'L');
   clips[HAND_WALK_AT.walkHandR] = await bakeWalk(body, sex, undefined, 'R');
-  clips[CARRY_AT.walk!] = await bakeWalk(body, sex, undefined, undefined, true);
-  clips[CARRY_AT.walkShuffle!] = await bakeLibraryClip(body, library[sex].walkSlow, SHUFFLE_AMPLITUDE, undefined, true);
+  // Carrying a box: every clip again with the box in both hands, on first use.
+  const carried = (name: (typeof CARRIED)[number], make: () => Promise<ClipFrames>): void => {
+    deferred.set(CARRY_AT[name]!, { make, standIn: GAIT_AT[name] });
+  };
+  carried('walk', () => bakeWalk(body, sex, undefined, undefined, true));
+  carried('walkShuffle', () => bakeLibraryClip(body, library[sex].walkSlow, SHUFFLE_AMPLITUDE, undefined, true));
   for (const name of ['idle', 'turnLeft', 'turnRight'] as const) {
-    clips[CARRY_AT[name]!] = await bakeLibraryClip(body, library[sex][name], undefined, name, true);
+    carried(name, () => bakeLibraryClip(body, library[sex][name], undefined, name, true));
   }
   // Stepping aside or back with the box, too: it never leaves the hands.
-  for (const [name, angle] of SIDEWAYS) clips[CARRY_AT[name]!] = await directional(angle, true);
-  return { clips, helmet };
+  for (const [name, angle] of SIDEWAYS) carried(name, () => directional(angle, true));
+  // Until baked, each points at what stands in for it.
+  for (const [at, { standIn }] of deferred) clips[at] = clips[standIn]!;
+  return { clips, helmet, deferred };
 }
 
 /**
@@ -725,7 +780,9 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     // Live faces: blinking, gaze, mood, speech (measured free in the player
     // city: frame median 17 ms with and without). ?expressions=off for comparison.
     if (new URLSearchParams(location.search).get('expressions') !== 'off') {
+      const faceAt = performance.now();
       await attachFacialMorphs(input, rig, await expressionShapes(person.body));
+      performance.measure('person-face', { start: faceAt, end: performance.now() });
     }
     {
       const skin = await loadSkinAppearance(person);
@@ -758,7 +815,10 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       });
     if (disposed) { for (const resource of resources) resource.dispose(); return; }
       const sex = model ? (model.gender === 'f' ? 'female' : 'male') : models[index]!.includes('female') ? 'female' : 'male';
-      const { clips, helmet } = await bake(asset, sex, library);
+      // Baked once per build and kept (`bakeCache.ts`): the same clips every start.
+      const bakeAt = performance.now();
+      const { clips, helmet, deferred } = await bake(asset, sex, library);
+      performance.measure('person-bake', { start: bakeAt, end: performance.now() });
       if (disposed) { for (const resource of resources) resource.dispose(); return; }
       let reference: SkinnedMesh | undefined;
       asset.scene.updateMatrixWorld(true);
@@ -773,7 +833,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       resources.add(texture);
       const uniform = { value: texture };
       const batch: CitizenBatch = { meshes: [], sources: [], local: [], clips, gait: gaitClips(clips), texture, pixels, width, rows,
-        uniform, count: 0, lods: [], helmet };
+        uniform, count: 0, lods: [], helmet,
+        deferred, baking: Promise.resolve() };
       const parts: SkinnedMesh[] = [];
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh) parts.push(o); });
       for (const o of parts) {
@@ -852,7 +913,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       await Promise.all(batch.meshes.map((mesh) => compileAhead(mesh)));
       if (disposed) return;
       batches.set(index, batch);
-      group.userData.animationBytes = (group.userData.animationBytes ?? 0) + clips.reduce((sum, clip) => sum + clip.data.byteLength, 0);
+      group.userData.animationBytes = (group.userData.animationBytes ?? 0) + [...new Set(clips)].reduce((sum, clip) => sum + clip.data.byteLength, 0);
+      group.userData.clipFrames ??= clips.map((clip) => clip?.frames ?? 0);
     group.userData.ready = true;
     group.userData.loadedModels = batches.size;
     onAssetsReady();
@@ -902,6 +964,20 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   const mixClips: ClipFrames[] = [];
   const mixPhases: number[] = [];
   const mixWeights: number[] = [];
+
+  /** A deferred clip asked for: baked in turn, the stand-in drawn meanwhile. */
+  function want(batch: CitizenBatch, at: number): void {
+    const job = batch.deferred.get(at);
+    if (!job) return;
+    batch.deferred.delete(at);
+    batch.baking = batch.baking.then(async () => {
+      const clip = await job.make();
+      if (disposed) return;
+      batch.clips[at] = clip;
+      batch.gait = gaitClips(batch.clips);
+      group.userData.animationBytes = (group.userData.animationBytes ?? 0) + clip.data.byteLength;
+    }).catch(() => {});
+  }
 
   /** Writes one citizen: blended bone palette plus instance transform. */
   function emit(batch: CitizenBatch, clips: readonly ClipFrames[], phases: readonly number[],
@@ -1032,7 +1108,9 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       mixClips.length = 0; mixPhases.length = 0; mixWeights.length = 0;
       const carrying = ped.carry !== undefined;
       for (const play of plays) {
-        mixClips.push(batch.clips[(carrying ? CARRY_AT[play.name] : undefined) ?? GAIT_AT[play.name]]!);
+        const at = (carrying ? CARRY_AT[play.name] : undefined) ?? GAIT_AT[play.name];
+        if (batch.deferred.size) want(batch, at);
+        mixClips.push(batch.clips[at]!);
         mixPhases.push(play.frame);
         mixWeights.push(play.weight);
       }
@@ -1121,6 +1199,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       for (const play of plays) {
         const at = play.key === 'walk' ? (identity.ageClass === 'elder' ? WALK_ELDER : WALK)
           : play.key in RIDER_AT ? RIDER_AT[play.key as RiderClipKey] : LIBRARY_AT[play.key as Played];
+        if (batch.deferred.size) want(batch, at);
         const clip = batch.clips[at];
         if (!clip || play.weight <= 0) continue;
         // A walk played by distance plants the feet: one cycle per stride of
@@ -1177,6 +1256,21 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     census() {
       registry.recordCensus = true;
       return registry.census();
+    },
+    /**
+     * Every body loaded and baked now, behind the loading screen, with the
+     * frame given over to it; `progress(done, total)` after each. Made while
+     * the game ran, the bodies took 4 ms of every frame for minutes.
+     */
+    async preload(progress: (done: number, total: number) => void = () => {}): Promise<void> {
+      SLICE_MS = LOADING_SLICE_MS;
+      let done = 0;
+      progress(0, models.length);
+      try {
+        await Promise.all(models.map((_, index) => request(index).catch(() => {}).then(() => progress(++done, models.length))));
+      } finally {
+        SLICE_MS = 4;
+      }
     },
     finish() {
       for (const batch of batches.values()) {

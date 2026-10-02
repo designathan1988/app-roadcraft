@@ -61,6 +61,8 @@ export const PT_BR: Dictionary = {
   'hint.person': 'Crie qualquer pessoa: arraste a figura para girá-la, roda para ver de perto · Salvar a põe na cidade',
   'hint.mobile.person': 'Arraste a figura para girá-la · Salvar a põe na cidade',
   'person.loading': 'Carregando o modelo de pessoa (cerca de 10 MB, uma vez)…',
+  'loading.title': 'Preparando a cidade',
+  'loading.people': 'Moradores prontos: {done} de {total}',
   'person.loadFailed': 'Não foi possível carregar o modelo de pessoa. Verifique a conexão e abra a ferramenta de novo.',
   'person.years': 'anos',
   'person.name': 'Nome',
