@@ -585,6 +585,7 @@ export function createSceneRenderer(
         lastDark = dark;
         buildings.setNight(dark);
         sceneryKit.setNight(dark);
+        agents.setNight(dark);
       }
       rig.camera.getWorldDirection(viewDirection);
       environment.follow(target, halfWidth, groundHalfDepth, viewDirection, Math.max(0, tallestTop - target.y));

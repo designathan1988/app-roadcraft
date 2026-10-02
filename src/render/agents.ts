@@ -142,6 +142,8 @@ export interface AgentMeshes {
   sync(world: SimWorld, alpha: number, detailed: boolean, zoom?: number, options?: AgentRenderOptions): void;
   /** Every figure drawn last frame and the body it was cast as (`citizenCasting.ts`). */
   census(): ReturnType<ReturnType<typeof createRiggedCitizens>['census']>;
+  /** Lamps burn brighter than white after dark, so headlights and tail lights glow. */
+  setNight(dark: number): void;
   dispose(): void;
 }
 
@@ -1208,6 +1210,9 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   return {
     meshes,
     census: () => pedestrians.census(),
+    setNight: (dark) => {
+      lampMaterial.color.setScalar(1 + 2.4 * dark);
+    },
     sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY, options = {}) {
       const now = typeof performance !== 'undefined' ? performance.now() : suspensionClock + 16;
       suspensionDt = Math.min(0.1, Math.max(0, (now - suspensionClock) / 1000));
