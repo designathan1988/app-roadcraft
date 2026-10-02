@@ -42,6 +42,7 @@ export const PT_BR: Dictionary = {
   'camera.turnLeft': 'Girar à esquerda (Q) · arrastar com o botão direito gira e inclina livremente',
   'camera.turnRight': 'Girar à direita (E) · arrastar com o botão direito gira e inclina livremente',
   'camera.tiltUp': 'Erguer a câmera, rumo à vista de cima',
+  'camera.perspective': 'Câmera em perspectiva: ligar ou desligar (desligada, a vista é isométrica)',
   'camera.tiltDown': 'Baixar a câmera, rumo ao horizonte',
   'camera.north': 'Norte para cima, vista padrão (Home também enquadra o mapa)',
   'inspector.movementBy': 'Do {from} → {to} · {turn}',

@@ -46,6 +46,7 @@ export const EN: Dictionary = {
   'camera.turnLeft': 'Turn left (Q) · right-drag turns and tilts freely',
   'camera.turnRight': 'Turn right (E) · right-drag turns and tilts freely',
   'camera.tiltUp': 'Raise the camera, towards a plan view',
+  'camera.perspective': 'Perspective camera on or off (off, the view is isometric)',
   'camera.tiltDown': 'Lower the camera, towards the horizon',
   'camera.north': 'North up, default view (Home frames the map too)',
   'inspector.movementBy': 'From {from} → {to} · {turn}',

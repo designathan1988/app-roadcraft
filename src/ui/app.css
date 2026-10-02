@@ -126,7 +126,7 @@ body { user-select: none; -webkit-user-select: none; }
 }
 .icon-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .icon-button:hover:not(:disabled), .tiny-button:hover { border-color: rgba(101, 229, 195, 0.45); background: rgba(101, 229, 195, 0.08); }
-.icon-button.active { border-color: var(--accent); color: var(--accent); background: rgba(101, 229, 195, 0.13); box-shadow: 0 0 18px rgba(101, 229, 195, 0.08); }
+.icon-button.active, .icon-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: rgba(101, 229, 195, 0.13); box-shadow: 0 0 18px rgba(101, 229, 195, 0.08); }
 .icon-button:disabled { opacity: 0.28; cursor: default; }
 .tiny-button { width: 24px; height: 24px; font-size: 15px; line-height: 1; }
 

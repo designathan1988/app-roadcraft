@@ -2287,6 +2287,18 @@ function openImported(result: ImportResult): boolean {
   openImported(await importFromFile());
 };
 
+// Perspective or the isometric (orthographic) view, the player's choice, kept.
+const PERSPECTIVE_KEY = 'roadcraft.perspective';
+let perspective = false;
+function setPerspective(on: boolean): void {
+  perspective = on;
+  scene.setPerspective(on);
+  document.getElementById('perspectiveToggle')?.setAttribute('aria-pressed', String(on));
+  try { localStorage.setItem(PERSPECTIVE_KEY, on ? '1' : '0'); } catch { /* not kept */ }
+  requestDraw();
+}
+try { if (localStorage.getItem(PERSPECTIVE_KEY) === '1') setPerspective(true); } catch { /* storage blocked: isometric */ }
+
 // The camera's own buttons: a step per press, and the needle keeps north.
 const cameraNeedle = document.querySelector<SVGElement>('#cameraControls .camera-needle');
 const TILT_STEP = Math.PI / 18;
@@ -2298,6 +2310,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('#cameraContro
       case 'tiltUp': view.orbit(0, TILT_STEP); break;
       case 'tiltDown': view.orbit(0, -TILT_STEP); break;
       case 'north': view.setOrbit(DEFAULT_AZIMUTH, DEFAULT_ELEVATION); break;
+      case 'perspective': setPerspective(!perspective); break;
     }
     persistence.saveSettingsSoon(sessionSettings);
     requestDraw();

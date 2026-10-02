@@ -150,6 +150,8 @@ export interface SceneHandle {
   setBuildingCutaway(spec: CutawaySpec | null): void;
   /** The sky: always day, always night, or the residents' own clock. */
   setSkyMode(mode: SkyMode): void;
+  /** Perspective camera on, or the orthographic (isometric) view. */
+  setPerspective(on: boolean): void;
   /** The height the terrain is drawn at — what anything laid on it must clear. */
   terrainHeightAt(x: number, y: number): number;
   /**
@@ -581,6 +583,15 @@ export function createSceneRenderer(
     setBuildingPreview(preview) {
       buildings.setPreview(preview);
     },
+    setPerspective(on) {
+      if (on === rig.perspective) return;
+      rig.setPerspective(on);
+      // The passes hold the camera they were made with.
+      post.dispose();
+      post = createPostChain(renderer, scene, rig.camera, quality, governor.current);
+      resize();
+      onAssetsReady();
+    },
     setSkyMode(mode) {
       // Read by the next frame drawn.
       skyMode = mode;
@@ -709,7 +720,10 @@ export function createSceneRenderer(
       const halfWidth = (halfHeight * canvas.clientWidth) / Math.max(1, canvas.clientHeight);
       // The screen's height covers more ground the lower the camera looks: the
       // shadows are fitted to the ground seen, not to the screen.
-      const groundHalfDepth = halfHeight / Math.max(0.3, Math.sin(rig.viewport.elevation));
+      // In perspective the far edge of the view takes in more ground than the
+      // near: the shadows reach that far too.
+      const reach = rig.perspective ? 1.6 : 1;
+      const groundHalfDepth = (reach * halfHeight) / Math.max(0.3, Math.sin(rig.viewport.elevation));
       // The top of the tallest building, once per rebuild of the layer: the
       // shadows must reach as high as anything stands, or every terrace and
       // upper floor seen at close zoom lies outside the shadow map, in sun.

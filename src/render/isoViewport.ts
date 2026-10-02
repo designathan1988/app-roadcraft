@@ -1,5 +1,6 @@
 import {
   OrthographicCamera,
+  PerspectiveCamera,
   Plane,
   Raycaster,
   Vector2,
@@ -46,6 +47,11 @@ export const DEFAULT_ELEVATION = (48 * Math.PI) / 180;
 export const MIN_ELEVATION = (30 * Math.PI) / 180;
 export const MAX_ELEVATION = Math.PI / 2;
 const DISTANCE = 2400;
+/**
+ * The perspective camera's vertical field of view, degrees: a long lens, so
+ * a street keeps its proportions and the town still reads as a model.
+ */
+export const PERSPECTIVE_FOV = 35;
 const TAU = Math.PI * 2;
 
 export function clampElevation(e: number): number {
@@ -57,7 +63,14 @@ export function wrapAzimuth(a: number): number {
 }
 
 export interface IsoRig {
-  readonly camera: OrthographicCamera;
+  /** The camera drawn with: orthographic, or perspective (`setPerspective`). */
+  readonly camera: OrthographicCamera | PerspectiveCamera;
+  readonly perspective: boolean;
+  /**
+   * Perspective on or off. The view keeps its centre, its orbit and its scale
+   * at the centre (`zoom` is still pixels per unit there).
+   */
+  setPerspective(on: boolean): void;
   readonly viewport: Viewport;
   readonly target: Vector3;
   resize(width: number, height: number): void;
@@ -68,7 +81,10 @@ export function createIsoRig(
   initialHalfHeight: number,
   orbit: { azimuth: number; elevation: number } = { azimuth: DEFAULT_AZIMUTH, elevation: DEFAULT_ELEVATION },
 ): IsoRig {
-  const camera = new OrthographicCamera(-1, 1, 1, -1, 1, 7000);
+  const ortho = new OrthographicCamera(-1, 1, 1, -1, 1, 7000);
+  const persp = new PerspectiveCamera(PERSPECTIVE_FOV, 1, 1, 20000);
+  let perspective = false;
+  let camera: OrthographicCamera | PerspectiveCamera = ortho;
   const target = new Vector3(initial.x, 0, -initial.y);
   const raycaster = new Raycaster();
   const ground = new Plane(new Vector3(0, 1, 0), 0);
@@ -83,15 +99,25 @@ export function createIsoRig(
 
   const apply = (): void => {
     const aspect = Math.max(0.1, width / Math.max(1, height));
-    camera.left = -halfHeight * aspect;
-    camera.right = halfHeight * aspect;
-    camera.top = halfHeight;
-    camera.bottom = -halfHeight;
+    let distance = DISTANCE;
+    if (camera === ortho) {
+      ortho.left = -halfHeight * aspect;
+      ortho.right = halfHeight * aspect;
+      ortho.top = halfHeight;
+      ortho.bottom = -halfHeight;
+    } else {
+      // As far back as makes the view `halfHeight` tall at the centre: the
+      // same scale there as the orthographic view had.
+      distance = halfHeight / Math.tan((PERSPECTIVE_FOV * Math.PI) / 360);
+      persp.aspect = aspect;
+      persp.near = Math.max(0.5, distance * 0.02);
+      persp.far = distance * 4 + 6000;
+    }
 
-    const horizontal = Math.cos(elevation) * DISTANCE;
+    const horizontal = Math.cos(elevation) * distance;
     camera.position.set(
       target.x + Math.cos(azimuth) * horizontal,
-      Math.sin(elevation) * DISTANCE,
+      (camera === persp ? target.y : 0) + Math.sin(elevation) * distance,
       target.z + Math.sin(azimuth) * horizontal,
     );
     // "Up" on screen is the way the camera faces over the ground. At any tilt
@@ -201,7 +227,18 @@ export function createIsoRig(
 
   apply();
   return {
-    camera,
+    get camera() {
+      return camera;
+    },
+    get perspective() {
+      return perspective;
+    },
+    setPerspective(on) {
+      if (on === perspective) return;
+      perspective = on;
+      camera = on ? persp : ortho;
+      apply();
+    },
     viewport,
     target,
     resize(nextWidth, nextHeight) {
