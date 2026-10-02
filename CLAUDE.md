@@ -1,5 +1,28 @@
 # CLAUDE.md — how work is done in this repository
 
+## Research on the internet first — always
+
+Before implementing anything that is not trivial (performance, loading,
+rendering, simulation, agents, tools, UI systems), **search the internet
+first**, with the web tools:
+
+1. The **official documentation** of the technology involved (three.js docs
+   and source, MDN, Khronos, Electron; Unreal/Unity docs as references).
+2. **How shipped games and studios solve the same problem**: GDC talks,
+   engine documentation, post-mortems (GTA, Cities: Skylines 1 and 2,
+   Assassin's Creed Unity, Unreal Mass / City Sample, and so on).
+3. Tell the player what was found, **with the links**, which approach fits
+   and why. Only then plan and write code.
+
+Never improvise a technique, never "try and measure" in the dark, never wait
+to be told to research. If you do not yet know how to do something properly,
+research more before touching the code.
+
+This rule is here because on 2026-10-02 the player had to say "PROCURA NA
+INTERNET" over and over in one session: a loading screen that kept the
+player waiting 16 s was built before checking that engines prepare
+("cook") their assets offline.
+
 ## Interface work is not finished until it has been looked at
 
 Every panel, button, tray, gallery or control is verified by **opening the
