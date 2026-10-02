@@ -184,7 +184,7 @@ export class LaneletGraph {
       // pass silently through a bore that is not drawn. The segment itself
       // stays in the document, authored and saved normally.
       if (seg.structure === 'tunnel' && !TUNNELS_DRAWN) continue;
-      const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+      const rt = roadProfile(seg.type, seg.lanes, seg.direction, seg.section);
 
       for (const forward of [true, false]) {
         if (!allowsDirection(seg.direction, forward)) continue;
@@ -353,12 +353,12 @@ export class LaneletGraph {
             road.includes(inLane.segment) && road.includes(outLane.segment);
           const inSegment = doc.requireSegment(inLane.segment);
           const inLanes = travelLanes(
-            roadProfile(inSegment.type, inSegment.lanes, inSegment.direction),
+            roadProfile(inSegment.type, inSegment.lanes, inSegment.direction, inSegment.section),
             inSegment.direction,
           );
           const outSegment = doc.requireSegment(outLane.segment);
           const outLanes = travelLanes(
-            roadProfile(outSegment.type, outSegment.lanes, outSegment.direction),
+            roadProfile(outSegment.type, outSegment.lanes, outSegment.direction, outSegment.section),
             outSegment.direction,
           );
           if (node.blockedMovements.includes(movementKey(inLane.segment, outLane.segment))) continue;
@@ -458,7 +458,7 @@ function shouldSignalise(
   return incident.length >= 3 &&
     (incident.length >= 4 || incident.some((s) => {
       const segment = doc.requireSegment(s);
-      return roadProfile(segment.type, segment.lanes, segment.direction).lanes >= 4;
+      return roadProfile(segment.type, segment.lanes, segment.direction, segment.section).lanes >= 4;
     }));
 }
 
@@ -528,7 +528,7 @@ function carriedPair(doc: RoadDoc, nodeId: NodeId): readonly SegmentId[] | null 
   if (incident.length < 3) return null;
   const legs = incident.map((segment) => {
     const seg = doc.requireSegment(segment);
-    return { segment, type: seg.type, dir: smoothedDirectionFromNode(orientedPolyline(doc, seg, nodeId)) };
+    return { segment, type: seg.section?.priority ?? seg.type, dir: smoothedDirectionFromNode(orientedPolyline(doc, seg, nodeId)) };
   });
   const pairs: { members: SegmentId[]; rank: number; bend: number }[] = [];
   for (let i = 0; i < legs.length; i++) {

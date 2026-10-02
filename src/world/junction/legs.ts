@@ -87,7 +87,7 @@ export function buildLegs(
 
   const legs: Leg[] = incident.map((segId) => {
     const seg = doc.requireSegment(segId);
-    const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+    const rt = roadProfile(seg.type, seg.lanes, seg.direction, seg.section);
     const pl = cache.get(doc, segId);
     const startsHere = segmentStartsAt(seg, nodeId);
     const hw = halfWidth(rt, level);

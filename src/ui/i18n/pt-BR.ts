@@ -2,6 +2,23 @@ import type { Dictionary } from './index';
 
 /** Brazilian Portuguese interface strings. */
 export const PT_BR: Dictionary = {
+  'tool.roundabout': 'Rotatória',
+  'hint.roundabout': 'Clique em terreno livre para criar uma rotatória · Ligue os quatro acessos com a ferramenta de via',
+  'hint.mobile.roundabout': 'Toque em terreno livre para criar uma rotatória · Ligue os quatro acessos com a ferramenta de via',
+  'hint.roundabout.size': 'Escolha um raio entre 32 e 128 m.',
+  'hint.roundabout.bounds': 'Mantenha toda a rotatória dentro do mapa.',
+  'hint.roundabout.occupied': 'Escolha terreno livre com espaço para os quatro acessos.',
+  'hint.roundabout.geometry': 'A rotatória não cabe aqui.',
+  'road.roundabout.radius': 'Raio da rotatória',
+  'road.section.title': 'Seção transversal · experimental',
+  'road.section.preview': 'Prévia da seção transversal da via',
+  'road.section.walk': 'Passeio',
+  'road.section.laneWidth': 'Largura da faixa',
+  'road.section.sidewalk': 'Calçada de cada lado',
+  'road.section.median': 'Canteiro central',
+  'road.section.speedKmh': 'Limite de velocidade',
+  'road.section.priority': 'Preferência (maior passa primeiro)',
+  'road.section.reset': 'Restaurar dimensões da classe',
   'app.title': 'Roadcraft — Construtor de Estradas',
   'app.name': 'ROADCRAFT',
   'app.tagline': 'Construtor de Estradas',

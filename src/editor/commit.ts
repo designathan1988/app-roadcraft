@@ -13,6 +13,7 @@ import { Network } from '@world/network';
 import type { NodeId, SegmentId } from '@world/ids';
 import { MIN_LINK_LENGTH } from '@world/approach';
 import { MAX_AUTHORED_GRADE } from '@world/elevation';
+import { sameRoadSection } from '@world/roadSection';
 import { ROAD_TYPES } from '@world/roadTypes';
 import { roadStructure, type RoadStructure } from '@world/structures';
 import type { Anchor } from './snap';
@@ -561,7 +562,7 @@ export function joinSegments(doc: RoadDoc, nodeId: NodeId): boolean {
   const first = doc.segment(firstId);
   const second = doc.segment(secondId);
   if (!first || !second || first.curve || second.curve || first.type !== second.type || first.lanes !== second.lanes ||
-    first.direction !== 'both' || second.direction !== 'both') return false;
+    !sameRoadSection(first.section, second.section) || first.direction !== 'both' || second.direction !== 'both') return false;
   const a = first.a === nodeId ? first.b : first.a;
   const b = second.a === nodeId ? second.b : second.a;
   if (a === b || first.structure !== second.structure || alreadyJoined(doc, a, b, null, first.structure)) return false;
@@ -571,7 +572,7 @@ export function joinSegments(doc: RoadDoc, nodeId: NodeId): boolean {
   doc.removeSegment(first.id);
   doc.removeSegment(second.id);
   doc.removeNode(nodeId);
-  const joined = doc.addSegment(a, b, first.type, null, dashOrigin, 'both', first.lanes, first.structure);
+  const joined = doc.addSegment(a, b, first.type, null, dashOrigin, 'both', first.lanes, first.structure, first.section);
   if (!joined) return false;
   doc.carryMovements(a, bansAtA, first.id, joined.id);
   doc.carryMovements(b, bansAtB, second.id, joined.id);
@@ -613,6 +614,7 @@ export function duplicateSegment(doc: RoadDoc, net: Network, id: SegmentId): Seg
     segment.direction,
     segment.lanes,
     segment.structure,
+    segment.section,
   );
   if (copy) return copy.id;
 
@@ -722,6 +724,7 @@ function splitSegmentAtCuts<Tag>(
       seg.direction,
       seg.lanes,
       seg.structure,
+      seg.section,
     );
     if (piece) pieces.push(piece.id);
   }

@@ -270,7 +270,7 @@ export function createSceneRenderer(
     const across = Math.abs(road.across);
     if (across > footway) return NaN;
     const deck = elevation.at(x, y, GROUND_ONLY);
-    return across > footway - rt.sidewalk ? deck + FOOTWAY_RISE : deck;
+    return across > footway - (road.sidewalk ?? rt.sidewalk) ? deck + FOOTWAY_RISE : deck;
   };
 
   const agents: AgentMeshes = createAgentMeshes(deckHeight, onAssetsReady,

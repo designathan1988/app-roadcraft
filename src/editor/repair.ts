@@ -60,7 +60,7 @@ function nearestCandidate(doc: RoadDoc, net: Network, rejected: ReadonlySet<stri
         roadStructure(target.structure).clearance;
       const sourceOffset = node.heightOffset + roadStructure(source.structure).clearance;
       if (Math.abs(sourceOffset - targetOffset) > 0.75) continue;
-      const reach = casingHalf(roadProfile(target.type, target.lanes, target.direction));
+      const reach = casingHalf(roadProfile(target.type, target.lanes, target.direction, target.section));
       if (hit.distance > reach || (best && hit.distance >= best.distance)) continue;
       best = { node: node.id, segment: targetId, s: hit.s, at: hit.point, distance: hit.distance };
     }

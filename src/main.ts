@@ -39,6 +39,8 @@ import {
 } from '@editor/snap';
 import { type DraftResult, commitRoadPath, duplicateSegment, joinSegments, reconcileMovedNode, splitSegment } from '@editor/commit';
 import { roadPathFromGesture, type RoadPathPiece, type RoadPathPoint } from '@editor/roadPath';
+import { commitRoundabout } from '@editor/roundabout';
+import { freeRoadsEnabled } from '@ui/roadSectionEditor';
 import { History, restoreInto, restoreSnapshot } from '@editor/history';
 import { type ImportResult, Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
@@ -64,6 +66,7 @@ import { volumeTop } from '@world/buildings/types';
 type Tool =
   | 'building'
   | 'road'
+  | 'roundabout'
   | 'terrain'
   | 'upgrade'
   | 'move'
@@ -74,6 +77,7 @@ type Tool =
   | 'pole'
   | 'person';
 type Alignment = 'straight' | 'curve' | 'free';
+let roundaboutRadius = 100;
 interface RoadDraft {
   readonly start: Anchor;
   readonly startHeightOffset: number;
@@ -927,6 +931,15 @@ canvas.addEventListener('pointerdown', (e) => {
   const anchor = findAnchor(doc, net, world, view.zoom);
 
   switch (tool) {
+    case 'roundabout':
+      if (freeRoadsEnabled()) {
+        mutate(() => {
+          const result = commitRoundabout(doc, net, world, roundaboutRadius, 0);
+          if (!result.committed) flashHint(`hint.roundabout.${result.reason}`);
+          return result.committed;
+        });
+      }
+      break;
     case 'road':
       {
       const chained = roadChain !== null;
@@ -1556,7 +1569,9 @@ for (const [op, icon] of [
   ['move', '<path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3m-6 12 3 3 3-3m3-9 3 3-3 3M6 9l-3 3 3 3"/>'],
   ['split', '<path d="M4 7h16M4 17h16"/><path d="M12 3v18"/><path d="m9 10 3 3 3-3"/>'],
   ['control', '<rect x="8" y="3" width="8" height="15" rx="2"/><path d="M12 18v3"/><circle cx="12" cy="7" r="1.4"/><circle cx="12" cy="10.6" r="1.4"/><circle cx="12" cy="14.2" r="1.4"/>'],
+  ['roundabout', '<circle cx="12" cy="12" r="6"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4m-9-7 3 1-2 3"/>'],
 ] as const) {
+  if (op === 'roundabout' && !freeRoadsEnabled()) continue;
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'road-type road-op';
@@ -1568,6 +1583,19 @@ for (const [op, icon] of [
   b.title = t(`tool.${op}`);
   roadTypesEl.appendChild(b);
 }
+
+const roundaboutSettings = document.createElement('label');
+roundaboutSettings.className = 'inspect-range';
+roundaboutSettings.hidden = true;
+roundaboutSettings.innerHTML = '<span data-i18n="road.roundabout.radius"></span><output>40 m</output><input type="range" min="32" max="128" step="4" value="40" />';
+roundaboutSettings.querySelector('span')!.textContent = t('road.roundabout.radius');
+const roundaboutSize = roundaboutSettings.querySelector('input')!;
+roundaboutSize.oninput = () => {
+  roundaboutRadius = Number(roundaboutSize.value) * UNITS_PER_METER;
+  roundaboutSettings.querySelector('output')!.value = `${roundaboutSize.value} m`;
+  requestDraw();
+};
+document.getElementById('paletteBody')?.prepend(roundaboutSettings);
 
 /**
  * The lanes a road is laid at. The count is stored per segment, so a street
@@ -1839,7 +1867,7 @@ function setTool(next: Tool): void {
   // junction are things done TO a road, so they are the road's own options and
   // its button stays lit while one of them is in hand.
   const roadFamily = next === 'road' || next === 'upgrade' || next === 'split'
-    || next === 'control' || next === 'move';
+    || next === 'control' || next === 'move' || next === 'roundabout';
   for (const b of document.querySelectorAll<HTMLButtonElement>('.tool')) {
     const on = b.dataset['tool'] === (roadFamily ? 'road' : next);
     b.classList.toggle('active', on);
@@ -1861,6 +1889,10 @@ function setTool(next: Tool): void {
   roadPalette?.classList.toggle('hidden', !roadFamily);
   roadPalette?.setAttribute('aria-hidden', String(!roadFamily));
   if (roadFamily) updateCarousel();
+  roundaboutSettings.hidden = next !== 'roundabout';
+  for (const group of roadPalette?.querySelectorAll<HTMLElement>('.palette-section.plan, .palette-section.lanes') ?? []) {
+    group.style.display = next === 'roundabout' ? 'none' : '';
+  }
   terrainPalette.classList.toggle('hidden', !terrainActive);
   terrainPalette.setAttribute('aria-hidden', String(!terrainActive));
   // A tool with nothing to configure still fills its panel: with what it does
@@ -2663,6 +2695,22 @@ function drawOverlayScreen(): void {
   // editor was about to build.
   const at = (p: Vec2): Vec2 => view.toScreen(p, w, h, sceneHeightAt(p));
 
+  if (tool === 'roundabout' && hoverAnchor) {
+    ctx.save();
+    ctx.strokeStyle = HOVER;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    for (let i = 0; i <= 64; i++) {
+      const angle = i * Math.PI / 32;
+      const p = at({ x: hoverAnchor.at.x + Math.cos(angle) * roundaboutRadius,
+        y: hoverAnchor.at.y + Math.sin(angle) * roundaboutRadius });
+      if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // The pole run being drawn.
   //
   // What was here before was a dashed line ON THE GROUND with a small ring at
@@ -3098,6 +3146,13 @@ function showInspector(): void {
         if (!doc.segment(id)) return;
         mutate(() => {
           doc.setSegmentLanes(id, lanes);
+          return true;
+        });
+      },
+      onSetSection: (id, section) => {
+        if (!freeRoadsEnabled() || !doc.segment(id)) return;
+        mutate(() => {
+          doc.setSegmentSection(id, section);
           return true;
         });
       },

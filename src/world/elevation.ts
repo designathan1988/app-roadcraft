@@ -228,6 +228,8 @@ interface Profile {
   readonly half: number;
   /** Central reservation width, zero when the class has none. */
   readonly median: number;
+  /** Authored footway width, including the kerb. */
+  readonly sidewalk: number;
   readonly line: Polyline;
   readonly length: number;
   readonly step: number;
@@ -341,6 +343,8 @@ export interface RoadSample {
   readonly half: number;
   /** Its central reservation width. */
   readonly median: number;
+  /** Its actual footway width, including the kerb. Optional for older query adapters. */
+  readonly sidewalk?: number;
 }
 
 export const GROUND_ONLY: ReadonlySet<RoadStructure> = new Set<RoadStructure>(['ground']);
@@ -483,6 +487,7 @@ export function buildRoadElevation(
       type: segment.type,
       half,
       median: ribbon.road.median,
+      sidewalk: ribbon.road.sidewalk,
       line,
       length,
       step,
@@ -708,7 +713,7 @@ export function buildRoadElevation(
     let value = profileDigests.get(profile);
     if (value === undefined) {
       value = new Digest().add(profile.id).addText(profile.structure).add(profile.type).add(profile.half)
-        .add(profile.median).add(profile.step).addAll(profile.h).addAll(profile.line.xy).value();
+        .add(profile.median).add(profile.sidewalk).add(profile.step).addAll(profile.h).addAll(profile.line.xy).value();
       profileDigests.set(profile, value);
     }
     return value;
@@ -857,6 +862,7 @@ export function buildRoadElevation(
         type: best.type,
         half: best.half,
         median: best.median,
+        sidewalk: best.sidewalk,
       };
     },
     surfaceFrameAt(x, y, structures, pickX, pickY, includeManual = true, segment) {

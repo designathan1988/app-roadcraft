@@ -209,7 +209,7 @@ export function streetFurniture(net: Network): FurnitureItem[] {
       const crossing = net.crosswalkDistanceAt(segmentId, nodeId);
       if (crossing <= 0) continue;
       const segment = net.doc.requireSegment(segmentId);
-      const road = roadProfile(segment.type, segment.lanes, segment.direction);
+      const road = roadProfile(segment.type, segment.lanes, segment.direction, segment.section);
       const frame = orientedPolyline(net.doc, segment, nodeId).sampleAt(crossing);
       accesses.push({ x: frame.p.x, y: frame.p.y, tx: frame.t.x, ty: frame.t.y,
         across: road.width / 2 + road.sidewalk + m(0.3), structure: segment.structure });

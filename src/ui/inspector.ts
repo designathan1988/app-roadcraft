@@ -10,6 +10,8 @@ import { signalStateFor } from '@sim/signals/query';
 import { language, plural, t } from './i18n';
 import { roadTypeName } from './labels';
 import { surfaceMode } from '@world/junction/build';
+import type { RoadSection } from '@world/roadSection';
+import { freeRoadsEnabled, mountRoadSectionEditor } from './roadSectionEditor';
 
 export interface InspectorSelection {
   readonly segment: SegmentId | null;
@@ -20,6 +22,7 @@ export interface InspectorActions {
   readonly onUpgrade: (id: SegmentId) => void;
   readonly onSetType: (id: SegmentId, type: number) => void;
   readonly onSetLanes?: (id: SegmentId, lanes: number | null) => void;
+  readonly onSetSection?: (id: SegmentId, section: RoadSection | undefined) => void;
   readonly onDelete: (id: SegmentId) => void;
   readonly onSetDirection?: (id: SegmentId, direction: SegmentDirection) => void;
   readonly onSetNodeHeight?: (id: NodeId, metres: number) => void;
@@ -143,7 +146,7 @@ export function closeInspector(): void {
 function segmentStats(doc: RoadDoc, net: Network, sim: SimWorld, id: SegmentId): string | null {
   const seg = doc.segment(id);
   if (!seg) return null;
-  const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+  const rt = roadProfile(seg.type, seg.lanes, seg.direction, seg.section);
   const length = net.polylines.get(doc, id).length;
 
   let occupancy = 0;
@@ -194,7 +197,7 @@ function renderSegment(
     closeInspector();
     return;
   }
-  const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+  const rt = roadProfile(seg.type, seg.lanes, seg.direction, seg.section);
   const length = net.polylines.get(doc, id).length;
   setTitle(`${t('inspector.road')} · ${roadTypeName(rt)}`);
 
@@ -213,6 +216,7 @@ function renderSegment(
     `<label class="inspect-select">${t('inspector.heightStart')} <input id="inspectHeightStart" type="number" step="0.1" value="${((doc.node(seg.a)?.heightOffset ?? 0) / UNITS_PER_METER).toFixed(1)}" /></label>` +
     `<label class="inspect-select">${t('inspector.heightEnd')} <input id="inspectHeightEnd" type="number" step="0.1" value="${((doc.node(seg.b)?.heightOffset ?? 0) / UNITS_PER_METER).toFixed(1)}" /></label>` +
     `<label class="inspect-select">${t('inspector.laneCount')} <select id="inspectLanes">${laneOptions(seg.direction, seg.lanes, rt.lanes)}</select></label>` +
+    `<div id="inspectSection"></div>` +
     `<label class="inspect-range"><span>${t('inspector.curvature')}</span><output id="inspectCurveValue">${curveText(curveValue)}</output><input id="inspectCurve" type="range" min="${-maxCurve}" max="${maxCurve}" step="1" value="${Math.max(-maxCurve, Math.min(maxCurve, curveValue))}" /></label>` +
     `<label class="inspect-range"${seg.curve ? '' : ' data-disabled'}><span>${t('inspector.curvePosition')}</span><output id="inspectCurvePositionValue">${percent(curvePosition)}</output><input id="inspectCurvePosition" type="range" min="0.15" max="0.85" step="0.01" value="${curvePosition}"${seg.curve ? '' : ' disabled'} /></label>` +
     `<div class="inspect-actions">` +
@@ -224,6 +228,10 @@ function renderSegment(
     `<button type="button" id="inspectDelete" class="danger">${t('inspector.demolish')}</button>` +
     `</div>`;
 
+  if (freeRoadsEnabled() && actions.onSetSection) {
+    mountRoadSectionEditor(body.querySelector<HTMLElement>('#inspectSection')!, rt, oneWay,
+      (section) => actions.onSetSection?.(id, section));
+  }
   const upgrade = document.getElementById('inspectUpgrade') as HTMLButtonElement | null;
   const remove = document.getElementById('inspectDelete') as HTMLButtonElement | null;
   const type = document.getElementById('inspectClass') as HTMLSelectElement | null;

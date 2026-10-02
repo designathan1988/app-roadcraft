@@ -147,7 +147,7 @@ export class SidewalkGraph {
       for (const segId of node.incident) {
         const seg = doc.segment(segId);
         if (!seg) continue;
-        const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+        const rt = roadProfile(seg.type, seg.lanes, seg.direction, seg.section);
         if (!carriesPedestrians(rt)) continue;
         const pl = orientedPolyline(doc, seg, nodeId);
         if (pl.length < 1) continue;
@@ -180,7 +180,7 @@ export class SidewalkGraph {
       if (node.incident.length < 2) continue;
       for (const segId of node.incident) {
         const segment = doc.segment(segId);
-        if (!segment || !carriesPedestrians(roadProfile(segment.type, segment.lanes, segment.direction))) continue;
+        if (!segment || !carriesPedestrians(roadProfile(segment.type, segment.lanes, segment.direction, segment.section))) continue;
         if (net.crosswalkDistanceAt(segId, nodeId) <= 0) continue;
         const right = this.nodes.get(kerbId(nodeId, segId, -1));
         const left = this.nodes.get(kerbId(nodeId, segId, 1));
@@ -222,7 +222,7 @@ export class SidewalkGraph {
           const pl = orientedPolyline(doc, seg, nodeId);
           const look = Math.min(10, Math.max(0.5, pl.length * 0.2));
           const dir = normalize(sub(pl.sampleAt(look).p, pl.point(0)));
-          const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+          const rt = roadProfile(seg.type, seg.lanes, seg.direction, seg.section);
           return { segId, ang: angleOf(dir), footway: rt.sidewalk };
         })
         .sort((a, b) => a.ang - b.ang);
@@ -254,7 +254,7 @@ export class SidewalkGraph {
 
     // ---- sidewalk edges along each segment --------------------------------
     for (const [segId, seg] of doc.segments) {
-      const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+      const rt = roadProfile(seg.type, seg.lanes, seg.direction, seg.section);
       if (!carriesPedestrians(rt)) continue;
       const pl = orientedPolyline(doc, seg, seg.a);
       if (pl.length < 1) continue;

@@ -390,7 +390,7 @@ export class Network {
   private buildRibbons(): void {
     for (const [id, seg] of this.doc.segments) {
       const full = this.polylines.get(this.doc, id);
-      const rt = roadProfile(seg.type, seg.lanes, seg.direction);
+      const rt = roadProfile(seg.type, seg.lanes, seg.direction, seg.section);
       const t = this.trims.get(id) ?? { a: {}, b: {} };
       const length = full.length;
 
@@ -585,7 +585,7 @@ export class Network {
 
     const proposed = Math.min(Math.max(crosswalkAt(mouth), clear), length * CROSSWALK_CAP, orderingCap);
     const limit = Math.min(length * CROSSWALK_CAP, orderingCap);
-    const profile = roadProfile(segment.type, segment.lanes, segment.direction);
+    const profile = roadProfile(segment.type, segment.lanes, segment.direction, segment.section);
     const lateral = profile.width / 2 + profile.sidewalk / 2;
     const line = this.polylines.get(this.doc, seg);
     const walkable = this.crossingWalkable ??= new WalkableSurface(this);

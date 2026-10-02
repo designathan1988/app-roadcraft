@@ -1,3 +1,4 @@
+import { normalizeRoadSection, sameRoadSection, type RoadSection } from './roadSection';
 import type { Vec2 } from '@core/vec2';
 import { type CurveShape, fitShapeToRadius } from '@core/bezier';
 import {
@@ -25,9 +26,9 @@ import { normalizePerson, type PersonSpec } from '@people/spec';
 /** `shape` flattened until no band of a road of this profile folds over (see `RoadDoc.fitCurve`). */
 export function fitRoadCurve(
   a: Vec2, b: Vec2, shape: CurveShape | null, type: number,
-  lanes: number | null = null, direction: SegmentDirection = 'both',
+  lanes: number | null = null, direction: SegmentDirection = 'both', section?: RoadSection,
 ): CurveShape | null {
-  return fitShapeToRadius(a, b, shape, casingHalf(roadProfile(type, lanes, direction)));
+  return fitShapeToRadius(a, b, shape, casingHalf(roadProfile(type, lanes, direction, section)));
 }
 
 /** Legal driving directions, relative to the stored `a -> b` orientation. */
@@ -85,6 +86,8 @@ export interface RoadSegment {
   direction: SegmentDirection;
   /** Optional total travel-lane count; omitted means the class default. */
   lanes: number | null;
+  /** Authored cross-section; absent preserves the exact class profile. */
+  section?: RoadSection;
   /** Vertical construction mode. Ground is the legacy/default value. */
   structure: RoadStructure;
 }
@@ -290,14 +293,17 @@ export class RoadDoc {
     direction: SegmentDirection = 'both',
     lanes: number | null = null,
     structure: RoadStructure = 'ground',
+    section?: RoadSection,
   ): RoadSegment | null {
     if (a === b) return null;
     if (!this.nodes.has(a) || !this.nodes.has(b)) return null;
+    const authoredSection = normalizeRoadSection(section);
     const id = asSegmentId(this.segIds.take());
     const s: RoadSegment = {
       id, a, b, curve, type, dashOrigin, direction,
       lanes: normaliseLaneCount(lanes, direction),
       structure,
+      ...(authoredSection ? { section: authoredSection } : {}),
     };
     this.segments.set(id, s);
     this.requireNode(a).incident.push(id);
@@ -430,7 +436,7 @@ export class RoadDoc {
     const a = this.nodes.get(s.a);
     const b = this.nodes.get(s.b);
     if (!a || !b) return;
-    const fitted = fitRoadCurve(a, b, s.curve, s.type, s.lanes, s.direction);
+    const fitted = fitRoadCurve(a, b, s.curve, s.type, s.lanes, s.direction, s.section);
     if (fitted !== s.curve) {
       s.curve = fitted;
       this.markSegment(s.id);
@@ -468,6 +474,17 @@ export class RoadDoc {
     if (!s || s.lanes === next) return;
     s.lanes = next;
     this.fitCurve(s);
+    this.markSegment(id);
+  }
+
+  /** Changes every section consumer through the existing geometry/topology revision gates. */
+  setSegmentSection(id: SegmentId, section?: RoadSection): void {
+    const segment = this.segments.get(id);
+    const next = normalizeRoadSection(section);
+    if (!segment || (section !== undefined && !next) || sameRoadSection(segment.section, next)) return;
+    if (next) segment.section = next;
+    else delete segment.section;
+    this.fitCurve(segment);
     this.markSegment(id);
   }
 
@@ -659,6 +676,7 @@ export class RoadDoc {
       this.segments.set(id, {
         ...segment,
         curve: segment.curve ? { ...segment.curve } : null,
+        ...(segment.section ? { section: { ...segment.section } } : {}),
       });
     }
     this.poles.clear();
@@ -718,6 +736,7 @@ export class RoadDoc {
         direction: s.direction,
         lanes: s.lanes,
         structure: s.structure,
+        ...(s.section ? { section: { ...s.section } } : {}),
       })),
       terrain: this.terrainStamps.map((stamp) => ({ ...stamp })),
       poles: [...this.poles.values()].map((p) => ({ id: p.id, x: p.x, y: p.y, lamp: p.lamp })),
@@ -782,6 +801,7 @@ export class RoadDoc {
       const a = canonicalNode.get(s.a) ?? asNodeId(s.a);
       const b = canonicalNode.get(s.b) ?? asNodeId(s.b);
       if (!doc.nodes.has(a) || !doc.nodes.has(b) || a === b) continue;
+      const section = normalizeRoadSection(s.section);
       doc.segments.set(id, {
         id,
         a,
@@ -791,6 +811,7 @@ export class RoadDoc {
         dashOrigin: s.dashOrigin ?? 0,
         direction: s.direction ?? 'both',
         lanes: normaliseLaneCount(s.lanes ?? null, s.direction ?? 'both'),
+        ...(section ? { section } : {}),
         // Through the migration, so a level that has since been merged into
         // another (`viaduct`) loads as the one it became.
         structure: migrateStructure(s.structure) ?? 'ground',
@@ -863,6 +884,7 @@ export interface SerializedDoc {
     dashOrigin?: number;
     direction?: SegmentDirection;
     lanes?: number | null;
+    section?: RoadSection;
     /** A current structure id, or a legacy one `migrateStructure` maps. */
     structure?: RoadStructure | 'viaduct';
   }[];
@@ -909,6 +931,7 @@ function sameRoads(a: RoadDoc, b: RoadDoc): boolean {
     const q = b.segments.get(id);
     if (!q || p.a !== q.a || p.b !== q.b || p.type !== q.type || p.dashOrigin !== q.dashOrigin ||
       p.direction !== q.direction || p.lanes !== q.lanes || p.structure !== q.structure ||
+      !sameRoadSection(p.section, q.section) ||
       (p.curve?.t ?? null) !== (q.curve?.t ?? null) || (p.curve?.h ?? null) !== (q.curve?.h ?? null)) return false;
   }
   return true;

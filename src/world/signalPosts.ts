@@ -36,7 +36,7 @@ export interface SignalPost {
 export function signalPostPlace(net: Network, node: NodeId, segmentId: SegmentId): SignalPost | null {
   const segment = net.doc.segment(segmentId);
   if (!segment) return null;
-  const road = roadProfile(segment.type, segment.lanes, segment.direction);
+  const road = roadProfile(segment.type, segment.lanes, segment.direction, segment.section);
   const mouth = net.mouthDistance(segmentId, node);
   const polyline = net.polylines.get(net.doc, segmentId);
   // Sample outward from the node to find the kerb position, then reverse
