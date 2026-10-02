@@ -1,5 +1,14 @@
 # AGENTS.md — the map of this project
 
+> **Rule zero — research on the internet first, always.** Before
+> implementing anything that is not trivial, search the official
+> documentation (three.js, MDN, Khronos, Electron; Unreal/Unity as
+> references) and how shipped games and studios solve the same problem (GDC
+> talks, engine docs, post-mortems). Tell the player what you found, with the
+> links, and which approach fits and why; only then plan and write code.
+> Never improvise a technique or "try and measure" in the dark. (The
+> player's permanent rule since 2026-10-02; see CLAUDE.md.)
+
 This file exists so that an AI (or a new engineer) can find the right file on
 the first try, change it without breaking three other things, and know what to
 run afterwards. Read this before touching anything.

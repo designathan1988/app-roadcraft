@@ -1,5 +1,12 @@
 # Performance
 
+> **Research first.** Any performance work starts with a search of the
+> official documentation and of how shipped games solve the same problem
+> (Unreal Mass LOD, GPU Gems 3 crowd rendering, the Cities: Skylines II
+> post-mortems, asset cooking), cited with links, before any code. Measure
+> with `scripts/bench-render.mjs` (headless, best of three) and photograph
+> before and after (`scripts/probe-shots.mjs`). See CLAUDE.md, rule one.
+
 The brief is a balance: the scene must look three-dimensional and must stay fast
 on a large map. Everything here is one of the two halves of that.
 
