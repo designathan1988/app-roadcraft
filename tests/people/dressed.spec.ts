@@ -55,6 +55,43 @@ const dress = (person: PersonSpec) => {
   });
 };
 
+describe('expressions on a dressed person', () => {
+  it('moves the vertices as building the changed body again would', () => {
+    // Somebody in an outfit (the bodies in painted shells are built again for each expression).
+    let seed = 7;
+    while (!randomPerson(seed, seed).look.outfit) seed++;
+    const person = randomPerson(seed, seed);
+    const proxies = new Map(wornItems(person.look).map((n) => [n, item(n)]));
+    const sex = person.body.gender < 0.5 ? 'female' : 'male';
+    const input = {
+      data, skeleton, bodyRange, positions: morpher.shape(person.body, person.features), look: person.look,
+      capture: captureBind(sex), captureAxes: captureBindRotations(sex), proxies,
+    };
+    const rig = createPersonRig(input);
+    expect(rig.morph).toBeDefined();
+    // A change of shape round the mouth, as an expression is.
+    const changed = input.positions.slice();
+    let top = -Infinity;
+    for (const [a, b] of data.vertexGroups['body'] ?? []) for (let v = a; v <= b; v++) top = Math.max(top, input.positions[v * 3 + 1]!);
+    for (const [a, b] of data.vertexGroups['body'] ?? []) for (let v = a; v <= b; v++) {
+      if (input.positions[v * 3 + 1]! > top - 2) changed[v * 3 + 2] = changed[v * 3 + 2]! + 0.08;
+    }
+    const direct = rig.morph!(changed);
+    const again = createPersonRig({ ...input, positions: changed }).mesh.geometry.getAttribute('position');
+    const was = rig.mesh.geometry.getAttribute('position');
+    let worst = 0, moved = 0;
+    for (let i = 0; i < was.count; i++) {
+      for (const [k, get] of [[0, 'getX'], [1, 'getY'], [2, 'getZ']] as const) {
+        const rebuilt = again[get](i) - was[get](i);
+        worst = Math.max(worst, Math.abs(rebuilt - direct[i * 3 + k]!));
+        if (Math.abs(rebuilt) > 1e-4) moved++;
+      }
+    }
+    expect(moved).toBeGreaterThan(0);
+    expect(worst).toBeLessThan(1e-4);
+  });
+});
+
 describe('a person dressed in MakeHuman garments', () => {
   for (const seed of [3, 11, 42, 77]) {
     it(`fits its clothes, shoes and hair to its body and posture (seed ${seed})`, () => {

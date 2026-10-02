@@ -29,6 +29,15 @@ export async function attachFacialMorphs(input: PersonRigInput, rig: PersonRig,
   const attributes: Float32BufferAttribute[] = [];
   for (const [name, deltas] of Object.entries(shapes)) {
     const positions = input.positions.map((value, i) => value + deltas[i]!);
+    // A dressed body knows its expressions as moves of its own vertices
+    // (`PersonRig.morph`): no second build of the person.
+    if (rig.morph) {
+      const attribute = new Float32BufferAttribute(rig.morph(positions), 3);
+      if (attribute.count !== base.count) throw new Error(`Expression ${name} changes body topology`);
+      attribute.name = name;
+      attributes.push(attribute);
+      continue;
+    }
     const target = createPersonRig({ ...input, positions });
     try {
       const moved = target.mesh.geometry.getAttribute('position');

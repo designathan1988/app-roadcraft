@@ -127,6 +127,8 @@ export interface PersonRig {
   readonly mesh: SkinnedMesh;
   /** Standing height in the bind posture, metres. */
   readonly height: number;
+  /** A changed body shape (decimetres, as \`positions\`) as relative moves of the mesh's vertices, when known. */
+  readonly morph?: (positions: Float32Array) => Float32Array;
 }
 
 export function createPersonRig(input: PersonRigInput): PersonRig {
@@ -173,31 +175,31 @@ export function createPersonRig(input: PersonRigInput): PersonRig {
   }
 
   // The mesh follows by its skin weights; the bones' heads by their parents.
-  const posed = new Float32Array(metres.length);
-  const p = new Vector3();
-  const q = new Vector3();
-  for (let v = 0; v < data.vertexCount; v++) {
-    p.set(metres[v * 3]!, metres[v * 3 + 1]!, metres[v * 3 + 2]!);
-    let sum = 0;
-    let x = 0, y = 0, z = 0;
-    for (let k = 0; k < 4; k++) {
-      const w = data.weights[v * 4 + k]! / 65535;
-      if (w === 0) continue;
-      q.copy(p).applyMatrix4(correction[data.joints[v * 4 + k]!]!);
-      x += q.x * w;
-      y += q.y * w;
-      z += q.z * w;
-      sum += w;
+  const poseBody = (from: Float32Array): Float32Array => {
+    const out = new Float32Array(from.length);
+    const p = new Vector3();
+    const q = new Vector3();
+    for (let v = 0; v < data.vertexCount; v++) {
+      p.set(from[v * 3]!, from[v * 3 + 1]!, from[v * 3 + 2]!);
+      let sum = 0;
+      let x = 0, y = 0, z = 0;
+      for (let k = 0; k < 4; k++) {
+        const w = data.weights[v * 4 + k]! / 65535;
+        if (w === 0) continue;
+        q.copy(p).applyMatrix4(correction[data.joints[v * 4 + k]!]!);
+        x += q.x * w;
+        y += q.y * w;
+        z += q.z * w;
+        sum += w;
+      }
+      out[v * 3] = sum > 0 ? x / sum : p.x;
+      out[v * 3 + 1] = sum > 0 ? y / sum : p.y;
+      out[v * 3 + 2] = sum > 0 ? z / sum : p.z;
     }
-    if (sum > 0) {
-      posed[v * 3] = x / sum;
-      posed[v * 3 + 1] = y / sum;
-      posed[v * 3 + 2] = z / sum;
-    } else {
-      posed[v * 3] = p.x;
-      posed[v * 3 + 1] = p.y;
-      posed[v * 3 + 2] = p.z;
-    }
+    return out;
+  };
+  const posed = poseBody(metres);
+  {
   }
   const boneHead = meta.bones.map((b, i) => {
     const parent = b.parent === null ? undefined : index.get(b.parent);
@@ -282,6 +284,32 @@ export function createPersonRig(input: PersonRigInput): PersonRig {
     ? dressedGeometry(data, posed, look, fitted, input.texturedSkin, shell)
     : clothedGeometry(data, posed, look, input.texturedSkin);
   shell?.dispose();
+  // An expression's shape as moves of this mesh's vertices: the same posing
+  // of the changed body and of the garments fitted to it, vertex by vertex
+  // (\`morphSource\` says which each one is). The whole person used to be
+  // built again for every expression - a dozen builds a body.
+  const source = geometry.userData['morphSource'] as { kind: Int16Array; index: Int32Array } | undefined;
+  const morph = dressed && source && !shell ? (shape: Float32Array): Float32Array => {
+    const inMetres = new Float32Array(shape.length);
+    toMetres(shape, inMetres, bodyRange);
+    const body = poseBody(inMetres);
+    const garments = fitted.map((w) => pose(fitProxy(w.item.pack, shape), w.skin));
+    const relative = new Float32Array(source.kind.length * 3);
+    for (let o = 0; o < source.kind.length; o++) {
+      const kind = source.kind[o]!, i = source.index[o]!;
+      if (kind === -1) {
+        relative[o * 3] = body[i * 3]! - posed[i * 3]!;
+        relative[o * 3 + 1] = body[i * 3 + 1]! - lowest - posed[i * 3 + 1]!;
+        relative[o * 3 + 2] = body[i * 3 + 2]! - posed[i * 3 + 2]!;
+      } else if (kind >= 0) {
+        const from = fitted[kind]!.positions, to = garments[kind]!;
+        relative[o * 3] = to[i * 3]! - from[i * 3]!;
+        relative[o * 3 + 1] = to[i * 3 + 1]! - from[i * 3 + 1]!;
+        relative[o * 3 + 2] = to[i * 3 + 2]! - from[i * 3 + 2]!;
+      }
+    }
+    return relative;
+  } : undefined;
   const skeleton = new Skeleton(bones);
   if (input.texturedSkin) {
     const anchor = (name: string): Vector3 => {
@@ -302,7 +330,7 @@ export function createPersonRig(input: PersonRigInput): PersonRig {
   scene.add(...roots, mesh);
   scene.updateMatrixWorld(true);
   mesh.bind(skeleton);
-  return { scene, mesh, height: highest - lowest };
+  return { scene, mesh, height: highest - lowest, ...(morph ? { morph } : {}) };
 }
 
 // ---------------------------------------------------------------- geometry
@@ -495,6 +523,9 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   const skinMask: number[] = shell?.hasAttribute('skinMask') ? values('skinMask') : new Array(out.positions.length / 3).fill(0);
   const hairMask: number[] = new Array(out.positions.length / 3).fill(0);
   const garmentSlot: number[] = new Array(out.positions.length / 3).fill(0);
+  // Where each vertex comes from, for expressions: -2 the shell, -1 the body, k the k-th garment.
+  const sourceKind: number[] = new Array(out.positions.length / 3).fill(-2);
+  const sourceIndex: number[] = new Array(out.positions.length / 3).fill(0);
   const groups: { start: number; count: number; name: string }[] = [];
   const headBone = data.boneNames.indexOf('head');
   const pushSkin = (joints: ArrayLike<number>, weights: ArrayLike<number>, o: number, scale: number, rigidSkull = true): void => {
@@ -538,6 +569,8 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     out.colours.push(...colour);
     uvs.push(data.uvs?.[uv * 2] ?? 0, data.uvs?.[uv * 2 + 1] ?? 0);
     skinMask.push(skin);
+    sourceKind.push(-1);
+    sourceIndex.push(v);
     pushSkin(data.joints, data.weights, v * 4, 65535, false);
     emitted.set(key, at);
     return at;
@@ -564,7 +597,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   groups.push({ start: 0, count: out.index.length, name: 'body' });
   // --- the items
   const tint = look.outfitTint === null || look.outfitTint === undefined ? null : new Color(look.outfitTint);
-  for (const w of worn) {
+  for (const [wornIndex, w] of worn.entries()) {
     const { pack, texture, transparent } = w.item;
     const kind = pack.kind;
     const base = out.positions.length / 3;
@@ -573,6 +606,8 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     const inset = pack.uvs ? insetUvs(pack.uvs, pack.index, n, texture ? 2 / Math.max(texture.width, texture.height) : 0) : null;
     for (let v = 0; v < n; v++) {
       out.positions.push(w.positions[v * 3]!, w.positions[v * 3 + 1]!, w.positions[v * 3 + 2]!);
+      sourceKind.push(wornIndex);
+      sourceIndex.push(v);
       uvs.push(pack.uvs?.[v * 2] ?? 0, pack.uvs?.[v * 2 + 1] ?? 0);
       // Which card texture this vertex reads (`skinAppearance.ts`): hair, brows, lashes, beard.
       hairMask.push(CARD_SLOT[kind] ?? 0);
@@ -625,6 +660,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   }
   groups.forEach((g, i) => geometry.addGroup(g.start, g.count, i));
   geometry.userData['wornGroups'] = groups.map((g) => g.name);
+  geometry.userData['morphSource'] = { kind: Int16Array.from(sourceKind), index: Int32Array.from(sourceIndex) };
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(out.positions), 3));
   geometry.setAttribute('color', new BufferAttribute(new Float32Array(out.colours), 3));
   geometry.setAttribute('skinIndex', new BufferAttribute(new Uint16Array(out.joints), 4));

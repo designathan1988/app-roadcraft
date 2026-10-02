@@ -1,4 +1,4 @@
-import { Vector2, type Camera, type Object3D, type Scene, type WebGLRenderer } from 'three';
+import { DepthTexture, HalfFloatType, Vector2, WebGLRenderTarget, type Camera, type Scene, type WebGLRenderer } from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
@@ -42,9 +42,6 @@ export interface PostChain {
   dispose(): void;
 }
 
-/** Objects the ambient-occlusion pass leaves out (see `createPostChain`). */
-const AO_SKIPPED = ['rigged-citizens', 'grass'];
-
 export function createPostChain(
   renderer: WebGLRenderer,
   scene: Scene,
@@ -68,7 +65,14 @@ export function createPostChain(
   }
 
   const size = renderer.getSize(new Vector2());
-  const composer = new EffectComposer(renderer);
+  // The scene is drawn into targets that keep their depth, so the occlusion
+  // pass reads it rather than drawing the whole scene a second time.
+  const ratio = renderer.getPixelRatio();
+  const target = new WebGLRenderTarget(Math.max(1, size.x * ratio), Math.max(1, size.y * ratio), {
+    type: HalfFloatType,
+    depthTexture: new DepthTexture(Math.max(1, size.x * ratio), Math.max(1, size.y * ratio)),
+  });
+  const composer = new EffectComposer(renderer, target);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(size.x, size.y);
   composer.addPass(new RenderPass(scene, camera));
@@ -91,29 +95,22 @@ export function createPostChain(
       screenSpaceRadius: false,
     });
     gtao.blendIntensity = 0.85;
-    // The occlusion pass draws the scene again, every mesh with one override
-    // material. That material knows nothing of the citizens' baked skinning
-    // (`riggedCitizens.ts`), so they went into it in their bind pose, and the
-    // grass tufts are too small to occlude anything: a third of that pass's
-    // draw calls for depth that was wrong or worthless. Both sit it out.
+    // The occlusion is worked out from the depth the scene was just drawn
+    // with (normals rebuilt from it). Left to itself the pass drew the whole
+    // scene a second time, every mesh with an override material, for its own
+    // depth and normals - a third full draw of the town each frame, with the
+    // shadow map and the picture.
     const pass = gtao;
     const draw = pass.render.bind(pass);
-    const skipped: Object3D[] = [];
     pass.render = (...args: Parameters<GTAOPass['render']>) => {
-      skipped.length = 0;
-      for (const name of AO_SKIPPED) {
-        const object = scene.getObjectByName(name);
-        if (object?.visible) {
-          object.visible = false;
-          skipped.push(object);
-        }
-      }
-      try {
-        draw(...args);
-      } finally {
-        for (const object of skipped) object.visible = true;
-      }
+      const depth = args[2].depthTexture;
+      if (depth && pass.depthTexture !== depth) pass.setGBuffer(depth);
+      draw(...args);
     };
+    // At half the resolution, as games do: occlusion is a soft shade, and
+    // worked out per pixel at full size it cost as much as drawing the town.
+    const resize = pass.setSize.bind(pass);
+    pass.setSize = (width: number, height: number) => resize(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)));
     composer.addPass(gtao);
   }
 
@@ -137,11 +134,11 @@ export function createPostChain(
     setSize(width, height, pixelRatio) {
       composer.setPixelRatio(pixelRatio);
       composer.setSize(width, height);
-      gtao?.setSize(width, height);
       bloom.setSize(width, height);
     },
     dispose() {
       composer.dispose();
+      target.dispose();
       gtao?.dispose();
       bloom.dispose();
     },

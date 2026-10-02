@@ -293,23 +293,21 @@ let sliceStart = 0;
  * seconds while the crowd's bodies loaded.
  */
 async function breathe(): Promise<void> {
-  // In the browser's idle time only: what is left of a frame once it is
-  // drawn. Resumed by a zero timeout, several slices ran back to back between
-  // two frames and took the time the frame needed.
-  if (idleUntil > 0 ? performance.now() < idleUntil - 1 : performance.now() - sliceStart < SLICE_MS) return;
-  await idleSlice();
+  if (performance.now() - sliceStart < SLICE_MS) return;
+  await afterFrame();
   sliceStart = performance.now();
 }
 
-/** When the current idle period ends (0: none known). */
-let idleUntil = 0;
-/** Waits for an idle period of the browser and notes how long it lasts. */
-function idleSlice(timeout = 1000): Promise<void> {
-  if (typeof requestIdleCallback !== 'function') return new Promise<void>(resolve => setTimeout(resolve, 0));
-  return new Promise<void>(resolve => requestIdleCallback((deadline) => {
-    idleUntil = performance.now() + Math.min(SLICE_MS, deadline.timeRemaining());
-    resolve();
-  }, { timeout }));
+/**
+ * Resolves just after the next frame has been drawn: one slice of work per
+ * frame. Resumed by a bare zero timeout, several slices ran back to back
+ * between two frames and took the time the frame needed; waiting for the
+ * browser's idle callback, a game drawing every frame never had any and the
+ * bodies were never finished.
+ */
+function afterFrame(): Promise<void> {
+  if (typeof requestAnimationFrame !== 'function') return new Promise<void>(resolve => setTimeout(resolve, 0));
+  return new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
 /** One copy of a body to bake on, and the way back to its rest pose. */
@@ -572,8 +570,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),
     };
     await personSimplifier;
-    // A body is built in one go: when the browser has time for it.
-    await idleSlice(2000);
+    // A body is built in one go, just after a frame is drawn.
+    await afterFrame();
     const built = performance.now();
     const rig = createPersonRig(input);
     performance.measure('person-rig', { start: built, end: performance.now() });
@@ -731,7 +729,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
    * camera through a town.
    */
   const prewarm = async (): Promise<void> => {
-    const idle = (): Promise<void> => new Promise((resolve) => requestIdleCallback(() => resolve(), { timeout: 400 }));
+    const idle = afterFrame;
     await new Promise((resolve) => setTimeout(resolve, 2500));
     for (let index = 0; index < models.length && !disposed; index++) {
       if (!loading.has(index)) await request(index).catch(() => {});
