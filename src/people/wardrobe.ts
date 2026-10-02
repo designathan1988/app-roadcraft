@@ -10,6 +10,10 @@
  */
 import community from '../../public/models/people/proxies/community.json';
 import selection from './wardrobeSelection.json';
+import sexes from './wardrobeSex.json';
+
+/** Whom each curated item is cut for, decided by looking at it (the player: no bizarre mixes). */
+const SEX = sexes as Record<string, 'female' | 'male' | 'any'>;
 
 /**
  * The items the game uses: a curated choice of the imported packs, the best
@@ -94,7 +98,7 @@ export const COMMUNITY: readonly WardrobeItem[] = (community.items as CommunityE
   return {
     name: i.name,
     kind,
-    sex: HAIR[i.name]?.sex ?? sexOf(i.name, i.tags),
+    sex: HAIR[i.name]?.sex ?? SEX[i.name] ?? sexOf(i.name, i.tags),
     ...(kind === 'hair' ? { length: HAIR[i.name]?.length ?? lengthOf(i.name, i.tags) } : {}),
     triangles: i.triangles,
     street: i.street && !costume && i.triangles <= STREET_TRIANGLES,
@@ -118,4 +122,20 @@ export function itemLabel(name: string): string {
   const words = name.replace(/^(toigo|elvs|cortu|culturalibre|o4saken|punkduck|sonntag78|grinsegold|rehmanpolanski|littleright|faydaen|learning|namuhekam|matcreator|wdg|aethelraed|freezychan|jaldmic|mrt|mindfront|mhx2|shaolin|sarahc|joepal|thorst|culturalibre)_/i, '')
     .replace(/[_-]+/g, ' ').trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** System hair (MakeHuman's own pack) by whom it suits. */
+const SYSTEM_HAIR = {
+  male: ['short01', 'short02', 'short03', 'short04', 'long01', 'afro01'],
+  female: ['short02', 'short04', 'long01', 'bob01', 'bob02', 'braid01', 'ponytail01', 'afro01'],
+} as const;
+
+/** Every hairstyle that suits a sex: the system's and the curated community ones. */
+export function hairFor(sex: 'female' | 'male'): readonly string[] {
+  return [...SYSTEM_HAIR[sex], ...itemsOf('hair', { sex })];
+}
+
+/** Shoes that suit a sex: the system pack (heels, shoes03, for women only) and the curated community ones. */
+export function shoesFor(sex: 'female' | 'male', system: readonly string[]): readonly string[] {
+  return [...system.filter((s) => sex === 'female' || s !== 'shoes03'), ...itemsOf('shoes', { sex })];
 }

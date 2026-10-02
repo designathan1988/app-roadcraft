@@ -215,7 +215,9 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
   const sex = female ? 'female' as const : 'male' as const;
   const streetHair = COMMUNITY.filter((i) => i.kind === 'hair' && i.street && (i.sex === 'any' || i.sex === sex)
     && i.length === (coloured.hairStyle === 'long' ? 'long' : 'short')).map((i) => i.name);
-  const systemHair = coloured.hairStyle === 'long' ? WARDROBE.hair.long : WARDROBE.hair.short;
+  // System hair that suits the sex (a braid or a ponytail is a woman's here).
+  const systemHair = (coloured.hairStyle === 'long' ? WARDROBE.hair.long : WARDROBE.hair.short)
+    .filter((h) => female || !['bob01', 'bob02', 'braid01', 'ponytail01'].includes(h));
   const hairCut = coloured.hairStyle === 'none' ? 'none'
     : pick(r, streetHair.length && r() < 0.6 ? streetHair : systemHair);
   // What to wear: a top with trousers or a skirt (most people), one of the
@@ -232,7 +234,7 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     extras.push(pick(r, female && skirts.length && r() < 0.35 ? skirts : trousers));
   } else if (wear < 0.65 && female && dresses.length) outfit = pick(r, dresses);
   else if (wear < 0.72 && suits.length) outfit = pick(r, suits);
-  else outfit = pick(r, (female ? WARDROBE.outfits.female : WARDROBE.outfits.male).filter((o) => o !== 'female_sportsuit01' || r() < 0.25));
+  else outfit = pick(r, (female ? WARDROBE.outfits.female : WARDROBE.outfits.male).filter((o) => o !== 'female_sportsuit01' || (years < 35 && r() < 0.25)));
   const glasses = itemsOf('glasses', { street: true, sex });
   if (glasses.length && r() < (years > 45 ? 0.35 : 0.15)) extras.push(pick(r, glasses));
   const jewels = itemsOf('jewelry', { street: true, sex });

@@ -133,7 +133,7 @@ export function makeRoster(): RosterEntry[] {
             // Casual people mostly keep the separates the generator drew
             // from the community packs (a top with trousers or a skirt).
             ...(age === 'child' || (wardrobe === 'casual' && base.look.extras?.length && r() < 0.65) ? {}
-              : dressUnlike(r, used, OUTFIT[wardrobe][female ? 'female' : 'male'], wardrobe === 'business' ? SOBER : CLOTH_COLOURS)),
+              : dressUnlike(r, used, OUTFIT[wardrobe][female ? 'female' : 'male'].filter((o) => o !== 'female_sportsuit01' || age === 'young'), wardrobe === 'business' ? SOBER : CLOTH_COLOURS)),
           },
         };
         // Riders reach the controls of the two-wheelers as they are drawn

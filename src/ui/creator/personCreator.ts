@@ -1,11 +1,11 @@
 import { ageFromYears, yearsFromAge, type MacroParams } from '@people/body/macro';
 import {
-  ALL_BROWS, ALL_FOOTWEAR, ALL_HAIR, ALL_HATS, ALL_LASHES,
+  ALL_BROWS, ALL_LASHES,
   CLOTH_COLOURS, EYE_COLOURS, HAIR_COLOURS, SKIN_TONES, WARDROBE, outfitsForAge, defaultPerson, randomPerson,
   type BottomStyle, type HairStyle, type PersonLook, type PersonSpec, type TopStyle,
 } from '@people/spec';
 import { hasKey, t } from '../i18n';
-import { itemLabel, itemsOf } from '@people/wardrobe';
+import { hairFor, itemLabel, itemsOf, shoesFor } from '@people/wardrobe';
 import { skinColour } from '@people/phenotype';
 import { proxyUrl } from '@people/body/proxy';
 import './personCreator.css';
@@ -299,7 +299,10 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
       b.setAttribute('aria-pressed', String(on));
       const tile = el('span', 'pc-item-tile');
       if (name !== 'none') {
-        try { tile.style.backgroundImage = `url("${proxyUrl(`${name}.webp`)}")`; } catch { /* no texture: a plain tile */ }
+        // The item rendered (its pack's thumbnail); its flat texture only when it has none.
+        let url: string | null;
+        try { url = proxyUrl(`${name}-thumb.webp`); } catch { try { url = proxyUrl(`${name}.webp`); } catch { url = null; } }
+        if (url) tile.style.backgroundImage = `url("${url}")`;
       }
       b.appendChild(tile);
       const label = name === 'none' ? t('person.option.none') : hasKey(`person.item.${name}`) ? t(`person.item.${name}`) : itemLabel(name);
@@ -442,7 +445,7 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     const dressed = !!person.look.outfit;
     const hair = sec('person.section.hair');
     if (dressed) {
-      gallery(hair, t('person.hairstyle'), ALL_HAIR, person.look.hairCut, (n) => wear({ hairCut: n }), true);
+      gallery(hair, t('person.hairstyle'), hairFor(sex), person.look.hairCut, (n) => wear({ hairCut: n }), true);
     } else {
       chips<HairStyle>(hair, t('person.style'), ['none', 'short', 'long'], person.look.hairStyle, (v) => setLook({ hairStyle: v }));
     }
@@ -466,7 +469,7 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     const bottoms = [...itemsOf('bottom'), ...itemsOf('skirt')];
     if (adult) {
       gallery(clothes, t('person.top'), itemsOf('top', { sex }), person.look.outfit, (n) => wear({ outfit: n }));
-      gallery(clothes, t('person.bottom'), female ? bottoms : itemsOf('bottom', { sex }), (person.look.extras ?? []).find((n) => bottoms.includes(n)), (n) => wearExtra(bottoms, n), true);
+      gallery(clothes, t('person.bottom'), [...itemsOf('bottom', { sex }), ...(female ? itemsOf('skirt') : [])], (person.look.extras ?? []).find((n) => bottoms.includes(n)), (n) => wearExtra(bottoms, n), true);
       if (female) gallery(clothes, t('person.dress'), itemsOf('dress'), person.look.outfit, (n) => wear({ outfit: n, extras: (person.look.extras ?? []).filter((x) => !bottoms.includes(x)) }));
       gallery(clothes, t('person.suit'), itemsOf('suit', { sex }), person.look.outfit, (n) => wear({ outfit: n, extras: (person.look.extras ?? []).filter((x) => !bottoms.includes(x)) }));
     }
@@ -479,10 +482,10 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
       tintRow.appendChild(own);
       clothes.appendChild(tintRow);
       swatches(clothes, t('person.dye'), CLOTH_COLOURS, person.look.outfitTint ?? -1, (c) => wear({ outfitTint: c }));
-      gallery(clothes, t('person.footwear'), ALL_FOOTWEAR, person.look.footwear, (n) => wear({ footwear: n }));
-      gallery(clothes, t('person.hat'), ALL_HATS, person.look.hat, (n) => wear({ hat: n }), true);
+      gallery(clothes, t('person.footwear'), shoesFor(sex, WARDROBE.footwear), person.look.footwear, (n) => wear({ footwear: n }));
+      gallery(clothes, t('person.hat'), [...WARDROBE.hats.filter(() => !female), ...itemsOf('hat', { sex })], person.look.hat, (n) => wear({ hat: n }), true);
       for (const [kind, key] of [['glasses', 'person.glasses'], ['jewelry', 'person.jewelry'], ['gloves', 'person.gloves']] as const) {
-        const family = itemsOf(kind);
+        const family = itemsOf(kind, { sex });
         if (family.length) gallery(clothes, t(key), family, (person.look.extras ?? []).find((n) => family.includes(n)), (n) => wearExtra(family, n), true);
       }
     } else {
