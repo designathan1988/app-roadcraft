@@ -88,5 +88,7 @@ describe('a person cooked ahead and read back', () => {
       if (moved.getY(v) !== (v % 50 === 0 ? Math.fround(0.004) : 0)) throw new Error(`vertex ${v}: ${moved.getY(v)}`);
     }
     expect(mesh!.morphTargetDictionary).toEqual(rig.mesh.morphTargetDictionary);
+    // What the skin shader reads off the geometry: without it, a crash on the first frame.
+    for (const key of ['faceOrigin', 'faceScale', 'wornGroups']) expect(b.userData[key]).toEqual(a.userData[key]);
   });
 });

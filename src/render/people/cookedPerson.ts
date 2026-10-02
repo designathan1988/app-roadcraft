@@ -1,5 +1,5 @@
 import {
-  Bone, BufferAttribute, BufferGeometry, Group, Matrix4, MaterialLoader, type Material, type Object3D, Skeleton, SkinnedMesh,
+  Bone, BufferAttribute, BufferGeometry, Group, Matrix4, MaterialLoader, type Material, type Object3D, Skeleton, SkinnedMesh, Vector3,
 } from 'three';
 
 /**
@@ -37,6 +37,8 @@ interface CookedMesh {
   readonly bindMode: string;
   readonly materials: unknown[];
   readonly materialArray: boolean;
+  /** What the shaders read off the geometry (`skinAppearance.ts`): the face's origin and scale, the garments worn. */
+  readonly extra: { faceOrigin?: number[]; faceScale?: number; wornGroups?: string[] };
 }
 interface CookedNode {
   readonly name: string;
@@ -47,7 +49,7 @@ interface CookedNode {
   readonly s: number[];
   readonly mesh?: CookedMesh;
 }
-interface CookedHeader { readonly version: 1; readonly nodes: CookedNode[] }
+interface CookedHeader { readonly version: 2; readonly nodes: CookedNode[] }
 
 const KINDS: Record<ArrayKind, { new (buffer: ArrayBuffer, at: number, length: number): ArrayLike<number> & { buffer: ArrayBufferLike }; bytes: number }> = {
   f32: Float32Array as never, u32: Uint32Array as never, u16: Uint16Array as never, u8: Uint8Array as never,
@@ -124,10 +126,15 @@ export function cookPerson(scene: Object3D): ArrayBuffer {
         bindMode: o.bindMode,
         materials: materials.map((m) => m.toJSON()),
         materialArray: Array.isArray(o.material),
+        extra: {
+          ...(g.userData['faceOrigin'] instanceof Vector3 ? { faceOrigin: (g.userData['faceOrigin'] as Vector3).toArray() } : {}),
+          ...(typeof g.userData['faceScale'] === 'number' ? { faceScale: g.userData['faceScale'] as number } : {}),
+          ...(Array.isArray(g.userData['wornGroups']) ? { wornGroups: [...(g.userData['wornGroups'] as string[])] } : {}),
+        },
       },
     };
   });
-  const header = new TextEncoder().encode(JSON.stringify({ version: 1, nodes } satisfies CookedHeader));
+  const header = new TextEncoder().encode(JSON.stringify({ version: 2, nodes } satisfies CookedHeader));
   const headerPadded = (header.byteLength + 3) & ~3;
   const out = new Uint8Array(4 + headerPadded + size);
   new DataView(out.buffer).setUint32(0, header.byteLength, true);
@@ -142,7 +149,7 @@ export function uncookPerson(buffer: ArrayBuffer): Group {
   const view = new DataView(buffer);
   const headerLength = view.getUint32(0, true);
   const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, headerLength))) as CookedHeader;
-  if (header.version !== 1) throw new Error(`Cooked person version ${String(header.version)}`);
+  if (header.version !== 2) throw new Error(`Cooked person version ${String(header.version)}`);
   const base = 4 + ((headerLength + 3) & ~3);
   const get = (ref: BufferRef): ArrayLike<number> => {
     const Kind = KINDS[ref.kind];
@@ -179,6 +186,9 @@ export function uncookPerson(buffer: ArrayBuffer): Group {
       g.userData['lodIndices'] = m.lods.map((l) => new BufferAttribute(get(l.index) as Uint32Array, 1));
       g.userData['lodGroups'] = m.lods.map((l) => l.groups);
       g.userData['lodReady'] = Promise.resolve();
+      if (m.extra?.faceOrigin) g.userData['faceOrigin'] = new Vector3().fromArray(m.extra.faceOrigin);
+      if (m.extra?.faceScale !== undefined) g.userData['faceScale'] = m.extra.faceScale;
+      if (m.extra?.wornGroups) g.userData['wornGroups'] = [...m.extra.wornGroups];
       g.computeBoundingBox();
       g.computeBoundingSphere();
       const materials = m.materials.map((json) => loader.parse(json) as Material);
