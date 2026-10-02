@@ -28,15 +28,13 @@ import { captureBind, captureBindRotations, loadRocketboxLibrary } from './citiz
 import { type Gradient, shearMatrix } from './groundShear';
 import { createGait, gaitHeading, gaitPlays, stepGait, type Gait, type GaitClips, type GaitPlay } from './citizenGait';
 import {
-  CARRY_AT, GAIT_AT, LIBRARY_AT, RIDER_AT, WALK, WALK_ELDER, afterFrame, bake, gaitClips, setSliceMs,
+  CARRY_AT, GAIT_AT, LIBRARY_AT, RIDER_AT, WALK, WALK_ELDER, afterFrame, bake, gaitClips,
   type CitizenClipKey, type ClipFrames, type Deferred, type Played,
 } from './citizenBake';
 
 export type { CitizenClipKey } from './citizenBake';
 export { CROWD_IDS } from './citizenCasting';
 const CAPACITY = 1000;
-/** While the loading screen is up nothing else is drawn: baking takes the frame. */
-const LOADING_SLICE_MS = 45;
 interface CitizenBatch {
   meshes: InstancedMesh[]; sources: SkinnedMesh[]; local: Matrix4[]; clips: ClipFrames[];
   /** The same baked clips, by the name the gait plays them by. */
@@ -748,21 +746,6 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     census() {
       registry.recordCensus = true;
       return registry.census();
-    },
-    /**
-     * Every body loaded and baked now, behind the loading screen, with the
-     * frame given over to it; `progress(done, total)` after each. Made while
-     * the game ran, the bodies took 4 ms of every frame for minutes.
-     */
-    async preload(progress: (done: number, total: number) => void = () => {}): Promise<void> {
-      setSliceMs(LOADING_SLICE_MS);
-      let done = 0;
-      progress(0, models.length);
-      try {
-        await Promise.all(models.map((_, index) => request(index).catch(() => {}).then(() => progress(++done, models.length))));
-      } finally {
-        setSliceMs(4);
-      }
     },
     finish() {
       for (const batch of batches.values()) {

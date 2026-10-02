@@ -173,8 +173,6 @@ export interface SceneHandle {
   readonly inspect: Inspector | null;
   /** Every figure drawn last frame and the body it was cast as: the runtime census. */
   census(): ReturnType<AgentMeshes['census']>;
-  /** Every body loaded and baked, for the loading screen. */
-  preloadPeople(progress?: (done: number, total: number) => void): Promise<void>;
   dispose(): void;
 }
 
@@ -547,7 +545,6 @@ export function createSceneRenderer(
   return {
     inspect,
     census: () => agents.census(),
-    preloadPeople: (progress) => agents.preloadPeople(progress),
     backend: 'three-webgl',
     viewport: rig.viewport,
     scene,

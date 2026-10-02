@@ -733,28 +733,3 @@ body { user-select: none; -webkit-user-select: none; }
 .sim-metrics { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--ui-border); font-size: 11.5px; }
 .sim-metrics dt { color: var(--muted); }
 .sim-metrics dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-
-/* The loading screen (`loadingScreen.ts`): over everything until the people are baked. */
-.loading-screen {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(ellipse at center, #163236 0%, #0a1719 75%);
-  transition: opacity 0.3s ease;
-}
-.loading-screen.done { opacity: 0; pointer-events: none; }
-.loading-card {
-  width: min(420px, calc(100vw - 32px));
-  padding: 28px 28px 22px;
-  border: 1px solid var(--ui-border);
-  border-radius: 14px;
-  background: var(--ui-bg);
-  box-shadow: var(--shadow);
-  color: var(--text);
-}
-.loading-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
-.loading-bar { height: 8px; border-radius: 4px; background: var(--ui-hi); overflow: hidden; }
-.loading-fill { width: 0; height: 100%; background: var(--accent); transition: width 0.2s ease; }
-.loading-note { margin-top: 10px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }

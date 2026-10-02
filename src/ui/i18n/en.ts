@@ -66,8 +66,6 @@ export const EN: Dictionary = {
   'hint.person': 'Make anybody: drag the figure to turn it, wheel to look closer · Save puts them in the city',
   'hint.mobile.person': 'Drag the figure to turn it · Save puts them in the city',
   'person.loading': 'Loading the person model (about 10 MB, once)…',
-  'loading.title': 'Preparing the town',
-  'loading.people': 'Residents ready: {done} of {total}',
   'person.loadFailed': 'The person model could not be loaded. Check the connection and open the tool again.',
   'person.years': 'years',
   'person.name': 'Name',
