@@ -10,8 +10,7 @@ import { nextSpeed } from './operational';
  */
 export function physicalSpeed(p: DriverParams, speed: number, wanted: number, acceleration: number,
   obstacles: readonly Obstacle[], dt: number): number {
-  const comfort = nextSpeed(p, speed, wanted, acceleration,
-    obstacles.map(o => ({ ...o, hard: false })), dt).v;
+  const comfort = nextSpeed(p, speed, wanted, acceleration, obstacles, dt).v;
   const physical = { ...p, s0: m(0.1) };
   let limit = Infinity;
   for (const obstacle of obstacles) {

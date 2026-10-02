@@ -86,7 +86,6 @@ function people(sim: SimWorld, peds: number, traffic: number): SimWorld {
   // `AGENT_ENGINE=crowd` measures the Detour crowd engine (call `initCrowd` first).
   sim.usePedestrianEngine(process.env.AGENT_ENGINE === 'crowd' ? createCrowdEngine() : createPeopleEngine());
   sim.driveModel = 'v2';
-  if (process.env.VEHICLE_MOTION === 'physical') sim.motionModel = 'physical';
   return sim;
 }
 
