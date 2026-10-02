@@ -35,7 +35,9 @@ import { createIsoRig } from './isoViewport';
 import { createPostChain, type PostChain } from './postprocess';
 import { createInspector, type Inspector } from './inspector';
 import { buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
-import { PLANT_NEAR_ZOOM, buildScenery, createSceneryKit, type Scenery, type SceneryKit } from './scenery';
+import { PLANT_NEAR_ZOOM, buildGardens, buildScenery, createSceneryKit, type GardenPlant, type Scenery, type SceneryKit } from './scenery';
+import { localToWorld } from '@world/buildings/geometry';
+import type { Building } from '@world/buildings/types';
 import { GRASS_MIN_ZOOM } from './grass';
 import { advanceWind } from './wind';
 import { createSignalHeads, type SignalHeads } from './signals';
@@ -101,6 +103,9 @@ import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } fro
  * 5. agents and signal heads, resynced every frame from the simulation
  */
 
+/** How the sky is kept: `cycle` follows the residents' clock. */
+export type SkyMode = 'day' | 'night' | 'cycle';
+
 export interface RenderStats {
   readonly triangles: number;
   readonly drawCalls: number;
@@ -142,6 +147,8 @@ export interface SceneHandle {
   setBuildingsDimmed(except: number | null | undefined): void;
   /** "See inside": the buildings near (x, y) drawn cut open at a floor; null draws them whole. */
   setBuildingCutaway(spec: CutawaySpec | null): void;
+  /** The sky: always day, always night, or the residents' own clock. */
+  setSkyMode(mode: SkyMode): void;
   /** The height the terrain is drawn at — what anything laid on it must clear. */
   terrainHeightAt(x: number, y: number): number;
   /**
@@ -168,6 +175,21 @@ export interface SceneHandle {
 
 /** Roads at grade, and the decks above them, as `surfaceHeightAt` asks them. */
 const SURFACE_SETS: readonly ReadonlySet<RoadStructure>[] = [GROUND_ONLY, new Set<RoadStructure>(['elevated', 'bridge'])];
+
+/** The plants of every building's garden, in the world, on the ground they stand on. */
+function gardenPlants(all: Iterable<Building>, groundAt: (x: number, y: number) => number): GardenPlant[] {
+  const out: GardenPlant[] = [];
+  for (const b of all) {
+    for (const el of b.elements ?? []) {
+      if (el.kind !== 'tree' && el.kind !== 'shrub' && el.kind !== 'hedge' && el.kind !== 'flowers') continue;
+      const at = localToWorld(b, el.x, el.y);
+      // `w` runs across the way the element faces.
+      const yaw = (b.rotation ?? 0) + (el.facing === 1 || el.facing === 3 ? Math.PI / 2 : 0) + (el.angle ?? 0);
+      out.push({ kind: el.kind, x: at.x, y: at.y, z: groundAt(at.x, at.y), w: el.w, d: el.d, h: el.h, yaw, seed: ((b.id * 7919 + el.id * 104729) % 100003) / 100003 });
+    }
+  }
+  return out;
+}
 
 export function createSceneRenderer(
   canvas: HTMLCanvasElement,
@@ -335,8 +357,12 @@ export function createSceneRenderer(
   scene.add(buildings.group);
   /** The scenery the building footprints were last cut out of. */
   let excludedFor: { scenery: Scenery | null; version: number } = { scenery: null, version: -1 };
+  /** The buildings' garden plants, and the buildings and ground they were planted for. */
+  let gardens: Scenery | null = null;
+  let gardensFor = '';
   /** The buildings cut open, for the people drawn inside them (`indoors.ts`). */
   let cutSpec: CutawaySpec | null = null;
+  let skyMode: SkyMode = 'day';
   const indoors = new Indoors();
   // Room lights for the floors cut open: a fixed set, so switching them on and
   // off never changes the scene's light count (which recompiles every shader).
@@ -547,6 +573,10 @@ export function createSceneRenderer(
     setBuildingPreview(preview) {
       buildings.setPreview(preview);
     },
+    setSkyMode(mode) {
+      // Read by the next frame drawn.
+      skyMode = mode;
+    },
     setBuildingCutaway(spec) {
       buildings.setCutaway(spec);
       cutSpec = spec;
@@ -588,11 +618,23 @@ export function createSceneRenderer(
         scenery.exclude(net.doc.buildings.size > 0 ? buildings.covers : null);
         excludedFor = { scenery, version: buildings.version };
       }
+      const gardenKey = `${buildings.version}:${gradedFor}:${net.doc.terrainRevision}:${rebuilds}`;
+      if (gardenKey !== gardensFor) {
+        gardensFor = gardenKey;
+        if (gardens) {
+          for (const mesh of gardens.meshes) world.remove(mesh);
+          gardens.dispose();
+        }
+        gardens = buildGardens(gardenPlants(net.doc.buildings.all(), terrain.renderedHeightAt), sceneryKit);
+        for (const mesh of gardens.meshes) world.add(mesh);
+      }
 
       const detailed = rig.viewport.zoom >= quality.detailCutoffZoom;
       if (roads) roads.group.visible = true;
       if (details) details.group.visible = true;
       for (const mesh of scenery?.meshes ?? []) mesh.visible = quality.detailProps && detailed;
+      for (const mesh of gardens?.meshes ?? []) mesh.visible = detailed;
+      gardens?.setNear(rig.viewport.zoom >= PLANT_NEAR_ZOOM);
       if (scenery) {
         scenery.grass.visible = quality.detailProps && rig.viewport.zoom >= GRASS_MIN_ZOOM;
         scenery.setNear(rig.viewport.zoom >= PLANT_NEAR_ZOOM);
@@ -605,6 +647,7 @@ export function createSceneRenderer(
       crowdFrustum.setFromProjectionMatrix(crowdProjection);
       // Plants and street furniture outside the view are not drawn at all.
       scenery?.cull(crowdFrustum, crowdProjection);
+      gardens?.cull(crowdFrustum, crowdProjection);
       agents.sync(sim, alpha, detailed, rig.viewport.zoom, {
         pedestrianDetail: quality.pedestrianDetail,
         pedestrianVisible,
@@ -647,7 +690,8 @@ export function createSceneRenderer(
         updateLitRooms(sim);
       }
       // Day and night, by the residents' clock (`sim/city`).
-      const dark = environment.setTimeOfDay(sim.city.minutes(sim));
+      const clock = skyMode === 'day' ? 13 * 60 : skyMode === 'night' ? 22 * 60 : sim.city.minutes(sim);
+      const dark = environment.setTimeOfDay(clock);
       if (Math.abs(dark - lastDark) > 0.01) {
         lastDark = dark;
         buildings.setNight(dark);
@@ -689,6 +733,7 @@ export function createSceneRenderer(
       for (const paint of surfaceReuse.paint.values()) paint.dispose();
       details?.dispose();
       scenery?.dispose();
+      gardens?.dispose();
       sceneryKit.dispose();
       terrain.dispose();
       materials.dispose();

@@ -1,5 +1,5 @@
 import type { Vec2 } from '@core/vec2';
-import { instantiate } from './buildings/blueprints';
+import { type BlueprintBody, instantiate } from './buildings/blueprints';
 import { cityBuilding } from './buildings/cityBuildings';
 import { footprintRects } from './buildings/geometry';
 import type { Building, BuildingFunction } from './buildings/types';
@@ -43,9 +43,9 @@ const FILLERS: readonly BuildingFunction[] = ['shop', 'townhouse', 'house'];
 /** What the middle of a block becomes, if there is room. */
 const COURTYARDS: readonly BuildingFunction[] = ['square', 'playground', 'sportsCourt'];
 
-interface Box { x0: number; y0: number; x1: number; y1: number }
+export interface Box { x0: number; y0: number; x1: number; y1: number }
 
-function boxOf(b: Omit<Building, 'id'>): Box {
+export function boxOf(b: Omit<Building, 'id'>): Box {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const ring of footprintRects(b as Building)) {
     for (const p of ring) {
@@ -56,26 +56,32 @@ function boxOf(b: Omit<Building, 'id'>): Box {
   return { x0, y0, x1, y1 };
 }
 
-const overlaps = (a: Box, b: Box, gap: number): boolean =>
+export const overlaps = (a: Box, b: Box, gap: number): boolean =>
   a.x0 < b.x1 + gap && a.x1 > b.x0 - gap && a.y0 < b.y1 + gap && a.y1 > b.y0 - gap;
 
-const inside = (a: Box, b: Box): boolean =>
+export const inside = (a: Box, b: Box): boolean =>
   a.x0 >= b.x0 - 0.05 && a.x1 <= b.x1 + 0.05 && a.y0 >= b.y0 - 0.05 && a.y1 <= b.y1 + 0.05;
 
-interface Edge { readonly start: Vec2; readonly along: Vec2; readonly inward: Vec2; readonly length: number }
+export interface Edge { readonly start: Vec2; readonly along: Vec2; readonly inward: Vec2; readonly length: number }
 
 /** A model turned to face the street on `edge`, its front centre at `t` along it. */
 function facing(fn: BuildingFunction, edge: Edge, t: number): { body: Omit<Building, 'id'>; box: Box; width: number } | null {
   const model = cityBuilding(fn);
   if (!model) return null;
+  return facingBody(model.body, fn, edge, t);
+}
+
+/** Any model (`body`) turned to face the street on `edge`, its front's left end `t` along it. */
+export function facingBody(source: BlueprintBody, fn: BuildingFunction, edge: Edge, t: number, gap = FRONT_GAP): { body: Omit<Building, 'id'>; box: Box; width: number } {
+  const model = { body: source };
   // The model's front (local -y) towards the street, which is against `inward`.
   const rotation = Math.atan2(-edge.inward.x, edge.inward.y);
   const probe = instantiate(model.body, { x: 0, y: 0 }, rotation, fn);
   const pb = boxOf(probe);
   const width = edge.along.x !== 0 ? pb.x1 - pb.x0 : pb.y1 - pb.y0;
   const at = {
-    x: edge.start.x + edge.along.x * (t + width / 2) + edge.inward.x * FRONT_GAP,
-    y: edge.start.y + edge.along.y * (t + width / 2) + edge.inward.y * FRONT_GAP,
+    x: edge.start.x + edge.along.x * (t + width / 2) + edge.inward.x * gap,
+    y: edge.start.y + edge.along.y * (t + width / 2) + edge.inward.y * gap,
   };
   const body = { ...instantiate(model.body, at, rotation, fn), function: fn };
   return { body, box: boxOf(body), width };

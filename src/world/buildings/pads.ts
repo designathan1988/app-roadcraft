@@ -25,6 +25,10 @@ import type { Building } from './types';
 
 /** Slope of the bank: horizontal run per unit of height. */
 export const PAD_BATTER = 3.5;
+/** How far a paved lot's plate stands over the graded ground under it. */
+export const LOT_PLATE = m(0.03);
+/** How far water stands below its lot's edge: a pool's or a pond's rim. */
+export const POOL_SINK = m(0.04);
 /** Furthest a bank may reach from its platform. */
 const PAD_REACH = m(40);
 
@@ -80,7 +84,14 @@ export function buildingPads(
     const rings: (readonly Vec2[])[] = [...built, ...lots.map((l) => l.ring)];
     if (rings.length === 0) continue;
     const flat = floor - PLINTH_MIN;
-    const levels = [...built.map(() => () => flat), ...lots.map((l) => (x: number, y: number) => l.heightAt(x, y) - PLINTH_MIN)];
+    // A lawn IS the ground, graded to the lot's surface (it is drawn as the
+    // terrain's own grass, and people walk on it at that height); paving,
+    // gravel, sand and water are laid as a thin plate just over it.
+    const levels = [...built.map(() => () => flat), ...lots.map((l) => {
+      const open = l.volume.open ?? 'grass';
+      const under = open === 'grass' ? 0 : open === 'water' ? POOL_SINK + LOT_PLATE : LOT_PLATE;
+      return (x: number, y: number) => l.heightAt(x, y) - under;
+    })];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const ring of rings) {
       for (const p of ring) {

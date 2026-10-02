@@ -22,7 +22,7 @@ import { Camera } from '@view/camera';
 import { type Viewport, flatViewport } from '@view/viewport';
 import { CanvasSurface } from '@ui/overlay/surface';
 import { INVALID, SELECTION, HOVER } from '@ui/overlay/palette';
-import { createSceneRenderer, type SceneHandle } from '@render/renderer';
+import { createSceneRenderer, type SceneHandle, type SkyMode } from '@render/renderer';
 import { createPersonPreview } from '@render/people/personPreview';
 import { createPersonCreator } from '@ui/creator/personCreator';
 import { DEFAULT_AZIMUTH, DEFAULT_ELEVATION, isoZoomBounds } from '@render/isoViewport';
@@ -46,6 +46,7 @@ import { type ImportResult, Persistence, exportToFile, importFromFile, type Save
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
 import { buildSampleTown } from '@world/sampleTown';
+import { buildTown } from '@world/town';
 import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
 import { roadSwatch } from '@ui/roadSwatch';
 import { mountBuildStamp } from '@ui/buildStamp';
@@ -2175,6 +2176,44 @@ mountAbout();
   fitView();
   sim.clock.paused = false;
   flashHint('hint.sampleTown');
+};
+// The sky: always day (the default), always night, or the residents' clock.
+{
+  const SKY_KEY = 'roadcraft.sky';
+  const modes: readonly SkyMode[] = ['day', 'night', 'cycle'];
+  let sky: SkyMode = 'day';
+  try {
+    const saved = localStorage.getItem(SKY_KEY);
+    if (saved && (modes as readonly string[]).includes(saved)) sky = saved as SkyMode;
+  } catch { /* storage blocked: day */ }
+  const button = document.getElementById('skyMode') as HTMLButtonElement;
+  const show = (): void => {
+    button.textContent = t(`sky.${sky}`);
+    button.title = t('sky.title');
+    scene.setSkyMode(sky);
+  };
+  button.onclick = () => {
+    sky = modes[(modes.indexOf(sky) + 1) % modes.length]!;
+    try { localStorage.setItem(SKY_KEY, sky); } catch { /* not kept */ }
+    show();
+    requestDraw();
+  };
+  onLanguageChange(show);
+  show();
+}
+(document.getElementById('sampleCity') as HTMLButtonElement).onclick = () => {
+  if (!window.confirm(t('confirm.sampleCity'))) return;
+  history.record(doc);
+  // The town to explore: a centre, high streets, terraces, houses and a park.
+  const town = new RoadDoc();
+  buildTown(town);
+  applySnapshot(town.toJSON(), 'import');
+  roadHeightOffset = 0;
+  roadHeightEdited = false;
+  updateRoadHeightValue();
+  fitView();
+  sim.clock.paused = false;
+  flashHint('hint.sampleCity');
 };
 (document.getElementById('saveMap') as HTMLButtonElement).onclick = () => {
   exportToFile(doc, sessionSettings());

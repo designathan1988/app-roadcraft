@@ -62,7 +62,7 @@ interface BlockSpec {
 }
 
 /** A model being put together, block by block. */
-class Model {
+export class Model {
   private readonly volumes: Volume[] = [];
   private readonly elements: BuildingElement[] = [];
   private readonly cores: { x: number; y: number; kind: CoreKind; from: number; to: number }[] = [];
@@ -115,7 +115,7 @@ class Model {
     return this.block({ x, y, w, d, open: surface, fill: 'wall' });
   }
 
-  el(kind: ElementKind, x: number, y: number, facing: Side = 0, size?: { w?: number; d?: number; h?: number; z?: number }): this {
+  el(kind: ElementKind, x: number, y: number, facing: Side = 0, size?: { w?: number; d?: number; h?: number; z?: number; material?: MaterialSpec }): this {
     const defaults: Partial<Record<ElementKind, [number, number, number]>> = {
       tree: [3, 3, 5], bench: [1.6, 0.5, 0.45], planter: [1, 1, 0.5], flowers: [1.4, 1.4, 0.4], rocks: [1.6, 1.6, 0.7],
       fence: [2, 0.12, 1.1], wall: [4, 0.25, 1.8], pavement: [4, 3, 0.12], slab: [4, 4, 0.25], pillar: [0.4, 0.4, 3],
@@ -125,6 +125,7 @@ class Model {
     this.elements.push({
       id: this.elements.length + 1, kind, x: m(x), y: m(y), facing,
       w: m(size?.w ?? dw), d: m(size?.d ?? dd), h: m(size?.h ?? dh), z: m(size?.z ?? 0),
+      ...(size?.material ? { material: size.material } : {}),
     });
     return this;
   }
@@ -175,7 +176,7 @@ class Model {
   }
 }
 
-const mat = (finish: MaterialSpec['finish'], colour: number): MaterialSpec => ({ finish, colour });
+export const mat = (finish: MaterialSpec['finish'], colour: number): MaterialSpec => ({ finish, colour });
 const PLASTER = mat('plaster', 0xeae3d6);
 const CREAM = mat('stucco', 0xe8dcc2);
 const STONE = mat('stone', 0xcfc7b6);

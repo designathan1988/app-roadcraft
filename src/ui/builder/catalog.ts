@@ -88,7 +88,7 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
     sections: [
       { title: 'structure', tools: [mode('stair'), mode('ramp'), mode('pillar'), mode('canopy'), mode('wall'), mode('slab')] },
       { title: 'runs', tools: [mode('wallRun'), mode('fenceRun'), mode('pavementRun'), mode('railing'), mode('stairRun')] },
-      { title: 'greenery', tools: [mode('tree'), mode('flowers'), mode('rocks')] },
+      { title: 'greenery', tools: [mode('tree'), mode('shrub'), mode('hedge'), mode('flowers'), mode('rocks')] },
       { title: 'furniture', tools: [mode('bench'), mode('planter'), mode('parking'), mode('ac'), mode('awning'), mode('clock')] },
       { title: 'roofGear', tools: [mode('solar'), mode('skylight'), mode('vent'), mode('chimney'), mode('waterTank'), mode('spire')] },
     ],
@@ -140,7 +140,7 @@ export const BUILDER_GALLERIES: Readonly<Record<string, readonly string[]>> = {
   openWindows: ['window', 'sashWindow', 'wideWindow', 'ribbon', 'bayWindow', 'frenchWindow'],
   openDoors: ['door', 'doubleDoor', 'garageDoor', 'loadingDoor'],
   runs: ['wallRun', 'fenceRun', 'pavementRun', 'railing', 'stairRun'],
-  greenery: ['tree', 'flowers', 'rocks'],
+  greenery: ['tree', 'shrub', 'hedge', 'flowers', 'rocks'],
   furniture: ['bench', 'planter', 'parking', 'ac', 'awning'],
   roofGear: ['solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire'],
   roofs: ['roofFlat', 'roofTerrace', 'roofGable', 'roofHip', 'roofShed', 'roofSawtooth'],

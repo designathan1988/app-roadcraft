@@ -58,6 +58,8 @@ export const ELEMENT_DEFAULTS: Readonly<Record<ElementKind, readonly [number, nu
   rocks: [m(1.6), m(1.6), m(0.7)],
   parking: [m(6), m(5), m(0.12)],
   clock: [m(3), m(0.25), m(3)],
+  hedge: [m(3), m(0.7), m(1.2)],
+  shrub: [m(1.4), m(1.4), m(1.2)],
 };
 
 /** Whether an element's foot stands on the ground (rather than on a floor, or hung on a wall). */
@@ -214,7 +216,8 @@ function elementsAgainstBayAxis(b: Building, v: Volume, bay: BayRef, kind: Eleme
       const c = at(line, dd / 2 + m(0.6));
       return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: floorZ, h: levelElevation(b, v.base + bay.storey + 1) - floorZ }];
     }
-    case 'wall': {
+    case 'wall':
+    case 'hedge': {
       // Parallel to the face, a module out, on the ground.
       const c = at(along, b.module);
       return [{ kind, x: snap(c.x), y: snap(c.y), facing, w: Math.max(dw, width), d: dd, z: 0, h: dh }];
@@ -236,7 +239,8 @@ function elementsAgainstBayAxis(b: Building, v: Volume, bay: BayRef, kind: Eleme
       const c = at(along, dd / 2);
       return [{ kind, x: c.x, y: c.y, facing, w: Math.max(width, dw), d: dd, z, h: dh }];
     }
-    case 'flowers': {
+    case 'flowers':
+    case 'shrub': {
       const c = at(along, m(1.2));
       return [{ kind, x: c.x, y: c.y, facing, w: dw, d: dd, z: 0, h: dh }];
     }

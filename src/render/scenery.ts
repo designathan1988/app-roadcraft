@@ -15,7 +15,7 @@ import {
   MeshStandardMaterial,
   Object3D,
   type BufferGeometry,
-  type Group,
+  Group,
   type Material,
   type MeshDepthMaterial,
 } from 'three';
@@ -635,33 +635,7 @@ export function buildScenery(
       if (grass.group.visible) grass.cull(frustum, view);
       if (culledFor && culledFor.equals(view)) return;
       culledFor = (culledFor ?? new Matrix4()).copy(view);
-      for (const mesh of meshes) {
-        const all = instances.get(mesh);
-        if (!all) continue;
-        const matrices = mesh.instanceMatrix.array as Float32Array;
-        const colours = all.colours && mesh.instanceColor ? mesh.instanceColor.array as Float32Array : null;
-        let n = 0;
-        const hidden = excluded.get(mesh);
-        for (let i = 0; i < all.count; i++) {
-          if (hidden && hidden[i]) continue;
-          const s = all.spheres;
-          probe.center.set(s[i * 4] as number, s[i * 4 + 1] as number, s[i * 4 + 2] as number);
-          probe.radius = (s[i * 4 + 3] as number) + SHADOW_REACH;
-          if (!frustum.intersectsSphere(probe)) continue;
-          matrices.set(all.matrices.subarray(i * 16, i * 16 + 16), n * 16);
-          if (colours && all.colours) colours.set(all.colours.subarray(i * 3, i * 3 + 3), n * 3);
-          n++;
-        }
-        mesh.count = n;
-        mesh.instanceMatrix.clearUpdateRanges();
-        if (n > 0) mesh.instanceMatrix.addUpdateRange(0, n * 16);
-        mesh.instanceMatrix.needsUpdate = true;
-        if (colours && mesh.instanceColor) {
-          mesh.instanceColor.clearUpdateRanges();
-          if (n > 0) mesh.instanceColor.addUpdateRange(0, n * 3);
-          mesh.instanceColor.needsUpdate = true;
-        }
-      }
+      cullInstances(meshes, excluded, frustum);
     },
     exclude(covered) {
       excluded.clear();
@@ -729,4 +703,149 @@ function lightPoolTexture(): CanvasTexture {
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   return texture;
+}
+
+/** A plant of a building's garden, in the world: a tree, a shrub, a run of hedge or a flower bed. */
+export interface GardenPlant {
+  readonly kind: 'tree' | 'shrub' | 'hedge' | 'flowers';
+  readonly x: number;
+  readonly y: number;
+  /** Ground height under it. */
+  readonly z: number;
+  /** Size, world units: along (w), across (d) and height (h); `yaw` the way `w` runs. */
+  readonly w: number;
+  readonly d: number;
+  readonly h: number;
+  readonly yaw: number;
+  readonly seed: number;
+}
+
+/** A garden tree's species: mostly broadleaf, some conifers, now and then a flowering ipê. */
+function gardenSpecies(roll: number): TreeSpecies {
+  if (roll < 0.42) return 'broadleaf';
+  if (roll < 0.62) return 'broadleafTall';
+  if (roll < 0.8) return 'conifer';
+  return roll < 0.9 ? 'ipeYellow' : 'ipePink';
+}
+
+/**
+ * The trees, shrubs, hedges and flowers of the buildings' gardens, drawn with
+ * the scenery's own plants (instanced, swaying, culled to the view) - not as
+ * boxes and cones in the building's mesh.
+ */
+export function buildGardens(list: readonly GardenPlant[], kit: SceneryKit): Scenery {
+  const trees = new Map<TreeSpecies, Placement[]>(TREE_SPECIES.map((s) => [s, []]));
+  const bushes = new Map<BushKind, Placement[]>(BUSH_KINDS.map((k) => [k, []]));
+  for (const p of list) {
+    const rng = new Rng(Math.floor(p.seed * 0xffffff) ^ 0x5eed);
+    switch (p.kind) {
+      case 'tree': {
+        const spread = 0.82 + rng.float() * 0.3;
+        (trees.get(gardenSpecies(rng.float())) as Placement[]).push({
+          x: p.x, y: p.y, z: p.z - m(0.05), yaw: rng.float() * Math.PI * 2,
+          sx: p.h * spread, sy: p.h, sz: p.h * spread * (0.9 + rng.float() * 0.2), tint: foliageTint(rng),
+        });
+        break;
+      }
+      case 'shrub': {
+        // The geometry is about 1.5 across for 1 tall.
+        (bushes.get(rng.float() < 0.25 ? 'bushFlowering' : 'bush') as Placement[]).push({
+          x: p.x, y: p.y, z: p.z - m(0.05), yaw: rng.float() * Math.PI * 2,
+          sx: p.w / 1.5, sy: p.h, sz: p.d / 1.5, tint: foliageTint(rng),
+        });
+        break;
+      }
+      case 'hedge': {
+        // Clipped pieces along its run, overlapping so it reads as one.
+        const n = Math.max(1, Math.round(p.w / Math.max(m(1.2), p.h * 0.9)));
+        const step = p.w / n;
+        const cx = Math.cos(p.yaw), cy = Math.sin(p.yaw);
+        const tint = foliageTint(rng);
+        for (let i = 0; i < n; i++) {
+          const t = (i + 0.5) * step - p.w / 2;
+          (bushes.get('hedge') as Placement[]).push({
+            x: p.x + cx * t, y: p.y + cy * t, z: p.z - m(0.05), yaw: p.yaw,
+            sx: (step / 1.9) * 1.25, sy: p.h, sz: p.d / 0.9, tint,
+          });
+        }
+        break;
+      }
+      case 'flowers': {
+        // A bed of low flowering clumps.
+        const n = Math.max(2, Math.round((p.w * p.d) / (m(0.7) * m(0.7))));
+        const cx = Math.cos(p.yaw), cy = Math.sin(p.yaw);
+        for (let i = 0; i < Math.min(n, 24); i++) {
+          const u = (rng.float() - 0.5) * p.w * 0.85, v = (rng.float() - 0.5) * p.d * 0.85;
+          const h = m(0.35) + rng.float() * m(0.25);
+          (bushes.get('bushFlowering') as Placement[]).push({
+            x: p.x + cx * u - cy * v, y: p.y + cy * u + cx * v, z: p.z + m(0.12), yaw: rng.float() * Math.PI * 2,
+            sx: h * 1.1, sy: h, sz: h * 1.1,
+          });
+        }
+        break;
+      }
+    }
+  }
+  const meshes: InstancedMesh[] = [];
+  const plants: [InstancedMesh, BufferGeometry, BufferGeometry][] = [];
+  for (const species of TREE_SPECIES) {
+    const mesh = build(`garden-trees-${species}`, kit.treesFar[species], kit.foliage, trees.get(species) ?? [], kit.foliageDepth, kit.trees[species]);
+    if (mesh) { meshes.push(mesh); plants.push([mesh, kit.trees[species], kit.treesFar[species]]); }
+  }
+  for (const kind of BUSH_KINDS) {
+    const mesh = build(`garden-${kind}`, kit.bushesFar[kind], kit.shrubs, bushes.get(kind) ?? [], kit.shrubsDepth, kit.bushes[kind]);
+    if (mesh) { meshes.push(mesh); plants.push([mesh, kit.bushes[kind], kit.bushesFar[kind]]); }
+  }
+  let triangles = 0;
+  for (const mesh of meshes) triangles += trianglesOf(mesh.geometry) * mesh.count;
+  let culledFor: Matrix4 | null = null;
+  const grass = new Group();
+  return {
+    meshes,
+    grass,
+    triangles,
+    setNear(near) {
+      for (const [mesh, close, far] of plants) mesh.geometry = near ? close : far;
+    },
+    cull(frustum, view) {
+      if (culledFor && culledFor.equals(view)) return;
+      culledFor = (culledFor ?? new Matrix4()).copy(view);
+      cullInstances(meshes, null, frustum);
+    },
+    exclude() { /* a garden's plants are the building's own */ },
+    dispose() {
+      for (const mesh of meshes) mesh.dispose();
+    },
+  };
+}
+
+/** Copies the instances of each mesh the frustum can see (or see the shadow of) to the front, skipping `excluded`. */
+function cullInstances(meshes: readonly InstancedMesh[], excluded: Map<InstancedMesh, Uint8Array> | null, frustum: Frustum): void {
+  for (const mesh of meshes) {
+    const all = instances.get(mesh);
+    if (!all) continue;
+    const matrices = mesh.instanceMatrix.array as Float32Array;
+    const colours = all.colours && mesh.instanceColor ? mesh.instanceColor.array as Float32Array : null;
+    let n = 0;
+    const hidden = excluded?.get(mesh);
+    for (let i = 0; i < all.count; i++) {
+      if (hidden && hidden[i]) continue;
+      const s = all.spheres;
+      probe.center.set(s[i * 4] as number, s[i * 4 + 1] as number, s[i * 4 + 2] as number);
+      probe.radius = (s[i * 4 + 3] as number) + SHADOW_REACH;
+      if (!frustum.intersectsSphere(probe)) continue;
+      matrices.set(all.matrices.subarray(i * 16, i * 16 + 16), n * 16);
+      if (colours && all.colours) colours.set(all.colours.subarray(i * 3, i * 3 + 3), n * 3);
+      n++;
+    }
+    mesh.count = n;
+    mesh.instanceMatrix.clearUpdateRanges();
+    if (n > 0) mesh.instanceMatrix.addUpdateRange(0, n * 16);
+    mesh.instanceMatrix.needsUpdate = true;
+    if (colours && mesh.instanceColor) {
+      mesh.instanceColor.clearUpdateRanges();
+      if (n > 0) mesh.instanceColor.addUpdateRange(0, n * 3);
+      mesh.instanceColor.needsUpdate = true;
+    }
+  }
 }

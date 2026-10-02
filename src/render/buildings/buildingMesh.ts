@@ -2,6 +2,7 @@ import earcut from 'earcut';
 import clipping from 'polygon-clipping';
 import { resolveBlocks } from '@world/buildings/blocks';
 import { lotSurfaces } from '@world/buildings/lots';
+import { POOL_SINK } from '@world/buildings/pads';
 import { deriveSpaces } from '@world/buildings/spaces';
 import { slotFor } from './lightSlots';
 import { worldToLocal } from '@world/buildings/geometry';
@@ -1127,6 +1128,7 @@ const LOT_PAINT: Readonly<Record<LotSurface, Paint>> = {
   water: paint({ finish: 'glass', colour: 0x4f8fb3 }),
 };
 const LOT_KERB = paint({ finish: 'stone', colour: 0xb3ada0 });
+const POOL_TILE = paint({ finish: 'ceramic', colour: 0x9fd0dc });
 
 /**
  * The open blocks of a building, laid on the ground: a plate of grass,
@@ -1164,8 +1166,11 @@ function emitLots(b: Building, lots: readonly Volume[], withParts: boolean, grou
   }
   for (const v of lots) {
     const height = heightOf.get(v) ?? (() => level);
+    // A lawn is the terrain itself, graded to the lot (`pads.ts`), and drawn
+    // with the terrain's grass: no plate, no kerb.
+    if ((v.open ?? 'grass') === 'grass') continue;
     const look = LOT_PAINT[v.open ?? 'grass'] ?? LOT_KERB;
-    const sink = v.open === 'water' ? m(0.25) : 0;
+    const sink = v.open === 'water' ? POOL_SINK : 0;
     if (v.outline) {
       // A shaped lot is laid level, at the height of its middle.
       const z = height(v.x + v.w / 2, v.y + v.d / 2) - sink;
@@ -1204,7 +1209,12 @@ function emitLots(b: Building, lots: readonly Volume[], withParts: boolean, grou
         const bx = p.x + ((q.x - p.x) * (k + 1)) / steps, by = p.y + ((q.y - p.y) * (k + 1)) / steps;
         const za = height(ax, ay), zb = height(bx, by);
         const foot = Math.min(Math.min(za, zb) - m(0.3), Math.min(at(ax, ay), at(bx, by)) - m(0.15));
-        shell.face([e.L(ax, ay, foot), e.L(bx, by, foot), e.L(bx, by, zb), e.L(ax, ay, za)], e.N(nx, ny), LOT_KERB);
+        if (sink > 0) {
+          // A pool's or a pond's side, tiled, from the water up to the rim.
+          shell.face([e.L(ax, ay, za), e.L(bx, by, zb), e.L(bx, by, zb - sink), e.L(ax, ay, za - sink)], e.N(-nx, -ny), POOL_TILE);
+        } else {
+          shell.face([e.L(ax, ay, foot), e.L(bx, by, foot), e.L(bx, by, zb), e.L(ax, ay, za)], e.N(nx, ny), LOT_KERB);
+        }
       }
     }
   }
@@ -1346,10 +1356,9 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
     e.shell.face([[headPts[0][0], headPts[0][1], zb], [headPts[1][0], headPts[1][1], zb], headPts[1], headPts[0]], e.N(-nf.x, -nf.y), c);
     return;
   }
-  if (el.kind === 'tree') {
-    emitTree(e, el, z0, bottom);
-    return;
-  }
+  // Trees, shrubs and hedges are the scenery's plants (`scenery.ts`,
+  // `buildGardens`): swaying, instanced, the same as every other tree.
+  if (el.kind === 'tree' || el.kind === 'shrub' || el.kind === 'hedge') return;
   if (el.kind === 'railing') {
     emitFence(e, el, z0, z1, c, true);
     return;
@@ -1625,37 +1634,6 @@ function sub2(
   return [Math.min(a, b), y0, Math.max(a, b), y1];
 }
 
-/** A tree: a trunk, a tapered crown, and a shadow-quiet collar at its foot. */
-function emitTree(e: Emitter, el: BuildingElement, z0: number, bottom: number): void {
-  const trunk = m(0.22);
-  const cx = el.x;
-  const cy = el.y;
-  const crown = leafPaint(el);
-  e.box(cx - trunk / 2, cy - trunk / 2, cx + trunk / 2, cy + trunk / 2, bottom, z0 + el.h * 0.45, TRUNK);
-  // The crown: an eight-sided cone from the trunk up to the tip, in two tiers.
-  const r = Math.min(el.w, el.d) / 2;
-  const tiers: readonly [number, number, number][] = [
-    [z0 + el.h * 0.32, r, z0 + el.h * 0.62],
-    [z0 + el.h * 0.55, r * 0.78, z0 + el.h],
-  ];
-  const sides = 8;
-  for (const [base, radius, top] of tiers) {
-    const ring = (radiusAt: number, z: number): V3[] =>
-      Array.from({ length: sides }, (_, i) => {
-        const a = (i / sides) * Math.PI * 2;
-        return e.L(cx + Math.cos(a) * radiusAt, cy + Math.sin(a) * radiusAt, z);
-      });
-    const low = ring(radius, base);
-    const high = ring(radius * 0.45, top);
-    for (let i = 0; i < sides; i++) {
-      const j = (i + 1) % sides;
-      const a = (i + 0.5) / sides * Math.PI * 2;
-      e.shell.face([low[i] as V3, low[j] as V3, high[j] as V3, high[i] as V3], e.N(Math.cos(a), Math.sin(a), 0.35), crown);
-    }
-    e.shell.face([high[0] as V3, high[1] as V3, high[2] as V3, high[3] as V3], e.N(0, 0, 1), crown);
-  }
-}
-
 /**
  * A flight laid along a traced path: the steps live in the element's own
  * turned frame, so a run that wraps a corner follows the line it was drawn on.
@@ -1756,20 +1734,14 @@ function emitFence(e: Emitter, el: BuildingElement, z0: number, z1: number, c: P
     e.box(p.x - t, p.y - t, p.x + t, p.y + t, z0, z1 + m(0.05), c);
   }
 }
+const FLOWER_KERB: Paint = paint({ finish: 'stone', colour: 0xa9a196 });
 
 /** A flower bed: soil in a stone kerb, with a handful of coloured blooms. */
 function emitFlowers(e: Emitter, el: BuildingElement, z0: number, bottom: number): void {
   const kerb = m(0.12);
   e.box(el.x - el.w / 2, el.y - el.d / 2, el.x + el.w / 2, el.y + el.d / 2, bottom, z0 + m(0.16), FLOWER_KERB);
   e.box(el.x - el.w / 2 + kerb, el.y - el.d / 2 + kerb, el.x + el.w / 2 - kerb, el.y + el.d / 2 - kerb, z0 + m(0.1), z0 + m(0.2), PLANTER_SOIL);
-  const blooms = 9;
-  for (let k = 0; k < blooms; k++) {
-    const h = Math.abs(Math.round(Math.sin(el.id * 12.9898 + k * 78.233) * 43758.5453));
-    const fx = el.x + ((h % 100) / 100 - 0.5) * (el.w - m(0.3));
-    const fy = el.y + (((h >> 3) % 100) / 100 - 0.5) * (el.d - m(0.3));
-    const s = m(0.1) + ((h >> 7) % 7) * m(0.012);
-    e.box(fx - s, fy - s, fx + s, fy + s, z0 + m(0.18), z0 + m(0.18) + s * 2.2, el.material ? paint(el.material) : FLOWER_PETALS[k % FLOWER_PETALS.length] as Paint);
-  }
+  // The flowers themselves are the scenery's (`buildGardens`).
 }
 
 /** Boulders: two or three low prisms, each turned a little. */
@@ -1819,28 +1791,12 @@ function emitParking(e: Emitter, el: BuildingElement, z0: number, surface?: (lx:
     else quad(ax, el.y + u - line / 2, ax + el.w * 0.72, el.y + u + line / 2, m(0.05), PARKING_LINE);
   }
 }
-
-const FLOWER_KERB: Paint = paint({ finish: 'stone', colour: 0xa9a196 });
-const FLOWER_PETALS: readonly Paint[] = [
-  paint({ finish: 'plaster', colour: 0xd9557a }),
-  paint({ finish: 'plaster', colour: 0xe8c752 }),
-  paint({ finish: 'plaster', colour: 0xd9d3e8 }),
-  paint({ finish: 'plaster', colour: 0xc2472f }),
-];
 const PARKING_ASPHALT: Paint = paint({ finish: 'concrete', colour: 0x4a4d4f });
 const PARKING_LINE: Paint = paint({ finish: 'plaster', colour: 0xe9e6dc });
 
 /** The canvas colour of an awning, from the building's own palette. */
 function shadeOf(el: BuildingElement): Paint {
   return el.material ? paint(el.material) : paint({ finish: 'plaster', colour: 0xc85a4a });
-}
-
-/** The leaves: a tree keeps one tone per tree, from its own position. */
-function leafPaint(el: BuildingElement): Paint {
-  if (el.material) return paint(el.material);
-  const greens = [0x4d6b3a, 0x577a41, 0x43603a, 0x5f7f4a];
-  const pick = greens[Math.abs(Math.round(el.id * 2654435761)) % greens.length] as number;
-  return paint({ finish: 'wood', colour: pick });
 }
 
 /** A slim square post of the handrail, from a tread up to the rail. */

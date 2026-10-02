@@ -102,7 +102,11 @@ export interface Foundation {
 export function sampleFootprint(b: Building, groundAt: GroundAt): { lowest: number; highest: number } {
   let lowest = Infinity;
   let highest = -Infinity;
-  for (const v of groundVolumes(b)) {
+  // The building's own walls decide; its lots (lawns graded to their own
+  // surface, `pads.ts`) only when it has nothing else.
+  const all = groundVolumes(b);
+  const solid = all.filter((v) => !v.open);
+  for (const v of solid.length ? solid : all) {
     for (const vertex of localFootprint(v)) {
       const p = localToWorld(b, vertex.x, vertex.y);
       const h = groundAt(p.x, p.y);

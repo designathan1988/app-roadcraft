@@ -260,6 +260,8 @@ export const ELEMENT_KINDS = [
   'rocks',
   'parking',
   'clock',
+  'hedge',
+  'shrub',
 ] as const;
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 
