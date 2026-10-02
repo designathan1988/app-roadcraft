@@ -46,6 +46,8 @@ const fixture = JSON.parse(fs.readFileSync(`tests/fixtures/${MAP}.json`, 'utf8')
 const result = await page.evaluate(async ({ doc, seconds }) => {
   const R = window.__roadcraft;
   const { step } = await import('/src/sim/pipeline.ts');
+  const { VehicleMotionMetrics } = await import('/src/sim/drive/motionMetrics.ts');
+  const vehicles = new VehicleMotionMetrics();
   R.loadDoc(doc);
   R.setTraffic(true);
   R.sim.clock.paused = true;
@@ -59,6 +61,7 @@ const result = await page.evaluate(async ({ doc, seconds }) => {
   let longest = 0;
   for (let t = 0; t < Math.round(seconds / DT); t++) {
     step(R.sim, { traffic: true, pedestrians: true });
+    vehicles.sample(R.sim, DT);
     for (const p of R.sim.pedViews) {
       let s = per.get(p.id);
       if (!s) { s = { steps: [], spell: 0, turnSign: 0, turnT: -99, back: 0, milling: 0 }; per.set(p.id, s); }
@@ -92,6 +95,7 @@ const result = await page.evaluate(async ({ doc, seconds }) => {
   }
   const minutes = ev.samples * DT / 60;
   return {
+    vehicleMotion: vehicles.result(),
     people: R.sim.pedViews.length,
     personMinutes: +minutes.toFixed(1),
     backShare: ev.back / Math.max(1, ev.moving),

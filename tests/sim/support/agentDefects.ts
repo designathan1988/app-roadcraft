@@ -5,6 +5,7 @@ import { Network } from '@world/network';
 import { m } from '@world/units';
 import { step } from '@sim/pipeline';
 import { DT } from '@sim/params';
+import { VehicleMotionMetrics } from '@sim/drive/motionMetrics';
 import { SimWorld } from '@sim/world';
 import { createPeopleEngine, inspectPeople } from '@sim/people/people';
 import { createCrowdEngine } from '@sim/people/crowd';
@@ -60,6 +61,7 @@ export interface AgentDefects {
   backShare: number;
   /** The busiest cells for back steps and milling: "x,y" (cell centre, u) and count. */
   hotspots: [string, number][];
+  vehicleMotion: ReturnType<VehicleMotionMetrics['result']>;
 }
 
 /** Window, walked distance and headway share that make a spell of milling. */
@@ -138,6 +140,7 @@ export const CITIES: readonly City[] = [
 
 export function measureDefects(city: City, seconds: number): AgentDefects {
   const sim = city.build();
+  const vehicleMotion = new VehicleMotionMetrics();
   const U = m(1);
   const last = new Map<number, { x: number; y: number; lat: number; flips: number[] }>();
   const turns = new Map<number, { t: number; d: number }[]>();
@@ -148,7 +151,7 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
   const r: AgentDefects = {
     name: city.name, people: 0, vehicles: 0, zebraStand: 0, pavementStand: 0, fidgets: 0,
     back: 0, side: 0, jump: 0, flip: 0, closest: Infinity, junction: 0, still: 0, urgent: 0, ghost: 0, overlaps: 0,
-    milling: 0, millingSpell: 0, backShare: 0, hotspots: [],
+    milling: 0, millingSpell: 0, backShare: 0, hotspots: [], vehicleMotion: vehicleMotion.result(),
   };
   let fidget = 0, personSeconds = 0, movingSeconds = 0, millSeconds = 0;
   const hot = new Map<string, number>();
@@ -161,6 +164,7 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
   const ticks = Math.round(seconds / DT);
   for (let i = 0; i < ticks; i++) {
     step(sim, { traffic: true, pedestrians: true });
+    vehicleMotion.sample(sim, DT);
     const t = i * DT;
     const views = sim.pedViews;
     const alive = new Set(views.map((v) => v.id));
@@ -253,6 +257,7 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
     for (const id of [...onZebra.keys()]) if (!seen.has(id)) onZebra.delete(id);
   }
   r.people = sim.pedViews.length;
+  r.vehicleMotion = vehicleMotion.result();
   r.vehicles = sim.vehicles.size;
   r.fidgets = fidget / Math.max(1, personSeconds) * 60;
   // Per person-minute: a busier city has more of everything.
@@ -269,5 +274,5 @@ export function measureDefects(city: City, seconds: number): AgentDefects {
 
 export function formatDefects(r: AgentDefects): string {
   const f = (x: number, d = 1) => x.toFixed(d);
-  return `${r.name.padEnd(18)} people ${String(r.people).padStart(3)} cars ${String(r.vehicles).padStart(3)} | zebra ${f(r.zebraStand)}s pavement ${f(r.pavementStand)}s fidget ${f(r.fidgets, 2)}/min | back ${r.back} side ${f(r.side, 3)}/min jump ${r.jump} flip ${f(r.flip, 3)}/min closest ${f(r.closest, 2)}m overlap ${f(r.overlaps, 3)}/min | backShare ${f(r.backShare * 100, 2)}% mill ${f(r.milling * 100, 2)}% spell ${f(r.millingSpell)}s hot ${r.hotspots.map(([k, n]) => `${k}:${n}`).join(' ')} | junction ${f(r.junction, 0)}s still ${f(r.still, 0)}s | nets urgent ${f(r.urgent * 100, 2)}% ghost ${f(r.ghost * 100, 2)}%`;
+  return JSON.stringify(r.vehicleMotion) + ' ' + `${r.name.padEnd(18)} people ${String(r.people).padStart(3)} cars ${String(r.vehicles).padStart(3)} | zebra ${f(r.zebraStand)}s pavement ${f(r.pavementStand)}s fidget ${f(r.fidgets, 2)}/min | back ${r.back} side ${f(r.side, 3)}/min jump ${r.jump} flip ${f(r.flip, 3)}/min closest ${f(r.closest, 2)}m overlap ${f(r.overlaps, 3)}/min | backShare ${f(r.backShare * 100, 2)}% mill ${f(r.milling * 100, 2)}% spell ${f(r.millingSpell)}s hot ${r.hotspots.map(([k, n]) => `${k}:${n}`).join(' ')} | junction ${f(r.junction, 0)}s still ${f(r.still, 0)}s | nets urgent ${f(r.urgent * 100, 2)}% ghost ${f(r.ghost * 100, 2)}%`;
 }
