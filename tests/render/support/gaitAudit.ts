@@ -173,7 +173,13 @@ export function auditGait<S>(controller: GaitController<S>, seconds: number, see
         const vx = (pose.p.x - before.x) / m(1) / DT, vy = (pose.p.y - before.y) / m(1) / DT;
         const forward = Math.cos(heading) * vx + Math.sin(heading) * vy;
         const left = -Math.sin(heading) * vx + Math.cos(heading) * vy;
-        skateSum += Math.hypot(forward - carriedForward, left - carriedLeft) * DT;
+        const skate = Math.hypot(forward - carriedForward, left - carriedLeft);
+        skateSum += skate * DT;
+        if (breakdown) {
+          const top = out.reduce((a, b) => (b.weight > a.weight ? b : a), out[0]!);
+          const key = `S:${top.name}|${speed < 0.5 ? 'slow' : speed < 1 ? 'mid' : 'fast'}`;
+          breakdown.set(key, (breakdown.get(key) ?? 0) + skate * DT);
+        }
         movedSum += speed * DT;
       }
       if (walkWeight > 0.5) {
