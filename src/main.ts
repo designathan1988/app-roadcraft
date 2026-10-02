@@ -420,7 +420,19 @@ canvas3d.id = 'game-scene';
 canvas3d.setAttribute('aria-hidden', 'true');
 canvas3d.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;';
 canvas.parentElement?.insertBefore(canvas3d, canvas);
-const scene: SceneHandle = createSceneRenderer(canvas3d, { x: camera.x, y: camera.y }, camera.zoom, 'auto', requestDraw);
+/** The quality the player last chose, or High: a level, never "automatic". */
+function savedQualityLevel(): QualityLevel {
+  try {
+    const saved = window.localStorage.getItem('roadcraft.quality');
+    return isQualityLevel(saved) ? saved : 'high';
+  } catch {
+    return 'high';
+  }
+}
+
+// The graphics are what the player chose (High until they choose): the game
+// never lowers them on its own.
+const scene: SceneHandle = createSceneRenderer(canvas3d, { x: camera.x, y: camera.y }, camera.zoom, savedQualityLevel(), requestDraw);
 view = scene.viewport;
 restoreOrbit(savedSession?.settings.camera);
 canvas.style.opacity = '0';
@@ -3487,14 +3499,11 @@ const savedQuality = (() => {
     return null;
   }
 })();
-if (savedQuality === 'auto' || isQualityLevel(savedQuality)) {
-  qualitySelect.value = savedQuality;
-  if (savedQuality !== 'auto') scene.setQuality(savedQuality as QualityLevel);
-}
+qualitySelect.value = isQualityLevel(savedQuality) ? savedQuality : 'high';
 qualitySelect.onchange = () => {
   const value = qualitySelect.value;
-  if (value !== 'auto' && !isQualityLevel(value)) return;
-  scene.setQuality(value === 'auto' ? 'auto' : (value as QualityLevel));
+  if (!isQualityLevel(value)) return;
+  scene.setQuality(value);
   try {
     window.localStorage.setItem(QUALITY_STORAGE_KEY, value);
   } catch {

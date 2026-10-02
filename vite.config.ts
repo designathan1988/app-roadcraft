@@ -27,6 +27,9 @@ export default defineConfig({
     // already taken by another project's dev server. Falls back for `npm run dev`.
     port: Number(process.env['PORT'] ?? 5173),
     strictPort: false,
+    // Lets the page sample its own JavaScript (`new Profiler`), to find what
+    // a frame spends its time on in the running game.
+    headers: { 'Document-Policy': 'js-profiling' },
     // Test and coverage artefacts live under the project root. They must not
     // trigger a full application reload while a browser smoke test is running.
     watch: {

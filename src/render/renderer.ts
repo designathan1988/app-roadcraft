@@ -37,6 +37,7 @@ import { createInspector, type Inspector } from './inspector';
 import { buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
 import { PLANT_NEAR_ZOOM, buildGardens, buildScenery, createSceneryKit, type GardenPlant, type Scenery, type SceneryKit } from './scenery';
 import { localToWorld } from '@world/buildings/geometry';
+import { drainUploads } from './uploads';
 import type { Building } from '@world/buildings/types';
 import { GRASS_MIN_ZOOM } from './grass';
 import { advanceWind } from './wind';
@@ -590,7 +591,6 @@ export function createSceneRenderer(
     },
     resize,
     draw(net, sim, alpha, delta, options) {
-      const frameStarted = performance.now();
       if (canvas.clientWidth !== lastWidth || canvas.clientHeight !== lastHeight) {
         lastWidth = canvas.clientWidth;
         lastHeight = canvas.clientHeight;
@@ -706,15 +706,10 @@ export function createSceneRenderer(
       // asset load adds, and instance colours created on first use.
       if (renderer.shadowMap.enabled) assignShadowDepth(scene);
       post.render(delta);
+      // One waiting texture a frame to the GPU, before anybody draws it.
+      drainUploads(renderer, 1);
 
       if (delta > 0) fps = fps * 0.9 + (1 / Math.min(1, delta)) * 0.1;
-      if (requested === 'auto') {
-        const next = governor.sample(delta, performance.now() - frameStarted);
-        if (next) {
-          governor.set(next);
-          applyQuality(next);
-        }
-      }
     },
     setQuality(level) {
       requested = level;

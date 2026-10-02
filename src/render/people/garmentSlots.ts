@@ -2,7 +2,7 @@ import type { PersonLook } from '@people/spec';
 import { communityItem } from '@people/wardrobe';
 
 /** Most garments drawn with their own texture on one person (each is one sampler in the crowd shader). */
-const MAX_TEXTURED = 8;
+export const MAX_TEXTURED = 5;
 
 /** Items whose own texture is drawn: dyed items (hair, brows, beards) take the look's colour instead. */
 const UNTEXTURED = new Set(['hair', 'eyebrows', 'eyelashes', 'beard']);

@@ -1,4 +1,5 @@
 import { MeshoptSimplifier } from 'meshoptimizer';
+import { type LodLevel, type LodRequest, simplifyLevels } from './lodWorker';
 import {
   Bone,
   BufferAttribute,
@@ -691,27 +692,19 @@ function setLevels(geometry: BufferGeometry, positions: readonly number[], colou
   const pos = Float32Array.from(positions);
   const col = Float32Array.from(colours);
   const all = Uint32Array.from(index);
-  const ranges = groups && groups.length ? groups : [{ start: 0, count: all.length }];
-  const levels: BufferAttribute[] = [];
-  const levelGroups: { start: number; count: number; materialIndex: number }[][] = [];
-  for (const [ratio, error] of LOD_LEVELS) {
-    const out: number[] = [];
-    const made: { start: number; count: number; materialIndex: number }[] = [];
-    ranges.forEach((range, materialIndex) => {
-      const start = out.length;
-      if (range.count >= 3) {
-        const part = all.subarray(range.start, range.start + range.count);
-        const target = Math.max(3, Math.floor((range.count * ratio) / 3) * 3);
-        const [kept] = MeshoptSimplifier.simplifyWithAttributes(part.slice(), pos, 3, col, 3, [0.6, 0.6, 0.6], null, target, error, ['LockBorder']);
-        for (let i = 0; i < kept.length; i++) out.push(kept[i]!);
-      }
-      made.push({ start, count: out.length - start, materialIndex });
-    });
-    levels.push(new BufferAttribute(Uint32Array.from(out), 1));
-    levelGroups.push(made);
+  const ranges = groups && groups.length ? groups.map((g) => ({ start: g.start, count: g.count })) : [{ start: 0, count: all.length }];
+  const store = (levels: LodLevel[]): void => {
+    geometry.userData['lodIndices'] = levels.map((l) => new BufferAttribute(l.index, 1));
+    if (groups && groups.length) geometry.userData['lodGroups'] = levels.map((l) => l.groups);
+  };
+  // In the browser the work is done by a worker, and the body is shown when
+  // its levels are ready (\`lodReady\`); elsewhere (tests) it is done here.
+  const worker = lodWorker();
+  if (worker) {
+    geometry.userData['lodReady'] = worker.run({ positions: pos, colours: col, index: all, ranges, levels: LOD_LEVELS }).then(store);
+    return;
   }
-  geometry.userData['lodIndices'] = levels;
-  if (groups && groups.length) geometry.userData['lodGroups'] = levelGroups;
+  store(simplifyLevels({ positions: pos, colours: col, index: all, ranges, levels: LOD_LEVELS }));
 }
 
 /**
@@ -801,4 +794,28 @@ function insetUvs(uvs: ArrayLike<number>, index: ArrayLike<number>, n: number, r
     out[v * 2 + 1] = out[v * 2 + 1]! + (dv / len) * reach;
   }
   return out;
+}
+
+/** The simplifier worker, started once; null where there are no workers (tests). */
+let lodPool: { run(req: Omit<LodRequest, 'id'>): Promise<LodLevel[]> } | null | undefined;
+function lodWorker(): typeof lodPool {
+  if (lodPool !== undefined) return lodPool;
+  if (typeof Worker === 'undefined' || typeof window === 'undefined') return (lodPool = null);
+  const worker = new Worker(new URL('./lodWorker.ts', import.meta.url), { type: 'module' });
+  const waiting = new Map<number, (levels: LodLevel[]) => void>();
+  let next = 1;
+  worker.onmessage = (e: MessageEvent<{ id: number; levels: LodLevel[] }>) => {
+    waiting.get(e.data.id)?.(e.data.levels);
+    waiting.delete(e.data.id);
+  };
+  lodPool = {
+    run(req) {
+      const id = next++;
+      return new Promise((resolve) => {
+        waiting.set(id, resolve);
+        worker.postMessage({ id, ...req });
+      });
+    },
+  };
+  return lodPool;
 }

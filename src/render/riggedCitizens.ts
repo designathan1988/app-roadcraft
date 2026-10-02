@@ -293,9 +293,23 @@ let sliceStart = 0;
  * seconds while the crowd's bodies loaded.
  */
 async function breathe(): Promise<void> {
-  if (performance.now() - sliceStart < SLICE_MS) return;
-  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  // In the browser's idle time only: what is left of a frame once it is
+  // drawn. Resumed by a zero timeout, several slices ran back to back between
+  // two frames and took the time the frame needed.
+  if (idleUntil > 0 ? performance.now() < idleUntil - 1 : performance.now() - sliceStart < SLICE_MS) return;
+  await idleSlice();
   sliceStart = performance.now();
+}
+
+/** When the current idle period ends (0: none known). */
+let idleUntil = 0;
+/** Waits for an idle period of the browser and notes how long it lasts. */
+function idleSlice(timeout = 1000): Promise<void> {
+  if (typeof requestIdleCallback !== 'function') return new Promise<void>(resolve => setTimeout(resolve, 0));
+  return new Promise<void>(resolve => requestIdleCallback((deadline) => {
+    idleUntil = performance.now() + Math.min(SLICE_MS, deadline.timeRemaining());
+    resolve();
+  }, { timeout }));
 }
 
 /** One copy of a body to bake on, and the way back to its rest pose. */
@@ -558,7 +572,11 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),
     };
     await personSimplifier;
+    // A body is built in one go: when the browser has time for it.
+    await idleSlice(2000);
+    const built = performance.now();
     const rig = createPersonRig(input);
+    performance.measure('person-rig', { start: built, end: performance.now() });
     // Live faces: blinking, gaze, mood, speech (measured free in the player
     // city: frame median 17 ms with and without). ?expressions=off for comparison.
     if (new URLSearchParams(location.search).get('expressions') !== 'off') {
@@ -617,6 +635,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         if (CROWD[index]?.look) markChildShirt(o);
         const variants = [o.geometry];
         // A built person carries its levels ready-made (`personRig.ts`).
+        // The coarser levels come from a worker (`personRig.ts`): waited for here, off the frame.
+        await (o.geometry.userData['lodReady'] as Promise<void> | undefined);
         const ready: unknown = o.geometry.userData['lodIndices'];
         const readyGroups = o.geometry.userData['lodGroups'] as { start: number; count: number; materialIndex: number }[][] | undefined;
         if (Array.isArray(ready)) for (const [level, indices] of (ready as BufferAttribute[]).entries()) {
@@ -702,6 +722,23 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     loading.set(index, work);
     return work;
   }
+
+  /**
+   * Every body made ready in the background, one at a time, in the browser's
+   * idle time, from shortly after the game opens. Made only when somebody
+   * first needed it, each new kind of person cost the frame it appeared in
+   * its building and its textures' upload - the stutter while walking the
+   * camera through a town.
+   */
+  const prewarm = async (): Promise<void> => {
+    const idle = (): Promise<void> => new Promise((resolve) => requestIdleCallback(() => resolve(), { timeout: 400 }));
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    for (let index = 0; index < models.length && !disposed; index++) {
+      if (!loading.has(index)) await request(index).catch(() => {});
+      await idle();
+    }
+  };
+  if (typeof requestIdleCallback === 'function') void prewarm();
 
   /**
    * Who is drawn as whom (`citizenCasting.ts`): the ONE casting function, for
