@@ -18,6 +18,7 @@ import type { PersonLook } from '@people/spec';
 import { PART_ORDER, facesFor, hemPlanes, tailor, toMetres, type Part, type PersonMeshData } from './personMesh';
 import { fitProxy, proxySkin, sampleTexture, type ProxyItem } from '@people/body/proxy';
 import { wornItems } from '@people/spec';
+import { garmentSlotOf } from './garmentSlots';
 
 /**
  * A MakeHuman person rigged for the crowd (Person track, H2): a SkinnedMesh
@@ -554,7 +555,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
       out.positions.push(w.positions[v * 3]!, w.positions[v * 3 + 1]!, w.positions[v * 3 + 2]!);
       uvs.push(pack.uvs?.[v * 2] ?? 0, pack.uvs?.[v * 2 + 1] ?? 0);
       hairMask.push(kind === 'hair' ? 1 : 0);
-      garmentSlot.push(w.name === look.outfit ? 1 : w.name === look.footwear ? 2 : w.name === look.hat ? 3 : 0);
+      garmentSlot.push(garmentSlotOf(look, w.name, kind));
       // Texture pixels are sRGB; vertex colours are drawn as linear (as
       // `Color` converts the look's colours). Taken raw, every garment came
       // out pale and washed out.
@@ -563,7 +564,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
       alpha[v] = t[3];
       const lum = 0.3 * t[0] + 0.59 * t[1] + 0.11 * t[2];
       let rgb: [number, number, number];
-      if (kind === 'hair' || kind === 'eyebrows') {
+      if (kind === 'hair' || kind === 'eyebrows' || kind === 'beard') {
         // Grey strands, dyed: the texture's light and shade over the look's colour.
         const k = (kind === 'eyebrows' ? 0.7 : 1) * (0.45 + 1.1 * lum);
         rgb = [Math.min(1, hair.r * k), Math.min(1, hair.g * k), Math.min(1, hair.b * k)];

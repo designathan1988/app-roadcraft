@@ -1,5 +1,6 @@
 import { DEFAULT_MACRO, ageFromYears, yearsFromAge, type MacroParams } from './body/macro';
 import { phenotype } from './phenotype';
+import { COMMUNITY, communityItem, itemsOf } from './wardrobe';
 
 /**
  * A person: everything the Person Creator sets, and all a citizen needs to be
@@ -52,6 +53,11 @@ export interface PersonLook {
   readonly hat?: string;
   /** A colour the outfit is dyed, or null for its own colours. */
   readonly outfitTint?: number | null;
+  /**
+   * More community items worn with the outfit (`wardrobe.ts`): trousers or a
+   * skirt under a top, glasses, jewellery, gloves, a beard.
+   */
+  readonly extras?: readonly string[];
 }
 
 /** The MakeHuman (CC0) items a person can wear, by name (`public/models/people/proxies`). */
@@ -90,8 +96,14 @@ const BROW_PROFILES = {
 } as const;
 
 /** Every outfit, either sex's. */
-export const ALL_OUTFITS: readonly string[] = [...WARDROBE.outfits.male, ...WARDROBE.outfits.female];
-export const ALL_HAIR: readonly string[] = [...WARDROBE.hair.short, ...WARDROBE.hair.long];
+export const ALL_OUTFITS: readonly string[] = [...WARDROBE.outfits.male, ...WARDROBE.outfits.female,
+  ...itemsOf('top'), ...itemsOf('dress'), ...itemsOf('suit')];
+export const ALL_HAIR: readonly string[] = [...WARDROBE.hair.short, ...WARDROBE.hair.long, ...itemsOf('hair')];
+export const ALL_FOOTWEAR: readonly string[] = [...WARDROBE.footwear, ...itemsOf('shoes')];
+export const ALL_BROWS: readonly string[] = [...WARDROBE.brows, ...itemsOf('eyebrows')];
+export const ALL_LASHES: readonly string[] = [...WARDROBE.lashes, ...itemsOf('eyelashes')];
+export const ALL_HATS: readonly string[] = [...WARDROBE.hats, ...itemsOf('hat'), ...itemsOf('helmet')];
+const EXTRA_NAMES = new Set(COMMUNITY.filter((i) => ['bottom', 'skirt', 'beard', 'glasses', 'gloves', 'jewelry', 'mask', 'horns'].includes(i.kind)).map((i) => i.name));
 
 /** The items a look wears, by name: what has to be loaded to draw it. */
 export function wornItems(look: PersonLook): string[] {
@@ -101,6 +113,14 @@ export function wornItems(look: PersonLook): string[] {
   if (look.brows) out.push(look.brows);
   if (look.lashes) out.push(look.lashes);
   if (look.hat && look.hat !== 'none') out.push(look.hat);
+  // Trousers or a skirt only under a separate top: a whole outfit (a system
+  // suit, a dress) has its own, and two drawn in one place come out mottled.
+  const separateTop = !!look.outfit && communityItem(look.outfit)?.kind === 'top';
+  if (look.outfit) for (const extra of look.extras ?? []) {
+    const kind = communityItem(extra)?.kind;
+    if ((kind === 'bottom' || kind === 'skirt') && !separateTop) continue;
+    out.push(extra);
+  }
   return out;
 }
 
@@ -111,6 +131,8 @@ export const SKIN_TONES: readonly number[] = [
 export const HAIR_COLOURS: readonly number[] = [
   0x1a1410, 0x2e2018, 0x4a3022, 0x6b4428, 0x8c5a2e, 0xa8743c, 0xc9a165, 0xe0c58f, 0x9a9a98, 0xdedcd8, 0x8a2f1f,
 ];
+/** Children's clothes: clear colours, none near any skin tone. */
+const CHILD_COLOURS: readonly number[] = [0x2f6fd6, 0xd23c3c, 0x2e9a5a, 0xe8b820, 0xe0702a, 0x7b4fb5, 0x1f3a6b, 0x22a3a3];
 export const EYE_COLOURS: readonly number[] = [0x3b2416, 0x5a3a22, 0x6b6a3a, 0x3d6b4a, 0x3d5d8a, 0x7a8a9a];
 export const CLOTH_COLOURS: readonly number[] = [
   0xf2f0ea, 0x22252b, 0x3b4a6b, 0x6a8fbf, 0x2f5d50, 0x7a9a5a, 0xb03a2e, 0xd9822b, 0xe8c547, 0x8a5a9a, 0xc9a68a, 0x5c5c5c,
@@ -190,15 +212,43 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
   // Dressed in MakeHuman garments: an outfit cut for the body's sex, shoes,
   // a hairstyle of the length drawn above, brows and lashes; now and then a
   // hat, and an outfit dyed a colour of the street's.
+  const sex = female ? 'female' as const : 'male' as const;
+  const streetHair = COMMUNITY.filter((i) => i.kind === 'hair' && i.street && (i.sex === 'any' || i.sex === sex)
+    && i.length === (coloured.hairStyle === 'long' ? 'long' : 'short')).map((i) => i.name);
+  const systemHair = coloured.hairStyle === 'long' ? WARDROBE.hair.long : WARDROBE.hair.short;
   const hairCut = coloured.hairStyle === 'none' ? 'none'
-    : pick(r, coloured.hairStyle === 'long' ? WARDROBE.hair.long : WARDROBE.hair.short);
+    : pick(r, streetHair.length && r() < 0.6 ? streetHair : systemHair);
+  // What to wear: a top with trousers or a skirt (most people), one of the
+  // system outfits, or a dress or a suit; then now and then glasses,
+  // jewellery, and a beard on a man.
+  const tops = itemsOf('top', { street: true, sex }), trousers = itemsOf('bottom', { street: true, sex });
+  const skirts = itemsOf('skirt', { street: true, sex: 'female' }), dresses = itemsOf('dress', { street: true, sex: 'female' });
+  const suits = itemsOf('suit', { street: true, sex });
+  const wear = r();
+  const extras: string[] = [];
+  let outfit: string;
+  if (wear < 0.5 && tops.length && trousers.length) {
+    outfit = pick(r, tops);
+    extras.push(pick(r, female && skirts.length && r() < 0.35 ? skirts : trousers));
+  } else if (wear < 0.65 && female && dresses.length) outfit = pick(r, dresses);
+  else if (wear < 0.72 && suits.length) outfit = pick(r, suits);
+  else outfit = pick(r, (female ? WARDROBE.outfits.female : WARDROBE.outfits.male).filter((o) => o !== 'female_sportsuit01' || r() < 0.25));
+  const glasses = itemsOf('glasses', { street: true, sex });
+  if (glasses.length && r() < (years > 45 ? 0.35 : 0.15)) extras.push(pick(r, glasses));
+  const jewels = itemsOf('jewelry', { street: true, sex });
+  if (jewels.length && r() < (female ? 0.3 : 0.06)) extras.push(pick(r, jewels));
+  const beards = itemsOf('beard', { street: true });
+  const bearded = !female && actualYears >= 18 && beards.length > 0 && r() < 0.3;
+  if (bearded) extras.push(pick(r, beards));
   const finished: PersonLook = {
     ...coloured,
-    beard: !female && actualYears >= 18 ? pick(r, ['none', 'none', 'stubble', 'moustache', 'beard'] as const) : 'none',
+    beard: bearded ? 'beard' : 'none',
     makeup: female && actualYears >= 18 && r() < 0.3 ? 0.15 + r() * 0.25 : 0,
-    outfit: pick(r, female ? WARDROBE.outfits.female : WARDROBE.outfits.male),
-    // Heels (shoes03) only ever on a woman.
-    footwear: pick(r, female ? WARDROBE.footwear : WARDROBE.footwear.filter((f) => f !== 'shoes03')),
+    outfit,
+    extras,
+    // Heels (shoes03) only ever on a woman; community shoes cut for the sex.
+    footwear: pick(r, r() < 0.5 && itemsOf('shoes', { street: true, sex }).length ? itemsOf('shoes', { street: true, sex })
+      : female ? WARDROBE.footwear : WARDROBE.footwear.filter((f) => f !== 'shoes03')),
     hairCut,
     brows: pick(r, female ? BROW_PROFILES.arched : BROW_PROFILES.straightOrFull),
     lashes: pick(r, WARDROBE.lashes),
@@ -221,9 +271,13 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
   };
   if (actualYears < 16) {
     // The tailored shells follow child anatomy; adult proxies have no reviewed child fit.
-    const { outfit: _outfit, footwear: _footwear, ...childLook } = finished;
-    void _outfit; void _footwear;
-    return { id, name: '', body, features, look: { ...childLook, top: 'tshirt', bottom: 'shorts', hat: 'none' } };
+    const { outfit: _outfit, footwear: _footwear, extras: _extras, ...childLook } = finished;
+    void _outfit; void _footwear; void _extras;
+    // A child's shirt in a clear colour: from the street palette a beige or
+    // white one read as bare skin in the portraits.
+    const topColour = keep.look?.topColour ?? pick(r, CHILD_COLOURS);
+    const bottomColour = keep.look?.bottomColour ?? pick(r, CHILD_COLOURS.filter((c) => c !== topColour));
+    return { id, name: '', body, features, look: { ...childLook, top: 'tshirt', bottom: 'shorts', hat: 'none', topColour, bottomColour } };
   }
   return { id, name: '', body, features, look: finished };
 }
@@ -236,7 +290,9 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
  * before - the same face on every body, whatever its build or skin.
  */
 function faceShape(r: () => number, body: MacroParams, years: number): Record<string, number> {
-  const around = (amp: number): number => (r() + r() - 1) * amp;
+  // Half of each slider's reach: thirty features all drawn wide at once read
+  // as a caricature (the player: 'they look like monsters').
+  const around = (amp: number): number => (r() + r() - 1) * amp * 0.5;
   const shapes = ['head-oval', 'head-round', 'head-square', 'head-rectangular', 'head-diamond', 'head-triangular', 'head-invertedtriangular'];
   // Whole-head shape and local contours should tell the same story. Unrelated
   // large shape presets previously overwhelmed the much smaller jaw profile.
@@ -244,7 +300,7 @@ function faceShape(r: () => number, body: MacroParams, years: number): Record<st
   const profileShapes = r() < grown * 0.7
     ? (r() < body.gender ? ['head-square', 'head-rectangular', 'head-oval'] : ['head-oval', 'head-round', 'head-invertedtriangular'])
     : shapes;
-  const out: Record<string, number> = { [pick(r, profileShapes)]: 0.2 + r() * 0.3 };
+  const out: Record<string, number> = { [pick(r, profileShapes)]: 0.15 + r() * 0.2 };
   for (const [name, amp] of FACE_SLIDERS) out[name] = around(amp);
   // Folded eyelids with an East Asian heritage; bags under the eyes with age.
   out['eye-epicanthus-in-out'] = -body.asian * (0.3 + r() * 0.5);
@@ -256,8 +312,8 @@ function faceShape(r: () => number, body: MacroParams, years: number): Record<st
     out['chin-width-decr-incr'] = sex * 0.32 + around(0.22);
     out['chin-bones-decr-incr'] = sex * 0.24 + around(0.2);
     out['chin-prominent-decr-incr'] = sex * 0.24 + around(0.2);
-    out['mouth-lowerlip-volume-decr-incr'] = -sex * 0.85 + around(0.1);
-    out['mouth-upperlip-volume-decr-incr'] = -sex * 0.85 + around(0.1);
+    out['mouth-lowerlip-volume-decr-incr'] = -sex * 0.35 + around(0.1);
+    out['mouth-upperlip-volume-decr-incr'] = -sex * 0.35 + around(0.1);
     out['cheek-bones-decr-incr'] = -sex * 0.12 + around(0.3);
     out['measure-neck-circ-decr-incr'] = sex * 0.12 + around(0.15);
     out['measure-waist-circ-decr-incr'] = sex * 0.1 + around(0.15);
@@ -329,19 +385,20 @@ export function normalizePerson(raw: unknown): PersonSpec | null {
       // MakeHuman garments only when the save names them, and only known ones.
       ...(typeof l['outfit'] === 'string' && ALL_OUTFITS.includes(l['outfit']) ? {
         outfit: l['outfit'],
-        footwear: oneOf(l['footwear'], WARDROBE.footwear, WARDROBE.footwear[0]),
+        footwear: oneOf(l['footwear'], ALL_FOOTWEAR, WARDROBE.footwear[0]),
         hairCut: oneOf(l['hairCut'], ['none', ...ALL_HAIR], 'none'),
-        brows: oneOf(l['brows'], WARDROBE.brows, WARDROBE.brows[0]),
-        lashes: oneOf(l['lashes'], WARDROBE.lashes, WARDROBE.lashes[0]),
-        hat: oneOf(l['hat'], ['none', ...WARDROBE.hats], 'none'),
+        brows: oneOf(l['brows'], ALL_BROWS, WARDROBE.brows[0]),
+        lashes: oneOf(l['lashes'], ALL_LASHES, WARDROBE.lashes[0]),
+        hat: oneOf(l['hat'], ['none', ...ALL_HATS], 'none'),
         outfitTint: l['outfitTint'] == null ? null : colour(l['outfitTint'], 0xffffff),
       } : {}),
-      ...(typeof l['footwear'] === 'string' ? { footwear: oneOf(l['footwear'], WARDROBE.footwear, WARDROBE.footwear[0]) } : {}),
+      ...(typeof l['footwear'] === 'string' ? { footwear: oneOf(l['footwear'], ALL_FOOTWEAR, WARDROBE.footwear[0]) } : {}),
       ...(typeof l['hairCut'] === 'string' ? { hairCut: oneOf(l['hairCut'], ['none', ...ALL_HAIR], 'none') } : {}),
-      ...(typeof l['brows'] === 'string' ? { brows: oneOf(l['brows'], WARDROBE.brows, WARDROBE.brows[0]) } : {}),
-      ...(typeof l['lashes'] === 'string' ? { lashes: oneOf(l['lashes'], WARDROBE.lashes, WARDROBE.lashes[0]) } : {}),
-      ...(typeof l['hat'] === 'string' ? { hat: oneOf(l['hat'], ['none', ...WARDROBE.hats], 'none') } : {}),
+      ...(typeof l['brows'] === 'string' ? { brows: oneOf(l['brows'], ALL_BROWS, WARDROBE.brows[0]) } : {}),
+      ...(typeof l['lashes'] === 'string' ? { lashes: oneOf(l['lashes'], ALL_LASHES, WARDROBE.lashes[0]) } : {}),
+      ...(typeof l['hat'] === 'string' ? { hat: oneOf(l['hat'], ['none', ...ALL_HATS], 'none') } : {}),
       ...(l['outfitTint'] !== undefined ? { outfitTint: l['outfitTint'] === null ? null : colour(l['outfitTint'], 0xffffff) } : {}),
+      ...(Array.isArray(l['extras']) ? { extras: (l['extras'] as unknown[]).filter((x): x is string => typeof x === 'string' && EXTRA_NAMES.has(x)).slice(0, 8) } : {}),
     },
   };
 }

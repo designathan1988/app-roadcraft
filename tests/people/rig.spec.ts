@@ -199,7 +199,11 @@ it('separates adult sex profile mesh distributions at 95%', () => {
       rankSeparation: ordered / (female.length * male.length) };
   });
   console.log('Natural adult mesh profile distributions', JSON.stringify(distributions));
+  // Jaw and chin carry the sex; lips overlap between the sexes in real
+  // people. Pushing lip volume until it separated at 95% (lips at 85% of the
+  // slider) drew caricatured mouths - the player's "monsters".
+  const floor: Record<string, number> = { 'lip thickness / height': 0.75 };
   for (const result of distributions) {
-    expect(result.rankSeparation, result.dimension).toBeGreaterThanOrEqual(0.95);
+    expect(result.rankSeparation, result.dimension).toBeGreaterThanOrEqual(floor[result.dimension] ?? 0.95);
   }
 });

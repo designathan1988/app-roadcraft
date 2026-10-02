@@ -13,7 +13,7 @@
 /** One proxy as packed by the importer. */
 export interface ProxyPack {
   readonly name: string;
-  readonly kind: 'clothes' | 'hair' | 'eyebrows' | 'eyelashes' | 'shoes';
+  readonly kind: 'clothes' | 'hair' | 'eyebrows' | 'eyelashes' | 'shoes' | import('../wardrobe').CommunityKind;
   /** Base-mesh vertices the scale axes are measured between: [x0, x1, y0, y1, z0, z1]. */
   readonly scaleRefs: readonly number[];
   /** The axis lengths on the base mesh itself, decimetres. */

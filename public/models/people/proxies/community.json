@@ -1,0 +1,5424 @@
+{
+ "format": "roadcraft-people-community/1",
+ "note": "MakeHuman community asset packs; each item keeps the licence its .mhclo states. CC-BY items are credited in the About panel.",
+ "items": [
+  {
+   "name": "cortu_shaggy_green_hair",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 968,
+   "triangles": 1284
+  },
+  {
+   "name": "cortu_short_messy_hair",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 832,
+   "triangles": 1092
+  },
+  {
+   "name": "cortu_straight_bangs",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 848,
+   "triangles": 1128
+  },
+  {
+   "name": "cortu_strawberry_cloud_hair",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 480,
+   "triangles": 576
+  },
+  {
+   "name": "culturalibre_hair_01",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 3406,
+   "triangles": 4228
+  },
+  {
+   "name": "culturalibre_hair_02",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "MHteam",
+   "tags": [],
+   "street": true,
+   "vertices": 2541,
+   "triangles": 3460
+  },
+  {
+   "name": "culturalibre_hair_05",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 4713,
+   "triangles": 4948
+  },
+  {
+   "name": "culturalibre_hair_06",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 12256,
+   "triangles": 14688
+  },
+  {
+   "name": "elvs_double_mh_braid",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 8491,
+   "triangles": 9866
+  },
+  {
+   "name": "elvs_french_braid_variation",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 6902,
+   "triangles": 8152
+  },
+  {
+   "name": "elvs_reverse_french_braid_bun",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 6174,
+   "triangles": 7622
+  },
+  {
+   "name": "elvs_unkempt_french_braid",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 6956,
+   "triangles": 8200
+  },
+  {
+   "name": "faydaen_hair_1",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 647,
+   "triangles": 836
+  },
+  {
+   "name": "learning_anime_hair",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 49728,
+   "triangles": 91392
+  },
+  {
+   "name": "littleright_bobcut_hair",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "littleright",
+   "tags": [],
+   "street": true,
+   "vertices": 1919,
+   "triangles": 2692
+  },
+  {
+   "name": "o4saken_long01",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC-BY-4.0",
+   "author": "04saken",
+   "tags": [
+    "female",
+    "long"
+   ],
+   "street": true,
+   "vertices": 15033,
+   "triangles": 13268
+  },
+  {
+   "name": "rehmanpolanski_hair_bun_brown",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "Rehman Polanski",
+   "tags": [],
+   "street": true,
+   "vertices": 2756,
+   "triangles": 4432
+  },
+  {
+   "name": "sonntag78_blond_with_headband",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 1486,
+   "triangles": 2054
+  },
+  {
+   "name": "sonntag78_junglebook_hair",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 4966,
+   "triangles": 8576
+  },
+  {
+   "name": "toigo_blunt_bob",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 1837,
+   "triangles": 2858
+  },
+  {
+   "name": "toigo_blunt_bob_with_bangs",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3113,
+   "triangles": 4976
+  },
+  {
+   "name": "toigo_curled_under_bob",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 1517,
+   "triangles": 2852
+  },
+  {
+   "name": "toigo_curled_under_bob_with_bangs",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 2806,
+   "triangles": 4976
+  },
+  {
+   "name": "toigo_inverted_bob",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 1836,
+   "triangles": 2856
+  },
+  {
+   "name": "toigo_inverted_bob_with_bangs",
+   "kind": "hair",
+   "pack": "hair01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3031,
+   "triangles": 4996
+  },
+  {
+   "name": "elvs_50s_updo",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "1950s",
+    "updo",
+    "female",
+    "classic"
+   ],
+   "street": true,
+   "vertices": 2763,
+   "triangles": 2677
+  },
+  {
+   "name": "elvs_adrienne_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "ladies hair",
+    "female",
+    "long hair",
+    "side part"
+   ],
+   "street": true,
+   "vertices": 9352,
+   "triangles": 9381
+  },
+  {
+   "name": "elvs_ashley_may_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "ladies hair",
+    "female",
+    "short hair",
+    "feathered hair"
+   ],
+   "street": true,
+   "vertices": 8208,
+   "triangles": 8467
+  },
+  {
+   "name": "elvs_braid_bun",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "contemporary",
+    "hair"
+   ],
+   "street": true,
+   "vertices": 11029,
+   "triangles": 21016
+  },
+  {
+   "name": "elvs_braided_rows",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "quad",
+    "braids",
+    "hair",
+    "beads",
+    "cornrows"
+   ],
+   "street": true,
+   "vertices": 22988,
+   "triangles": 40928
+  },
+  {
+   "name": "elvs_daisy_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "ladies hair",
+    "female",
+    "long hair",
+    "straight hair"
+   ],
+   "street": true,
+   "vertices": 6721,
+   "triangles": 6639
+  },
+  {
+   "name": "elvs_grump_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "formal",
+    "profession",
+    "contemporary",
+    "hair",
+    "comb_over"
+   ],
+   "street": true,
+   "vertices": 9522,
+   "triangles": 12332
+  },
+  {
+   "name": "elvs_hazel_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "leisure",
+    "contemporary",
+    "hair",
+    "ladies",
+    "long",
+    "wavy",
+    "fashion"
+   ],
+   "street": true,
+   "vertices": 4891,
+   "triangles": 4181
+  },
+  {
+   "name": "elvs_inverted_curly_bob",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 2340,
+   "triangles": 2980
+  },
+  {
+   "name": "elvs_island_princess_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "female",
+    "long hair",
+    "island",
+    "straight hair"
+   ],
+   "street": true,
+   "vertices": 7234,
+   "triangles": 8954
+  },
+  {
+   "name": "elvs_katherine_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "ladies hair",
+    "female",
+    "short hair",
+    "asymmetrical"
+   ],
+   "street": true,
+   "vertices": 5050,
+   "triangles": 5041
+  },
+  {
+   "name": "elvs_keylth_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "leisure",
+    "hair",
+    "hair"
+   ],
+   "street": true,
+   "vertices": 3776,
+   "triangles": 4334
+  },
+  {
+   "name": "elvs_lady_hippy_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "female",
+    "long hair",
+    "hippy",
+    "straight hair"
+   ],
+   "street": true,
+   "vertices": 4418,
+   "triangles": 5020
+  },
+  {
+   "name": "elvs_lara_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "leisure",
+    "contemporary",
+    "hair",
+    "braid"
+   ],
+   "street": true,
+   "vertices": 17360,
+   "triangles": 27816
+  },
+  {
+   "name": "elvs_maxwell_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "mens",
+    "mens hair",
+    "fashion hair",
+    "modern"
+   ],
+   "street": true,
+   "vertices": 1174,
+   "triangles": 1468
+  },
+  {
+   "name": "elvs_micky_afro",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "leisure",
+    "contemporary",
+    "hair",
+    "afro",
+    "buns",
+    "hair",
+    "updo"
+   ],
+   "street": true,
+   "vertices": 1864,
+   "triangles": 1675
+  },
+  {
+   "name": "elvs_short_daisy_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "ladies hair",
+    "female",
+    "short hair",
+    "straight hair"
+   ],
+   "street": true,
+   "vertices": 3673,
+   "triangles": 3571
+  },
+  {
+   "name": "elvs_short_side_do",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "female hair",
+    "toon stylized"
+   ],
+   "street": true,
+   "vertices": 70146,
+   "triangles": 98660
+  },
+  {
+   "name": "elvs_that_80s_babe_hair",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "leisure",
+    "traditional",
+    "hair",
+    "long_hair"
+   ],
+   "street": true,
+   "vertices": 5968,
+   "triangles": 6004
+  },
+  {
+   "name": "elvs_wavy_bob",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "hair",
+    "bob",
+    "curly",
+    "female"
+   ],
+   "street": true,
+   "vertices": 4914,
+   "triangles": 4288
+  },
+  {
+   "name": "elvs_witchy_lil_bob",
+   "kind": "hair",
+   "pack": "hair02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 1679,
+   "triangles": 1513
+  },
+  {
+   "name": "culturalibre_hair_11",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 27400,
+   "triangles": 44046
+  },
+  {
+   "name": "culturalibre_hair_12",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "unstated",
+   "author": "culturalibre License CC-BY",
+   "tags": [],
+   "street": true,
+   "vertices": 27417,
+   "triangles": 45584
+  },
+  {
+   "name": "culturalibre_hair_13",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 35174,
+   "triangles": 34425
+  },
+  {
+   "name": "culturalibre_hair_14",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 37075,
+   "triangles": 23491
+  },
+  {
+   "name": "culturalibre_hair_17",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 8985,
+   "triangles": 13392
+  },
+  {
+   "name": "culturalibre_hair_18",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 5572,
+   "triangles": 7992
+  },
+  {
+   "name": "grinsegold_wig_bow_tie",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "AGPL-3.0",
+   "author": "grinsegold",
+   "tags": [
+    "hair",
+    "female"
+   ],
+   "street": true,
+   "vertices": 727,
+   "triangles": 992
+  },
+  {
+   "name": "grinsegold_wig_bun_blonde_braids",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "AGPL-3.0",
+   "author": "grinsegold",
+   "tags": [
+    "hair",
+    "wig",
+    "female"
+   ],
+   "street": true,
+   "vertices": 3794,
+   "triangles": 5372
+  },
+  {
+   "name": "o4saken_chinesebob01",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "CC-BY-4.0",
+   "author": "O4saken",
+   "tags": [
+    "female",
+    "bob"
+   ],
+   "street": true,
+   "vertices": 12547,
+   "triangles": 10108
+  },
+  {
+   "name": "o4saken_curly01",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "CC-BY-4.0",
+   "author": "04saken",
+   "tags": [
+    "female",
+    "curly"
+   ],
+   "street": true,
+   "vertices": 122901,
+   "triangles": 120022
+  },
+  {
+   "name": "punkduck_alpha7_curly",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "AGPL-3.0",
+   "author": "Unknown, adaptation by punkduck",
+   "tags": [],
+   "street": true,
+   "vertices": 7061,
+   "triangles": 11304
+  },
+  {
+   "name": "punkduck_alpha7_curly2",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "AGPL-3.0",
+   "author": "Unknown, adaptation to MH1.1 by punkduck",
+   "tags": [],
+   "street": true,
+   "vertices": 4068,
+   "triangles": 6026
+  },
+  {
+   "name": "punkduck_alpha7_long",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "AGPL-3.0",
+   "author": "Unknown, adaptation by punkduck",
+   "tags": [],
+   "street": true,
+   "vertices": 2348,
+   "triangles": 3888
+  },
+  {
+   "name": "punkduck_alpha7_long2",
+   "kind": "hair",
+   "pack": "hair03",
+   "license": "AGPL-3.0",
+   "author": "Unknown, adaptation by punkduck",
+   "tags": [],
+   "street": true,
+   "vertices": 2586,
+   "triangles": 3596
+  },
+  {
+   "name": "mindfront_eyebrows_01",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 9472,
+   "triangles": 14202
+  },
+  {
+   "name": "mindfront_eyebrows_02",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 12294,
+   "triangles": 17622
+  },
+  {
+   "name": "mindfront_eyebrows_03",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 14558,
+   "triangles": 21816
+  },
+  {
+   "name": "mindfront_eyebrows_04",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 20167,
+   "triangles": 29628
+  },
+  {
+   "name": "mindfront_eyebrows_05",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 21476,
+   "triangles": 35334
+  },
+  {
+   "name": "mindfront_eyebrows_06",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 21324,
+   "triangles": 31968
+  },
+  {
+   "name": "mindfront_eyebrows_07",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 26421,
+   "triangles": 39600
+  },
+  {
+   "name": "mindfront_eyebrows_08",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 17760,
+   "triangles": 28716
+  },
+  {
+   "name": "mindfront_eyebrows_09",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 20143,
+   "triangles": 29652
+  },
+  {
+   "name": "mindfront_eyebrows_10",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 23870,
+   "triangles": 35028
+  },
+  {
+   "name": "mindfront_eyebrows_11",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 24997,
+   "triangles": 37134
+  },
+  {
+   "name": "mindfront_eyebrows_12",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 21626,
+   "triangles": 31308
+  },
+  {
+   "name": "mindfront_eyebrows_13",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 16336,
+   "triangles": 24480
+  },
+  {
+   "name": "mindfront_eyebrows_14",
+   "kind": "eyebrows",
+   "pack": "eyebrows01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyebrows"
+   ],
+   "street": true,
+   "vertices": 28482,
+   "triangles": 42300
+  },
+  {
+   "name": "mindfront_eyelashes_01",
+   "kind": "eyelashes",
+   "pack": "eyelashes01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyelashes"
+   ],
+   "street": true,
+   "vertices": 11088,
+   "triangles": 16632
+  },
+  {
+   "name": "mindfront_eyelashes_02",
+   "kind": "eyelashes",
+   "pack": "eyelashes01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyelashes"
+   ],
+   "street": true,
+   "vertices": 16992,
+   "triangles": 25488
+  },
+  {
+   "name": "mindfront_eyelashes_03",
+   "kind": "eyelashes",
+   "pack": "eyelashes01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyelashes"
+   ],
+   "street": true,
+   "vertices": 12528,
+   "triangles": 18792
+  },
+  {
+   "name": "mindfront_eyelashes_04",
+   "kind": "eyelashes",
+   "pack": "eyelashes01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyelashes"
+   ],
+   "street": true,
+   "vertices": 16248,
+   "triangles": 24372
+  },
+  {
+   "name": "mindfront_eyelashes_05",
+   "kind": "eyelashes",
+   "pack": "eyelashes01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "eyelashes"
+   ],
+   "street": true,
+   "vertices": 19800,
+   "triangles": 29700
+  },
+  {
+   "name": "culturalibre_faun_beard",
+   "kind": "beard",
+   "pack": "bodyparts05",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 7107,
+   "triangles": 10432
+  },
+  {
+   "name": "grinsegold_beard_sigmund_wip",
+   "kind": "beard",
+   "pack": "bodyparts05",
+   "license": "AGPL-3.0",
+   "author": "grinsegold",
+   "tags": [],
+   "street": true,
+   "vertices": 535,
+   "triangles": 878
+  },
+  {
+   "name": "rehmanpolanski_beard_viking",
+   "kind": "beard",
+   "pack": "bodyparts05",
+   "license": "CC0-1.0",
+   "author": "Rehman Polanski",
+   "tags": [
+    "beard",
+    "viking"
+   ],
+   "street": true,
+   "vertices": 6564,
+   "triangles": 5682
+  },
+  {
+   "name": "rehmanpolanski_moustache_viking",
+   "kind": "beard",
+   "pack": "bodyparts05",
+   "license": "CC0-1.0",
+   "author": "Rehman Polanski",
+   "tags": [
+    "moustache",
+    "viking"
+   ],
+   "street": true,
+   "vertices": 1598,
+   "triangles": 1364
+  },
+  {
+   "name": "wdg_scruffy_beard",
+   "kind": "beard",
+   "pack": "bodyparts05",
+   "license": "AGPL-3.0",
+   "author": "WDG",
+   "tags": [],
+   "street": true,
+   "vertices": 2300,
+   "triangles": 2760
+  },
+  {
+   "name": "elvs_crude_t-shirt_male",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "CC0-1.0",
+   "author": "Makehuman edited by Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 1150,
+   "triangles": 2068
+  },
+  {
+   "name": "joepal_crude_t-shirt_female",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "CC0-1.0",
+   "author": "Joel Palmius",
+   "tags": [],
+   "street": true,
+   "vertices": 1152,
+   "triangles": 2068
+  },
+  {
+   "name": "namuhekam_male_polo_shirt",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "profession",
+    "contemporary"
+   ],
+   "street": true,
+   "vertices": 2574,
+   "triangles": 4106
+  },
+  {
+   "name": "skalldyrssuppe_tube_top_funky_colors",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "AGPL-3.0",
+   "author": "OddoJ",
+   "tags": [
+    "top",
+    "egen"
+   ],
+   "street": true,
+   "vertices": 1700,
+   "triangles": 2912
+  },
+  {
+   "name": "toigo_basic_tucked_t-shirt",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "t-shirt",
+    "shirt",
+    "top",
+    "knit",
+    "casual"
+   ],
+   "street": true,
+   "vertices": 1644,
+   "triangles": 2700
+  },
+  {
+   "name": "toigo_bodice-style_top",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 1152,
+   "triangles": 1944
+  },
+  {
+   "name": "toigo_camisole_top",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 5096,
+   "triangles": 8232
+  },
+  {
+   "name": "toigo_fisherman_sweater",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "sweater",
+    "shirt",
+    "top",
+    "knit"
+   ],
+   "street": true,
+   "vertices": 2511,
+   "triangles": 4164
+  },
+  {
+   "name": "toigo_keyhole_tank_top",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 823,
+   "triangles": 1352
+  },
+  {
+   "name": "toigo_turtleneck_halter_top",
+   "kind": "top",
+   "pack": "shirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3504,
+   "triangles": 5504
+  },
+  {
+   "name": "elvs_hooded_sweat_jacket1",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 16615,
+   "triangles": 19574
+  },
+  {
+   "name": "elvs_male_boho_top1",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shirt",
+    "menswear",
+    "fashion",
+    "bohemian",
+    "loose fit"
+   ],
+   "street": true,
+   "vertices": 2178,
+   "triangles": 3422
+  },
+  {
+   "name": "elvs_male_shirt_tie_tucked1",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shirt",
+    "menswear",
+    "fashion",
+    "traditional",
+    "tie"
+   ],
+   "street": true,
+   "vertices": 2915,
+   "triangles": 4666
+  },
+  {
+   "name": "elvs_male_shirt_untucked_bd1",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shirt",
+    "menswear",
+    "fashion",
+    "traditional",
+    "untucked"
+   ],
+   "street": true,
+   "vertices": 5140,
+   "triangles": 8056
+  },
+  {
+   "name": "ews_striped_shirt",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "AGPL-3.0",
+   "author": "EWS",
+   "tags": [
+    "striped",
+    "shirt",
+    "long sleeve",
+    "crop top",
+    "female"
+   ],
+   "street": true,
+   "vertices": 4701,
+   "triangles": 7880
+  },
+  {
+   "name": "janexx_old_female_sweater",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "leisure",
+    "contemporary",
+    "shirt",
+    "swater",
+    "pullover"
+   ],
+   "street": true,
+   "vertices": 1750,
+   "triangles": 3112
+  },
+  {
+   "name": "mindfront_cardigan_long_open_front",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "sweater",
+    "cardigan"
+   ],
+   "street": true,
+   "vertices": 6030,
+   "triangles": 8984
+  },
+  {
+   "name": "mindfront_knitted_sweater_01",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "sweater"
+   ],
+   "street": true,
+   "vertices": 1583,
+   "triangles": 2628
+  },
+  {
+   "name": "mindfront_knitted_sweater_02",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "sweater"
+   ],
+   "street": true,
+   "vertices": 1527,
+   "triangles": 2524
+  },
+  {
+   "name": "mindfront_lusekofta",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "sweater",
+    "cardigan"
+   ],
+   "street": true,
+   "vertices": 1645,
+   "triangles": 2608
+  },
+  {
+   "name": "punkduck_deathnote_t-shirt",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-3.0",
+   "author": "o4saken",
+   "tags": [
+    "shirt"
+   ],
+   "street": true,
+   "vertices": 14627,
+   "triangles": 24780
+  },
+  {
+   "name": "punkduck_lace_up_blouse",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "costume",
+    "female",
+    "blouse"
+   ],
+   "street": true,
+   "vertices": 2930,
+   "triangles": 4954
+  },
+  {
+   "name": "punkduck_off-shoulder_long-sleeve_top",
+   "kind": "top",
+   "pack": "shirts02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "shirt"
+   ],
+   "street": true,
+   "vertices": 2730,
+   "triangles": 4496
+  },
+  {
+   "name": "drednicolson_asymmetric_tunic_and_sash",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "DredNicolson",
+   "tags": [
+    "asymmetric",
+    "female"
+   ],
+   "street": true,
+   "vertices": 2466,
+   "triangles": 4256
+  },
+  {
+   "name": "drednicolson_short-tail_camo_tee",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "DredNicolson",
+   "tags": [
+    "casual",
+    "female"
+   ],
+   "street": true,
+   "vertices": 2606,
+   "triangles": 3746
+  },
+  {
+   "name": "elvs_disco_top_1_butterfly",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "formal",
+    "festive",
+    "vintage",
+    "shirt",
+    "disco"
+   ],
+   "street": true,
+   "vertices": 4923,
+   "triangles": 4860
+  },
+  {
+   "name": "elvs_disco_top2",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "formal",
+    "festive",
+    "vintage",
+    "shirt",
+    "disco"
+   ],
+   "street": true,
+   "vertices": 5869,
+   "triangles": 5892
+  },
+  {
+   "name": "elvs_ladies_tank1",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 45457,
+   "triangles": 62624
+  },
+  {
+   "name": "elvs_lara_tank1",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "sport",
+    "contemporary",
+    "shirt",
+    "sleeveless"
+   ],
+   "street": true,
+   "vertices": 1334,
+   "triangles": 1288
+  },
+  {
+   "name": "elvs_male_athletic_tank1",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 77546,
+   "triangles": 112004
+  },
+  {
+   "name": "elvs_male_logo_tshirt1",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 8964,
+   "triangles": 10281
+  },
+  {
+   "name": "elvs_male_muscle_shirt1",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shirt",
+    "menswear",
+    "fashion",
+    "traditional",
+    "sleeveless"
+   ],
+   "street": true,
+   "vertices": 3405,
+   "triangles": 6256
+  },
+  {
+   "name": "elvs_male_tankshirt1",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shirt",
+    "menswear",
+    "fashion",
+    "traditional",
+    "sleeveless"
+   ],
+   "street": true,
+   "vertices": 3092,
+   "triangles": 5680
+  },
+  {
+   "name": "elvs_ruffle_sleeve_peasant_blouse_1",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 1431,
+   "triangles": 2588
+  },
+  {
+   "name": "mindfront_tank_top_01",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "casual",
+    "sport"
+   ],
+   "street": true,
+   "vertices": 1113,
+   "triangles": 1672
+  },
+  {
+   "name": "punkduck_high_neck_crop_top",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "top"
+   ],
+   "street": true,
+   "vertices": 1443,
+   "triangles": 2282
+  },
+  {
+   "name": "punkduck_retro_top",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "top",
+    "vintage"
+   ],
+   "street": true,
+   "vertices": 1824,
+   "triangles": 3212
+  },
+  {
+   "name": "punkduck_sleeveless_crop_top",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "top"
+   ],
+   "street": true,
+   "vertices": 1085,
+   "triangles": 1804
+  },
+  {
+   "name": "punkduck_sleeveless_shirt",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "shirt"
+   ],
+   "street": true,
+   "vertices": 1883,
+   "triangles": 3136
+  },
+  {
+   "name": "punkduck_spaghetti_strap_tank_top",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "shirt"
+   ],
+   "street": true,
+   "vertices": 1126,
+   "triangles": 1828
+  },
+  {
+   "name": "punkduck_tube_top",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "shirt",
+    "top"
+   ],
+   "street": true,
+   "vertices": 982,
+   "triangles": 1756
+  },
+  {
+   "name": "punkduck_v_neck_top",
+   "kind": "top",
+   "pack": "shirts03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "shirt"
+   ],
+   "street": true,
+   "vertices": 1225,
+   "triangles": 1996
+  },
+  {
+   "name": "cortu_cargo_pants",
+   "kind": "bottom",
+   "pack": "pants01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 255,
+   "triangles": 392
+  },
+  {
+   "name": "cortu_jeans_shorts",
+   "kind": "bottom",
+   "pack": "pants01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 342,
+   "triangles": 500
+  },
+  {
+   "name": "toigo_harem_pants",
+   "kind": "bottom",
+   "pack": "pants01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 7030,
+   "triangles": 10912
+  },
+  {
+   "name": "toigo_wool_pants",
+   "kind": "bottom",
+   "pack": "pants01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "pants",
+    "male"
+   ],
+   "street": true,
+   "vertices": 1593,
+   "triangles": 2674
+  },
+  {
+   "name": "elvs_disco_pants_double_ruffles",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "festive",
+    "vintage",
+    "pants",
+    "disco"
+   ],
+   "street": true,
+   "vertices": 14788,
+   "triangles": 14756
+  },
+  {
+   "name": "elvs_disco_pants_single_ruffles",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "festive",
+    "vintage",
+    "pants",
+    "disco"
+   ],
+   "street": true,
+   "vertices": 10312,
+   "triangles": 10290
+  },
+  {
+   "name": "elvs_disco_pants_skinny",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "formal",
+    "festive",
+    "vintage",
+    "pants",
+    "disco"
+   ],
+   "street": true,
+   "vertices": 6490,
+   "triangles": 6460
+  },
+  {
+   "name": "elvs_gored_elephant_pants",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "festive",
+    "vintage",
+    "pants",
+    "disco"
+   ],
+   "street": true,
+   "vertices": 13556,
+   "triangles": 13604
+  },
+  {
+   "name": "elvs_jeans_bootcut",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "pant",
+    "menswear",
+    "fashion",
+    "traditional",
+    "jeans"
+   ],
+   "street": true,
+   "vertices": 3977,
+   "triangles": 5708
+  },
+  {
+   "name": "elvs_jeans_straight_leg",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "jeans",
+    "menswear",
+    "fashion",
+    "traditional",
+    "casual"
+   ],
+   "street": true,
+   "vertices": 3977,
+   "triangles": 5708
+  },
+  {
+   "name": "elvs_male_trouser",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "pant",
+    "menswear",
+    "fashion",
+    "traditional",
+    "trouser"
+   ],
+   "street": true,
+   "vertices": 2471,
+   "triangles": 3540
+  },
+  {
+   "name": "elvs_male_trouser_with_chain",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "pant",
+    "menswear",
+    "fashion",
+    "traditional",
+    "trouser"
+   ],
+   "street": true,
+   "vertices": 13434,
+   "triangles": 14484
+  },
+  {
+   "name": "mindfront_female_trousers_1",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "trousers",
+    "jeans",
+    "pants"
+   ],
+   "street": true,
+   "vertices": 2139,
+   "triangles": 3392
+  },
+  {
+   "name": "mindfront_male_trousers_1",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "male",
+    "trousers",
+    "jeans",
+    "pants"
+   ],
+   "street": true,
+   "vertices": 1893,
+   "triangles": 3236
+  },
+  {
+   "name": "mindfront_male_trousers_2",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "male",
+    "trousers",
+    "pants"
+   ],
+   "street": true,
+   "vertices": 7902,
+   "triangles": 14584
+  },
+  {
+   "name": "punkduck_female_tight_jeans",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "pants",
+    "jeans"
+   ],
+   "street": true,
+   "vertices": 2570,
+   "triangles": 4216
+  },
+  {
+   "name": "punkduck_male_classic_jeans",
+   "kind": "bottom",
+   "pack": "pants02",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "jeans",
+    "pants",
+    "male"
+   ],
+   "street": true,
+   "vertices": 2794,
+   "triangles": 4590
+  },
+  {
+   "name": "elvs_male_swim_shorts1",
+   "kind": "bottom",
+   "pack": "pants03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 599,
+   "triangles": 964
+  },
+  {
+   "name": "elvs_male_trouser_short_1",
+   "kind": "bottom",
+   "pack": "pants03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shorts",
+    "menswear",
+    "fashion",
+    "traditional",
+    "trouser"
+   ],
+   "street": true,
+   "vertices": 13072,
+   "triangles": 13644
+  },
+  {
+   "name": "elvs_male_trouser_short_2",
+   "kind": "bottom",
+   "pack": "pants03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shorts",
+    "menswear",
+    "fashion",
+    "traditional",
+    "trouser"
+   ],
+   "street": true,
+   "vertices": 12824,
+   "triangles": 13392
+  },
+  {
+   "name": "elvs_retro_girly_shorts1",
+   "kind": "bottom",
+   "pack": "pants03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shorts",
+    "ribbon",
+    "vintage",
+    "retro",
+    "ladies ware"
+   ],
+   "street": true,
+   "vertices": 23911,
+   "triangles": 28815
+  },
+  {
+   "name": "mindfront_male_swimming_trunks_01",
+   "kind": "bottom",
+   "pack": "pants03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "male",
+    "swimwear"
+   ],
+   "street": true,
+   "vertices": 477,
+   "triangles": 728
+  },
+  {
+   "name": "mindfront_male_swimming_trunks_02",
+   "kind": "bottom",
+   "pack": "pants03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "male",
+    "swimwear"
+   ],
+   "street": true,
+   "vertices": 785,
+   "triangles": 1248
+  },
+  {
+   "name": "mindfront_male_swimming_trunks_03",
+   "kind": "bottom",
+   "pack": "pants03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "male",
+    "swimwear"
+   ],
+   "street": true,
+   "vertices": 4867,
+   "triangles": 6956
+  },
+  {
+   "name": "punkduck_female_short_jeans",
+   "kind": "bottom",
+   "pack": "pants03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "jeans",
+    "pants"
+   ],
+   "street": true,
+   "vertices": 1444,
+   "triangles": 2112
+  },
+  {
+   "name": "frankyaye_mini_skirt_01",
+   "kind": "skirt",
+   "pack": "skirts01",
+   "license": "AGPL-3.0",
+   "author": "frankyaye",
+   "tags": [],
+   "street": true,
+   "vertices": 1206,
+   "triangles": 1720
+  },
+  {
+   "name": "frankyaye_mini_skirt_02",
+   "kind": "skirt",
+   "pack": "skirts01",
+   "license": "AGPL-3.0",
+   "author": "frankyaye",
+   "tags": [],
+   "street": true,
+   "vertices": 1984,
+   "triangles": 2600
+  },
+  {
+   "name": "toigo_long_full_skirt",
+   "kind": "skirt",
+   "pack": "skirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3136,
+   "triangles": 5848
+  },
+  {
+   "name": "toigo_skirt_with_lace_ruffle",
+   "kind": "skirt",
+   "pack": "skirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3092,
+   "triangles": 5576
+  },
+  {
+   "name": "toigo_tiered_mini_skirt",
+   "kind": "skirt",
+   "pack": "skirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 7443,
+   "triangles": 10656
+  },
+  {
+   "name": "toigo_tiered_skirt",
+   "kind": "skirt",
+   "pack": "skirts01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "dress"
+   ],
+   "street": true,
+   "vertices": 8686,
+   "triangles": 12960
+  },
+  {
+   "name": "callharvey3d_harvey_pskirt01",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 555,
+   "triangles": 864
+  },
+  {
+   "name": "elvs_asymmetrical_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 1651,
+   "triangles": 2746
+  },
+  {
+   "name": "elvs_disco_mini_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "formal",
+    "festive",
+    "vintage",
+    "skirt",
+    "disco"
+   ],
+   "street": true,
+   "vertices": 2693,
+   "triangles": 2600
+  },
+  {
+   "name": "elvs_gored_midi_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "formal",
+    "festive",
+    "contemporary",
+    "skirt",
+    "gored"
+   ],
+   "street": true,
+   "vertices": 10226,
+   "triangles": 9837
+  },
+  {
+   "name": "elvs_pencil_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "formal",
+    "festive",
+    "vintage",
+    "skirt",
+    "disco"
+   ],
+   "street": true,
+   "vertices": 4636,
+   "triangles": 4552
+  },
+  {
+   "name": "elvs_pleated_plaid_mini_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "skirt",
+    "ladies ware",
+    "pleated",
+    "short skirt",
+    "female"
+   ],
+   "street": true,
+   "vertices": 20640,
+   "triangles": 22973
+  },
+  {
+   "name": "mtknife_low_mini_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-4.0",
+   "author": "MTKnife",
+   "tags": [
+    "female",
+    "skirt"
+   ],
+   "street": true,
+   "vertices": 746,
+   "triangles": 864
+  },
+  {
+   "name": "mtknife_pleated_mini_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-4.0",
+   "author": "MTKnife",
+   "tags": [
+    "female",
+    "skirt",
+    "miniskirt",
+    "pleated"
+   ],
+   "street": true,
+   "vertices": 3643,
+   "triangles": 3732
+  },
+  {
+   "name": "punkduck_black_mini_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "skirt"
+   ],
+   "street": true,
+   "vertices": 779,
+   "triangles": 1308
+  },
+  {
+   "name": "punkduck_jeans_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "skirt",
+    "jeans"
+   ],
+   "street": true,
+   "vertices": 916,
+   "triangles": 1458
+  },
+  {
+   "name": "punkduck_retro_polka_dot_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "skirt",
+    "vintage"
+   ],
+   "street": true,
+   "vertices": 1127,
+   "triangles": 1848
+  },
+  {
+   "name": "punkduck_skirt_native_american_fashion",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "skirt"
+   ],
+   "street": true,
+   "vertices": 6918,
+   "triangles": 10204
+  },
+  {
+   "name": "scsouza_mini_denin_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [
+    "female",
+    "skirt"
+   ],
+   "street": true,
+   "vertices": 240,
+   "triangles": 360
+  },
+  {
+   "name": "sonicteam998_maria_skirt",
+   "kind": "skirt",
+   "pack": "skirts02",
+   "license": "CC-BY-3.0",
+   "author": "sonicteam998",
+   "tags": [
+    "female",
+    "skirt",
+    "sonic"
+   ],
+   "street": true,
+   "vertices": 1127,
+   "triangles": 1848
+  },
+  {
+   "name": "aethelraed_flapper_dress",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "AEthelraed_Unraed",
+   "tags": [
+    "female",
+    "historical",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 6862,
+   "triangles": 12846
+  },
+  {
+   "name": "mindfront_kimono",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "robe",
+    "casual"
+   ],
+   "street": true,
+   "vertices": 4092,
+   "triangles": 6922
+  },
+  {
+   "name": "toigo_bodice_dress_with_lace_ruffle_skirt",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 5203,
+   "triangles": 8840
+  },
+  {
+   "name": "toigo_camisole_dress_with_full_skirt",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 6467,
+   "triangles": 10792
+  },
+  {
+   "name": "toigo_cut_out_dress",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3662,
+   "triangles": 6156
+  },
+  {
+   "name": "toigo_dress_with_tiered_skirt",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "dress"
+   ],
+   "street": true,
+   "vertices": 12409,
+   "triangles": 18896
+  },
+  {
+   "name": "toigo_halter_dress_knee_length",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 2181,
+   "triangles": 3936
+  },
+  {
+   "name": "toigo_halter_dress_midi",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 2841,
+   "triangles": 5184
+  },
+  {
+   "name": "toigo_halter_dress_with_fluted_skirt",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3589,
+   "triangles": 6432
+  },
+  {
+   "name": "toigo_keyhole_neck_dress",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 9623,
+   "triangles": 17888
+  },
+  {
+   "name": "toigo_shift_dress",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 7814,
+   "triangles": 13568
+  },
+  {
+   "name": "toigo_strapless_ruffle_top_dress",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 5992,
+   "triangles": 10336
+  },
+  {
+   "name": "wdg_mycenaean_tunic",
+   "kind": "dress",
+   "pack": "dress01",
+   "license": "AGPL-3.0",
+   "author": "WDG",
+   "tags": [],
+   "street": true,
+   "vertices": 1558,
+   "triangles": 2660
+  },
+  {
+   "name": "elvs_crochet_baby_doll",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "babydoll",
+    "ruffle",
+    "ladies ware",
+    "mini dress"
+   ],
+   "street": true,
+   "vertices": 40604,
+   "triangles": 45701
+  },
+  {
+   "name": "elvs_double_handkerchief_halter_dress",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "ladiesware",
+    "female",
+    "halter",
+    "halter dress"
+   ],
+   "street": true,
+   "vertices": 21648,
+   "triangles": 21954
+  },
+  {
+   "name": "elvs_fashion_stylized_qipoa",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "asian",
+    "ladies",
+    "fashion"
+   ],
+   "street": true,
+   "vertices": 40165,
+   "triangles": 39027
+  },
+  {
+   "name": "elvs_frilled_party_dress",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "party dress",
+    "female",
+    "fashion"
+   ],
+   "street": true,
+   "vertices": 16698,
+   "triangles": 18881
+  },
+  {
+   "name": "elvs_fringe_hippy_dress",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "formal",
+    "festive",
+    "vintage",
+    "dress",
+    "fringe club"
+   ],
+   "street": true,
+   "vertices": 9633,
+   "triangles": 6768
+  },
+  {
+   "name": "elvs_fringe_leather_dress",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "festive",
+    "vintage",
+    "dress",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 15153,
+   "triangles": 11762
+  },
+  {
+   "name": "elvs_fringe_off_shoulder_dress",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "fantasy",
+    "festive",
+    "contemporary",
+    "dress",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 21266,
+   "triangles": 14733
+  },
+  {
+   "name": "elvs_goddess_dress1",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "play",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 9576,
+   "triangles": 10059
+  },
+  {
+   "name": "elvs_goddess_dress2",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "play",
+    "vintage",
+    "dress",
+    "goddess"
+   ],
+   "street": true,
+   "vertices": 14664,
+   "triangles": 14873
+  },
+  {
+   "name": "elvs_goddess_dress3",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "festive",
+    "vintage",
+    "dress",
+    "goddess"
+   ],
+   "street": true,
+   "vertices": 61176,
+   "triangles": 63026
+  },
+  {
+   "name": "elvs_goddess_dress4",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "festive",
+    "vintage",
+    "dress",
+    "goddess"
+   ],
+   "street": true,
+   "vertices": 35916,
+   "triangles": 36675
+  },
+  {
+   "name": "elvs_goddess_dress5",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "festive",
+    "vintage",
+    "dress",
+    "goddess"
+   ],
+   "street": true,
+   "vertices": 23160,
+   "triangles": 23275
+  },
+  {
+   "name": "elvs_goddess_dress6",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "festive",
+    "vintage",
+    "dress",
+    "goddess"
+   ],
+   "street": true,
+   "vertices": 27552,
+   "triangles": 28039
+  },
+  {
+   "name": "elvs_goddess_dress7",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "festive",
+    "vintage",
+    "dress",
+    "goddess"
+   ],
+   "street": true,
+   "vertices": 12995,
+   "triangles": 13069
+  },
+  {
+   "name": "elvs_goddess_dress8",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "festive",
+    "vintage",
+    "dress",
+    "goddess"
+   ],
+   "street": true,
+   "vertices": 65714,
+   "triangles": 65094
+  },
+  {
+   "name": "elvs_halter_dress_knee_length",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "ladiesware",
+    "female",
+    "halter",
+    "halter dress"
+   ],
+   "street": true,
+   "vertices": 9528,
+   "triangles": 9596
+  },
+  {
+   "name": "elvs_halter_dress_long",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "ladiesware",
+    "female",
+    "halter",
+    "halter dress"
+   ],
+   "street": true,
+   "vertices": 15755,
+   "triangles": 15548
+  },
+  {
+   "name": "elvs_halter_dress_mini",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "ladiesware",
+    "female",
+    "halter",
+    "halter dress"
+   ],
+   "street": true,
+   "vertices": 15240,
+   "triangles": 15492
+  },
+  {
+   "name": "elvs_halter_dress_tiered",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "ladiesware",
+    "female",
+    "halter",
+    "halter dress"
+   ],
+   "street": true,
+   "vertices": 20871,
+   "triangles": 21076
+  },
+  {
+   "name": "elvs_ladies_apron",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 37994,
+   "triangles": 54594
+  },
+  {
+   "name": "elvs_sarong_cover_up",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "sarong",
+    "wrap",
+    "ladies wear",
+    "summer",
+    "cover up"
+   ],
+   "street": true,
+   "vertices": 2152,
+   "triangles": 2930
+  },
+  {
+   "name": "elvs_simple_60s_dress",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "ladies ware",
+    "fashion",
+    "hippy"
+   ],
+   "street": true,
+   "vertices": 1715,
+   "triangles": 2904
+  },
+  {
+   "name": "elvs_simple_fashion_dress_1",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "ladies ware",
+    "fashion"
+   ],
+   "street": true,
+   "vertices": 1119,
+   "triangles": 1800
+  },
+  {
+   "name": "elvs_simple_fashion_dress_2",
+   "kind": "dress",
+   "pack": "dress02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "dress",
+    "ladies ware",
+    "fashion",
+    "hippy"
+   ],
+   "street": true,
+   "vertices": 1188,
+   "triangles": 2150
+  },
+  {
+   "name": "mindfront_ballet_dress_the_swan",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "ballet",
+    "work"
+   ],
+   "street": true,
+   "vertices": 2637,
+   "triangles": 4360
+  },
+  {
+   "name": "mindfront_f_dress_01",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 2315,
+   "triangles": 3548
+  },
+  {
+   "name": "mindfront_f_dress_02",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "casual"
+   ],
+   "street": true,
+   "vertices": 2119,
+   "triangles": 3274
+  },
+  {
+   "name": "mindfront_f_dress_03",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 12252,
+   "triangles": 21904
+  },
+  {
+   "name": "mindfront_f_dress_04",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 2003,
+   "triangles": 3220
+  },
+  {
+   "name": "mindfront_f_dress_05",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 8477,
+   "triangles": 12852
+  },
+  {
+   "name": "mindfront_f_dress_06",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 2452,
+   "triangles": 4508
+  },
+  {
+   "name": "mindfront_f_dress_07",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 2089,
+   "triangles": 3608
+  },
+  {
+   "name": "mindfront_f_dress_08",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 922,
+   "triangles": 1406
+  },
+  {
+   "name": "mindfront_f_dress_09",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 9283,
+   "triangles": 15920
+  },
+  {
+   "name": "mindfront_f_dress_10",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 3558,
+   "triangles": 5068
+  },
+  {
+   "name": "mindfront_f_dress_11",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "casual"
+   ],
+   "street": true,
+   "vertices": 1625,
+   "triangles": 2570
+  },
+  {
+   "name": "punkduck_black_cocktail_dress",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "dress",
+    "gown"
+   ],
+   "street": true,
+   "vertices": 1855,
+   "triangles": 3406
+  },
+  {
+   "name": "punkduck_evening_gown",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "gown"
+   ],
+   "street": true,
+   "vertices": 3645,
+   "triangles": 5150
+  },
+  {
+   "name": "punkduck_figure_skating_dress",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "sport"
+   ],
+   "street": true,
+   "vertices": 2663,
+   "triangles": 4274
+  },
+  {
+   "name": "punkduck_medieval_dress",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 4512,
+   "triangles": 7852
+  },
+  {
+   "name": "punkduck_middle_length_qipao",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "gown"
+   ],
+   "street": true,
+   "vertices": 4979,
+   "triangles": 7826
+  },
+  {
+   "name": "punkduck_tube_dress",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 1423,
+   "triangles": 2596
+  },
+  {
+   "name": "punkduck_winter_coat",
+   "kind": "dress",
+   "pack": "dress03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "coat"
+   ],
+   "street": true,
+   "vertices": 4747,
+   "triangles": 7400
+  },
+  {
+   "name": "culturalibre_hero_suit_1",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 8463,
+   "triangles": 15460
+  },
+  {
+   "name": "culturalibre_hero_suit_2",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 6208,
+   "triangles": 11316
+  },
+  {
+   "name": "culturalibre_hero_suit_3",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 16679,
+   "triangles": 29244
+  },
+  {
+   "name": "culturalibre_heroine_suit_2",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 7823,
+   "triangles": 14204
+  },
+  {
+   "name": "donitz_monk_robe",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "profession",
+    "vintage",
+    "dress",
+    "monk",
+    "robe",
+    "medieval",
+    "fantasy",
+    "hood",
+    "renaissance",
+    "priest",
+    "wizard"
+   ],
+   "street": true,
+   "vertices": 11271,
+   "triangles": 19820
+  },
+  {
+   "name": "donitz_monk_robe_hood",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "profession",
+    "vintage",
+    "hat",
+    "monk",
+    "robe",
+    "medieval",
+    "fantasy",
+    "hood",
+    "renaissance",
+    "priest",
+    "wizard"
+   ],
+   "street": true,
+   "vertices": 5023,
+   "triangles": 9008
+  },
+  {
+   "name": "donitz_monk_robe_hood_down",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "profession",
+    "vintage",
+    "hat",
+    "monk",
+    "robe",
+    "medieval",
+    "fantasy",
+    "hood",
+    "renaissance",
+    "priest",
+    "wizard"
+   ],
+   "street": true,
+   "vertices": 5025,
+   "triangles": 9010
+  },
+  {
+   "name": "donitz_monk_robe_hood_off",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "fantasy",
+    "profession",
+    "vintage",
+    "hat",
+    "hood",
+    "medieval",
+    "monk",
+    "priest",
+    "renaissance",
+    "robe",
+    "wizard"
+   ],
+   "street": true,
+   "vertices": 5022,
+   "triangles": 9054
+  },
+  {
+   "name": "green_tomato_rei_ayanami",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "profession",
+    "future",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 6884,
+   "triangles": 11368
+  },
+  {
+   "name": "green_tomato_yoko_tsuno",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "space",
+    "future",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 3258,
+   "triangles": 5348
+  },
+  {
+   "name": "joachip_cyborg_suit",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "fantasy",
+    "profession",
+    "future",
+    "dress"
+   ],
+   "street": true,
+   "vertices": 4164,
+   "triangles": 2380
+  },
+  {
+   "name": "matcreator_mc-bodysuit-2021",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "leisure",
+    "traditional",
+    "pants",
+    "bodysuit"
+   ],
+   "street": true,
+   "vertices": 32276,
+   "triangles": 55352
+  },
+  {
+   "name": "matcreator_mc-scifi-armor_guardian",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 10731,
+   "triangles": 18020
+  },
+  {
+   "name": "matcreator_mc-scifi-armor_helios",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 82891,
+   "triangles": 142468
+  },
+  {
+   "name": "matcreator_mc-scifi-armor_jupiter7",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 16060,
+   "triangles": 26598
+  },
+  {
+   "name": "matcreator_mc-skinsuit_2022",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "fantasy",
+    "profession",
+    "future",
+    "pants",
+    "bodysuit"
+   ],
+   "street": true,
+   "vertices": 11448,
+   "triangles": 19620
+  },
+  {
+   "name": "rehmanpolanski_viking_boots",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "CC0-1.0",
+   "author": "Rehman Polanski",
+   "tags": [
+    "boots",
+    "viking"
+   ],
+   "street": true,
+   "vertices": 4108,
+   "triangles": 6320
+  },
+  {
+   "name": "rehmanpolanski_viking_pants",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "CC0-1.0",
+   "author": "Rehman Polanski",
+   "tags": [
+    "pants",
+    "viking"
+   ],
+   "street": true,
+   "vertices": 1410,
+   "triangles": 2544
+  },
+  {
+   "name": "rehmanpolanski_viking_tunic",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "CC0-1.0",
+   "author": "Rehman Polanski",
+   "tags": [
+    "tunic",
+    "viking"
+   ],
+   "street": true,
+   "vertices": 3917,
+   "triangles": 6568
+  },
+  {
+   "name": "slayer227_spider-gwen",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 33414,
+   "triangles": 42800
+  },
+  {
+   "name": "thegreatengineer_galactic_warrior_uniform",
+   "kind": "suit",
+   "pack": "suits02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "fantasy",
+    "profession",
+    "future",
+    "dress",
+    "uniform"
+   ],
+   "street": true,
+   "vertices": 12435,
+   "triangles": 10193
+  },
+  {
+   "name": "elvs_emt_uniform_jacket_female",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-4.0",
+   "author": "elvaerwyn + punkduck",
+   "tags": [
+    "jacket",
+    "uniform",
+    "female"
+   ],
+   "street": true,
+   "vertices": 14012,
+   "triangles": 21612
+  },
+  {
+   "name": "elvs_emt_uniform_jacket_male",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-4.0",
+   "author": "elvaerwyn + punkduck",
+   "tags": [
+    "jacket",
+    "uniform"
+   ],
+   "street": true,
+   "vertices": 14012,
+   "triangles": 21612
+  },
+  {
+   "name": "elvs_emt_uniform_pants_female",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn + Punkduck",
+   "tags": [
+    "female",
+    "pants",
+    "uniform"
+   ],
+   "street": true,
+   "vertices": 5032,
+   "triangles": 7708
+  },
+  {
+   "name": "elvs_emt_uniform_pants_male",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn + Punkduck",
+   "tags": [],
+   "street": true,
+   "vertices": 5032,
+   "triangles": 7708
+  },
+  {
+   "name": "elvs_halter_style_pantsuit1",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "pants suit",
+    "ladiesware",
+    "female",
+    "pant",
+    "halter pant"
+   ],
+   "street": true,
+   "vertices": 9807,
+   "triangles": 10040
+  },
+  {
+   "name": "elvs_male_coveralls_1",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "profession",
+    "contemporary",
+    "overall"
+   ],
+   "street": true,
+   "vertices": 32815,
+   "triangles": 34633
+  },
+  {
+   "name": "elvs_racing_fire_suit_female1",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "sport",
+    "contemporary",
+    "racing",
+    "fire suit"
+   ],
+   "street": true,
+   "vertices": 19771,
+   "triangles": 18809
+  },
+  {
+   "name": "elvs_racing_fire_suit_male1",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "male",
+    "casual",
+    "sport",
+    "contemporary",
+    "racing"
+   ],
+   "street": true,
+   "vertices": 27228,
+   "triangles": 25925
+  },
+  {
+   "name": "elvs_sporty_tracksuit_hoodie_dress1",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "sport",
+    "contemporary",
+    "dress",
+    "hoodie"
+   ],
+   "street": true,
+   "vertices": 10860,
+   "triangles": 10784
+  },
+  {
+   "name": "grinsegold_mars_suit",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "AGPL-3.0",
+   "author": "grinsegold",
+   "tags": [
+    "uniform/armor"
+   ],
+   "street": true,
+   "vertices": 2262,
+   "triangles": 3370
+  },
+  {
+   "name": "maciekg_wizard_robe",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "AGPL-3.0",
+   "author": "MGgame",
+   "tags": [
+    "robe"
+   ],
+   "street": true,
+   "vertices": 2260,
+   "triangles": 3904
+  },
+  {
+   "name": "mindfront_f_ninja",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "work",
+    "sport"
+   ],
+   "street": true,
+   "vertices": 17291,
+   "triangles": 28492
+  },
+  {
+   "name": "mindfront_m_suit_01",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "male",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 5485,
+   "triangles": 9170
+  },
+  {
+   "name": "punkduck_diver_suit",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "unstated",
+   "author": "grinsegold + punkduck (materials)",
+   "tags": [
+    "sport",
+    "unsorted"
+   ],
+   "street": true,
+   "vertices": 7516,
+   "triangles": 11742
+  },
+  {
+   "name": "punkduck_short_bodysuit_female",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "bodysuit"
+   ],
+   "street": true,
+   "vertices": 2366,
+   "triangles": 3718
+  },
+  {
+   "name": "punkduck_tennis_dress",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "sport"
+   ],
+   "street": true,
+   "vertices": 1637,
+   "triangles": 2668
+  },
+  {
+   "name": "punkduck_triathlon_suit_female",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "sport",
+    "triathlon",
+    "bike"
+   ],
+   "street": true,
+   "vertices": 1755,
+   "triangles": 2880
+  },
+  {
+   "name": "punkduck_wetsuit",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "sport",
+    "swimming",
+    "triathlon"
+   ],
+   "street": true,
+   "vertices": 3158,
+   "triangles": 5002
+  },
+  {
+   "name": "tiomegamanx_skintight_body_suit_female",
+   "kind": "suit",
+   "pack": "suits03",
+   "license": "AGPL-3.0",
+   "author": "Tio Megaman X",
+   "tags": [
+    "zero suit"
+   ],
+   "street": true,
+   "vertices": 9122,
+   "triangles": 16128
+  },
+  {
+   "name": "culturalibre_el_chapulin_colorado",
+   "kind": "suit",
+   "pack": "suits04",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero"
+   ],
+   "street": true,
+   "vertices": 11003,
+   "triangles": 18214
+  },
+  {
+   "name": "culturalibre_hero_suit_4",
+   "kind": "suit",
+   "pack": "suits04",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero",
+    "comic"
+   ],
+   "street": true,
+   "vertices": 3939,
+   "triangles": 7188
+  },
+  {
+   "name": "culturalibre_heroine_suit_5",
+   "kind": "suit",
+   "pack": "suits04",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero",
+    "comic"
+   ],
+   "street": true,
+   "vertices": 6022,
+   "triangles": 10936
+  },
+  {
+   "name": "culturalibre_heroine_suit_6",
+   "kind": "suit",
+   "pack": "suits04",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero",
+    "comic"
+   ],
+   "street": true,
+   "vertices": 9245,
+   "triangles": 15700
+  },
+  {
+   "name": "culturalibre_heroine_suit_7",
+   "kind": "suit",
+   "pack": "suits04",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero",
+    "comic"
+   ],
+   "street": true,
+   "vertices": 6620,
+   "triangles": 11876
+  },
+  {
+   "name": "culturalibre_male_sport_suit",
+   "kind": "suit",
+   "pack": "suits04",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [
+    "sport",
+    "male"
+   ],
+   "street": true,
+   "vertices": 4096,
+   "triangles": 6764
+  },
+  {
+   "name": "culturalibre_heroine_suit_1",
+   "kind": "suit",
+   "pack": "suits05",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 8491,
+   "triangles": 15468
+  },
+  {
+   "name": "culturalibre_heroine_suit_3",
+   "kind": "suit",
+   "pack": "suits05",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 4903,
+   "triangles": 8996
+  },
+  {
+   "name": "culturalibre_heroine_suit_4",
+   "kind": "suit",
+   "pack": "suits05",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero",
+    "superhero"
+   ],
+   "street": true,
+   "vertices": 13131,
+   "triangles": 22168
+  },
+  {
+   "name": "cortu_floppy_overknee_shoes",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 1818,
+   "triangles": 3128
+  },
+  {
+   "name": "cortu_t-bar",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 566,
+   "triangles": 704
+  },
+  {
+   "name": "culturalibre_hero_boots_1",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 1909,
+   "triangles": 2888
+  },
+  {
+   "name": "culturalibre_hero_boots_2",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 1358,
+   "triangles": 2312
+  },
+  {
+   "name": "culturalibre_hero_boots_3",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 1358,
+   "triangles": 2312
+  },
+  {
+   "name": "culturalibre_hero_boots_4",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 1358,
+   "triangles": 2312
+  },
+  {
+   "name": "culturalibre_hero_boots_5",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 6512,
+   "triangles": 11552
+  },
+  {
+   "name": "culturalibre_heroine_boots_1",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 2348,
+   "triangles": 4104
+  },
+  {
+   "name": "culturalibre_heroine_boots_2",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 1578,
+   "triangles": 2720
+  },
+  {
+   "name": "culturalibre_heroine_boots_3",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 1578,
+   "triangles": 2720
+  },
+  {
+   "name": "culturalibre_heroine_boots_4",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 1385,
+   "triangles": 1712
+  },
+  {
+   "name": "culturalibre_male_boots",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 16072,
+   "triangles": 30768
+  },
+  {
+   "name": "grinsegold_female_pirate_boots",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "AGPL-3.0",
+   "author": "RicoCilliers/Grinsegold",
+   "tags": [
+    "shoes"
+   ],
+   "street": true,
+   "vertices": 34146,
+   "triangles": 63552
+  },
+  {
+   "name": "scailman_gogo_platform_boots",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 5854,
+   "triangles": 10068
+  },
+  {
+   "name": "scailman_semitransparent_water_boots",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 6060,
+   "triangles": 10752
+  },
+  {
+   "name": "toigo_ankle_boots_female",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 2530,
+   "triangles": 4120
+  },
+  {
+   "name": "toigo_ankle_boots_male",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 2530,
+   "triangles": 4120
+  },
+  {
+   "name": "toigo_ballet_flats",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 5694,
+   "triangles": 8960
+  },
+  {
+   "name": "toigo_ballet_flats_with_bows",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 8900,
+   "triangles": 14864
+  },
+  {
+   "name": "toigo_ballet_flats_with_flowers",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 6476,
+   "triangles": 10272
+  },
+  {
+   "name": "toigo_flats",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "shoes"
+   ],
+   "street": true,
+   "vertices": 30724,
+   "triangles": 57600
+  },
+  {
+   "name": "toigo_mj_cloth_shoes",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 822,
+   "triangles": 1004
+  },
+  {
+   "name": "toigo_stiletto_booties",
+   "kind": "shoes",
+   "pack": "shoes01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 27870,
+   "triangles": 44664
+  },
+  {
+   "name": "callharvey3d_harvey_saddleshoes1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 1848,
+   "triangles": 3016
+  },
+  {
+   "name": "culturalibre_sneakers",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 12428,
+   "triangles": 9042
+  },
+  {
+   "name": "dressupdoc_balletflat1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 848,
+   "triangles": 1384
+  },
+  {
+   "name": "dressupdoc_domsjeans1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 848,
+   "triangles": 1384
+  },
+  {
+   "name": "dressupdoc_maryjane1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 848,
+   "triangles": 1384
+  },
+  {
+   "name": "dressupdoc_sandals1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 848,
+   "triangles": 1384
+  },
+  {
+   "name": "elvs_basic_felt_elf_shoes",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 1502,
+   "triangles": 1832
+  },
+  {
+   "name": "elvs_caesar_sandals1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "sandal",
+    "ladiesware",
+    "female",
+    "shoe",
+    "ceasar"
+   ],
+   "street": true,
+   "vertices": 91058,
+   "triangles": 91704
+  },
+  {
+   "name": "elvs_flatshoe_bow1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shoe",
+    "ladies ware",
+    "ladies shoes",
+    "fashion",
+    "flats"
+   ],
+   "street": true,
+   "vertices": 9990,
+   "triangles": 17152
+  },
+  {
+   "name": "elvs_flatshoe_buckle_1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shoe",
+    "ladies ware",
+    "ladies shoes",
+    "fashion",
+    "flats"
+   ],
+   "street": true,
+   "vertices": 41760,
+   "triangles": 74624
+  },
+  {
+   "name": "elvs_flatshoe_gemmed1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shoe",
+    "flats",
+    "ladies ware",
+    "dress shoe",
+    "no sock"
+   ],
+   "street": true,
+   "vertices": 11746,
+   "triangles": 18580
+  },
+  {
+   "name": "elvs_flatshoe_plain1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shoe",
+    "ladies ware",
+    "ladies shoes",
+    "fashion",
+    "flats"
+   ],
+   "street": true,
+   "vertices": 8960,
+   "triangles": 16384
+  },
+  {
+   "name": "elvs_flatshoe_pointy1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shoe",
+    "flats",
+    "ladies ware",
+    "dress shoe",
+    "no sock"
+   ],
+   "street": true,
+   "vertices": 9036,
+   "triangles": 16384
+  },
+  {
+   "name": "elvs_male_flip_flop_sandals1",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "casual",
+    "shoe",
+    "male"
+   ],
+   "street": true,
+   "vertices": 19343,
+   "triangles": 23408
+  },
+  {
+   "name": "elvs_zombie_killer_sneakers",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "female",
+    "casual",
+    "sport",
+    "contemporary",
+    "shoes",
+    "shoe"
+   ],
+   "street": true,
+   "vertices": 85862,
+   "triangles": 153938
+  },
+  {
+   "name": "mindfront_shoes_monk_strap_female",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "shoes",
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 8089,
+   "triangles": 13332
+  },
+  {
+   "name": "mindfront_shoes_monk_strap_male",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "shoes",
+    "male",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 8089,
+   "triangles": 13332
+  },
+  {
+   "name": "mindfront_shoes_oxford_female",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "shoes",
+    "female",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 3487,
+   "triangles": 5192
+  },
+  {
+   "name": "mindfront_shoes_oxford_male",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "shoes",
+    "male",
+    "elegant"
+   ],
+   "street": true,
+   "vertices": 3487,
+   "triangles": 5192
+  },
+  {
+   "name": "punkduck_comfortable_sneakers",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "shoes"
+   ],
+   "street": true,
+   "vertices": 1078,
+   "triangles": 1556
+  },
+  {
+   "name": "punkduck_cycling_shoes",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "shoes",
+    "sport"
+   ],
+   "street": true,
+   "vertices": 3242,
+   "triangles": 4732
+  },
+  {
+   "name": "punkduck_kill_bill_shoes",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "shoes",
+    "sport"
+   ],
+   "street": true,
+   "vertices": 1920,
+   "triangles": 2792
+  },
+  {
+   "name": "punkduck_running_shoes_01",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "shoes",
+    "sport"
+   ],
+   "street": true,
+   "vertices": 1920,
+   "triangles": 2792
+  },
+  {
+   "name": "punkduck_tennis_shoes",
+   "kind": "shoes",
+   "pack": "shoes02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "shoes",
+    "sport"
+   ],
+   "street": true,
+   "vertices": 2370,
+   "triangles": 3340
+  },
+  {
+   "name": "elvs_knee_high_heel_boots1",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [],
+   "street": true,
+   "vertices": 56980,
+   "triangles": 73476
+  },
+  {
+   "name": "elvs_wedge_tall_boots1",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shoes",
+    "ladies",
+    "heels",
+    "laced",
+    "sockless"
+   ],
+   "street": true,
+   "vertices": 60367,
+   "triangles": 43695
+  },
+  {
+   "name": "maciekg_leather_boots",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "AGPL-3.0",
+   "author": "MGgames",
+   "tags": [
+    "boots"
+   ],
+   "street": true,
+   "vertices": 866,
+   "triangles": 1272
+  },
+  {
+   "name": "madmanny_tight_leather_boots",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "MH",
+   "tags": [],
+   "street": true,
+   "vertices": 991,
+   "triangles": 1504
+  },
+  {
+   "name": "mindfront_shoes_biker_boots_female",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "shoes",
+    "female"
+   ],
+   "street": true,
+   "vertices": 9256,
+   "triangles": 15844
+  },
+  {
+   "name": "mindfront_shoes_biker_boots_male",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "shoes",
+    "male"
+   ],
+   "street": true,
+   "vertices": 9256,
+   "triangles": 15844
+  },
+  {
+   "name": "punkduck_female_half-boots",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "shoes",
+    "boots"
+   ],
+   "street": true,
+   "vertices": 2858,
+   "triangles": 4632
+  },
+  {
+   "name": "punkduck_female_knee_boots",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "shoes",
+    "boots",
+    "female"
+   ],
+   "street": true,
+   "vertices": 2281,
+   "triangles": 3496
+  },
+  {
+   "name": "punkduck_medieval_boots",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "boots"
+   ],
+   "street": true,
+   "vertices": 4114,
+   "triangles": 6884
+  },
+  {
+   "name": "punkduck_riding_boots",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "riding",
+    "female"
+   ],
+   "street": true,
+   "vertices": 2304,
+   "triangles": 3800
+  },
+  {
+   "name": "punkduck_winter_boots",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "boots"
+   ],
+   "street": true,
+   "vertices": 2672,
+   "triangles": 4044
+  },
+  {
+   "name": "scailman_low-heeled_boots",
+   "kind": "shoes",
+   "pack": "shoes03",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 3756,
+   "triangles": 6200
+  },
+  {
+   "name": "aethelraed_unraed_cloche_hat",
+   "kind": "hat",
+   "pack": "hats01",
+   "license": "CC0-1.0",
+   "author": "AEthelraed_Unraed",
+   "tags": [
+    "female",
+    "hats",
+    "historical"
+   ],
+   "street": true,
+   "vertices": 556,
+   "triangles": 771
+  },
+  {
+   "name": "grinsegold_uncle_joshis_hat",
+   "kind": "hat",
+   "pack": "hats01",
+   "license": "AGPL-3.0",
+   "author": "grinsegold",
+   "tags": [
+    "hats"
+   ],
+   "street": true,
+   "vertices": 7930,
+   "triangles": 7168
+  },
+  {
+   "name": "joepal_xmas_cap",
+   "kind": "hat",
+   "pack": "hats01",
+   "license": "CC0-1.0",
+   "author": "Joel Palmius",
+   "tags": [],
+   "street": true,
+   "vertices": 1154,
+   "triangles": 2016
+  },
+  {
+   "name": "jujube_bag_on_head",
+   "kind": "hat",
+   "pack": "hats01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 5874,
+   "triangles": 11264
+  },
+  {
+   "name": "jujube_newsboy_cap",
+   "kind": "hat",
+   "pack": "hats01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 572,
+   "triangles": 996
+  },
+  {
+   "name": "toigo_maga_hat",
+   "kind": "hat",
+   "pack": "hats01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3264,
+   "triangles": 6004
+  },
+  {
+   "name": "culturalibre_doc_ock_glasses",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 10522,
+   "triangles": 20224
+  },
+  {
+   "name": "ews_3d_glasses",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "AGPL-3.0",
+   "author": "EWS",
+   "tags": [
+    "glasses",
+    "accessory"
+   ],
+   "street": true,
+   "vertices": 108,
+   "triangles": 140
+  },
+  {
+   "name": "frankyaye_glasses_library_male",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 1377,
+   "triangles": 1412
+  },
+  {
+   "name": "kwnet_at_optical_glasses",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "AGPL-3.0",
+   "author": "kwnet_at",
+   "tags": [
+    "glasses",
+    "male",
+    "accessory"
+   ],
+   "street": true,
+   "vertices": 3671,
+   "triangles": 6196
+  },
+  {
+   "name": "spamrakuen_sagerfrogs_glasses_01",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "contemporary",
+    "glasses"
+   ],
+   "street": true,
+   "vertices": 2278,
+   "triangles": 1284
+  },
+  {
+   "name": "spamrakuen_sagerfrogs_glasses_02",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "contemporary",
+    "glasses"
+   ],
+   "street": true,
+   "vertices": 2530,
+   "triangles": 1452
+  },
+  {
+   "name": "spamrakuen_sagerfrogs_glasses_03",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "contemporary",
+    "glasses"
+   ],
+   "street": true,
+   "vertices": 5797,
+   "triangles": 3284
+  },
+  {
+   "name": "spamrakuen_sagerfrogs_glasses_04",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "contemporary",
+    "glasses"
+   ],
+   "street": true,
+   "vertices": 2315,
+   "triangles": 1736
+  },
+  {
+   "name": "spamrakuen_tbm_glasses_frames_01",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "formal",
+    "contemporary",
+    "glasses"
+   ],
+   "street": true,
+   "vertices": 723,
+   "triangles": 808
+  },
+  {
+   "name": "toigo_round_glasses_leopard",
+   "kind": "glasses",
+   "pack": "glasses01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "glasses"
+   ],
+   "street": true,
+   "vertices": 4030,
+   "triangles": 4396
+  },
+  {
+   "name": "culturalibre_hero-heroine_gloves_1",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 2762,
+   "triangles": 4528
+  },
+  {
+   "name": "culturalibre_hero-heroine_gloves_2",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero",
+    "superhero"
+   ],
+   "street": true,
+   "vertices": 8898,
+   "triangles": 14464
+  },
+  {
+   "name": "culturalibre_hero-heroine_gloves_3",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [
+    "superhero",
+    "hero"
+   ],
+   "street": true,
+   "vertices": 18913,
+   "triangles": 14536
+  },
+  {
+   "name": "culturalibre_hero-heroine_gloves_4",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero",
+    "superhero",
+    "gloves"
+   ],
+   "street": true,
+   "vertices": 9710,
+   "triangles": 16544
+  },
+  {
+   "name": "culturalibre_hero-heroine_gloves_5",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 3128,
+   "triangles": 5212
+  },
+  {
+   "name": "learning_mma_fighting_gloves",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 3092,
+   "triangles": 4392
+  },
+  {
+   "name": "toigo_gloves_long",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 4302,
+   "triangles": 6864
+  },
+  {
+   "name": "toigo_gloves_medium",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 3692,
+   "triangles": 5744
+  },
+  {
+   "name": "toigo_gloves_short",
+   "kind": "gloves",
+   "pack": "gloves01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 2954,
+   "triangles": 4544
+  },
+  {
+   "name": "culturalibre_hero_gem",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": true,
+   "vertices": 156,
+   "triangles": 192
+  },
+  {
+   "name": "culturalibre_heroine_lightning_earrings",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [
+    "jewelry",
+    "hero",
+    "superhero"
+   ],
+   "street": true,
+   "vertices": 2599,
+   "triangles": 2016
+  },
+  {
+   "name": "ews_hoop_earrings",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [
+    "earrings",
+    "accessory",
+    "jewelry"
+   ],
+   "street": true,
+   "vertices": 818,
+   "triangles": 544
+  },
+  {
+   "name": "ews_industrial_piercing_left_ear_",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "AGPL-3.0",
+   "author": "EWS",
+   "tags": [
+    "industrial",
+    "piercing",
+    "ring",
+    "metal"
+   ],
+   "street": true,
+   "vertices": 193,
+   "triangles": 100
+  },
+  {
+   "name": "ews_industrial_piercing_right_ear_",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "AGPL-3.0",
+   "author": "EWS",
+   "tags": [
+    "industrial",
+    "piercing",
+    "ring",
+    "metal"
+   ],
+   "street": true,
+   "vertices": 193,
+   "triangles": 100
+  },
+  {
+   "name": "ews_septum_ring",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "AGPL-3.0",
+   "author": "EWS",
+   "tags": [
+    "septum",
+    "piercing",
+    "ring",
+    "nose",
+    "metal"
+   ],
+   "street": true,
+   "vertices": 126,
+   "triangles": 192
+  },
+  {
+   "name": "joachip_ring_1",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "formal",
+    "jewelry"
+   ],
+   "street": true,
+   "vertices": 389,
+   "triangles": 664
+  },
+  {
+   "name": "learning_slave_collar_chain",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 15048,
+   "triangles": 8448
+  },
+  {
+   "name": "punkduck_lace-choker",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "choker"
+   ],
+   "street": true,
+   "vertices": 542,
+   "triangles": 714
+  },
+  {
+   "name": "toigo_diamond_ring_and_wedding_band",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 17430,
+   "triangles": 34656
+  },
+  {
+   "name": "toigo_pearl_earrings",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 1724,
+   "triangles": 3184
+  },
+  {
+   "name": "toigo_pearl_necklace",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [],
+   "street": true,
+   "vertices": 30514,
+   "triangles": 56064
+  },
+  {
+   "name": "toigo_wedding_ring",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": true,
+   "vertices": 330,
+   "triangles": 560
+  },
+  {
+   "name": "wolgade_diamond_ring_01",
+   "kind": "jewelry",
+   "pack": "jewelry01",
+   "license": "CC0-1.0",
+   "author": "wolgade",
+   "tags": [
+    "jewelry",
+    "female"
+   ],
+   "street": true,
+   "vertices": 9302,
+   "triangles": 18400
+  },
+  {
+   "name": "culturalibre_motorcycle_helmet",
+   "kind": "helmet",
+   "pack": "hats02",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 22689,
+   "triangles": 44608
+  },
+  {
+   "name": "culturalibre_skull_helmet",
+   "kind": "helmet",
+   "pack": "hats02",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 6627,
+   "triangles": 8504
+  },
+  {
+   "name": "culturalibre_warrior_helmet",
+   "kind": "helmet",
+   "pack": "hats02",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 1714,
+   "triangles": 2712
+  },
+  {
+   "name": "grinsegold_corinthian_helmet",
+   "kind": "helmet",
+   "pack": "hats02",
+   "license": "AGPL-3.0",
+   "author": "grinsegold",
+   "tags": [
+    "male",
+    "hats",
+    "u r hacked!"
+   ],
+   "street": false,
+   "vertices": 201,
+   "triangles": 296
+  },
+  {
+   "name": "javherre_casco_caballero_templario_templar_knight_helmet",
+   "kind": "helmet",
+   "pack": "hats02",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": false,
+   "vertices": 3461,
+   "triangles": 6420
+  },
+  {
+   "name": "mrgreaterthan_m1_helmet",
+   "kind": "helmet",
+   "pack": "hats02",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [
+    "unisex",
+    "profession",
+    "vintage",
+    "helmet",
+    "army",
+    "military",
+    "vietnam",
+    "wwii"
+   ],
+   "street": false,
+   "vertices": 117957,
+   "triangles": 72292
+  },
+  {
+   "name": "culturalibre_hero_mask_1",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 2951,
+   "triangles": 4916
+  },
+  {
+   "name": "culturalibre_hero_mask_2",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 29140,
+   "triangles": 55680
+  },
+  {
+   "name": "culturalibre_hero_mask_3",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 1216,
+   "triangles": 2072
+  },
+  {
+   "name": "culturalibre_hero_mask_4",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 990,
+   "triangles": 1636
+  },
+  {
+   "name": "culturalibre_hero_mask_5",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 13796,
+   "triangles": 25968
+  },
+  {
+   "name": "culturalibre_hero-heroine_hood_1",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 1827,
+   "triangles": 3004
+  },
+  {
+   "name": "culturalibre_hero-heroine_hood_2",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 2184,
+   "triangles": 3928
+  },
+  {
+   "name": "culturalibre_heroine_mask_1",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 3024,
+   "triangles": 4932
+  },
+  {
+   "name": "joepal_medical_mouth_protection",
+   "kind": "mask",
+   "pack": "masks01",
+   "license": "CC0-1.0",
+   "author": "Joel Palmius",
+   "tags": [],
+   "street": false,
+   "vertices": 147,
+   "triangles": 204
+  },
+  {
+   "name": "culturalibre_faun_horns",
+   "kind": "horns",
+   "pack": "bodyparts01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 6338,
+   "triangles": 12480
+  },
+  {
+   "name": "culturalibre_minotaur_horns",
+   "kind": "horns",
+   "pack": "bodyparts01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 1210,
+   "triangles": 2368
+  },
+  {
+   "name": "freezychan_lucoa_quetzalcoatl_horns",
+   "kind": "horns",
+   "pack": "bodyparts01",
+   "license": "AGPL-3.0",
+   "author": "Unknown",
+   "tags": [],
+   "street": false,
+   "vertices": 1464,
+   "triangles": 1536
+  },
+  {
+   "name": "jaldmic_houndoom_horns",
+   "kind": "horns",
+   "pack": "bodyparts01",
+   "license": "AGPL-3.0",
+   "author": "JALdMIC",
+   "tags": [
+    "pokemon",
+    "furry",
+    "jaldmic"
+   ],
+   "street": false,
+   "vertices": 598,
+   "triangles": 800
+  }
+ ],
+ "skipped": []
+}

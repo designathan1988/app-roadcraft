@@ -1,9 +1,11 @@
 import { ageFromYears, yearsFromAge, type MacroParams } from '@people/body/macro';
 import {
+  ALL_BROWS, ALL_FOOTWEAR, ALL_HAIR, ALL_HATS, ALL_LASHES,
   CLOTH_COLOURS, EYE_COLOURS, HAIR_COLOURS, SKIN_TONES, WARDROBE, outfitsForAge, defaultPerson, randomPerson,
   type BottomStyle, type HairStyle, type PersonLook, type PersonSpec, type TopStyle,
 } from '@people/spec';
-import { t } from '../i18n';
+import { hasKey, t } from '../i18n';
+import { itemLabel, itemsOf } from '@people/wardrobe';
 import { skinColour } from '@people/phenotype';
 import { proxyUrl } from '@people/body/proxy';
 import './personCreator.css';
@@ -300,8 +302,9 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
         try { tile.style.backgroundImage = `url("${proxyUrl(`${name}.webp`)}")`; } catch { /* no texture: a plain tile */ }
       }
       b.appendChild(tile);
-      b.appendChild(el('span', 'pc-item-name', name === 'none' ? t('person.option.none') : t(`person.item.${name}`)));
-      b.title = name === 'none' ? t('person.option.none') : t(`person.item.${name}`);
+      const label = name === 'none' ? t('person.option.none') : hasKey(`person.item.${name}`) ? t(`person.item.${name}`) : itemLabel(name);
+      b.appendChild(el('span', 'pc-item-name', label));
+      b.title = label;
       b.addEventListener('click', () => onPick(name));
       list.appendChild(b);
     }
@@ -322,9 +325,21 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
       ...patch,
     });
   };
+  /** Takes on another person whole (a quick choice), keeping this one's id and name. */
+  const become = (next: PersonSpec): void => {
+    person = { ...next, id: person.id, name: person.name };
+    preview.setLook(person.look);
+    queueShape();
+    renderControls();
+  };
+  /** Wears `name` in place of whatever of `family` was worn ('none' takes it off). */
+  const wearExtra = (family: readonly string[], name: string): void => {
+    const kept = (person.look.extras ?? []).filter((n) => !family.includes(n));
+    wear({ extras: name === 'none' ? kept : [...kept, name] });
+  };
   const pct = (v: number): string => `${Math.round(v * 100)}%`;
   const signed = (v: number): string => (v === 0 ? '0' : `${v > 0 ? '+' : ''}${Math.round(v * 100)}`);
-  const openSections = new Set(['person.section.body']);
+  const openSections = new Set(['person.section.quick', 'person.section.hair', 'person.section.clothes']);
 
   const renderControls = (): void => {
     const opened = new Set<string>();
@@ -340,6 +355,62 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
       return s;
     };
     const b = person.body;
+    const female = b.gender < 0.5;
+    const sex = female ? 'female' as const : 'male' as const;
+
+    // Quick choices first: who, how old, what build, which face - each a
+    // whole, coherent result, before any of the fine sliders below.
+    const quick = sec('person.section.quick');
+    {
+      const row = (label: string, options: readonly { key: string; on: boolean; pick: () => void }[]): void => {
+        const r = el('div', 'pc-swatch-row');
+        r.appendChild(el('span', 'pc-slider-name', label));
+        const list = el('div', 'pc-chips');
+        for (const o of options) {
+          const button = el('button', 'pc-chip' + (o.on ? ' active' : ''), t(o.key));
+          button.type = 'button';
+          button.setAttribute('aria-pressed', String(o.on));
+          button.addEventListener('click', o.pick);
+          list.appendChild(button);
+        }
+        r.appendChild(list);
+        quick.appendChild(r);
+      };
+      const seed = (): number => (Math.random() * 2 ** 31) >>> 0;
+      row(t('person.sex'), [
+        { key: 'person.quick.woman', on: female, pick: () => become(randomPerson(person.id, seed(), { body: { gender: 0.04, age: b.age } })) },
+        { key: 'person.quick.man', on: !female, pick: () => become(randomPerson(person.id, seed(), { body: { gender: 0.96, age: b.age } })) },
+      ]);
+      const years = yearsFromAge(b.age);
+      const ages = [['person.quick.child', 8, years < 16], ['person.quick.young', 22, years >= 16 && years < 30],
+        ['person.quick.adult', 40, years >= 30 && years < 60], ['person.quick.old', 72, years >= 60]] as const;
+      row(t('person.age'), ages.map(([key, y, on]) => ({ key, on, pick: () => become(randomPerson(person.id, seed(), { body: { gender: b.gender, age: ageFromYears(y) } })) })));
+      const builds = [['person.quick.slim', 0.3, 0.18], ['person.quick.average', 0.45, 0.45], ['person.quick.athletic', 0.85, 0.38], ['person.quick.heavy', 0.4, 0.88]] as const;
+      row(t('person.quick.build'), builds.map(([key, muscle, weight]) => ({
+        key, on: Math.abs(b.muscle - muscle) < 0.08 && Math.abs(b.weight - weight) < 0.08,
+        pick: () => { setBody({ muscle, weight }); renderControls(); },
+      })));
+      // Ready-made faces: the generator's faces for this very body, kept
+      // with the person's own expression.
+      const faces = el('div', 'pc-swatch-row');
+      faces.appendChild(el('span', 'pc-slider-name', t('person.quick.faces')));
+      const list = el('div', 'pc-chips');
+      for (let k = 1; k <= 8; k++) {
+        const button = el('button', 'pc-chip', String(k));
+        button.type = 'button';
+        button.setAttribute('aria-label', `${t('person.quick.faces')} ${k}`);
+        button.addEventListener('click', () => {
+          const face = randomPerson(person.id, 7919 * k + Math.round(b.gender * 3) + Math.round(years), { body: b, look: person.look }).features;
+          const expression = Object.fromEntries(EXPRESSION_SLIDERS.filter((n) => person.features[n] !== undefined).map((n) => [n, person.features[n]!]));
+          person = { ...person, features: { ...face, ...expression } };
+          queueShape();
+        });
+        list.appendChild(button);
+      }
+      faces.appendChild(list);
+      quick.appendChild(faces);
+      swatches(quick, t('person.skin'), SKIN_TONES, person.look.skin, (c) => setLook({ skin: c }));
+    }
 
     const bodyBox = sec('person.section.body');
     slider(bodyBox, t('person.sex'), b.gender, 0, 1, 0.01, (v) => setBody({ gender: v }),
@@ -371,36 +442,34 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     const dressed = !!person.look.outfit;
     const hair = sec('person.section.hair');
     if (dressed) {
-      gallery(hair, t('person.hairstyle'), [...WARDROBE.hair.short, ...WARDROBE.hair.long], person.look.hairCut, (n) => wear({ hairCut: n }), true);
+      gallery(hair, t('person.hairstyle'), ALL_HAIR, person.look.hairCut, (n) => wear({ hairCut: n }), true);
     } else {
       chips<HairStyle>(hair, t('person.style'), ['none', 'short', 'long'], person.look.hairStyle, (v) => setLook({ hairStyle: v }));
     }
     swatches(hair, t('person.colour'), HAIR_COLOURS, person.look.hair, (c) => setLook({ hair: c }));
     {
-      const row = el('div', 'pc-swatch-row');
-      row.appendChild(el('span', 'pc-slider-name', t('person.beard')));
-      const list = el('div', 'pc-chips');
-      for (const beard of ['none', 'stubble', 'moustache', 'beard'] as const) {
-        const button = el('button', 'pc-chip' + ((person.look.beard ?? 'none') === beard ? ' active' : ''), t(`person.beard.${beard}`));
-        button.type = 'button';
-        button.setAttribute('aria-pressed', String((person.look.beard ?? 'none') === beard));
-        button.addEventListener('click', () => setLook({ beard }));
-        list.appendChild(button);
-      }
-      row.appendChild(list);
-      hair.appendChild(row);
       slider(hair, t('person.makeup'), person.look.makeup ?? 0, 0, 1, 0.01, (makeup) => {
         person = { ...person, look: { ...person.look, makeup } };
         preview.setLook(person.look);
       }, pct);
     }
     if (dressed) {
-      gallery(hair, t('person.brows'), WARDROBE.brows, person.look.brows, (n) => wear({ brows: n }));
-      gallery(hair, t('person.lashes'), WARDROBE.lashes, person.look.lashes, (n) => wear({ lashes: n }));
+      const beards = itemsOf('beard');
+      if (!female) gallery(hair, t('person.beard'), beards, (person.look.extras ?? []).find((n) => beards.includes(n)), (n) => wearExtra(beards, n), true);
+      gallery(hair, t('person.brows'), ALL_BROWS, person.look.brows, (n) => wear({ brows: n }));
+      gallery(hair, t('person.lashes'), ALL_LASHES, person.look.lashes, (n) => wear({ lashes: n }));
     }
 
     const clothes = sec('person.section.clothes');
-    gallery(clothes, t('person.outfit'), outfitsForAge(yearsFromAge(b.age), [...WARDROBE.outfits.female, ...WARDROBE.outfits.male]), person.look.outfit, (n) => wear({ outfit: n }));
+    const adult = yearsFromAge(b.age) >= 16;
+    gallery(clothes, t('person.outfit'), outfitsForAge(yearsFromAge(b.age), female ? WARDROBE.outfits.female : WARDROBE.outfits.male), person.look.outfit, (n) => wear({ outfit: n }));
+    const bottoms = [...itemsOf('bottom'), ...itemsOf('skirt')];
+    if (adult) {
+      gallery(clothes, t('person.top'), itemsOf('top', { sex }), person.look.outfit, (n) => wear({ outfit: n }));
+      gallery(clothes, t('person.bottom'), female ? bottoms : itemsOf('bottom', { sex }), (person.look.extras ?? []).find((n) => bottoms.includes(n)), (n) => wearExtra(bottoms, n), true);
+      if (female) gallery(clothes, t('person.dress'), itemsOf('dress'), person.look.outfit, (n) => wear({ outfit: n, extras: (person.look.extras ?? []).filter((x) => !bottoms.includes(x)) }));
+      gallery(clothes, t('person.suit'), itemsOf('suit', { sex }), person.look.outfit, (n) => wear({ outfit: n, extras: (person.look.extras ?? []).filter((x) => !bottoms.includes(x)) }));
+    }
     if (dressed) {
       const tintRow = el('div', 'pc-swatch-row');
       const own = el('button', 'pc-chip' + (person.look.outfitTint === null || person.look.outfitTint === undefined ? ' active' : ''), t('person.ownColours'));
@@ -410,8 +479,12 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
       tintRow.appendChild(own);
       clothes.appendChild(tintRow);
       swatches(clothes, t('person.dye'), CLOTH_COLOURS, person.look.outfitTint ?? -1, (c) => wear({ outfitTint: c }));
-      gallery(clothes, t('person.footwear'), WARDROBE.footwear, person.look.footwear, (n) => wear({ footwear: n }));
-      gallery(clothes, t('person.hat'), WARDROBE.hats, person.look.hat, (n) => wear({ hat: n }), true);
+      gallery(clothes, t('person.footwear'), ALL_FOOTWEAR, person.look.footwear, (n) => wear({ footwear: n }));
+      gallery(clothes, t('person.hat'), ALL_HATS, person.look.hat, (n) => wear({ hat: n }), true);
+      for (const [kind, key] of [['glasses', 'person.glasses'], ['jewelry', 'person.jewelry'], ['gloves', 'person.gloves']] as const) {
+        const family = itemsOf(kind);
+        if (family.length) gallery(clothes, t(key), family, (person.look.extras ?? []).find((n) => family.includes(n)), (n) => wearExtra(family, n), true);
+      }
     } else {
       chips<TopStyle>(clothes, t('person.top'), ['none', 'tank', 'tshirt', 'longsleeve'], person.look.top, (v) => setLook({ top: v }));
       swatches(clothes, t('person.topColour'), CLOTH_COLOURS, person.look.topColour, (c) => setLook({ topColour: c }));

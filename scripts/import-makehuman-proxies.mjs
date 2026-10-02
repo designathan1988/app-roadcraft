@@ -1,3 +1,4 @@
+/* global Image, document */
 // Packs MakeHuman's CC0 system clothes, hair, eyebrows and eyelashes for the
 // game (docs/people-assets.md, "Proxies"). Reads the pack the asset site
 // publishes (makehuman_system_assets_cc0.zip, unzipped into
@@ -26,7 +27,7 @@ const KINDS = {
   eyelashes: { size: 256, grey: true },
 };
 
-function parseMhclo(text) {
+export function parseMhclo(text) {
   const out = { verts: [], deleteVerts: [], scale: {}, zDepth: 50, obj: null, material: null, name: null, license: '' };
   let section = null;
   for (const raw of text.split('\n')) {
@@ -63,7 +64,7 @@ function parseMhclo(text) {
 }
 
 /** Vertices, UVs and faces of an .obj; faces as [v, vt] corner lists. */
-function parseObj(text) {
+export function parseObj(text) {
   const v = [], vt = [], faces = [];
   for (const raw of text.split('\n')) {
     const p = raw.trim().split(/\s+/);
@@ -74,7 +75,7 @@ function parseObj(text) {
   return { v, vt, faces };
 }
 
-function parseMhmat(text) {
+export function parseMhmat(text) {
   const m = {};
   for (const raw of text.split('\n')) {
     const p = raw.trim().split(/\s+/);
@@ -85,7 +86,7 @@ function parseMhmat(text) {
   return m;
 }
 
-function pack(kind, dir, name) {
+export function pack(kind, dir, name, source = SOURCE) {
   const mhclo = parseMhclo(readFileSync(join(dir, `${name}.mhclo`), 'utf8'));
   const obj = parseObj(readFileSync(join(dir, mhclo.obj ?? `${name}.obj`), 'utf8'));
   if (obj.v.length !== mhclo.verts.length) throw new Error(`${name}: ${obj.v.length} obj vertices, ${mhclo.verts.length} fitted`);
@@ -111,7 +112,9 @@ function pack(kind, dir, name) {
     const c = face.map(([vi, ti]) => vertexOf(vi, ti));
     for (let k = 1; k + 1 < c.length; k++) index.push(c[0], c[k], c[k + 1]);
   }
-  const s = mhclo.scale;
+  // Some community items state no scale lines: MakeClothes' own default
+  // reference vertices and distances on the base mesh (hm08) stand in.
+  const s = { x: [5399, 11998, 1.398], y: [791, 881, 2.2028], z: [962, 5320, 1.8441], ...mhclo.scale };
   const scaleRefs = [s.x[0], s.x[1], s.y[0], s.y[1], s.z[0], s.z[1]];
   const scaleBase = [s.x[2], s.y[2], s.z[2]];
   const n = refs.length / 3;
@@ -134,7 +137,7 @@ function pack(kind, dir, name) {
       format: 'roadcraft-people-proxy/1', name, kind, vertexCount: n, triangleCount: index.length / 3,
       scaleRefs, scaleBase, zDepth: mhclo.zDepth, transparent: !!mat.transparent, doubleSided: mat.backfaceCull === false,
       layout, texture: mat.diffuse ? `${name}.webp` : null, license: mhclo.license || 'CC0-1.0',
-      source: { pack: SOURCE, path: `${kind}/${name}` },
+      source: { pack: source, path: `${kind}/${name}` },
     },
     bin: Buffer.concat(parts),
     diffuse: mat.diffuse ? join(dir, mat.diffuse) : null,
@@ -259,4 +262,4 @@ async function main() {
   console.log(`${index.length} proxies, ${(bytes / 1048576).toFixed(1)} MB`);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((e) => { console.error(e); process.exit(1); });

@@ -1,6 +1,7 @@
 import { Color, ShaderChunk, SRGBColorSpace, TextureLoader, type BufferGeometry, type MeshStandardMaterial, type Texture } from 'three';
 import type { PersonSpec } from '@people/spec';
 import { loadProxyItem, proxyUrl } from '@people/body/proxy';
+import { texturedGarments } from './garmentSlots';
 import index from '../../../public/models/people/skins/index.json';
 const urls = import.meta.glob('../../../public/models/people/skins/*.webp', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
 
@@ -23,7 +24,7 @@ export async function loadSkinAppearance(person: PersonSpec): Promise<SkinAppear
   const desired = new Color(person.look.skin);
   const tint = new Color().setRGB(desired.r / Math.max(0.01, average.r), desired.g / Math.max(0.01, average.g), desired.b / Math.max(0.01, average.b));
   let hairTexture: Texture | undefined;
-  const garments = await Promise.all([person.look.outfit, person.look.footwear, person.look.hat].map(async name => {
+  const garments = await Promise.all(texturedGarments(person.look).map(async name => {
     if (!name || name === 'none') return null;
     const item = await loadProxyItem(name);
     if (!item.textureFile) return null;
@@ -81,13 +82,9 @@ export function applySkinAppearance(material: MeshStandardMaterial, geometry: Bu
         float lips = (1.0 - smoothstep(0.65, 1.0, length(vFace.xy / vec2(0.22, 0.045)))) * front;
         float cheeks = exp(-30.0 * (pow(abs(vFace.x) - 0.32, 2.0) + pow(vFace.y - 0.18, 2.0))) * front;
         skinColour = mix(skinColour, skinColour * vec3(1.05, 0.55, 0.6), makeupAmount * max(lips, cheeks * 0.25));
-        float lower = smoothstep(-0.5, -0.35, vFace.y) * (1.0 - smoothstep(-0.05, 0.18, vFace.y));
-        float moustache = smoothstep(0.02, 0.055, vFace.y) * (1.0 - smoothstep(0.11, 0.16, vFace.y)) * (1.0 - smoothstep(0.2, 0.3, abs(vFace.x)));
-        float hairMask = beardStyle > 1.5 && beardStyle < 2.5 ? moustache : max(lower, moustache);
-        hairMask *= front * (1.0 - lips) * (1.0 - smoothstep(0.4, 0.55, abs(vFace.x)));
-        float grain = fract(sin(dot(floor(vSkinUv * 2048.0), vec2(12.9898, 78.233))) * 43758.5453);
-        float coverage = beardStyle < 0.5 ? 0.0 : beardStyle < 1.5 ? 0.24 : 0.65;
-        skinColour = mix(skinColour, beardColour, hairMask * coverage * (0.55 + 0.45 * grain));
+        // Beards are fitted MakeHuman items now (wornItems), not paint: a
+        // painted stubble region missed the jaw and lay across the nose as a
+        // dark mask.
         diffuseColor.rgb = mix(diffuseColor.rgb, skinColour, vSkinMask);
         }`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.5, vSkinMask * appearanceDetail);');
