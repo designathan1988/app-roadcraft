@@ -13,8 +13,8 @@ in the plan's order.
 |---|---|---|
 | 0 | measurement base (harness, probe) | **done**, 1c431c3 |
 | 1 | new base for roads and pedestrians | **deferred by player**: remaining work at the end of this file |
-| 1b | vehicle motion: measure and fix on the new base | **in progress** |
-| 2 | skin, phenotype, sex profiles, child clothes | not started |
+| 1b | vehicle motion: measure and fix on the new base | **verified behind `?motion=physical`**, b43bd33; default approval pending |
+| 2 | skin, phenotype, sex profiles, child clothes | **in progress** |
 | 3 | live expression | not started |
 | 4 | crowd without repetition, plus memory | not started |
 | 5 | citizen registry, day clock, day/night | not started |
@@ -42,6 +42,14 @@ Stage 1 in detail:
 
 Update this table in every stage-closing commit.
 
+Stage 1b: the 90-second player-city measurement changed emergency-braking
+violations 7 -> 0 and instant stops 2 -> 0. Jerk p95 stays 2.5 m/s3; pose jumps
+stay zero. Stop/go count 297 -> 298. Six collision tests pass, including eight
+unchanged 150-second traffic scenarios. Browser probe confirms the flag runs
+without page errors and without observed instant stops; photos are under
+`docs/audit/2026-10-01/vehicle-motion/{before-wide,after-wide}`. Browser population
+differs from the headless city setup, so their counts are not interchangeable.
+
 ## Working mode (player's order: fast, without losing rigour)
 
 1. **Heavy coding, light tests.** Implement change after change without stopping. Each change gets
@@ -57,13 +65,27 @@ Update this table in every stage-closing commit.
    If something broke, use the separate commits to find which change did it, and fix it.
 3. **Net gains go in.** Commit when the total gain clearly outweighs small regressions, nobody stops
    arriving, and no rule is broken. Record the regressions and fix them next.
-4. **No subagents** (player's order); do the work yourself.
+4. **Agents:** up to 3 per conversation (see "Two conversations in parallel").
 5. **When a stage meets its acceptance criterion** in the plan:
    - show the photos;
    - ask the player in one line before switching the default and deleting the old code;
    - continue with the next stage at once, without waiting idle.
 6. **Before every stage** do focused internet research: several sources, primary sources, not just
    the first result. Record it in `docs/research/<topic>.md`.
+
+## Two conversations in parallel (player's order, 2026-10-01 23:00)
+
+Two Codex conversations now work at the same time:
+- **A** is in `C:\Codex-Shared\Road` on `master`. It owns stages 1b to 9 and 11, plus the deferred
+  pedestrian work, and it is the integrator.
+- **B** is in the worktree `C:\Codex-Shared\Road-b` on `codex/stages-b`. It owns stages 12, 13
+  and 10.
+
+They coordinate through the live board `C:\Codex-Shared\road-coordination.md`, which is outside git.
+That board holds the ownership of code areas, the shared files, the merge protocol and the claims.
+Read it before every batch.
+
+Each conversation may use up to 3 agents. This replaces the earlier "no subagents" rule.
 
 ## No overhead
 

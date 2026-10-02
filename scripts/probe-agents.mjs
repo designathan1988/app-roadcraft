@@ -25,7 +25,7 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 const args = process.argv.slice(2);
-const opt = (name, fallback) => (args.find((a) => a.startsWith(`--${name}=`)) ?? `--${name}=${fallback}`).split('=')[1];
+const opt = (name, fallback) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
 const OUT = path.resolve(args.find((a) => !a.startsWith('--')) ?? 'docs/screenshots/probe');
 const BASE = opt('base', 'http://localhost:5173');
 const SECONDS = Number(opt('seconds', '120'));
@@ -121,10 +121,10 @@ for (const [cell] of photoCells.slice(0, 3)) {
   for (let k = 0; k < 4; k++) {
     await page.evaluate(({ x, y }) => window.__roadcraft.lookAt(x, y, 18), { x, y });
     await frames(6); await page.waitForTimeout(600); await frames(4);
-    shots.push(await page.evaluate(({ x, y }) => {
+    shots.push(await page.evaluate(({ x, y, vehicles }) => {
       const R = window.__roadcraft, h = R.scene().elevationAt(x, y);
-      return R.scene().inspect?.shot({ x, y, h: h + 2, azimuth: 0.9, elevation: 0.5, distance: 32, fov: 35, width: 640, height: 480 }) ?? null;
-    }, { x, y }));
+      return R.scene().inspect?.shot({ x, y, h: h + 2, azimuth: 0.9, elevation: vehicles ? 1.2 : 0.5, distance: vehicles ? 90 : 32, fov: 35, width: 640, height: 480 }) ?? null;
+    }, { x, y, vehicles: VEHICLES }));
     await page.evaluate(async () => { const { step } = await import('/src/sim/pipeline.ts'); for (let i = 0; i < 30; i++) step(window.__roadcraft.sim, { traffic: true, pedestrians: true }); });
   }
   if (shots.some((s) => !s)) throw new Error('no inspection camera: is this a development build?');
