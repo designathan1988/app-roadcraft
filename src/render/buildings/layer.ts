@@ -176,7 +176,7 @@ export function createBuildingLayer(): BuildingLayer {
         const solid = dimmed === undefined ? shown : shown.filter((b) => b.id === dimmed);
         const others = dimmed === undefined ? [] : shown.filter((b) => b.id !== dimmed);
         if (cutChunks.size > 64) cutChunks.clear();
-        stored = assembleBuildingMeshes(solid.map((b) => drawn(b, groundAt, pavedAt)), kit);
+        stored = assembleByCell(solid, (b) => drawn(b, groundAt, pavedAt), kit);
         group.add(stored.group);
         faded = others.length > 0
           ? assembleBuildingMeshes(others.map((b) => drawn(b, groundAt, pavedAt)), kit, false, true)
@@ -250,4 +250,34 @@ function groundDigest(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): strin
     }
   }
   return out;
+}
+/** Side of the cells the buildings are batched in, world units. */
+const BATCH_CELL = m(120);
+
+/**
+ * The buildings batched cell by cell, each cell its own meshes: a cell out of
+ * the view (and out of the shadow's) is not drawn at all. One batch for the
+ * whole town sent every window frame and railing in it to the GPU, twice a
+ * frame (picture and shadow), wherever the camera looked.
+ */
+function assembleByCell(buildings: readonly Building[], chunkOf: (b: Building) => BuildingChunk, kit: BuildingKit): BuildingMeshes {
+  const cells = new Map<string, BuildingChunk[]>();
+  for (const b of buildings) {
+    const key = `${Math.floor(b.x / BATCH_CELL)},${Math.floor(b.y / BATCH_CELL)}`;
+    const list = cells.get(key);
+    if (list) list.push(chunkOf(b));
+    else cells.set(key, [chunkOf(b)]);
+  }
+  const group = new Group();
+  group.name = 'buildings';
+  const parts = [...cells.values()].map((chunks) => assembleBuildingMeshes(chunks, kit));
+  for (const part of parts) group.add(part.group);
+  return {
+    group,
+    triangles: parts.reduce((sum, part) => sum + part.triangles, 0),
+    dispose() {
+      for (const part of parts) part.dispose();
+      group.clear();
+    },
+  };
 }

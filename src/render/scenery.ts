@@ -757,7 +757,7 @@ export function buildGardens(list: readonly GardenPlant[], kit: SceneryKit): Sce
       }
       case 'hedge': {
         // Clipped pieces along its run, overlapping so it reads as one.
-        const n = Math.max(1, Math.round(p.w / Math.max(m(1.2), p.h * 0.9)));
+        const n = Math.max(1, Math.round(p.w / Math.max(m(2.2), p.h * 1.5)));
         const step = p.w / n;
         const cx = Math.cos(p.yaw), cy = Math.sin(p.yaw);
         const tint = foliageTint(rng);
