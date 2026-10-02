@@ -25,6 +25,8 @@ import { garmentSlotOf } from './garmentSlots';
 /** Kinds of item that cover the skin under them: only these may hide it. */
 /** Card items drawn with their own texture, by slot (see `skinAppearance.ts`). */
 export const CARD_SLOT: Readonly<Record<string, number>> = { hair: 1, eyebrows: 2, eyelashes: 3, beard: 4 };
+/** The same mark for the eyeballs: drawn wet (`skinAppearance.ts`). */
+export const EYE_SLOT = 5;
 
 const COVERING = new Set(['clothes', 'shoes', 'top', 'bottom', 'skirt', 'dress', 'suit', 'gloves']);
 
@@ -560,6 +562,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   const body = data.faceGroups.indexOf('body');
   const eyes = new Set([data.faceGroups.indexOf('helper-l-eye'), data.faceGroups.indexOf('helper-r-eye')]);
   const emitted = new Map<string, number>();
+  const eyeVertices: number[] = [];
   const emit = (v: number, colour: [number, number, number], uv: number, skin: number): number => {
     const key = texturedSkin ? `${v}:${uv}` : `${v}`;
     const known = emitted.get(key);
@@ -590,9 +593,11 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
       isEye ? 0 : 1 - (hairy ? Math.min(1, cut.hair[v]! * 1.6) : 0)));
     out.index.push(o[0]!, o[1]!, o[2]!);
     if (quad[3] !== quad[2]) out.index.push(o[0]!, o[2]!, o[3]!);
+    if (isEye) eyeVertices.push(...o);
   }
 
   while (hairMask.length < out.positions.length / 3) hairMask.push(0);
+  for (const v of eyeVertices) hairMask[v] = EYE_SLOT;
   while (garmentSlot.length < out.positions.length / 3) garmentSlot.push(0);
   groups.push({ start: 0, count: out.index.length, name: 'body' });
   // --- the items

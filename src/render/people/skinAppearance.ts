@@ -163,6 +163,16 @@ if (faceCard) {
           // the texture's own light and dark; where the card fades out its
           // colour stays the hair's, not the texture's white backing (the white
           // fringe round every head of hair).
+          // The card's texture footprint per pixel, taken before any branch
+          // (derivatives need every pixel of a quad to run them).
+          vec2 cardDx = dFdx(vSkinUv), cardDy = dFdy(vSkinUv);
+          float eyeSlot = floor(vHairMask + 0.5);
+          if (eyeSlot > 4.5) {
+            // The eyeball: wet. MakeHuman's own advice for eyes that look
+            // dead - a hard glossy highlight over them (static.makehumancommunity
+            // .org, "The eyes look flat and dead"); the body's matte 0.88 made
+            // them dull grey glass.
+          } else
           if (vHairMask > 0.5 && appearanceDetail > 0.5) {
             vec4 cardTexel = vec4(0.0);
             float slot = floor(vHairMask + 0.5);
@@ -170,13 +180,22 @@ if (faceCard) {
             else if (slot < 2.5) { cardTexel = cardTextures[1] > 0.5 ? texture2D(personBrow, vSkinUv) : vec4(0.5, 0.5, 0.5, 1.0); }
             else if (slot < 3.5) { cardTexel = cardTextures[2] > 0.5 ? texture2D(personLash, vSkinUv) : vec4(0.2, 0.2, 0.2, 1.0); }
             else { cardTexel = cardTextures[3] > 0.5 ? texture2D(personBeard, vSkinUv) : vec4(0.5, 0.5, 0.5, 1.0); }
+            // Fine strands thin out and vanish in a texture's smaller mips: a
+            // brow seen from a little way off was a few dashes. Its alpha is
+            // scaled up by the mip level the pixel reads, keeping the strands'
+            // coverage (Ben Golus, "Anti-aliased Alpha Test"; I. Castano,
+            // "Computing Alpha Mipmaps"; as OpenMW's alpha.glsl does it).
+            vec2 cardSize = slot < 1.5 ? vec2(textureSize(personHair, 0)) : slot < 2.5 ? vec2(textureSize(personBrow, 0))
+              : slot < 3.5 ? vec2(textureSize(personLash, 0)) : vec2(textureSize(personBeard, 0));
+            float cardMip = max(0.0, 0.5 * log2(max(dot(cardDx * cardSize, cardDx * cardSize), dot(cardDy * cardSize, cardDy * cardSize))));
+            cardTexel.a *= 1.0 + cardMip * 0.25;
             float strand = dot(cardTexel.rgb, vec3(0.3, 0.59, 0.11));
             vec3 hairCol = slot > 2.5 && slot < 3.5 ? vec3(0.03) : beardColour * (0.55 + 0.95 * strand);
             diffuseColor.rgb = mix(beardColour * 0.55, hairCol, smoothstep(0.25, 0.75, cardTexel.a));
             diffuseColor.a = cardTexel.a;
           }
           #include <alphatest_fragment>`)
-        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vHairMask > 0.5) roughnessFactor = 0.42;');
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vHairMask > 4.5) roughnessFactor = 0.06;\nelse if (vHairMask > 0.5) roughnessFactor = 0.42;');
     }
     if (texturedGarments) {
       shader.vertexShader = `attribute float garmentSlot; varying float vGarmentSlot;\n${shader.vertexShader}`
