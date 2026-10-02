@@ -346,6 +346,12 @@ export interface Scenery {
    */
   setNear(near: boolean): void;
   /**
+   * The map zoom (`PLANT_MAP_ZOOM`): the leaf cards are not drawn at all, a
+   * shrub or a length of hedge being a pixel or two; the crown under them
+   * gives its colour and shape. Called every frame, after `visible` is set.
+   */
+  setMap(map: boolean): void;
+  /**
    * Keeps only the instances the camera can see, or whose shadow it can.
    * `view` is the camera's projection times its inverse world matrix; nothing
    * is done while it is unchanged.
@@ -386,6 +392,8 @@ interface Instances {
 
 /** Zoom at and above which plants are drawn with their close-up models. */
 export const PLANT_NEAR_ZOOM = 1.4;
+/** Below this zoom the plants' leaf cards are left out (`Scenery.setMap`). */
+export const PLANT_MAP_ZOOM = 1;
 
 interface Placement {
   x: number;
@@ -705,6 +713,7 @@ export function buildScenery(
   /** Each plant mesh with its two models, near first. */
   const plants: [InstancedMesh, BufferGeometry, BufferGeometry][] = [];
   plantMeshes('', trees, bushes, kit, meshes, plants);
+  const leafMeshes = meshes.filter((mesh) => mesh.name.endsWith('-leaves'));
   // The lens is lit from inside; it neither casts nor takes a shadow.
   for (const mesh of meshes) {
     if (mesh.name === 'street-light-lamps' || mesh.name === 'tree-pits' || mesh.name === 'street-light-pools') mesh.castShadow = false;
@@ -726,6 +735,9 @@ export function buildScenery(
     triangles,
     setNear(near) {
       for (const [mesh, close, far] of plants) mesh.geometry = near ? close : far;
+    },
+    setMap(map) {
+      if (map) for (const mesh of leafMeshes) mesh.visible = false;
     },
     cull(frustum, view) {
       // Grass only when it is shown; it keeps its own record of the view.
@@ -886,6 +898,7 @@ export function buildGardens(list: readonly GardenPlant[], kit: SceneryKit): Sce
   const meshes: InstancedMesh[] = [];
   const plants: [InstancedMesh, BufferGeometry, BufferGeometry][] = [];
   plantMeshes('garden-', trees, bushes, kit, meshes, plants);
+  const leafMeshes = meshes.filter((mesh) => mesh.name.endsWith('-leaves'));
   let triangles = 0;
   for (const mesh of meshes) triangles += trianglesOf(mesh.geometry) * mesh.count;
   let culledFor: Matrix4 | null = null;
@@ -896,6 +909,9 @@ export function buildGardens(list: readonly GardenPlant[], kit: SceneryKit): Sce
     triangles,
     setNear(near) {
       for (const [mesh, close, far] of plants) mesh.geometry = near ? close : far;
+    },
+    setMap(map) {
+      if (map) for (const mesh of leafMeshes) mesh.visible = false;
     },
     cull(frustum, view) {
       if (culledFor && culledFor.equals(view)) return;

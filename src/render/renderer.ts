@@ -35,7 +35,7 @@ import { createIsoRig } from './isoViewport';
 import { createPostChain, type PostChain } from './postprocess';
 import { createInspector, type Inspector } from './inspector';
 import { buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
-import { PLANT_NEAR_ZOOM, buildGardens, buildScenery, createSceneryKit, type GardenPlant, type Scenery, type SceneryKit } from './scenery';
+import { PLANT_MAP_ZOOM, PLANT_NEAR_ZOOM, buildGardens, buildScenery, createSceneryKit, type GardenPlant, type Scenery, type SceneryKit } from './scenery';
 import { localToWorld } from '@world/buildings/geometry';
 import { drainCompiles, drainUploads } from './uploads';
 import type { Building } from '@world/buildings/types';
@@ -681,9 +681,11 @@ export function createSceneRenderer(
       for (const mesh of scenery?.meshes ?? []) mesh.visible = quality.detailProps && detailed;
       for (const mesh of gardens?.meshes ?? []) mesh.visible = detailed;
       gardens?.setNear(rig.viewport.zoom >= PLANT_NEAR_ZOOM);
+      gardens?.setMap(rig.viewport.zoom < PLANT_MAP_ZOOM);
       if (scenery) {
         scenery.grass.visible = quality.detailProps && rig.viewport.zoom >= GRASS_MIN_ZOOM;
         scenery.setNear(rig.viewport.zoom >= PLANT_NEAR_ZOOM);
+        scenery.setMap(rig.viewport.zoom < PLANT_MAP_ZOOM);
       }
       // The wind blows in real time: a paused simulation is still a windy day.
       windClock += Math.min(0.1, Math.max(0, delta));
