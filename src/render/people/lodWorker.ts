@@ -14,7 +14,8 @@ export interface LodRequest {
   readonly colours: Float32Array;
   readonly index: Uint32Array;
   readonly ranges: readonly { start: number; count: number }[];
-  readonly levels: readonly (readonly [number, number])[];
+  /** Per level: share of triangles kept, error allowed, and whether the seams between garments may move (`loose`). */
+  readonly levels: readonly (readonly [number, number, boolean?])[];
 }
 
 export interface LodLevel {
@@ -24,7 +25,7 @@ export interface LodLevel {
 
 export function simplifyLevels(req: Omit<LodRequest, 'id'>): LodLevel[] {
   const out: LodLevel[] = [];
-  for (const [ratio, error] of req.levels) {
+  for (const [ratio, error, loose] of req.levels) {
     const kept: number[] = [];
     const groups: { start: number; count: number; materialIndex: number }[] = [];
     req.ranges.forEach((range, materialIndex) => {
@@ -32,7 +33,7 @@ export function simplifyLevels(req: Omit<LodRequest, 'id'>): LodLevel[] {
       if (range.count >= 3) {
         const part = req.index.slice(range.start, range.start + range.count);
         const target = Math.max(3, Math.floor((range.count * ratio) / 3) * 3);
-        const [indices] = MeshoptSimplifier.simplifyWithAttributes(part, req.positions, 3, req.colours, 3, [0.6, 0.6, 0.6], null, target, error, ['LockBorder', 'Sparse']);
+        const [indices] = MeshoptSimplifier.simplifyWithAttributes(part, req.positions, 3, req.colours, 3, [0.6, 0.6, 0.6], null, target, error, loose ? ['Sparse'] : ['LockBorder', 'Sparse']);
         for (let i = 0; i < indices.length; i++) kept.push(indices[i]!);
       }
       groups.push({ start, count: kept.length - start, materialIndex });

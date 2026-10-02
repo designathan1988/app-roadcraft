@@ -1,3 +1,4 @@
+import { simplified } from './mesh/simplify';
 import {
   BoxGeometry,
   Color,
@@ -674,6 +675,16 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       accent: model.accent ? instanced(`car-${id}-accent`, model.accent, paint, MAX_VEHICLES) : null,
       far: instanced(`car-${id}-far`, model.far, paint, MAX_VEHICLES),
       steering: model.steering ? instanced(`car-${id}-wheel`, model.steering.geometry, cabinMaterial, MAX_VEHICLES, false) : null,
+    });
+  }
+  // The far proxy is drawn under FAR_BODY_ZOOM, a car under nine pixels long:
+  // the whole surface there was some 12,000 triangles a car, and every one of
+  // them cast a shadow. Simplified once the simplifier is ready (off the frame).
+  for (const c of carParts.values()) {
+    void simplified(c.far.mesh.geometry, 0.12, 0.02).then((coarse) => {
+      if (coarse === c.far.mesh.geometry) return;
+      modelGeometries.push(coarse);
+      c.far.mesh.geometry = coarse;
     });
   }
   const carPartList: Part[] = [...carParts.values()].flatMap((c) => [

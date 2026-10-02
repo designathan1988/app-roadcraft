@@ -698,13 +698,14 @@ function smoothSkinSeams(geometry: BufferGeometry): void {
 }
 
 /** Cell sizes of the coarser levels, metres. */
-const LOD_CELLS = [0.03, 0.08] as const;
+const LOD_CELLS = [0.03, 0.08, 0.2] as const;
 
 /**
  * The coarser levels of a person: per level, the share of the triangles kept
  * and the error allowed, as a share of the body's size.
  */
-const LOD_LEVELS: readonly (readonly [number, number])[] = [[0.3, 0.008], [0.1, 0.03]];
+/** The last is for a body a few pixels tall: the seams between garments may move, nobody sees them. */
+const LOD_LEVELS: readonly (readonly [number, number, boolean?])[] = [[0.3, 0.008], [0.1, 0.03], [0.015, 0.12, true]];
 
 let simplifierReady = false;
 /** Resolves once the simplifier is loaded: wait for it before building people (`riggedCitizens.ts`). */

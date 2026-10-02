@@ -988,7 +988,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     // the clip that weighs most, copied as it is: blending clips and frames
     // bone by bone for every body was a quarter of a frame in a town, for a
     // difference no pixel shows.
-    if (lod === 2) {
+    if (lod >= 2) {
       let best = -1;
       for (let c = 0; c < clips.length; c++) if (best < 0 || weights[c]! > weights[best]!) best = c;
       if (best >= 0) {
@@ -1054,7 +1054,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       held.begin();
       detail = level;
       registry.beginFrame();
-      lod = zoom >= 8 ? 0 : zoom >= 2 ? 1 : 2;
+      // 3: a body a few pixels tall (the overview), drawn by its coarsest level.
+      lod = zoom >= 8 ? 0 : zoom >= 2 ? 1 : zoom >= 1.2 ? 2 : 3;
       group.userData.lod = lod;
       for (const batch of batches.values()) {
         batch.count = 0;
