@@ -14,7 +14,7 @@ The player decided (2026-10-01): **you work freely.** You decide:
 - the order of the work;
 - the approach and the technique;
 - which experiments to run;
-- how to split the work (no subagents: the player ordered you to do the work yourself);
+- how to split the work (up to 3 agents per conversation; see docs/handoff/codex-program.md);
 - when to change course, go back, or rewrite a whole layer because that is the better path.
 
 Try things, measure, keep what works, throw away what does not. Nobody gives you a task list: the
