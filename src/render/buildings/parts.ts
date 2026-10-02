@@ -1,5 +1,6 @@
 import { AmbientLight, DirectionalLight, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 
+import { applyFacadePattern } from '@world/buildings/facadePatterns';
 import {
   BAY_COMPONENTS,
   type Building,
@@ -95,9 +96,9 @@ export function partSample(id: string): Building | null {
 
   // A composition is photographed on the wall it composes.
   if ((FACADE_PATTERNS as readonly string[]).includes(id)) {
-    for (const storey of volume.storeys) {
-      storey.facade = { ...storey.facade, pattern: id as FacadePattern };
-    }
+    // Applied as the panel applies it - shopfronts, glazing, piers - or every
+    // pattern photographed as the same plain block.
+    applyFacadePattern(sample, { scope: 'building' }, id as FacadePattern);
     return sample;
   }
 
