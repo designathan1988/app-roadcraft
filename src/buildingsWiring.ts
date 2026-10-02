@@ -4,7 +4,7 @@ import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
 import { DEFAULT_PITCH, baysOn, footprintBox, ridgeAlongX, topLevel } from '@world/buildings/geometry';
-import { BUILDING_FUNCTIONS, type Building, volumeById } from '@world/buildings/types';
+import { BUILDING_FUNCTIONS, type Building, type BuildingId, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
 import { FINISH_COLOUR } from '@world/buildings/materials';
 import { METERS_PER_UNIT, m } from '@world/units';
@@ -54,6 +54,8 @@ export interface BuildingWiring {
   /** The shared chrome: main.ts mounts the road toolbar and panels into it. */
   readonly workspace: ReturnType<typeof initBuilderWorkspace>;
   pointerDown(screen: Vec2, world: Vec2, shift: boolean): void;
+  /** A click with nothing in hand: opens (or switches) the building seen inside; true if taken. */
+  insideClick(screen: Vec2, double: boolean): boolean;
   pointerMove(screen: Vec2, world: Vec2, shift: boolean): void;
   pointerUp(cancelled: boolean): void;
   /**
@@ -124,7 +126,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   let hideOthers = false;
   let lastHint = '';
   /** See inside, for the whole city: on or off, and the floor seen. */
-  const seeInside = { on: false, level: 0 };
+  // See inside: one building, the one clicked, cut open at a floor.
+  const seeInside: { on: boolean; level: number; target: BuildingId | null } = { on: false, level: 0, target: null };
   /** What a drawn shape does: new building, joined block, block on the roof, cut. */
   let drawAction: 'new' | 'ground' | 'top' | 'cut' = 'new';
 
@@ -626,7 +629,14 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       host.changed();
     },
     seeInside: (command) => {
-      if (command === 'toggle') seeInside.on = !seeInside.on;
+      if (command === 'toggle') {
+        seeInside.on = !seeInside.on;
+        // Switched on from the button: the building in the middle of the view.
+        if (seeInside.on && seeInside.target === null) {
+          const { w, h } = deps.size();
+          seeInside.target = tool.buildingAt({ x: w / 2, y: h / 2 });
+        }
+      }
       else if (command === 'up') seeInside.level = Math.min(60, seeInside.level + 1);
       else seeInside.level = Math.max(0, seeInside.level - 1);
       deps.requestDraw();
@@ -893,6 +903,23 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   return {
     tool,
     workspace,
+    /**
+     * A click on the map with nothing in hand: two on a building open it (or
+     * close it, on open ground); one, while a building is open, opens the
+     * one clicked instead. Returns whether the click was taken.
+     */
+    insideClick(screen: { x: number; y: number }, double: boolean): boolean {
+      const hit = tool.buildingAt(screen);
+      if (double) {
+        seeInside.on = hit !== null;
+        seeInside.target = hit;
+      } else if (seeInside.on && hit !== null) {
+        seeInside.target = hit;
+      } else return false;
+      workspace.showInside({ on: seeInside.on, level: seeInside.level });
+      deps.requestDraw();
+      return true;
+    },
     pointerDown(screen, world, shift) {
       if (toolId === 'paint') {
         painting = true;
@@ -1019,10 +1046,10 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       const ahead = deps.view().toWorld(w / 2, h / 2 - 100, w, h);
       const len = Math.hypot(ahead.x - c.x, ahead.y - c.y) || 1;
       tool.cutView = { x: (ahead.x - c.x) / len, y: (ahead.y - c.y) / len };
-      if (seeInside.on) {
-        const step = m(40);
+      const target = seeInside.on && seeInside.target !== null ? doc.buildings.get(seeInside.target) : undefined;
+      if (target) {
         scene.setBuildingCutaway({
-          level: seeInside.level, x: Math.round(c.x / step) * step, y: Math.round(c.y / step) * step, radius: m(160),
+          level: seeInside.level, x: target.x, y: target.y, radius: 0, only: target.id,
           view: { x: (ahead.x - c.x) / len, y: (ahead.y - c.y) / len },
         });
       } else scene.setBuildingCutaway(null);

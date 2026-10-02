@@ -1984,6 +1984,11 @@ export class BuildingTool {
 
   // ------------------------------------------------------------ pointer
 
+  /** The building under a screen point, or null. */
+  buildingAt(screen: Vec2): BuildingId | null {
+    return this.pick(screen)?.building ?? null;
+  }
+
   private pick(screen: Vec2): BuildingHit | null {
     const doc = this.host.context().doc;
     const hides = this.preview?.hides ?? null;

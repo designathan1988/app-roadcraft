@@ -135,7 +135,7 @@ lamps(world: SimWorld, spec: CutawaySpec | null, groundAt: GroundAt, pavedAt: Pa
     if (!spec) return out;
     const near = [...world.doc.buildings.all()]
       .map((b) => ({ b, d: Math.hypot(b.x - spec.x, b.y - spec.y) }))
-      .filter((e) => e.d <= spec.radius)
+      .filter((e) => (spec.only !== undefined ? e.b.id === spec.only : e.d <= spec.radius))
       .sort((a, c) => a.d - c.d);
     for (const { b } of near) {
       const key = `${b.id}:${spec.level}`;
@@ -171,7 +171,7 @@ lamps(world: SimWorld, spec: CutawaySpec | null, groundAt: GroundAt, pavedAt: Pa
     // buildings in id order filled it with people nobody was looking at.
     const near = [...world.doc.buildings.all()]
       .map((b) => ({ b, d: Math.hypot(b.x - spec.x, b.y - spec.y) }))
-      .filter((e) => e.d <= spec.radius)
+      .filter((e) => (spec.only !== undefined ? e.b.id === spec.only : e.d <= spec.radius))
       .sort((a, c) => a.d - c.d);
     for (const { b } of near) {
       if (out.length >= MAX_INDOOR) break;

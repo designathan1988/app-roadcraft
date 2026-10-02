@@ -994,7 +994,7 @@ export const EN: Dictionary = {
   'builder.group.appearance': 'Appearance',
   'builder.category.select': 'Select',
   'builder.category.draw': 'Draw',
-  'inside.toggle': 'See inside (buildings near the camera)',
+  'inside.toggle': 'See inside: the building in the middle of the view (or double-click a building)',
   'inside.down': 'Floor below',
   'inside.up': 'Floor above',
   'inside.ground': 'Ground',

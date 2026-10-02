@@ -980,7 +980,7 @@ export const PT_BR: Dictionary = {
   'builder.group.appearance': 'Aparência',
   'builder.category.select': 'Selecionar',
   'builder.category.draw': 'Desenhar',
-  'inside.toggle': 'Ver por dentro (prédios perto da câmera)',
+  'inside.toggle': 'Ver por dentro: o prédio no centro da vista (ou dê dois cliques num prédio)',
   'inside.down': 'Andar abaixo',
   'inside.up': 'Andar acima',
   'inside.ground': 'Térreo',

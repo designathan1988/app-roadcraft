@@ -64,6 +64,8 @@ export interface CutawaySpec {
   readonly x: number;
   readonly y: number;
   readonly radius: number;
+  /** Only this building is cut open (the one the player clicked); the rest stand whole. */
+  readonly only?: BuildingId;
 }
 
 /** How far past a wall a plant is still considered under the building. */
@@ -100,6 +102,7 @@ export function createBuildingLayer(): BuildingLayer {
   };
   const near = (b: Building): boolean => {
     if (!cutaway) return false;
+    if (cutaway.only !== undefined) return b.id === cutaway.only;
     const box = buildingBounds(b);
     const dx = Math.max(box.minX - cutaway.x, 0, cutaway.x - box.maxX);
     const dy = Math.max(box.minY - cutaway.y, 0, cutaway.y - box.maxY);
@@ -160,7 +163,7 @@ export function createBuildingLayer(): BuildingLayer {
       const hides = preview?.hides ?? null;
       const dimKey = dimmed === undefined ? 'off' : String(dimmed ?? 'all');
       const cutKey = cutaway
-        ? `${cutaway.level}@${Math.round(cutaway.x)},${Math.round(cutaway.y)}/${Math.round(Math.atan2(cutaway.view.y, cutaway.view.x) / (Math.PI / 4))}`
+        ? `${cutaway.only ?? ''}:${cutaway.level}@${Math.round(cutaway.x)},${Math.round(cutaway.y)}/${Math.round(Math.atan2(cutaway.view.y, cutaway.view.x) / (Math.PI / 4))}`
         : 'whole';
       const key = `${doc.buildings.revision}|${groundKey}|${hides}|${dimKey}|${cutKey}`;
       let rebuilt = false;

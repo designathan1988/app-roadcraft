@@ -114,6 +114,8 @@ export interface BuilderActions {
 
 export interface BuilderWorkspace {
   refresh(state: BuilderState): void;
+  /** Shows the see-inside control as it now is (opened by a click on the map). */
+  showInside(state: { on: boolean; level: number }): void;
   /** Which half of the game the container is driving. */
   setMode(mode: ChromeMode): void;
   /**
@@ -921,6 +923,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   return {
     refresh,
+    showInside,
     setMode(next) {
       mode = next;
       root.dataset['mode'] = next;

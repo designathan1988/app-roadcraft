@@ -875,6 +875,19 @@ function endTerrainStroke(): void {
   }
 }
 
+// See inside a building by clicking it, with nothing in hand: two clicks open
+// it (two on open ground close it); while one is open, a click on another
+// opens that one instead.
+canvas.addEventListener('dblclick', (e) => {
+  if (tool !== 'inspect') return;
+  const r = canvas.getBoundingClientRect();
+  buildings.insideClick({ x: e.clientX - r.left, y: e.clientY - r.top }, true);
+});
+canvas.addEventListener('click', (e) => {
+  if (tool !== 'inspect' || e.detail > 1) return;
+  const r = canvas.getBoundingClientRect();
+  buildings.insideClick({ x: e.clientX - r.left, y: e.clientY - r.top }, false);
+});
 canvas.addEventListener('pointerdown', (e) => {
   // The mouse's back and forward buttons are not a click: they used to fall
   // through to the tool as if they were the left button.
@@ -1091,7 +1104,12 @@ canvas.addEventListener('pointerdown', (e) => {
       }
       break;
 
-    case 'inspect':
+    case 'inspect': {
+      // A click on a building is for seeing inside it (the click handlers
+      // above), not for the street that happens to run past it.
+      const box = canvas.getBoundingClientRect();
+      if (buildings.tool.buildingAt({ x: e.clientX - box.left, y: e.clientY - box.top }) !== null) break;
+    }
       selectedSegment = anchor.kind === 'segment' ? (anchor.segment ?? null) : null;
       selectedSegmentS = anchor.kind === 'segment' ? (anchor.s ?? null) : null;
       selectedNode = anchor.kind === 'node' ? (anchor.node ?? null) : null;
