@@ -63,6 +63,8 @@ const DIRECTIONAL_AT = Object.fromEntries(DIRECTIONAL.map((name, i) => [name, WA
 /** Where each clip the gait plays (`citizenGait.ts`) is baked. */
 const GAIT_AT: Readonly<Record<GaitClipName, number>> = {
   ...LIBRARY_AT, ...DIRECTIONAL_AT, walk: WALK, walkElder: WALK_ELDER, walkShuffle: WALK_SHUFFLE,
+  walkHandL: WALK_SHUFFLE + 1 + LIBRARY.length + DIRECTIONAL.length + RIDER_CLIPS.length,
+  walkHandR: WALK_SHUFFLE + 2 + LIBRARY.length + DIRECTIONAL.length + RIDER_CLIPS.length,
 };
 /**
  * People in and on vehicles (`riderPoses.ts`): car seats reclined to fit a
@@ -70,6 +72,9 @@ const GAIT_AT: Readonly<Record<GaitClipName, number>> = {
  */
 const RIDER_AT = Object.fromEntries(RIDER_CLIPS.map((clip, i) => [clip.key, WALK_SHUFFLE + 1 + LIBRARY.length + DIRECTIONAL.length + i])) as
   Readonly<Record<RiderClipKey, number>>;
+/** The walk hand in hand, holding with the left or the right: baked after the riders. */
+const HAND_WALK_AT = { walkHandL: WALK_SHUFFLE + 1 + LIBRARY.length + DIRECTIONAL.length + RIDER_CLIPS.length,
+  walkHandR: WALK_SHUFFLE + 2 + LIBRARY.length + DIRECTIONAL.length + RIDER_CLIPS.length } as const;
 /** Anything `drawClip` can play. */
 export type CitizenClipKey = RiderClipKey | 'walk' | Played;
 
@@ -400,11 +405,11 @@ async function bakeFrames(body: BakeRig, pose: (time: number) => void, duration:
  * as recorded, anything less the elder's. `stride` is the ground one cycle
  * covers on THIS body, so moving it by that much per cycle plants the feet.
  */
-async function bakeWalk(body: BakeRig, sex: WalkSex, amplitude?: WalkAmplitude): Promise<ClipFrames> {
+async function bakeWalk(body: BakeRig, sex: WalkSex, amplitude?: WalkAmplitude, hand?: 'L' | 'R'): Promise<ClipFrames> {
   body.reset();
   const walk = neutralWalkFor(body.rig, body.mesh, sex, amplitude);
   const duration = walkDuration(sex);
-  const baked = await bakeFrames(body, time => walk.pose(time), duration, true);
+  const baked = await bakeFrames(body, time => { walk.pose(time); if (hand) holdHandOut(body.rig, hand); }, duration, true);
   const share = amplitude ? strideShare(walkSource(sex), amplitude) : 1;
   return { ...baked, duration, loop: true, stride: WALK_ADVANCE[sex] * walk.scale * share };
 }
@@ -453,6 +458,35 @@ function turnInWorld(bone: Object3D, q: Quaternion): void {
   if (bone.parent) bone.parent.getWorldQuaternion(limbParent); else limbParent.identity();
   bone.quaternion.copy(limbParent.invert().multiply(q.clone().multiply(limbWorld)));
   bone.updateMatrixWorld(true);
+}
+
+/**
+ * The arm on one side held out a little, straight and still, its hand low
+ * and to the side where a partner walking abreast takes it: the walk hand in
+ * hand. The rest of the body walks on.
+ */
+function holdHandOut(rig: Object3D, side: 'L' | 'R'): void {
+  rig.updateMatrixWorld(true);
+  const chest = rig.getObjectByName('Bip01_Spine2');
+  const upper = rig.getObjectByName(`Bip01_${side}_UpperArm`);
+  const fore = rig.getObjectByName(`Bip01_${side}_Forearm`);
+  const hand = rig.getObjectByName(`Bip01_${side}_Hand`);
+  if (!chest || !upper || !fore || !hand) return;
+  chest.getWorldPosition(limbB);
+  upper.getWorldPosition(limbA);
+  const out = limbA.clone().sub(limbB).setY(0);
+  if (out.lengthSq() < 1e-8) return;
+  out.normalize();
+  // Out far enough that two people a metre apart meet hand to hand.
+  const spread = 0.5;
+  const want = new Vector3(0, -Math.cos(spread), 0).addScaledVector(out, Math.sin(spread)).normalize();
+  for (const [bone, next] of [[upper, fore], [fore, hand]] as const) {
+    const from = bone.getWorldPosition(new Vector3());
+    const to = next.getWorldPosition(new Vector3());
+    const dir = to.sub(from);
+    if (dir.lengthSq() < 1e-10) continue;
+    turnInWorld(bone, limbQ.setFromUnitVectors(dir.normalize(), want));
+  }
 }
 
 /**
@@ -526,6 +560,8 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
     clips[DIRECTIONAL_AT[name]] = { ...frames, duration: facts.duration, loop: true, stride: facts.stride * warped.strideScale };
   }
   for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = await bakeRiderClip(body, clip);
+  clips[HAND_WALK_AT.walkHandL] = await bakeWalk(body, sex, undefined, 'L');
+  clips[HAND_WALK_AT.walkHandR] = await bakeWalk(body, sex, undefined, 'R');
   return { clips, helmet };
 }
 

@@ -1571,6 +1571,9 @@ function publishViews(w: SimWorld, s: State): void {
       }
     } else { p.stoodTogether = 0; p.talk = null; }
     v.gesture = p.sit && p.sit.phase !== 'approach' ? p.sit.gesture : p.pause ?? p.talk;
+    // A couple walking side by side, close: hand in hand (the hand on the
+    // partner's side), worked out from the follower for both.
+    v.hand = undefined;
     // Late at night, the odd adult walks home unsteadily.
     v.style = night && p.ageClass === 'adult' && p.id % 17 === 3 ? 'drunk' : undefined;
     const region = nav && p.tri >= 0 ? nav.mesh.region[p.tri]! : FOOTWAY;
@@ -1585,6 +1588,20 @@ function publishViews(w: SimWorld, s: State): void {
       : p.queued > 0 && nav ? nav.crossingIds[p.queuedFor] ?? null : null;
     views.push(v);
     byId.set(p.id, v);
+  }
+  for (const p of s.people) {
+    const lead = p.leader;
+    if (!lead || p.party.size !== 2 || p.party.archetype !== 'couple' || p.ageClass === 'child' || lead.ageClass === 'child') continue;
+    if (p.v < m(0.3) || lead.v < m(0.3) || p.pause || lead.pause) continue;
+    const dx = lead.x - p.x, dy = lead.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d > m(1.2)) continue;
+    const ahead = { x: Math.cos(p.heading), y: Math.sin(p.heading) };
+    // Abreast, not one behind the other.
+    if (Math.abs(ahead.x * dx + ahead.y * dy) > d * 0.5) continue;
+    const leftOf = ahead.x * dy - ahead.y * dx > 0;
+    p.view.hand = leftOf ? 'L' : 'R';
+    lead.view.hand = leftOf ? 'R' : 'L';
   }
 }
 

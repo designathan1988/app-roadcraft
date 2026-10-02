@@ -65,6 +65,8 @@ export interface PedView {
   age: number;
   /** How they walk, when not as everybody does: unsteady, late at night. */
   style?: 'drunk' | undefined;
+  /** Walking hand in hand: which hand holds the partner's. */
+  hand?: 'L' | 'R' | undefined;
 
   readonly ageClass: PersonAgeClass;
   readonly gender: PersonGender;

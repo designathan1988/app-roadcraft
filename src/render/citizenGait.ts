@@ -56,14 +56,15 @@ export interface GaitClip {
 }
 
 export const GAIT_CLIP_NAMES = [
-  'walk', 'walkElder', 'walkSlow', 'walkShuffle', 'walkRest', 'walkBack', 'walkLeft', 'walkRight', 'run', 'walkDrunk', 'start', 'stop', 'turnLeft', 'turnRight',
+  'walk', 'walkElder', 'walkSlow', 'walkShuffle', 'walkRest', 'walkBack', 'walkLeft', 'walkRight', 'run', 'walkDrunk', 'walkHandL', 'walkHandR', 'start', 'stop', 'turnLeft', 'turnRight',
   'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp', 'walkDrunk',
   'read', 'bag', 'trolley', 'umbrella', 'cheer', 'dance', 'wave', 'drink', 'photo', 'crouchDown', 'crouchIdle', 'crouchUp', 'laugh', 'angry', 'argue', 'knock', 'headphones', 'eatIdle', 'workTable',
 ] as const;
 export type GaitClipName = (typeof GAIT_CLIP_NAMES)[number];
 export type GaitClips = Readonly<Record<GaitClipName, GaitClip>>;
 /** The walk and run cycles, which 'loco' blends on one phase. */
-type Cycle = 'walk' | 'walkElder' | 'walkSlow' | 'walkShuffle' | 'walkRest' | 'walkBack' | 'walkLeft' | 'walkRight' | 'run' | 'walkDrunk';
+type Cycle = 'walk' | 'walkElder' | 'walkSlow' | 'walkShuffle' | 'walkRest' | 'walkBack' | 'walkLeft' | 'walkRight' | 'run' | 'walkDrunk'
+  | 'walkHandL' | 'walkHandR';
 type Single = Exclude<GaitClipName, Cycle>;
 type PlayKey = 'loco' | Single;
 interface Play {
@@ -200,6 +201,8 @@ export function gaitClipsOf(library: Readonly<Record<LibraryClipName, LibraryCli
   out.walk = walk;
   out.walkElder = { ...walk, stride: walk.stride * strideShare(walkSource(sex), ELDER_AMPLITUDE) };
   out.walkShuffle = { ...out.walkSlow, stride: out.walkSlow.stride * strideShare(library.walkSlow.source, SHUFFLE_AMPLITUDE) };
+  out.walkHandL = walk;
+  out.walkHandR = walk;
   out.walkRest = { frames: 1, duration: 1, loop: true, stride: 0 };
   out.walkBack = out.walkLeft = out.walkRight = out.walkShuffle;
   return out;
@@ -286,6 +289,9 @@ const ADULT_WALKS = ['walkShuffle', 'walkSlow', 'walk'] as const satisfies reado
 const ELDER_WALKS = ['walkShuffle', 'walkSlow', 'walkElder'] as const satisfies readonly Cycle[];
 /** Somebody unsteady on their feet: the stagger in place of the stride. */
 const DRUNK_WALKS = ['walkShuffle', 'walkSlow', 'walkDrunk'] as const satisfies readonly Cycle[];
+/** Walking hand in hand: the walk with the hand on the partner's side held out to them. */
+const HAND_L_WALKS = ['walkHandL'] as const satisfies readonly Cycle[];
+const HAND_R_WALKS = ['walkHandR'] as const satisfies readonly Cycle[];
 
 /** Natural pace of a walk cycle on a body of `size`, m/s. */
 const naturalPace = (clip: GaitClip, size: number): number => clip.stride * size / clip.duration;
@@ -296,8 +302,8 @@ const naturalPace = (clip: GaitClip, size: number): number => clip.stride * size
  * exactly as captured; between two, the stride is interpolated; below the
  * shuffle, its stride shortens with the pace as a person's does.
  */
-function pace(g: Gait, clips: GaitClips, elder: boolean, size: number, speed: number, drunk = false): void {
-  const walks = drunk ? DRUNK_WALKS : elder ? ELDER_WALKS : ADULT_WALKS;
+function pace(g: Gait, clips: GaitClips, elder: boolean, size: number, speed: number, drunk = false, hand?: 'L' | 'R'): void {
+  const walks = drunk ? DRUNK_WALKS : hand === 'L' ? HAND_L_WALKS : hand === 'R' ? HAND_R_WALKS : elder ? ELDER_WALKS : ADULT_WALKS;
   const first = clips[walks[0]];
   const last = clips[walks[walks.length - 1]!];
   g.walkA = g.walkB = walks[0];
@@ -636,7 +642,7 @@ function moving(g: Gait, ped: PedView, clips: GaitClips, dt: number, speed: numb
       now.phase + CLIP_FLOOR * dt / clips.stop.duration));
   }
 
-  pace(g, clips, elder, size, speed, ped.style === 'drunk');
+  pace(g, clips, elder, size, speed, ped.style === 'drunk', ped.hand);
   // Non-forward locomotion uses the short capture: long lateral strides
   // would cross the legs. Cardinal blend weights share one footfall phase.
   const x = Math.cos(g.direction), y = Math.sin(g.direction);
