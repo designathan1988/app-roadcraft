@@ -14,7 +14,7 @@ import type { CitizenModel } from './citizenCasting';
 import { loadPeopleAssets } from '@people/body/assets';
 import { Morpher } from '@people/body/morph';
 import { createPersonRig, personSimplifier } from './people/personRig';
-import { compileAhead } from './uploads';
+import { compileAhead, warmAhead } from './uploads';
 import { bakeInWorker } from './bakePool';
 import { cookPerson, loadCookedPerson, peopleCookHash } from './people/cookedPerson';
 import { HELD, createHeldProps } from './people/heldProps';
@@ -378,6 +378,9 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       }
       // Its shaders built before it is drawn (`uploads.ts`).
       await Promise.all(batch.meshes.map((mesh) => compileAhead(mesh)));
+      if (disposed) return;
+      // And its geometry on the GPU, every level of it (`uploads.ts`).
+      await Promise.all(batch.meshes.map((mesh, i) => warmAhead(mesh, batch.lods[i]!)));
       if (disposed) return;
       batches.set(index, batch);
       group.userData.animationBytes = (group.userData.animationBytes ?? 0) + [...new Set(clips)].reduce((sum, clip) => sum + clip.data.byteLength, 0);

@@ -1,5 +1,6 @@
 import { DT, JAM_GAP, STUCK_SECONDS } from './params';
 import type { SimWorld } from './world';
+import { refillPathWork } from '@world/nav/path';
 import { stepController } from './signals/fsm';
 import { longitudinalConstraints } from './vehicles/obstacles';
 import {
@@ -62,6 +63,9 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
       mark = now;
     }
     : (): void => {};
+
+  // Route searching has its allowance for this tick again (`findPath`).
+  refillPathWork();
 
   // 0. topology: the only place derived structure may change
   if (w.topologyRevision !== w.net.trafficRevision) {
@@ -131,7 +135,7 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
   lap('7 cleanup');
 
   // 8. audit
-  if (w.auditEnabled) {
+  if (w.auditEnabled && w.clock.tick % w.auditEvery === 0) {
     for (const i of runAudit(w, w.auditLevel)) w.report(i);
   }
   lap('8 audit');

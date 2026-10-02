@@ -82,6 +82,8 @@ export function createBuildingLayer(): BuildingLayer {
   const group = new Group();
   group.name = 'buildings-layer';
   let stored: BuildingMeshes | null = null;
+  /** Each cell's batch as last assembled, and from which buildings' meshes (`assembleByCell`). */
+  const cells: CellCache = new Map();
   let faded: BuildingMeshes | null = null;
   let dimmed: BuildingId | null | undefined = undefined;
   let ghost: BuildingMeshes | null = null;
@@ -199,7 +201,7 @@ export function createBuildingLayer(): BuildingLayer {
         const solid = dimmed === undefined ? shown : shown.filter((b) => b.id === dimmed);
         const others = dimmed === undefined ? [] : shown.filter((b) => b.id !== dimmed);
         if (cutChunks.size > 64) cutChunks.clear();
-        stored = assembleByCell(solid, (b) => drawn(b, groundAt, pavedAt), kit);
+        stored = assembleByCell(solid, (b) => drawn(b, groundAt, pavedAt), kit, cells);
         group.add(stored.group);
         faded = others.length > 0
           ? assembleBuildingMeshes(others.map((b) => drawn(b, groundAt, pavedAt)), kit, false, true)
@@ -256,6 +258,8 @@ export function createBuildingLayer(): BuildingLayer {
     },
     dispose() {
       stored?.dispose();
+      for (const cell of cells.values()) cell.part.dispose();
+      cells.clear();
       ghost?.dispose();
       kit.dispose();
       group.clear();
@@ -289,23 +293,52 @@ const BATCH_CELL = m(240);
  * whole town sent every window frame and railing in it to the GPU, twice a
  * frame (picture and shadow), wherever the camera looked.
  */
-function assembleByCell(buildings: readonly Building[], chunkOf: (b: Building) => BuildingChunk, kit: BuildingKit): BuildingMeshes {
-  const cells = new Map<string, BuildingChunk[]>();
+/** A cell's batch and the buildings' meshes it was assembled from. */
+type CellCache = Map<string, { chunks: readonly BuildingChunk[]; part: BuildingMeshes }>;
+
+/**
+ * The buildings batched by cell of the map. A cell whose buildings' meshes
+ * are the very ones it was assembled from (each building's are kept while it
+ * is unchanged, `chunkFor`) keeps its batch; only the cells an edit touched
+ * are assembled and sent to the GPU again. Every cell of the town was, for a
+ * storey added to one building - as voxel and tile engines rebuild only the
+ * chunks an edit made dirty.
+ */
+function assembleByCell(buildings: readonly Building[], chunkOf: (b: Building) => BuildingChunk, kit: BuildingKit, cache: CellCache): BuildingMeshes {
+  const byCell = new Map<string, BuildingChunk[]>();
   for (const b of buildings) {
     const key = `${Math.floor(b.x / BATCH_CELL)},${Math.floor(b.y / BATCH_CELL)}`;
-    const list = cells.get(key);
+    const list = byCell.get(key);
     if (list) list.push(chunkOf(b));
-    else cells.set(key, [chunkOf(b)]);
+    else byCell.set(key, [chunkOf(b)]);
   }
   const group = new Group();
   group.name = 'buildings';
-  const parts = [...cells.values()].map((chunks) => assembleBuildingMeshes(chunks, kit));
-  for (const part of parts) group.add(part.group);
+  const parts: BuildingMeshes[] = [];
+  for (const [key, chunks] of byCell) {
+    const known = cache.get(key);
+    let part: BuildingMeshes;
+    if (known && known.chunks.length === chunks.length && known.chunks.every((c, i) => c === chunks[i])) {
+      part = known.part;
+    } else {
+      known?.part.dispose();
+      part = assembleBuildingMeshes(chunks, kit);
+      cache.set(key, { chunks, part });
+    }
+    parts.push(part);
+    group.add(part.group);
+  }
+  // Cells left with no building.
+  for (const [key, known] of cache) {
+    if (byCell.has(key)) continue;
+    known.part.dispose();
+    cache.delete(key);
+  }
   return {
     group,
     triangles: parts.reduce((sum, part) => sum + part.triangles, 0),
+    // The cells' batches belong to the cache: only this group is let go.
     dispose() {
-      for (const part of parts) part.dispose();
       group.clear();
     },
   };

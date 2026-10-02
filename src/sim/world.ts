@@ -178,6 +178,8 @@ export class SimWorld {
 
   auditEnabled = false;
   auditLevel: 'cheap' | 'full' = 'cheap';
+  /** Ticks between audits: every tick in the specs; the game checks once a second (`main.ts`). */
+  auditEvery = 1;
   readonly issues: AuditIssue[] = [];
 
   /** Topology revision the indices were last built from. */

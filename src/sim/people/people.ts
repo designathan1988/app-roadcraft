@@ -5,6 +5,7 @@ import type { NavMesh } from '@world/nav/navmesh';
 import type { SidewalkEdge } from '../peds/sidewalk';
 import { DT, PED, PED_CEILING, PED_DENSITY } from '../params';
 import { emptyCrossingState } from '../crossings/state';
+import { pathWorkLeft } from '@world/nav/path';
 import { indexReservations, mayEnterCrossing } from '../crossings/permission';
 import type { SimWorld } from '../world';
 import type { Boarder, PedestrianEngine } from './engine';
@@ -724,7 +725,9 @@ function step(w: SimWorld, s: State): void {
     // A follower's goal is its place beside its leader, re-aimed a few times a second.
     if (p.leader && !s.byId.has(p.leader.id)) p.leader = null;
     const lead = p.leader;
-    if (lead && (!p.path || (p.id + w.clock.tick) % FOLLOW_EVERY === 0)) {
+    // Re-aimed only while the tick has route searching left; else its route
+    // so far is kept until a tick that has (`PATH_WORK_PER_TICK`).
+    if (lead && (!p.path || ((p.id + w.clock.tick) % FOLLOW_EVERY === 0 && pathWorkLeft()))) {
       // Beside its leader, and stays there: switching between abreast and in
       // file whenever somebody came the other way turned companions back into
       // their own party. Passing people is the avoidance's job.

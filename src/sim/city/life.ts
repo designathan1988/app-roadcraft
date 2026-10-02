@@ -3,6 +3,7 @@ import { footprintCentre } from '@world/buildings/geometry';
 import type { BuildingId } from '@world/buildings/types';
 import type { LaneletId } from '@world/lanelets';
 import { m } from '@world/units';
+import { pathWorkLeft } from '@world/nav/path';
 import { DRIVER_NOISE, DT, JAM_GAP } from '../params';
 import type { SimWorld } from '../world';
 import { ARCHETYPES, type Archetype } from '../vehicles/archetypes';
@@ -35,6 +36,8 @@ export const TIME_SCALE = 20;
 export const DAY_START = 6 * 60 + 30;
 /** Seconds between two looks at everybody's diary. */
 const LOOK_EVERY = 0.5;
+/** The answer for an empty building, shared. */
+const NOBODY: readonly Resident[] = [];
 /** Most residents walking, and driving, at once: a queue forms beyond. */
 const MAX_WALKS = 160;
 const MAX_DRIVES = 90;
@@ -96,6 +99,14 @@ export class CityLife {
   private builtFor = -1;
   private accessFor = '';
   private readonly diaries = new Map<number, Diary>();
+  /**
+   * Who is in each building, made in one pass over the residents and kept
+   * until somebody moves (`moved`). Asked building by building - the lit
+   * windows each second, the rooms cut open each frame - one pass over every
+   * resident for every building was buildings times residents each time.
+   */
+  private occupancy: Map<BuildingId, Resident[]> | null = null;
+  private moved(): void { this.occupancy = null; }
   /** Trips under way, by id. */
   readonly trips = new Map<number, Trip>();
   private nextTrip = 1;
@@ -127,10 +138,19 @@ export class CityLife {
   }
 
   /** The residents inside a building now. */
-  inside(building: BuildingId): Resident[] {
-    const out: Resident[] = [];
-    for (const r of this.population.residents) if (this.diaries.get(r.id)?.at === building) out.push(r);
-    return out;
+  inside(building: BuildingId): readonly Resident[] {
+    if (!this.occupancy) {
+      const index = new Map<BuildingId, Resident[]>();
+      for (const r of this.population.residents) {
+        const at = this.diaries.get(r.id)?.at;
+        if (at === undefined || at === null) continue;
+        let list = index.get(at);
+        if (!list) { list = []; index.set(at, list); }
+        list.push(r);
+      }
+      this.occupancy = index;
+    }
+    return this.occupancy.get(building) ?? NOBODY;
   }
 
   counts(): CityCounts {
@@ -174,6 +194,9 @@ export class CityLife {
     for (const t of this.trips.values()) if (t.mode === 'walk') walks++; else drives++;
 
     for (const r of this.population.residents) {
+      // This tick's route searching spent: the rest start from the next tick
+      // on, looked at again straight away (`PATH_WORK_PER_TICK`).
+      if (!pathWorkLeft()) { this.lookClock = LOOK_EVERY; break; }
       const d = this.diaries.get(r.id)!;
       if (d.day !== day) { d.day = day; d.done = 0; }
       const plan = diaryOf(r);
@@ -204,6 +227,7 @@ export class CityLife {
     }
     this.population = derivePopulation(w.doc.buildings.all());
     this.diaries.clear();
+    this.moved();
     this.byResident.clear();
     const day = Math.floor(this.minutes(w) / 1440);
     const clock = this.minutes(w) - day * 1440;
@@ -293,6 +317,7 @@ export class CityLife {
         trip.agent = car.id;
         this.trips.set(trip.id, trip);
         d.at = null;
+        this.moved();
         return 'drive';
       }
       // No room at the kerb just now: try again in a moment.
@@ -309,6 +334,7 @@ export class CityLife {
     trip.agent = id;
     this.trips.set(trip.id, trip);
     d.at = null;
+    this.moved();
     return 'walk';
   }
 
@@ -318,7 +344,9 @@ export class CityLife {
       const t = this.trips.get(id);
       if (t && t.mode === 'walk') this.arrive(t);
     }
-    for (const t of [...this.trips.values()]) {
+    // Straight over the map: a trip ended here is deleted as it is passed,
+    // which a Map's iteration allows; a copy of every trip each tick was garbage.
+    for (const t of this.trips.values()) {
       if (t.mode !== 'drive') continue;
       const v = w.vehicles.get(t.agent as Vehicle['id']);
       if (!v) { this.arrive(t); continue; }
@@ -349,7 +377,7 @@ export class CityLife {
   private arrive(t: Trip): void {
     this.trips.delete(t.id);
     const d = this.diaries.get(t.resident);
-    if (d) d.at = t.to;
+    if (d) { d.at = t.to; this.moved(); }
     this.completed++;
   }
 
@@ -366,8 +394,19 @@ export class CityLife {
   }
 }
 
-/** A resident's day: the trips they make, in order. */
-export function diaryOf(r: Resident): Entry[] {
+/**
+ * A resident's day: the trips they make, in order. Made once a resident and
+ * kept: a resident does not change, and the day was made afresh for every
+ * resident twice a second.
+ */
+const DIARIES = new WeakMap<Resident, readonly Entry[]>();
+export function diaryOf(r: Resident): readonly Entry[] {
+  let day = DIARIES.get(r);
+  if (!day) { day = makeDiary(r); DIARIES.set(r, day); }
+  return day;
+}
+
+function makeDiary(r: Resident): Entry[] {
   const out: Entry[] = [];
   if (r.work !== null && r.work !== r.home) {
     out.push({ at: r.leaveAt, from: r.home, to: r.work });

@@ -19,6 +19,52 @@ export interface NavPath {
  */
 export type NavCost = (from: number, to: number, length: number) => number;
 
+/** A mesh's search memory, reused by every search on it (`findPath`). */
+interface SearchPool {
+  stamp: number;
+  readonly g: Float64Array;
+  readonly px: Float64Array;
+  readonly py: Float64Array;
+  readonly cameFrom: Int32Array;
+  readonly camePortal: Int32Array;
+  /** Stamp of the search that last reached / closed each triangle. */
+  readonly seen: Uint32Array;
+  readonly closed: Uint32Array;
+  readonly open: Heap;
+}
+const POOLS = new WeakMap<NavMesh, SearchPool>();
+function poolOf(mesh: NavMesh): SearchPool {
+  let pool = POOLS.get(mesh);
+  if (!pool) {
+    const n = mesh.count;
+    pool = {
+      stamp: 0, g: new Float64Array(n), px: new Float64Array(n), py: new Float64Array(n),
+      cameFrom: new Int32Array(n), camePortal: new Int32Array(n), seen: new Uint32Array(n), closed: new Uint32Array(n),
+      open: new Heap(),
+    };
+    POOLS.set(mesh, pool);
+  }
+  return pool;
+}
+
+/**
+ * Route searching allowed per simulation tick, in triangles expanded.
+ *
+ * Detour bounds the path work of a crowd the same way: its path queue runs at
+ * most `MAX_ITERS_PER_UPDATE` search iterations an update, and an agent whose
+ * request has not come up yet waits for it (`dtPathQueue::update`). Here a
+ * route not wanted at once - a trip starting, a companion re-aiming at its
+ * leader - waits for a tick with work left; one search, once begun, is
+ * finished. Started all in one tick, a rush hour's trips stopped the frame.
+ */
+export const PATH_WORK_PER_TICK = 6000;
+let workLeft = PATH_WORK_PER_TICK;
+function spent(expanded: number): void { workLeft -= expanded; }
+/** A new tick: the route searching allowance is full again (`sim/pipeline.ts`). */
+export function refillPathWork(): void { workLeft = PATH_WORK_PER_TICK; }
+/** Whether route searching this tick has work left for a route that can wait. */
+export function pathWorkLeft(): boolean { return workLeft > 0; }
+
 /** Shortest route between two points of the mesh, or null when none joins them. */
 export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: number, gy: number, gt: number,
   cost: NavCost = () => 0, maxNodes = 20000): NavPath | null {
@@ -32,50 +78,61 @@ export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: 
   // metres off any walked line on the long slivers of a kerb stone: from two
   // neighbouring slivers the "shortest" routes ran opposite ways round, and
   // a body between them turned to and fro.)
-  const g = new Map<number, number>();
-  const px = new Map<number, number>();
-  const py = new Map<number, number>();
-  const came = new Map<number, { from: number; portal: NavPortal }>();
-  const open = new Heap();
-  g.set(st, 0);
-  px.set(st, sx);
-  py.set(st, sy);
+  //
+  // The search's memory is the mesh's own, kept between searches and cleared
+  // by a new stamp, as Detour's node pool is (`dtNodePool::clear`): four maps
+  // and an object per triangle visited, made afresh for every route, were
+  // garbage the browser stopped the game to collect.
+  const pool = poolOf(mesh);
+  const stamp = ++pool.stamp;
+  const { g, px, py, cameFrom, camePortal, seen, closed, open } = pool;
+  open.clear();
+  seen[st] = stamp;
+  g[st] = 0;
+  px[st] = sx;
+  py[st] = sy;
   open.push(st, Math.hypot(gx - sx, gy - sy));
-  const closed = new Set<number>();
   let found = false;
   let expanded = 0;
   while (open.size) {
     const t = open.pop();
     if (t === gt) { found = true; break; }
-    if (closed.has(t)) continue;
-    closed.add(t);
+    if (closed[t] === stamp) continue;
+    closed[t] = stamp;
     if (++expanded > maxNodes) break;
-    const tx = px.get(t)!, ty = py.get(t)!, tg = g.get(t)!;
-    for (const portal of mesh.portals[t]!) {
+    const tx = px[t]!, ty = py[t]!, tg = g[t]!;
+    const out = mesh.portals[t]!;
+    for (let k = 0; k < out.length; k++) {
+      const portal = out[k]!;
       const u = portal.to;
-      if (closed.has(u)) continue;
-      const near = u === gt ? null : closestOnSegment(portal.lx, portal.ly, portal.rx, portal.ry, tx, ty);
-      const mx = near ? near.x : gx;
-      const my = near ? near.y : gy;
+      if (closed[u] === stamp) continue;
+      let mx = gx, my = gy;
+      if (u !== gt) {
+        const near = closestOnSegment(portal.lx, portal.ly, portal.rx, portal.ry, tx, ty);
+        mx = near.x; my = near.y;
+      }
       const step = Math.hypot(mx - tx, my - ty);
       const ng = tg + step + cost(t, u, step);
-      if (ng < (g.get(u) ?? Infinity)) {
-        g.set(u, ng);
-        px.set(u, mx);
-        py.set(u, my);
-        came.set(u, { from: t, portal });
+      if (seen[u] !== stamp || ng < g[u]!) {
+        seen[u] = stamp;
+        g[u] = ng;
+        px[u] = mx;
+        py[u] = my;
+        cameFrom[u] = t;
+        camePortal[u] = k;
         open.push(u, ng + Math.hypot(gx - mx, gy - my));
       }
     }
   }
+  spent(expanded);
   if (!found) return null;
   const tris: number[] = [gt];
   const portals: NavPortal[] = [];
   for (let t = gt; t !== st;) {
-    const step = came.get(t)!;
-    portals.push(step.portal);
-    tris.push(step.from);
-    t = step.from;
+    const from = cameFrom[t]!;
+    portals.push(mesh.portals[from]![camePortal[t]!]!);
+    tris.push(from);
+    t = from;
   }
   tris.reverse();
   portals.reverse();
@@ -174,6 +231,7 @@ class Heap {
   private order: number[] = [];
   private seq = 0;
   get size(): number { return this.items.length; }
+  clear(): void { this.items.length = 0; this.keys.length = 0; this.order.length = 0; this.seq = 0; }
   push(item: number, key: number): void {
     this.items.push(item); this.keys.push(key); this.order.push(this.seq++);
     let i = this.items.length - 1;
@@ -202,9 +260,10 @@ class Heap {
   private less(a: number, b: number): boolean {
     return this.keys[a]! < this.keys[b]! || (this.keys[a] === this.keys[b] && this.order[a]! < this.order[b]!);
   }
+  // Swapped through locals: a destructuring swap made two arrays a swap.
   private swap(a: number, b: number): void {
-    [this.items[a], this.items[b]] = [this.items[b]!, this.items[a]!];
-    [this.keys[a], this.keys[b]] = [this.keys[b]!, this.keys[a]!];
-    [this.order[a], this.order[b]] = [this.order[b]!, this.order[a]!];
+    const item = this.items[a]!; this.items[a] = this.items[b]!; this.items[b] = item;
+    const key = this.keys[a]!; this.keys[a] = this.keys[b]!; this.keys[b] = key;
+    const order = this.order[a]!; this.order[a] = this.order[b]!; this.order[b] = order;
   }
 }

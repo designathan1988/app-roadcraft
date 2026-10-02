@@ -1,4 +1,4 @@
-import type { Camera, Object3D, Scene, Texture, WebGLRenderTarget, WebGLRenderer } from 'three';
+import type { BufferGeometry, Camera, Light, Mesh, Object3D, Scene, Texture, WebGLRenderTarget, WebGLRenderer } from 'three';
 
 /**
  * Textures waiting to be sent to the GPU ahead of their first use.
@@ -55,4 +55,71 @@ export function drainCompiles(renderer: WebGLRenderer, camera: Camera, scene: Sc
     renderer.compileAsync(object, camera, scene).then(done, done);
   }
   renderer.setRenderTarget(previous);
+}
+
+/**
+ * Meshes whose geometry must be on the GPU before they are first drawn.
+ *
+ * three.js sends a geometry's buffers (`WebGLObjects.update`) and builds its
+ * morph target texture (`WebGLMorphtargets.update`) the first time the mesh
+ * is drawn, in that frame; `compile` builds programs only. A new kind of
+ * person walking into view stopped that frame on its body's upload. As the
+ * three.js community does it ("render all the different meshes once", one a
+ * frame to spread the cost: discourse.threejs.org/t/64940, /t/15549), each
+ * waiting mesh is drawn once after the frame, alone - on a layer of its own,
+ * into the target the scene is drawn into, under the scene's own lights, so
+ * that the program used is the one already built for it - with no instance:
+ * the buffers go up, nothing is drawn.
+ */
+const WARM_LAYER = 31;
+const toWarm: { mesh: Mesh; geometries: readonly BufferGeometry[]; done: () => void }[] = [];
+let warmer = false;
+const lightsOf = new WeakMap<Scene, Light[]>();
+export function warmAhead(mesh: Mesh, geometries: readonly BufferGeometry[]): Promise<void> {
+  if (!warmer) return Promise.resolve();
+  return new Promise((done) => toWarm.push({ mesh, geometries, done }));
+}
+/** Sends one waiting mesh's geometry to the GPU, after the frame (`renderer.ts`). */
+export function drainWarm(renderer: WebGLRenderer, camera: Camera, scene: Scene, target: WebGLRenderTarget | null): void {
+  warmer = true;
+  const job = toWarm.shift();
+  if (!job) return;
+  const { mesh, geometries, done } = job;
+  let lights = lightsOf.get(scene);
+  if (!lights) {
+    lights = [];
+    scene.traverse((o) => { if ((o as Light).isLight) lights!.push(o as Light); });
+    lightsOf.set(scene, lights);
+  }
+  const mask = camera.layers.mask;
+  const visible = mesh.visible;
+  const original = mesh.geometry;
+  const previous = renderer.getRenderTarget();
+  const autoClear = renderer.autoClear;
+  // The world's matrices were brought up to date by the frame just drawn.
+  const autoUpdate = scene.matrixWorldAutoUpdate;
+  try {
+    scene.matrixWorldAutoUpdate = false;
+    for (const light of lights) light.layers.enable(WARM_LAYER);
+    mesh.layers.enable(WARM_LAYER);
+    mesh.visible = true;
+    camera.layers.set(WARM_LAYER);
+    renderer.setRenderTarget(target);
+    // The frame in the target has been shown already; nothing is cleared.
+    renderer.autoClear = false;
+    for (const geometry of geometries) {
+      mesh.geometry = geometry;
+      renderer.render(scene, camera);
+    }
+  } finally {
+    mesh.geometry = original;
+    mesh.visible = visible;
+    mesh.layers.disable(WARM_LAYER);
+    for (const light of lights) light.layers.disable(WARM_LAYER);
+    camera.layers.mask = mask;
+    renderer.autoClear = autoClear;
+    scene.matrixWorldAutoUpdate = autoUpdate;
+    renderer.setRenderTarget(previous);
+    done();
+  }
 }

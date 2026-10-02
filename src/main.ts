@@ -173,6 +173,9 @@ else if (new URLSearchParams(location.search).get('peds') !== 'legacy') sim.useP
 if (new URLSearchParams(location.search).get('drive') !== 'v1') sim.driveModel = 'v2';
 sim.auditEnabled = true;
 sim.auditLevel = 'cheap';
+// The status bar's alerts: checked once a second of play, not on every one
+// of its sixty ticks - a whole pass over the fleet and the signals each tick.
+sim.auditEvery = 60;
 /** The simulation never reads the screen; the screen's size is handed to it. */
 function syncPopulationShare(): void {
   sim.populationShare = window.innerWidth < NARROW_SCREEN_WIDTH ? NARROW_SCREEN_SHARE : 1;

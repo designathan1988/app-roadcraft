@@ -36,8 +36,11 @@ import { createPostChain, type PostChain } from './postprocess';
 import { createInspector, type Inspector } from './inspector';
 import { buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
 import { PLANT_MAP_ZOOM, PLANT_NEAR_ZOOM, buildGardens, buildScenery, createSceneryKit, type GardenPlant, type Scenery, type SceneryKit } from './scenery';
-import { localToWorld } from '@world/buildings/geometry';
-import { drainCompiles, drainUploads } from './uploads';
+import { localToWorld, solidFootprints } from '@world/buildings/geometry';
+import { floorHeight } from '@world/buildings/foundation';
+import { lotSurfaces } from '@world/buildings/lots';
+import type { RoadDoc } from '@world/doc';
+import { drainCompiles, drainUploads, drainWarm } from './uploads';
 import type { Building } from '@world/buildings/types';
 import { GRASS_MIN_ZOOM } from './grass';
 import { advanceWind } from './wind';
@@ -359,7 +362,7 @@ export function createSceneRenderer(
   const buildings = createBuildingLayer();
   scene.add(buildings.group);
   /** The scenery the building footprints were last cut out of. */
-  let excludedFor: { scenery: Scenery | null; version: number } = { scenery: null, version: -1 };
+  let excludedFor: { scenery: Scenery | null; site: string | null } = { scenery: null, site: null };
   /** The buildings' garden plants, and the buildings and ground they were planted for. */
   let gardens: Scenery | null = null;
   let gardensFor = '';
@@ -391,12 +394,46 @@ export function createSceneRenderer(
   /** The building revision the ground was last graded for. */
   let gradedFor = -1;
   /**
+   * What the ground under the buildings is graded from (`buildingPads`): each
+   * building's built footprints, its floor and its open lots - not its
+   * storeys, its facades or its rooms. A storey added to a building re-graded
+   * the ground of the whole town and re-planted every garden; now the ground
+   * is graded again only when a site changed.
+   */
+  let siteKey = '';
+  /** Bumped each time the ground is graded: what stands on it is set again. */
+  let groundVersion = 0;
+  const siteSignature = (doc: RoadDoc): string => {
+    const parts: unknown[] = [];
+    for (const b of doc.buildings.all()) {
+      const floor = floorHeight(b, terrain.naturalRenderedHeightAt, pavedHeightAt);
+      parts.push([b.id, solidFootprints(b), floor,
+        lotSurfaces(b, floor, pavedHeightAt).map((l) => [l.ring, l.volume.open ?? 'grass'])]);
+    }
+    return JSON.stringify(parts);
+  };
+  /** The plants of the buildings' gardens, as `gardenPlants` reads them, by building revision. */
+  let plantsFor = -1;
+  let plantsKey = '';
+  const plantSignature = (doc: RoadDoc): string => {
+    if (plantsFor === doc.buildings.revision) return plantsKey;
+    plantsFor = doc.buildings.revision;
+    const parts: unknown[] = [];
+    for (const b of doc.buildings.all()) {
+      const plants = (b.elements ?? []).filter((el: { kind: string }) => el.kind === 'tree' || el.kind === 'shrub' || el.kind === 'hedge' || el.kind === 'flowers');
+      if (plants.length) parts.push([b.id, b.x, b.y, b.rotation, plants]);
+    }
+    return (plantsKey = JSON.stringify(parts));
+  };
+  /**
    * Cuts and fills the ground to the roads AND to the buildings: a level
    * platform under each building and a grassed bank round it. A road keeps the
    * ground it has claimed; a platform takes the rest.
    */
   const shapeGround = (net: Network): void => {
     gradedFor = net.doc.buildings.revision;
+    siteKey = siteSignature(net.doc);
+    groundVersion++;
     const roads = net.doc.segments.size > 0 ? elevation : null;
     const pads = net.doc.buildings.size > 0
       ? buildingPads(net.doc.buildings.all(), terrain.naturalRenderedHeightAt, pavedHeightAt, TERRAIN_CELL * 1.5)
@@ -629,13 +666,17 @@ export function createSceneRenderer(
         rebuildWorld(net);
       }
       // A building placed, moved or reshaped grades its own site.
-      if (gradedFor !== net.doc.buildings.revision) shapeGround(net);
-      buildings.update(net.doc, terrain.renderedHeightAt, `${net.doc.terrainRevision}:${rebuilds}`, pavedHeightAt);
-      if (scenery && (excludedFor.scenery !== scenery || excludedFor.version !== buildings.version)) {
-        scenery.exclude(net.doc.buildings.size > 0 ? buildings.covers : null);
-        excludedFor = { scenery, version: buildings.version };
+      if (gradedFor !== net.doc.buildings.revision) {
+        gradedFor = net.doc.buildings.revision;
+        if (siteSignature(net.doc) !== siteKey) shapeGround(net);
       }
-      const gardenKey = `${buildings.version}:${gradedFor}:${net.doc.terrainRevision}:${rebuilds}`;
+      buildings.update(net.doc, terrain.renderedHeightAt, `${net.doc.terrainRevision}:${rebuilds}`, pavedHeightAt);
+      // The plants under a building's footprints: only a changed site moves them.
+      if (scenery && (excludedFor.scenery !== scenery || excludedFor.site !== siteKey)) {
+        scenery.exclude(net.doc.buildings.size > 0 ? buildings.covers : null);
+        excludedFor = { scenery, site: siteKey };
+      }
+      const gardenKey = `${plantSignature(net.doc)}:${groundVersion}:${net.doc.terrainRevision}:${rebuilds}`;
       if (gardenKey !== gardensFor) {
         gardensFor = gardenKey;
         if (gardens) {
@@ -768,6 +809,8 @@ export function createSceneRenderer(
       // One waiting texture a frame to the GPU, before anybody draws it.
       drainUploads(renderer, 1);
       drainCompiles(renderer, rig.camera, scene, post.target);
+      // One waiting body's geometry a frame to the GPU, before anybody draws it.
+      drainWarm(renderer, rig.camera, scene, post.target);
 
       if (delta > 0) fps = fps * 0.9 + (1 / Math.min(1, delta)) * 0.1;
     },
