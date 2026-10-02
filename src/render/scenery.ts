@@ -51,6 +51,7 @@ import {
   wildflowerGeometry,
   type BushKind,
   type TreeSpecies,
+  leafCards,
 } from './propGeometry';
 
 export { LAMP_HEIGHT, LAMP_OUTREACH } from './propGeometry';
@@ -119,6 +120,13 @@ export interface SceneryKit {
   readonly flower: BufferGeometry;
   readonly foliage: MeshStandardMaterial;
   readonly foliageDepth: MeshDepthMaterial;
+  /** Leaf cards over each crown (none on a conifer), close up and far off. */
+  readonly leaves: Partial<Record<TreeSpecies | BushKind, BufferGeometry>>;
+  readonly leavesFar: Partial<Record<TreeSpecies | BushKind, BufferGeometry>>;
+  readonly leafCards: MeshStandardMaterial;
+  readonly leafCardsDepth: MeshDepthMaterial;
+  readonly shrubCards: MeshStandardMaterial;
+  readonly shrubCardsDepth: MeshDepthMaterial;
   readonly shrubs: MeshStandardMaterial;
   readonly shrubsDepth: MeshDepthMaterial;
   readonly grass: MeshStandardMaterial;
@@ -171,12 +179,37 @@ export function createSceneryKit(): SceneryKit {
   });
   const foliageDepth = windDepthMaterial(TREE_WIND, 'tree');
   const shrubsDepth = windDepthMaterial(BUSH_WIND, 'bush');
+  // Leaf cards: per species, on the close-up crown (many) and the far one (few).
+  const leaves: Partial<Record<TreeSpecies | BushKind, BufferGeometry>> = {};
+  const leavesFar: Partial<Record<TreeSpecies | BushKind, BufferGeometry>> = {};
+  const CARDS: Partial<Record<TreeSpecies | BushKind, [number, number, number]>> = {
+    broadleaf: [420, 90, 0.13], broadleafTall: [360, 80, 0.12], ipeYellow: [380, 80, 0.13], ipePink: [380, 80, 0.13],
+    bush: [150, 40, 0.42], bushFlowering: [150, 40, 0.42], hedge: [170, 45, 0.4],
+  };
+  for (const [kind, [near, far, size]] of Object.entries(CARDS) as [TreeSpecies | BushKind, [number, number, number]][]) {
+    const crown = (TREE_SPECIES as readonly string[]).includes(kind) ? trees[kind as TreeSpecies] : bushes[kind as BushKind];
+    leaves[kind] = leafCards(crown, near, size, 0x1eaf + kind.length * 31);
+    leavesFar[kind] = leafCards(crown, far, size * 1.5, 0x1eaf + kind.length * 31);
+  }
+  const spray = leafTexture();
+  const cardMaterial = (response: WindResponse, key: string): [MeshStandardMaterial, MeshDepthMaterial] => {
+    const material = new MeshStandardMaterial({ vertexColors: true, map: spray, alphaTest: 0.5, side: DoubleSide, roughness: 0.78, metalness: 0 });
+    applyWind(material, response, `${key}-cards`);
+    const depth = windDepthMaterial(response, `${key}-cards`);
+    depth.map = spray;
+    depth.alphaTest = 0.5;
+    return [material, depth];
+  };
+  const [leafCardsMaterial, leafCardsDepth] = cardMaterial(TREE_WIND, 'tree');
+  const [shrubCards, shrubCardsDepth] = cardMaterial(BUSH_WIND, 'bush');
 
   const geometries: BufferGeometry[] = [
     ...Object.values(trees),
     ...Object.values(bushes),
     ...Object.values(treesFar),
     ...Object.values(bushesFar),
+    ...Object.values(leaves) as BufferGeometry[],
+    ...Object.values(leavesFar) as BufferGeometry[],
     ...Object.values(furniture),
     lampLens,
     treePit,
@@ -184,7 +217,8 @@ export function createSceneryKit(): SceneryKit {
     flower,
     pool,
   ];
-  const materials: Material[] = [foliage, shrubs, grass, flowers, props, glow, foliageDepth, shrubsDepth, poolGlow];
+  const materials: Material[] = [foliage, shrubs, grass, flowers, props, glow, foliageDepth, shrubsDepth, poolGlow,
+    leafCardsMaterial, leafCardsDepth, shrubCards, shrubCardsDepth];
   return {
     trees,
     bushes,
@@ -197,6 +231,12 @@ export function createSceneryKit(): SceneryKit {
     flower,
     foliage,
     foliageDepth,
+    leaves,
+    leavesFar,
+    leafCards: leafCardsMaterial,
+    leafCardsDepth,
+    shrubCards,
+    shrubCardsDepth,
     shrubs,
     shrubsDepth,
     grass,
@@ -214,8 +254,85 @@ export function createSceneryKit(): SceneryKit {
     dispose() {
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
+      spray.dispose();
     },
   };
+}
+
+/**
+ * A spray of leaves on a twig, drawn once: pale, so each card takes its
+ * crown's colour; transparent between the leaves.
+ */
+function leafTexture(): CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const rng = new Rng(0x1eaf);
+  ctx.clearRect(0, 0, size, size);
+  // Leaves: lit on one side, a midrib, each a shade of its own.
+  for (let i = 0; i < 70; i++) {
+    const a = rng.float() * Math.PI * 2;
+    const r = Math.sqrt(rng.float()) * 98;
+    const x = size / 2 + Math.cos(a) * r, y = size / 2 + Math.sin(a) * r * 0.95;
+    const len = 34 + rng.float() * 18, wid = 15 + rng.float() * 8;
+    const turn = a + (rng.float() - 0.5) * 1.2;
+    const tone = 185 + Math.floor(rng.float() * 70);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(turn);
+    const g = ctx.createLinearGradient(0, -wid, 0, wid);
+    g.addColorStop(0, `rgb(${tone}, ${tone}, ${tone})`);
+    g.addColorStop(1, `rgb(${tone - 60}, ${tone - 55}, ${tone - 60})`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-len / 2, 0);
+    ctx.quadraticCurveTo(0, -wid, len / 2, 0);
+    ctx.quadraticCurveTo(0, wid, -len / 2, 0);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(${tone - 70}, ${tone - 60}, ${tone - 70}, 0.8)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-len / 2, 0);
+    ctx.lineTo(len / 2, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
+}
+
+/**
+ * The instanced meshes of trees and bushes, each kind with its leaf cards
+ * (same instances, the cards' own model and material), added to `meshes`
+ * and to `plants` (with their close and far models).
+ */
+function plantMeshes(prefix: string, trees: Map<TreeSpecies, Placement[]>, bushes: Map<BushKind, Placement[]>, kit: SceneryKit,
+  meshes: InstancedMesh[], plants: [InstancedMesh, BufferGeometry, BufferGeometry][]): void {
+  const add = (mesh: InstancedMesh | null, near: BufferGeometry, far: BufferGeometry): void => {
+    if (!mesh) return;
+    // The crown under the cards already throws the tree's shadow; cards in
+    // the shadow pass (alpha-tested, overlapping) cost 70 ms a frame.
+    if (mesh.name.endsWith('-leaves')) mesh.castShadow = false;
+    meshes.push(mesh);
+    plants.push([mesh, near, far]);
+  };
+  for (const species of TREE_SPECIES) {
+    const placed = trees.get(species) ?? [];
+    add(build(`${prefix}trees-${species}`, kit.treesFar[species], kit.foliage, placed, kit.foliageDepth, kit.trees[species]),
+      kit.trees[species], kit.treesFar[species]);
+    const near = kit.leaves[species], far = kit.leavesFar[species];
+    if (near && far) add(build(`${prefix}trees-${species}-leaves`, far, kit.leafCards, placed, kit.leafCardsDepth, near), near, far);
+  }
+  for (const kind of BUSH_KINDS) {
+    const placed = bushes.get(kind) ?? [];
+    add(build(`${prefix}bushes-${kind}`, kit.bushesFar[kind], kit.shrubs, placed, kit.shrubsDepth, kit.bushes[kind]),
+      kit.bushes[kind], kit.bushesFar[kind]);
+    const near = kit.leaves[kind], far = kit.leavesFar[kind];
+    if (near && far) add(build(`${prefix}bushes-${kind}-leaves`, far, kit.shrubCards, placed, kit.shrubCardsDepth, near), near, far);
+  }
 }
 
 export interface Scenery {
@@ -587,27 +704,7 @@ export function buildScenery(
 
   /** Each plant mesh with its two models, near first. */
   const plants: [InstancedMesh, BufferGeometry, BufferGeometry][] = [];
-  const plant = (mesh: InstancedMesh | null, near: BufferGeometry, far: BufferGeometry): void => {
-    if (!mesh) return;
-    meshes.push(mesh);
-    plants.push([mesh, near, far]);
-  };
-  for (const species of TREE_SPECIES) {
-    plant(
-      build(`trees-${species}`, kit.treesFar[species], kit.foliage, trees.get(species) ?? [], kit.foliageDepth,
-        kit.trees[species]),
-      kit.trees[species],
-      kit.treesFar[species],
-    );
-  }
-  for (const kind of BUSH_KINDS) {
-    plant(
-      build(`bushes-${kind}`, kit.bushesFar[kind], kit.shrubs, bushes.get(kind) ?? [], kit.shrubsDepth,
-        kit.bushes[kind]),
-      kit.bushes[kind],
-      kit.bushesFar[kind],
-    );
-  }
+  plantMeshes('', trees, bushes, kit, meshes, plants);
   // The lens is lit from inside; it neither casts nor takes a shadow.
   for (const mesh of meshes) {
     if (mesh.name === 'street-light-lamps' || mesh.name === 'tree-pits' || mesh.name === 'street-light-pools') mesh.castShadow = false;
@@ -788,14 +885,7 @@ export function buildGardens(list: readonly GardenPlant[], kit: SceneryKit): Sce
   }
   const meshes: InstancedMesh[] = [];
   const plants: [InstancedMesh, BufferGeometry, BufferGeometry][] = [];
-  for (const species of TREE_SPECIES) {
-    const mesh = build(`garden-trees-${species}`, kit.treesFar[species], kit.foliage, trees.get(species) ?? [], kit.foliageDepth, kit.trees[species]);
-    if (mesh) { meshes.push(mesh); plants.push([mesh, kit.trees[species], kit.treesFar[species]]); }
-  }
-  for (const kind of BUSH_KINDS) {
-    const mesh = build(`garden-${kind}`, kit.bushesFar[kind], kit.shrubs, bushes.get(kind) ?? [], kit.shrubsDepth, kit.bushes[kind]);
-    if (mesh) { meshes.push(mesh); plants.push([mesh, kit.bushes[kind], kit.bushesFar[kind]]); }
-  }
+  plantMeshes('garden-', trees, bushes, kit, meshes, plants);
   let triangles = 0;
   for (const mesh of meshes) triangles += trianglesOf(mesh.geometry) * mesh.count;
   let culledFor: Matrix4 | null = null;

@@ -616,3 +616,62 @@ export function treePitGeometry(): BufferGeometry {
 /** Triangle count of a non-indexed prop geometry. */
 export const trianglesOf = (geometry: BufferGeometry): number =>
   (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
+
+/**
+ * Leaf cards over a crown: small quads of a leafy spray (`leafTexture`), set
+ * on the crown's own leaf surface and leaning out of it, each lit with the
+ * crown's normal there so the canopy shades as a whole. This is how trees are
+ * drawn in real time: the crown's lumps alone read as a ball; the cards break
+ * its outline into leaves and let the light through in gaps.
+ *
+ * `count` cards of `size` (in the plant's units: it is one unit tall), on
+ * the vertices of `crown` that are leaf (not bark).
+ */
+export function leafCards(crown: BufferGeometry, count: number, size: number, seed: number): BufferGeometry {
+  const rng = new Rng(seed);
+  const pos = crown.getAttribute('position');
+  if (!crown.getAttribute('normal')) crown.computeVertexNormals();
+  const nor = crown.getAttribute('normal');
+  const col = crown.getAttribute('color');
+  // Leaf vertices: anything but bark (dark, red over green over blue).
+  const leaves: number[] = [];
+  for (let i = 0; i < pos.count; i++) {
+    const r = col ? col.getX(i) : 0.3, g = col ? col.getY(i) : 0.5, b = col ? col.getZ(i) : 0.2;
+    const bark = b <= g && g <= r && Math.max(r, g, b) < 0.24;
+    if (!bark && pos.getY(i) > 0.12) leaves.push(i);
+  }
+  const positions: number[] = [], normals: number[] = [], colours: number[] = [], uvs: number[] = [];
+  const n = new Vector3(), t = new Vector3(), bt = new Vector3(), up = new Vector3(0, 1, 0), c = new Vector3();
+  for (let k = 0; k < count && leaves.length; k++) {
+    const v = leaves[Math.floor(rng.float() * leaves.length)]!;
+    n.set(nor.getX(v), nor.getY(v), nor.getZ(v)).normalize();
+    // The card faces mostly out, a little up, and is turned at random about that.
+    const face = new Vector3(n.x + (rng.float() - 0.5) * 1.2, n.y + 0.35 + (rng.float() - 0.5) * 0.8, n.z + (rng.float() - 0.5) * 1.2).normalize();
+    t.crossVectors(face, Math.abs(face.y) > 0.9 ? new Vector3(1, 0, 0) : up).normalize();
+    bt.crossVectors(face, t).normalize();
+    const roll = rng.float() * Math.PI * 2;
+    const ct = Math.cos(roll), st = Math.sin(roll);
+    const ax = t.clone().multiplyScalar(ct).addScaledVector(bt, st);
+    const ay = bt.clone().multiplyScalar(ct).addScaledVector(t, -st);
+    const s = size * (0.7 + rng.float() * 0.6);
+    c.set(pos.getX(v), pos.getY(v), pos.getZ(v)).addScaledVector(n, s * (0.05 + rng.float() * 0.25));
+    const corner = (u: number, w: number): void => {
+      positions.push(c.x + (ax.x * (u - 0.5) + ay.x * (w - 0.5)) * s, c.y + (ax.y * (u - 0.5) + ay.y * (w - 0.5)) * s, c.z + (ax.z * (u - 0.5) + ay.z * (w - 0.5)) * s);
+      normals.push(n.x, n.y, n.z);
+      const shade = 0.85 + rng.float() * 0.3;
+      colours.push((col ? col.getX(v) : 0.3) * shade, (col ? col.getY(v) : 0.5) * shade, (col ? col.getZ(v) : 0.2) * shade);
+      uvs.push(u, w);
+    };
+    // Two triangles.
+    corner(0, 0); corner(1, 0); corner(1, 1);
+    corner(0, 0); corner(1, 1); corner(0, 1);
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  g.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+  g.setAttribute('color', new Float32BufferAttribute(colours, 3));
+  g.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
+  return g;
+}
