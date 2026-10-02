@@ -8,7 +8,7 @@ import { isSerializedDoc } from '@editor/persistence';
 describe('people saved with the city', () => {
   it('keeps natural children clothed without adult outfits and preserves saved pigment', () => {
     for (let seed = 0; seed < 64; seed++) {
-      const person = randomPerson(seed, seed * 7919, { body: { age: ageFromYears(8) } }, { appearance: 'natural' });
+      const person = randomPerson(seed, seed * 7919, { body: { age: ageFromYears(8) } });
       expect(person.look.outfit).toBeUndefined();
       expect(person.look.top).not.toBe('none');
       expect(wornItems(person.look).some(name => name.includes('suit'))).toBe(false);

@@ -429,7 +429,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     const people = await loadPeopleAssets();
     morpher ??= new Morpher(people.packs);
     const person = model.person!;
-    const natural = new URLSearchParams(location.search).get('appearance') === 'natural';
+  
     // The garments it wears, loaded first; failing that it is drawn in the
     // tailored shells rather than not at all.
     const proxies = new Map<string, ProxyItem>();
@@ -438,12 +438,12 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     } catch { proxies.clear(); }
     const rig = createPersonRig({
       proxies,
-      texturedSkin: natural,
+      texturedSkin: true,
       data: people.mesh, skeleton: people.skeleton, bodyRange: people.bodyRange,
       positions: morpher.shape(person.body, person.features), look: person.look,
       capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),
     });
-    if (natural) {
+    {
       const skin = await loadSkinAppearance(person);
       resources.add(skin.texture);
       if (skin.hairTexture) resources.add(skin.hairTexture);

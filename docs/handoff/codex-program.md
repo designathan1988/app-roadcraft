@@ -14,7 +14,7 @@ in the plan's order.
 | 0 | measurement base (harness, probe) | **done**, 1c431c3 |
 | 1 | new base for roads and pedestrians | **deferred by player**: remaining work at the end of this file |
 | 1b | vehicle motion: measure and fix on the new base | **default in Drive v2**, player approved; b43bd33, 2695613 |
-| 2 | skin, phenotype, sex profiles, child clothes | **verified behind `?appearance=natural`**, default approval pending |
+| 2 | skin, phenotype, sex profiles, child clothes | **default approved by player and enabled**; 915b517, c01e101 |
 | 3 | live expression | **in progress** |
 | 4 | crowd without repetition, plus memory | not started |
 | 5 | citizen registry, day clock, day/night | not started |

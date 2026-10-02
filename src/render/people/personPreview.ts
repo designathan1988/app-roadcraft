@@ -52,7 +52,7 @@ export interface PersonPreview {
 }
 
 export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
-  const natural = new URLSearchParams(location.search).get('appearance') === 'natural';
+
   let skin: { key: string; value: SkinAppearance; colour: Color } | null = null;
   let pendingSkin = '';
   let skinRequest = 0;
@@ -171,7 +171,7 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
   };
   const ensureSkin = (p: PersonSpec): void => {
     const key = skinKey(p);
-    if (!natural || !active || skin?.key === key || pendingSkin === key) return;
+    if (!active || skin?.key === key || pendingSkin === key) return;
     pendingSkin = key;
     const request = ++skinRequest;
     void loadSkinAppearance(p).then((loaded) => {
@@ -206,7 +206,7 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
     walkSex = person.body.gender >= 0.5 ? 'male' : 'female';
     const next = createPersonRig({
       data: assets.mesh, skeleton: assets.skeleton, bodyRange: assets.bodyRange,
-      positions, look: person.look, texturedSkin: natural, capture: captureBind(walkSex), captureAxes: captureBindRotations(walkSex), proxies,
+      positions, look: person.look, texturedSkin: true, capture: captureBind(walkSex), captureAxes: captureBindRotations(walkSex), proxies,
     });
     if (rig) {
       scene.remove(rig.scene);
@@ -217,7 +217,7 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
     }
     rig = next;
     texture(rig, person.look);
-    if (natural && skin?.key === skinKey(person)) {
+    if (skin?.key === skinKey(person)) {
       const desired = new Color(person.look.skin);
       const tint = skin.value.tint.clone().multiply(new Color().setRGB(
         desired.r / Math.max(0.0001, skin.colour.r), desired.g / Math.max(0.0001, skin.colour.g),

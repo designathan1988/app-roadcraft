@@ -86,7 +86,7 @@ export function whitelist(entries: readonly ManifestEntry[], available: readonly
  * (`people/roster.ts`). The Rocketbox bodies it replaced are gone; their
  * motion captures stay, and play on these bodies (`render/people/personRig.ts`).
  */
-export const CROWD: readonly CitizenModel[] = makeRoster({ appearance: typeof location !== 'undefined' && new URLSearchParams(location.search).get('appearance') === 'natural' ? 'natural' : 'legacy' }).map((entry) => ({
+export const CROWD: readonly CitizenModel[] = makeRoster().map((entry) => ({
   id: entry.id, wardrobe: entry.wardrobe, ageBand: entry.ageBand, gender: entry.gender, person: entry.person, rides: entry.rides,
 }));
 /** Their ids, in the same order: the renderer's model indices. */

@@ -165,7 +165,7 @@ it('separates adult sex profile mesh distributions at 95%', () => {
   const cohort = Array.from({ length: 64 }, (_, i) => {
     const sex = i % 2;
     const person = randomPerson(i, 0x52a900 + i * 7919,
-      { body: { gender: sex === 0 ? 0.1 : 0.9, age: ageFromYears(32) } }, { appearance: 'natural' });
+      { body: { gender: sex === 0 ? 0.1 : 0.9, age: ageFromYears(32) } });
     const positions = morpher.shape(person.body, person.features);
     const [feet, crown] = bounds(positions, bodyVertices, 1);
     const height = crown - feet;

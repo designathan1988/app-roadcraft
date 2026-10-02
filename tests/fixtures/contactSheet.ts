@@ -13,7 +13,7 @@ import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from '@r
 
 /** The live MakeHuman roster, front and profile, with stable requested ids. */
 export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id), columns = 8, portraits = false): Promise<string> {
-  const natural = new URLSearchParams(location.search).get('appearance') === 'natural';
+
   const tileW = 220, tileH = 330;
   const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.outputColorSpace = SRGBColorSpace;
@@ -40,11 +40,11 @@ export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id)
       const rig = createPersonRig({
         data: assets.mesh, skeleton: assets.skeleton, bodyRange: assets.bodyRange,
         positions: morpher.shape(person.body, person.features), look: person.look, proxies,
-        capture: captureBind(sex), captureAxes: captureBindRotations(sex), texturedSkin: natural,
+        capture: captureBind(sex), captureAxes: captureBindRotations(sex), texturedSkin: true,
       });
       let skin: SkinAppearance | null = null;
       try {
-        skin = natural ? await loadSkinAppearance(person) : null;
+        skin = await loadSkinAppearance(person);
         if (skin) applySkinAppearance(rig.mesh.material as MeshStandardMaterial, rig.mesh.geometry, skin);
         const scene = new Scene();
         scene.background = new Color(0xeef0f3);
@@ -67,7 +67,7 @@ export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id)
         }
         g.fillStyle = '#111';
         g.font = '600 15px Consolas, monospace';
-        g.fillText(`${i + 1}. ${id} · ${natural ? 'natural' : 'legacy'}`, col * 2 * tileW + 6, row * (tileH + 22) + tileH + 16);
+        g.fillText(`${i + 1}. ${id} · natural`, col * 2 * tileW + 6, row * (tileH + 22) + tileH + 16);
         scene.clear();
       } finally {
         skin?.texture.dispose();

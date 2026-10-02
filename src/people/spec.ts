@@ -81,7 +81,6 @@ export function outfitsForAge(years: number, outfits: readonly string[]): readon
     || OUTFIT_AUDIENCE[name] === (years < 16 ? 'child' : 'adult'));
 }
 
-export interface AppearanceOptions { readonly appearance?: 'legacy' | 'natural' }
 /** Reviewed silhouettes from the shipped eyebrow textures; all remain in the creator. */
 const BROW_PROFILES = {
   arched: ['eyebrow001', 'eyebrow003', 'eyebrow008', 'eyebrow010'],
@@ -144,7 +143,7 @@ const pick = <T>(r: () => number, list: readonly T[]): T => list[Math.floor(r() 
  * a toddler to the very old (weighted towards adults, as a street is), every
  * skin tone, and clothes and hair to go with them.
  */
-export function randomPerson(id: number, seed: number, keep: { body?: Partial<PersonSpec['body']>; look?: Partial<PersonSpec['look']> } = {}, options: AppearanceOptions = {}): PersonSpec {
+export function randomPerson(id: number, seed: number, keep: { body?: Partial<PersonSpec['body']>; look?: Partial<PersonSpec['look']> } = {}): PersonSpec {
   const r = rng(seed);
   const years = r() < 0.12 ? 2 + r() * 14 : r() < 0.82 ? 18 + r() * 47 : 65 + r() * 25;
   const gender = r() < 0.5 ? r() * 0.25 : 0.75 + r() * 0.25;
@@ -153,10 +152,8 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
   const body: MacroParams = {
     gender,
     age: ageFromYears(years),
-    muscle: options.appearance === 'natural'
-      ? 0.28 + (keep.body?.gender ?? gender) * 0.1 + r() * 0.3 : 0.3 + r() * 0.45,
-    weight: options.appearance === 'natural'
-      ? 0.3 + (1 - (keep.body?.gender ?? gender)) * 0.04 + r() * 0.4 : 0.25 + r() * 0.55,
+    muscle: 0.28 + (keep.body?.gender ?? gender) * 0.1 + r() * 0.3,
+    weight: 0.3 + (1 - (keep.body?.gender ?? gender)) * 0.04 + r() * 0.4,
     // Narrow on purpose: the slider is steep (0.33 to 0.67 is 1.56 to 1.94 m
     // for a man), and a street of giants and very short people is not a street.
     height: 0.42 + r() * 0.18,
@@ -168,16 +165,14 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     firmness: 0.4 + r() * 0.4,
     ...keep.body,
   };
-  const natural = options.appearance === 'natural';
-  const actualYears = natural ? yearsFromAge(body.age) : years;
-  const old = actualYears > 60;
-  const female = (natural ? body.gender : gender) < 0.5;
-  const pigments = natural ? phenotype(body, r) : null;
+  const actualYears = yearsFromAge(body.age);
+  const female = body.gender < 0.5;
+  const pigments = phenotype(body, r);
   const look: PersonLook = {
-    ...(pigments ? { melanin: pigments.melanin, undertone: pigments.undertone } : {}),
-    skin: pigments?.skin ?? pick(r, SKIN_TONES),
-    eyes: pigments?.eyes ?? pick(r, EYE_COLOURS),
-    hair: pigments?.hair ?? (old && r() < 0.7 ? pick(r, [0x9a9a98, 0xdedcd8]) : pick(r, HAIR_COLOURS)),
+    melanin: pigments.melanin, undertone: pigments.undertone,
+    skin: pigments.skin,
+    eyes: pigments.eyes,
+    hair: pigments.hair,
     // Mostly long for women and short for men, never only that.
     hairStyle: !female && r() < 0.12 ? 'none' : female ? (r() < 0.72 ? 'long' : 'short') : r() < 0.1 ? 'long' : 'short',
     top: pick(r, ['tank', 'tshirt', 'tshirt', 'longsleeve', 'longsleeve'] as const),
@@ -197,15 +192,13 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     : pick(r, coloured.hairStyle === 'long' ? WARDROBE.hair.long : WARDROBE.hair.short);
   const finished: PersonLook = {
     ...coloured,
-    ...(natural ? {
-      beard: !female && actualYears >= 18 ? pick(r, ['none', 'none', 'stubble', 'moustache', 'beard'] as const) : 'none' as const,
-      makeup: female && actualYears >= 18 && r() < 0.3 ? 0.15 + r() * 0.25 : 0,
-    } : {}),
+    beard: !female && actualYears >= 18 ? pick(r, ['none', 'none', 'stubble', 'moustache', 'beard'] as const) : 'none',
+    makeup: female && actualYears >= 18 && r() < 0.3 ? 0.15 + r() * 0.25 : 0,
     outfit: pick(r, female ? WARDROBE.outfits.female : WARDROBE.outfits.male),
     // Heels (shoes03) only ever on a woman.
     footwear: pick(r, female ? WARDROBE.footwear : WARDROBE.footwear.filter((f) => f !== 'shoes03')),
     hairCut,
-    brows: pick(r, natural ? (female ? BROW_PROFILES.arched : BROW_PROFILES.straightOrFull) : WARDROBE.brows),
+    brows: pick(r, female ? BROW_PROFILES.arched : BROW_PROFILES.straightOrFull),
     lashes: pick(r, WARDROBE.lashes),
     hat: !female && years > 30 && r() < 0.08 ? pick(r, WARDROBE.hats) : 'none',
     // Dyed more often than not: a dozen outfits make a street of uniforms
@@ -222,9 +215,9 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
     'mouth-laugh-lines-in-out': mood < 0.65 ? r() * 0.3 : 0,
     'eyebrows-angle-down-up': (r() - 0.5) * 0.5,
     'eyebrows-trans-down-up': (r() - 0.5) * 0.4,
-    ...faceShape(r, body, actualYears, natural),
+    ...faceShape(r, body, actualYears),
   };
-  if (natural && actualYears < 16) {
+  if (actualYears < 16) {
     // The tailored shells follow child anatomy; adult proxies have no reviewed child fit.
     const { outfit: _outfit, footwear: _footwear, ...childLook } = finished;
     void _outfit; void _footwear;
@@ -240,21 +233,21 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
  * striking, as in any street. Everybody wore MakeHuman's one default face
  * before - the same face on every body, whatever its build or skin.
  */
-function faceShape(r: () => number, body: MacroParams, years: number, natural = false): Record<string, number> {
+function faceShape(r: () => number, body: MacroParams, years: number): Record<string, number> {
   const around = (amp: number): number => (r() + r() - 1) * amp;
   const shapes = ['head-oval', 'head-round', 'head-square', 'head-rectangular', 'head-diamond', 'head-triangular', 'head-invertedtriangular'];
   // Whole-head shape and local contours should tell the same story. Unrelated
   // large shape presets previously overwhelmed the much smaller jaw profile.
   const grown = Math.max(0, Math.min(1, (years - 10) / 10));
-  const profileShapes = natural && r() < grown * 0.7
+  const profileShapes = r() < grown * 0.7
     ? (r() < body.gender ? ['head-square', 'head-rectangular', 'head-oval'] : ['head-oval', 'head-round', 'head-invertedtriangular'])
     : shapes;
-  const out: Record<string, number> = { [pick(r, profileShapes)]: natural ? 0.2 + r() * 0.3 : 0.25 + r() * 0.5 };
+  const out: Record<string, number> = { [pick(r, profileShapes)]: 0.2 + r() * 0.3 };
   for (const [name, amp] of FACE_SLIDERS) out[name] = around(amp);
   // Folded eyelids with an East Asian heritage; bags under the eyes with age.
   out['eye-epicanthus-in-out'] = -body.asian * (0.3 + r() * 0.5);
   out['eye-bag-decr-incr'] = Math.max(-0.3, Math.min(0.8, (years - 35) / 50 + around(0.2)));
-  if (natural) {
+  {
     // Overlapping artistic profiles, strongest after puberty; not a classifier.
     const adult = Math.max(0, Math.min(1, (years - 10) / 10));
     const sex = (body.gender * 2 - 1) * adult;
@@ -309,7 +302,7 @@ export function normalizePerson(raw: unknown): PersonSpec | null {
   ) as unknown as MacroParams;
   const features: Record<string, number> = {};
   for (const [k, v] of Object.entries(f)) {
-    if (typeof v === 'number' && Number.isFinite(v) && v !== 0 && k.length < 80) features[k] = Math.min(1, Math.max(-1, v));
+    if (typeof v === 'number' && Number.isFinite(v) && k.length < 80) features[k] = Math.min(1, Math.max(-1, v));
   }
   return {
     id: o['id'],
@@ -338,8 +331,14 @@ export function normalizePerson(raw: unknown): PersonSpec | null {
         brows: oneOf(l['brows'], WARDROBE.brows, WARDROBE.brows[0]),
         lashes: oneOf(l['lashes'], WARDROBE.lashes, WARDROBE.lashes[0]),
         hat: oneOf(l['hat'], ['none', ...WARDROBE.hats], 'none'),
-        outfitTint: l['outfitTint'] === null || l['outfitTint'] === undefined ? null : colour(l['outfitTint'], 0xffffff),
+        outfitTint: l['outfitTint'] == null ? null : colour(l['outfitTint'], 0xffffff),
       } : {}),
+      ...(typeof l['footwear'] === 'string' ? { footwear: oneOf(l['footwear'], WARDROBE.footwear, WARDROBE.footwear[0]) } : {}),
+      ...(typeof l['hairCut'] === 'string' ? { hairCut: oneOf(l['hairCut'], ['none', ...ALL_HAIR], 'none') } : {}),
+      ...(typeof l['brows'] === 'string' ? { brows: oneOf(l['brows'], WARDROBE.brows, WARDROBE.brows[0]) } : {}),
+      ...(typeof l['lashes'] === 'string' ? { lashes: oneOf(l['lashes'], WARDROBE.lashes, WARDROBE.lashes[0]) } : {}),
+      ...(typeof l['hat'] === 'string' ? { hat: oneOf(l['hat'], ['none', ...WARDROBE.hats], 'none') } : {}),
+      ...(l['outfitTint'] !== undefined ? { outfitTint: l['outfitTint'] === null ? null : colour(l['outfitTint'], 0xffffff) } : {}),
     },
   };
 }

@@ -79,7 +79,7 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 
 export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
-  const natural = new URLSearchParams(location.search).get('appearance') === 'natural';
+
   const root = el('div', 'person-creator');
   let person: PersonSpec = defaultPerson(host.nextId());
   let loaded = false;
@@ -148,7 +148,7 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
   const setBody = (patch: Partial<MacroParams>): void => {
     const wasChild = yearsFromAge(person.body.age) < 16;
     person = { ...person, body: { ...person.body, ...patch } };
-    if (natural && patch.age !== undefined) {
+    if (patch.age !== undefined) {
       if (yearsFromAge(person.body.age) < 16 && person.look.outfit) {
         const { outfit: _outfit, footwear: _footwear, ...childLook } = person.look;
         void _outfit; void _footwear;
@@ -190,7 +190,7 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
   const randomButton = el('button', 'pc-button');
   randomButton.type = 'button';
   randomButton.addEventListener('click', () => {
-    person = { ...randomPerson(person.id, (Math.random() * 2 ** 31) >>> 0, {}, { appearance: natural ? 'natural' : 'legacy' }), name: person.name };
+    person = { ...randomPerson(person.id, (Math.random() * 2 ** 31) >>> 0), name: person.name };
     preview.setLook(person.look);
     queueShape();
     renderControls();
@@ -359,7 +359,7 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     }
 
     const skin = sec('person.section.skin');
-    if (natural) {
+    {
       slider(skin, t('person.melanin'), person.look.melanin ?? 0.5, 0, 1, 0.01,
         (v) => setPigment({ melanin: v }), pct);
       slider(skin, t('person.undertone'), person.look.undertone ?? 0.5, 0, 1, 0.01,
@@ -376,7 +376,7 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
       chips<HairStyle>(hair, t('person.style'), ['none', 'short', 'long'], person.look.hairStyle, (v) => setLook({ hairStyle: v }));
     }
     swatches(hair, t('person.colour'), HAIR_COLOURS, person.look.hair, (c) => setLook({ hair: c }));
-    if (natural) {
+    {
       const row = el('div', 'pc-swatch-row');
       row.appendChild(el('span', 'pc-slider-name', t('person.beard')));
       const list = el('div', 'pc-chips');
@@ -400,7 +400,7 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
     }
 
     const clothes = sec('person.section.clothes');
-    gallery(clothes, t('person.outfit'), natural ? outfitsForAge(yearsFromAge(b.age), [...WARDROBE.outfits.female, ...WARDROBE.outfits.male]) : [...WARDROBE.outfits.female, ...WARDROBE.outfits.male], person.look.outfit, (n) => wear({ outfit: n }));
+    gallery(clothes, t('person.outfit'), outfitsForAge(yearsFromAge(b.age), [...WARDROBE.outfits.female, ...WARDROBE.outfits.male]), person.look.outfit, (n) => wear({ outfit: n }));
     if (dressed) {
       const tintRow = el('div', 'pc-swatch-row');
       const own = el('button', 'pc-chip' + (person.look.outfitTint === null || person.look.outfitTint === undefined ? ' active' : ''), t('person.ownColours'));
