@@ -65,7 +65,7 @@ differs from the headless city setup, so their counts are not interchangeable.
    If something broke, use the separate commits to find which change did it, and fix it.
 3. **Net gains go in.** Commit when the total gain clearly outweighs small regressions, nobody stops
    arriving, and no rule is broken. Record the regressions and fix them next.
-4. **Agents:** up to 3 per conversation (see "Two conversations in parallel").
+4. **Agents:** at most ONE at a time (player's order, to save credits).
 5. **When a stage meets its acceptance criterion** in the plan:
    - show the photos;
    - ask the player in one line before switching the default and deleting the old code;
@@ -85,7 +85,7 @@ They coordinate through the live board `C:\Codex-Shared\road-coordination.md`, w
 That board holds the ownership of code areas, the shared files, the merge protocol and the claims.
 Read it before every batch.
 
-Each conversation may use up to 3 agents. This replaces the earlier "no subagents" rule.
+Agents: at most ONE at a time (player's order, 2026-10-01 23:20, to save credits).
 
 ## No overhead
 
