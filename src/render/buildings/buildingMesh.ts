@@ -518,11 +518,13 @@ function emitBuilding(
     }
   }
 
-  // ---- roofs
+  // ---- roofs (none over a floor cut open to look inside)
   for (const v of b.volumes) {
+    if (b.cutaway !== undefined && volumeTop(v) === b.cutaway + 1) continue;
     emitRoof(e, b, v, floor, (side) => wallOf(v, side), trim, paint(roofMaterial(b, v)));
     emitRoofDetails(e, b, v, floor);
   }
+  if (b.cutaway !== undefined) emitInterior(e, b, floor, b.cutaway);
 
   // ---- entrance steps: outside, down to the ground in front, or set into
   // the building where the paving leaves no room for them
@@ -567,7 +569,8 @@ function emitBuilding(
 
   // ---- cores: a lift overrun on the highest flat roof over the core
   const u = b.module;
-  for (const core of b.cores) {
+  // Cut open, the shafts are seen from inside: no machine room over them.
+  for (const core of b.cutaway === undefined ? b.cores : []) {
     let best: Volume | null = null;
     const cx = core.x + u / 2;
     const cy = core.y + u / 2;
@@ -578,6 +581,77 @@ function emitBuilding(
     if (!best || (best.roof !== 'flat' && best.roof !== 'terrace')) continue;
     const z = floor + volumeHeight(b, best);
     e.box(core.x, core.y, core.x + u, core.y + u, z, z + m(3), trim, ROOF_PLANT);
+  }
+}
+
+const FLOOR_FINISH = paint({ finish: 'stone', colour: 0xd8d2c6 });
+const SHAFT = paint({ finish: 'concrete', colour: 0xb9b6ae });
+const CAB = paint({ finish: 'metal', colour: 0x9aa3a8 });
+const STEP = paint({ finish: 'stone', colour: 0xc9c2b3 });
+const DESK = paint({ finish: 'wood', colour: 0x6e4a32 });
+
+/**
+ * Inside a building cut open at level `cut` (the Construction tool's interior
+ * view): the floor of that level, and the cores - lift shafts with the car
+ * at that floor, stair shafts with their flight - and on the ground floor the
+ * lobby's desk. These are the places people will walk through: entrance,
+ * lobby, core, floor.
+ */
+function emitInterior(e: Emitter, b: Building, floor: number, cut: number): void {
+  const z = floor + levelElevation(b, cut);
+  for (const v of b.volumes) {
+    if (v.mode === 'void' || v.mode === 'intersect') continue;
+    if (!(v.base <= cut && volumeTop(v) > cut)) continue;
+    const flat = localFootprint(v).flatMap((p) => [p.x, p.y]);
+    const triangles = earcut(flat);
+    for (let i = 0; i < triangles.length; i += 3) {
+      const p = [triangles[i]!, triangles[i + 1]!, triangles[i + 2]!].map((k) => e.L(flat[2 * k]!, flat[2 * k + 1]!, z + 0.04));
+      e.shell.face(p as [V3, V3, V3], [0, 0, 1], FLOOR_FINISH);
+    }
+  }
+  const u = b.module;
+  const wall = m(0.2);
+  const top = floor + levelElevation(b, cut + 1) - m(0.3);
+  for (const core of b.cores) {
+    if (core.from > cut || core.to < cut) continue;
+    const w = core.kind === 'stair' ? u * 2 : u;
+    const x0 = core.x, y0 = core.y, x1 = core.x + w, y1 = core.y + u;
+    const z0 = floor + levelElevation(b, core.from);
+    // The shaft: four walls, the front one with a doorway at this floor.
+    e.box(x0, y1 - wall, x1, y1, z0, top, SHAFT);
+    e.box(x0, y0, x0 + wall, y1, z0, top, SHAFT);
+    e.box(x1 - wall, y0, x1, y1, z0, top, SHAFT);
+    const door = Math.min(w * 0.5, m(1.2));
+    const mid = (x0 + x1) / 2;
+    e.box(x0, y0, mid - door / 2, y0 + wall, z0, top, SHAFT);
+    e.box(mid + door / 2, y0, x1, y0 + wall, z0, top, SHAFT);
+    e.box(mid - door / 2, y0, mid + door / 2, y0 + wall, z + m(2.2), top, SHAFT);
+    if (core.kind === 'lift' || core.kind === 'stairLift') {
+      // The car, standing at this floor.
+      e.box(x0 + wall + m(0.1), y0 + wall + m(0.1), x1 - wall - m(0.1), y1 - wall - m(0.1), z + 0.05, z + m(2.3), CAB);
+    }
+    if (core.kind === 'stair' || core.kind === 'stairLift') {
+      // A flight rising along the back of the shaft, and the landing.
+      const steps = 12;
+      const run = (x1 - x0 - 2 * wall) / steps;
+      const rise = levelHeight(b, cut) / steps;
+      for (let k = 0; k < steps; k++) {
+        const sx = x0 + wall + k * run;
+        e.box(sx, y0 + (y1 - y0) / 2, sx + run, y1 - wall, z, z + rise * (k + 1), STEP);
+      }
+    }
+  }
+  if (cut === 0) {
+    // The lobby: a desk facing the way in, across the middle of the front.
+    const ground = b.volumes.filter((v) => v.base === 0 && !v.mode);
+    if (ground.length > 0) {
+      const x0 = Math.min(...ground.map((v) => v.x));
+      const x1 = Math.max(...ground.map((v) => v.x + v.w));
+      const y0 = Math.min(...ground.map((v) => v.y));
+      const cx = (x0 + x1) / 2;
+      const dy = y0 + m(6);
+      e.box(cx - m(2), dy, cx + m(2), dy + m(0.8), z, z + m(1.1), DESK);
+    }
   }
 }
 

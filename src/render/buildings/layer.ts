@@ -24,6 +24,8 @@ export interface BuildingPreviewInput {
   readonly valid: boolean;
   readonly hides: BuildingId | null;
   readonly serial: number;
+  /** Drawn in the building's own materials, not as a ghost (the interior view). */
+  readonly solid?: boolean;
 }
 
 export interface BuildingLayer {
@@ -147,8 +149,8 @@ export function createBuildingLayer(): BuildingLayer {
           ghost = null;
         }
         if (preview) {
-          kit.setGhostValid(preview.valid);
-          ghost = buildBuildingMeshes([preview.building], groundAt, kit, true, pavedAt);
+          if (!preview.solid) kit.setGhostValid(preview.valid);
+          ghost = buildBuildingMeshes([preview.building], groundAt, kit, !preview.solid, pavedAt);
           ghost.group.renderOrder = 2;
           group.add(ghost.group);
         }

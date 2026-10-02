@@ -290,6 +290,11 @@ export interface Building {
   /** Free parts: stairs, ramps, pillars, canopies, walls, slabs. */
   elements?: BuildingElement[];
   cores: Core[];
+  /**
+   * Drawing only, never stored: the building cut open above this level, to
+   * show its inside (the Construction tool's interior view).
+   */
+  cutaway?: number;
   nextVolumeId: number;
   nextElementId?: number;
   name?: string;

@@ -5,9 +5,23 @@ import { generateBlock, type BlueprintBody } from '@world/buildings/blueprints';
 import { GRID, MIN_SIZE } from '@world/buildings/geometry';
 import { localFootprint, edgeFrame, validOutline, cutOutline, overlapArea, roofDetailRing, supportedBy } from '@world/buildings/footprints';
 import { upperStoreyFrom } from '@world/buildings/blueprints';
-import type { Building, Side, Volume } from '@world/buildings/types';
+import type { Building, RoofKind, Side, Volume } from '@world/buildings/types';
 
 export type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered' | 'cross' | 'stepped';
+
+/** The basic shapes thrown at a building: a plan and a roof. */
+export type Primitive = 'box' | 'cylinder' | 'octagonal' | 'prism' | 'wedge' | 'pyramid' | 'cone' | 'crossBlock';
+export const PRIMITIVE_IDS: readonly Primitive[] = ['box', 'cylinder', 'octagonal', 'prism', 'wedge', 'pyramid', 'cone', 'crossBlock'];
+export const PRIMITIVES: Readonly<Record<Primitive, { readonly shape: PlanShape; readonly roof: RoofKind; readonly pitch: number }>> = {
+  box: { shape: 'rectangle', roof: 'flat', pitch: 0 },
+  cylinder: { shape: 'circle', roof: 'flat', pitch: 0 },
+  octagonal: { shape: 'octagon', roof: 'flat', pitch: 0 },
+  prism: { shape: 'rectangle', roof: 'gable', pitch: 35 },
+  wedge: { shape: 'rectangle', roof: 'shed', pitch: 25 },
+  pyramid: { shape: 'rectangle', roof: 'hip', pitch: 45 },
+  cone: { shape: 'circle', roof: 'hip', pitch: 55 },
+  crossBlock: { shape: 'cross', roof: 'flat', pitch: 0 },
+};
 
 /** Editable polygon starters. Curved forms are deliberately explicit vertices. */
 export function shapePoints(shape: PlanShape): Vec2[] {
@@ -83,6 +97,47 @@ export function movePlanEdge(v: Volume, side: number, delta: number, snap = true
   }
   if (signedArea(ring) <= 0) return false;
   return setVolumePlan(v, ring);
+}
+
+/**
+ * Bevels corners of a plan: each corner becomes two, `distance` back along
+ * its two sides (never past half a side). `only` bevels that corner alone;
+ * absent, every corner is bevelled.
+ */
+export function bevelPlan(v: Volume, distance: number, only?: number): boolean {
+  if (!(distance > 0)) return false;
+  const ring = localFootprint(v);
+  const out: Vec2[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i]!;
+    if (only !== undefined && only !== i) {
+      out.push(p);
+      continue;
+    }
+    const prev = ring[(i + ring.length - 1) % ring.length]!;
+    const next = ring[(i + 1) % ring.length]!;
+    const toPrev = Math.hypot(prev.x - p.x, prev.y - p.y);
+    const toNext = Math.hypot(next.x - p.x, next.y - p.y);
+    const a = Math.min(distance, toPrev / 2 - 1e-3);
+    const c = Math.min(distance, toNext / 2 - 1e-3);
+    if (a <= 0 || c <= 0) {
+      out.push(p);
+      continue;
+    }
+    out.push({ x: p.x + ((prev.x - p.x) / toPrev) * a, y: p.y + ((prev.y - p.y) / toPrev) * a });
+    out.push({ x: p.x + ((next.x - p.x) / toNext) * c, y: p.y + ((next.y - p.y) / toNext) * c });
+  }
+  if (out.length > 64 || out.length === ring.length) return false;
+  const ok = setVolumePlan(v, out);
+  if (ok) {
+    delete v.reliefs;
+    delete v.facadeGeometry;
+    for (const storey of v.storeys) {
+      delete storey.facade.bays;
+      delete storey.facade.sides;
+    }
+  }
+  return ok;
 }
 
 /** Offsets the selected volume's whole plan; preserves edge identities. */

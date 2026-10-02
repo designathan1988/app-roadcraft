@@ -99,6 +99,29 @@ export function drawBuildingOverlay(ctx: CanvasRenderingContext2D, input: Buildi
 
   const sel = input.selected;
   if (sel) {
+    // The cutting and clipping blocks are not drawn as mass: they are shown
+    // as dashed boxes while the building is selected, so they can be seen,
+    // clicked, moved and changed like any other block.
+    for (const o of sel.building.volumes) {
+      if (o.mode !== 'void' && o.mode !== 'intersect') continue;
+      const colour = o.mode === 'void' ? '#ff8a7a' : '#8ab8ff';
+      const corners = volumeCorners(sel.building, o);
+      const z0 = sel.floor + levelElevation(sel.building, o.base);
+      const z1 = sel.floor + volumeHeight(sel.building, o);
+      ring(corners, z0, colour, 1.4, [6, 4]);
+      ring(corners, z1, colour, 1.4, [6, 4]);
+      ctx.strokeStyle = colour;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      for (const p of corners) {
+        const a = project(p.x, p.y, z0);
+        const c = project(p.x, p.y, z1);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(c.x, c.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     const b = sel.building;
     const v = volumeById(b, sel.volume);
     if (v) {

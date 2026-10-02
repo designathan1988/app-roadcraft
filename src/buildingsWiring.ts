@@ -10,7 +10,7 @@ import { FINISH_COLOUR } from '@world/buildings/materials';
 import { METERS_PER_UNIT, m } from '@world/units';
 import { type EditResult, clearBuildingsOnRoads, deleteBuilding } from '@editor/buildings';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
-import type { PlanShape } from '@editor/buildingPlans';
+import type { PlanShape, Primitive } from '@editor/buildingPlans';
 import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
 import { BUILDER_CATALOG, DRAW_SHAPES, OPENING_COMPONENTS, TIER_SHAPES, type BuilderCategoryId, type BuilderField } from '@ui/builder/catalog';
@@ -186,6 +186,15 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     if (keep !== 'element' && tool.armed) tool.armElement(null);
     if (keep !== 'detail' && tool.roofDetailKind) tool.armRoofDetail(null);
     if (keep !== 'model') tool.armModelTool(null);
+    if (tool.primitive) tool.armPrimitive(null);
+    if (tool.coreKind) tool.armCore(null);
+  }
+
+  /** The floor the floor chip shows: the picked face's storey, or the ground. */
+  function floorInHand(): number {
+    const building = tool.selected();
+    const volume = building && tool.selection ? volumeById(building, tool.selection.volume) : undefined;
+    return volume && tool.selection?.bay ? volume.base + tool.selection.bay.storey : 0;
   }
 
   /** The shape a draw tool draws, when it is a drag shape. */
@@ -218,6 +227,31 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       case 'roofSawtooth': tool.setRoof('sawtooth'); return;
       case 'copyStyle': copyStyle(); return;
       case 'blockSolid': tool.setBlockMode(null); return;
+      // Inside: the building cut open at the floor in hand.
+      case 'interiorView': tool.setCutLevel(tool.cutLevel === null ? floorInHand() : null); return;
+      case 'floorDown': tool.setCutLevel(Math.max(0, (tool.cutLevel ?? floorInHand()) - 1)); return;
+      case 'floorUp': {
+        const building = tool.selected();
+        const top = building ? topLevel(building) - 1 : 0;
+        tool.setCutLevel(Math.min(top, (tool.cutLevel ?? floorInHand()) + 1));
+        return;
+      }
+      // Modelling, SketchUp's and Blender's verbs on a block of storeys: one
+      // metre a click, typed sizes in the selection panel.
+      case 'extrudeOut': tool.extrudeFace(m(1)); return;
+      case 'extrudeIn': tool.extrudeFace(-m(1)); return;
+      case 'extrudeBlock': tool.extrudeFaceBlock(m(4)); return;
+      case 'insetFace': tool.insetFace(m(0.6)); return;
+      case 'offsetOut': tool.offsetBlock(m(1)); return;
+      case 'offsetIn': tool.offsetBlock(-m(1)); return;
+      case 'bevelAll': tool.bevelBlock(m(2)); return;
+      case 'pointMode': tool.setPointMode(!tool.pointMode); return;
+      case 'bevelCorner': {
+        const corner = tool.selection?.vertex;
+        if (corner === null || corner === undefined) notify('builder.pickCorner');
+        else tool.bevelBlock(m(2), corner);
+        return;
+      }
       case 'blockVoid': tool.setBlockMode('void'); return;
       case 'blockIntersect': tool.setBlockMode('intersect'); return;
       case 'blockXor': tool.setBlockMode('xor'); return;
@@ -238,6 +272,23 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       clearArming(null);
       tool.setStage('sketch');
       tool.chooseShape(shapeOfTool(id) as PlanShape);
+      toolId = id;
+      return;
+    }
+    // A basic shape in hand: each click drops one, until Escape.
+    const primitive = PRIMITIVE_OF_TOOL[id];
+    if (primitive) {
+      clearArming(null);
+      tool.armModelTool('select');
+      tool.armPrimitive(primitive);
+      toolId = id;
+      return;
+    }
+    const core = id === 'coreLift' ? 'lift' : id === 'coreStair' ? 'stair' : id === 'coreBoth' ? 'stairLift' : id === 'coreRemove' ? 'remove' : null;
+    if (core) {
+      clearArming(null);
+      tool.armModelTool('select');
+      tool.armCore(core);
       toolId = id;
       return;
     }
@@ -392,6 +443,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       if (volume && tool.selection?.bay) {
         tool.selectFloor(level - volume.base);
       }
+      // Looking inside, the floor chip chooses the floor seen.
+      if (tool.cutLevel !== null) tool.setCutLevel(level);
       host.changed();
     },
     floorCommand: (command) => {
@@ -515,7 +568,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       host.changed();
     },
     choosePattern: (pattern) => {
-      const scope = tool.scope === 'storey' ? 'floor' : tool.scope === 'side' || tool.scope === 'bay' ? 'face' : 'volume';
+      const scope = tool.scope === 'storey' || tool.scope === 'row' ? 'floor' : tool.scope === 'side' || tool.scope === 'bay' || tool.scope === 'column' ? 'face' : 'volume';
       tool.applyFacadeGrammar(pattern as never, scope);
       host.changed();
     },
@@ -928,7 +981,9 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       hideOthers = false;
     },
     beforeDraw(active) {
-      scene.setBuildingPreview(active ? tool.preview : null);
+      // A gesture's ghost wins; otherwise, in the interior view, the building
+      // cut open at its floor.
+      scene.setBuildingPreview(active ? tool.preview ?? tool.interiorPreview() : null);
       if (active) refresh();
     },
     drawOverlay(ctx) {
@@ -1001,6 +1056,18 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     },
   };
 }
+
+/** The basic shape each tool of the Draw tab throws. */
+const PRIMITIVE_OF_TOOL: Readonly<Record<string, Primitive>> = {
+  primBox: 'box',
+  primCylinder: 'cylinder',
+  primOctagonal: 'octagonal',
+  primPrism: 'prism',
+  primWedge: 'wedge',
+  primPyramid: 'pyramid',
+  primCone: 'cone',
+  primCross: 'crossBlock',
+};
 
 /** Every tool the catalogue lists, all of them wired to the engine. */
 /**

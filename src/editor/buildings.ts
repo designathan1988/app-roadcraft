@@ -389,7 +389,12 @@ export function opSetLevelHeight(b: Building, level: number, height: number | nu
 }
 
 /** Where a component is applied when a bay is clicked. */
-export type FacadeScope = 'bay' | 'storey' | 'side' | 'volume';
+/**
+ * Where a component goes: the picked bay; its row (that floor of that face);
+ * its column (that bay on every floor of that face); the whole floor (every
+ * face); the whole face; the whole block.
+ */
+export type FacadeScope = 'bay' | 'row' | 'column' | 'storey' | 'side' | 'volume';
 
 /**
  * Puts a component into the facade. `scope` widens the click: the one bay,
@@ -417,6 +422,19 @@ export function opSetComponent(
       if (inherited !== component) bays[key] = component;
       if (Object.keys(bays).length > 0) target.facade.bays = bays;
       else delete target.facade.bays;
+      break;
+    }
+    case 'row': {
+      target.facade.sides = { ...(target.facade.sides ?? {}), [side]: component };
+      if (target.facade.bays) {
+        for (const key of Object.keys(target.facade.bays)) if (key.startsWith(`${side}:`)) delete target.facade.bays[key];
+        if (Object.keys(target.facade.bays).length === 0) delete target.facade.bays;
+      }
+      break;
+    }
+    case 'column': {
+      const key = bayKey(side, index);
+      for (const s of v.storeys) s.facade.bays = { ...(s.facade.bays ?? {}), [key]: component };
       break;
     }
     case 'storey':
@@ -762,6 +780,34 @@ export function opMoveBlock(b: Building, volumeId: number, dx: number, dy: numbe
     }
   }
   return true;
+}
+
+/**
+ * Where a dragged block clicks into place: the shift (dx, dy) that lays one
+ * of its sides on a side of another block - flush, face to face, or in line -
+ * or its centre on another's centre, when one lies within `reach`. Each axis
+ * on its own, so a block slides along a wall and stops at its end.
+ */
+export function blockSnap(b: Building, volumeId: number, reach: number): { dx: number; dy: number } {
+  const v = volumeById(b, volumeId);
+  if (!v) return { dx: 0, dy: 0 };
+  const mine = { x: [v.x, v.x + v.w / 2, v.x + v.w], y: [v.y, v.y + v.d / 2, v.y + v.d] };
+  let dx = 0, dy = 0, bestX = reach, bestY = reach;
+  for (const o of b.volumes) {
+    if (o.id === v.id) continue;
+    const theirs = { x: [o.x, o.x + o.w / 2, o.x + o.w], y: [o.y, o.y + o.d / 2, o.y + o.d] };
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        // Centres meet centres; sides meet sides.
+        if ((i === 1) !== (j === 1)) continue;
+        const ex = theirs.x[j]! - mine.x[i]!;
+        if (Math.abs(ex) < bestX) { bestX = Math.abs(ex); dx = ex; }
+        const ey = theirs.y[j]! - mine.y[i]!;
+        if (Math.abs(ey) < bestY) { bestY = Math.abs(ey); dy = ey; }
+      }
+    }
+  }
+  return { dx, dy };
 }
 
 /** Moves one volume of a building in its own plan: the block, not the building. */

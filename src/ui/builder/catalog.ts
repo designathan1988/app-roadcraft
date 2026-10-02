@@ -14,7 +14,7 @@
 
 import { FACADE_PATTERNS, type FacadePattern } from '@world/buildings/types';
 
-export const BUILDER_TABS = ['models', 'draw', 'mass', 'facade', 'parts', 'roof', 'paint'] as const;
+export const BUILDER_TABS = ['models', 'draw', 'mass', 'facade', 'parts', 'roof', 'paint', 'interior'] as const;
 export type BuilderCategoryId = (typeof BUILDER_TABS)[number];
 
 export type BuilderToolKind = 'mode' | 'action';
@@ -51,7 +51,8 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
   {
     id: 'draw',
     needsSelection: false,
-    sections: [{ title: 'drawWhere', shelf: 'drawAction' }, {
+    sections: [{ title: 'primitives', tools: [mode('primBox'), mode('primCylinder'), mode('primOctagonal'), mode('primPrism'), mode('primWedge'), mode('primPyramid'), mode('primCone'), mode('primCross')] },
+      { title: 'drawWhere', shelf: 'drawAction' }, {
       title: 'drawShape',
       tools: [mode('rect'), mode('shapeL'), mode('shapeU'), mode('circle'), mode('hexagon'), mode('octagon'), mode('chamfered'), mode('shapeCross'), mode('shapeStepped'), mode('sketch')],
     }],
@@ -62,6 +63,7 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
     sections: [
       { title: 'floors', tools: [action('storey'), action('storeyDown'), action('split'), action('setback')] },
       { title: 'volumes', tools: [mode('wing'), mode('stack'), mode('cut'), mode('moveMass')] },
+      { title: 'modelling', tools: [action('extrudeOut'), action('extrudeIn'), action('extrudeBlock'), action('insetFace'), action('offsetOut'), action('offsetIn'), action('bevelAll'), action('pointMode'), action('bevelCorner')] },
       { title: 'boolean', tools: [action('blockSolid'), action('blockVoid'), action('blockIntersect'), action('blockXor')] },
       { title: 'block', tools: [action('copyBlock'), action('detachBlock'), action('centerBlock'), action('turnBlockLeft'), action('turnBlockRight')] },
       { title: 'blockShape', tools: [action('tierRect'), action('tierChamfered'), action('tierOctagon'), action('tierHexagon'), action('tierCircle'), action('tierL'), action('tierU'), action('tierCross'), action('tierStepped')] },
@@ -72,11 +74,11 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
     id: 'facade',
     needsSelection: true,
     sections: [
+      { title: 'scope', shelf: 'scope' },
       { title: 'pattern', shelf: 'patterns' },
       { title: 'windows', tools: [mode('window'), mode('sashWindow'), mode('wideWindow'), mode('ribbon'), mode('bayWindow'), mode('frenchWindow')] },
       { title: 'doors', tools: [mode('door'), mode('doubleDoor'), mode('garageDoor'), mode('loadingDoor')] },
       { title: 'bays', tools: [mode('balcony'), mode('shopfront'), mode('pillarBay'), mode('wallBay')] },
-      { title: 'scope', shelf: 'scope' },
       { title: 'relief', tools: [action('inset'), action('outset'), action('flush')] },
     ],
   },
@@ -97,6 +99,14 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
     sections: [
       { tools: [action('roofFlat'), action('roofTerrace'), action('roofGable'), action('roofHip'), action('roofShed'), action('roofSawtooth')] },
       { title: 'roofShape', shelf: 'roofParams' },
+    ],
+  },
+  {
+    id: 'interior',
+    needsSelection: true,
+    sections: [
+      { title: 'interiorView', tools: [action('interiorView'), action('floorDown'), action('floorUp')] },
+      { title: 'cores', tools: [mode('coreLift'), mode('coreStair'), mode('coreBoth'), mode('coreRemove')] },
     ],
   },
   {
@@ -187,7 +197,7 @@ export const DRAW_ACTIONS = ['new', 'ground', 'top', 'cut'] as const;
 export type DrawActionId = (typeof DRAW_ACTIONS)[number];
 
 /** Where an opening or a pattern is applied. */
-export const FACADE_SCOPES = ['bay', 'storey', 'side', 'volume'] as const;
+export const FACADE_SCOPES = ['bay', 'row', 'column', 'storey', 'side', 'volume'] as const;
 export type FacadeScopeId = (typeof FACADE_SCOPES)[number];
 
 export const PATTERNS: readonly FacadePattern[] = FACADE_PATTERNS;
