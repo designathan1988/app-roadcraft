@@ -1,7 +1,8 @@
 import type { CrowdAgent } from '@recast-navigation/core';
 import { Matrix4, type Object3D, Vector3 } from 'three';
 
-import { CARRY_AT, GAIT_AT } from '@render/citizenBake';
+import { CARRY_AT, GAIT_AT, LIBRARY_AT } from '@render/citizenBake';
+import { facialExpression } from '@render/riggedCitizens';
 import type { Body, Layer } from './body';
 import type { Nav } from './nav';
 
@@ -57,6 +58,14 @@ const VELOCITY_SMOOTH = 0.2;
 const FADE = 0.25; // s
 const WALK_FULL = 0.9; // m/s at which the walk is fully blended in
 const ARRIVED = 0.12; // m
+/**
+ * The box between the hands, as the game draws it (`riggedCitizens.ts`): as
+ * wide as the wrists are apart less the palms, so the palms rest on its sides
+ * instead of the fingers coming out through them.
+ */
+const PALMS = 0.07; // m
+const BOX_WIDTH = 0.36; // m, the box's own width (`objects.ts`)
+let seeds = 0;
 
 export class Agent {
   readonly body: Body;
@@ -74,6 +83,8 @@ export class Agent {
   private walkWeight = 0;
   private sliding: Vector3 | null = null;
   private readonly nav: Nav;
+  private readonly seed = ++seeds * 7919;
+  private clock = Math.random() * 100;
   onChange: () => void = () => {};
 
   constructor(body: Body, nav: Nav, at: Vector3, heading = 0) {
@@ -181,6 +192,8 @@ export class Agent {
       layers.push({ at: this.lastAction.clip, frame: this.lastAction.frame, weight: this.actionWeight });
     }
     this.body.pose(layers);
+    this.clock += dt;
+    this.face();
 
     // ---- placed in the world
     this.body.root.position.copy(this.position);
@@ -278,13 +291,39 @@ export class Agent {
   private placeCarried(): void {
     const r = this.body.boneAt('Bip01_R_Hand', new Vector3());
     const l = this.body.boneAt('Bip01_L_Hand', new Vector3());
+    const width = Math.min(0.5, Math.max(0.24, r.distanceTo(l) - PALMS));
     const mid = r.add(l).multiplyScalar(0.5);
+    mid.z += 0.03;
+    mid.y += 0.02;
     // The baked bones are in the rig's own frame: the root places it in the world.
     mid.applyMatrix4(this.body.root.matrixWorld);
     const thing = this.carrying!;
     thing.position.copy(mid);
-    thing.position.y -= 0.02;
     thing.rotation.set(0, this.heading, 0);
+    thing.scale.set(width / BOX_WIDTH, 1, 1);
+  }
+
+  /** Blinks, gaze, mood and speech on the face, as the game's people have them. */
+  private face(): void {
+    const mesh = this.body.mesh;
+    const influences = mesh.morphTargetInfluences;
+    const targets = mesh.morphTargetDictionary;
+    if (!influences || !targets) return;
+    const talking = this.action?.clip === LIBRARY_AT.talk || this.action?.clip === LIBRARY_AT.argue;
+    const e = facialExpression(this.seed, this.clock, talking ? 'talk' : undefined,
+      this.action?.clip === LIBRARY_AT.laugh ? 1 : this.action?.clip === LIBRARY_AT.argue ? -1 : 0);
+    influences.fill(0);
+    const set = (name: string, value: number): void => {
+      const index = targets[name];
+      if (index !== undefined) influences[index] = value;
+    };
+    set('blinkLeft', e.blink); set('blinkRight', e.blink);
+    set('smile', e.smile);
+    set('browLeftUp', e.brow); set('browRightUp', e.brow);
+    set('open', e.jaw);
+    set('visemeO', e.visemeO); set('visemeE', e.visemeE); set('visemeM', e.visemeM);
+    set('frownLeft', e.frown); set('frownRight', e.frown);
+    set('lookLeft', e.lookLeft); set('lookRight', e.lookRight);
   }
 
   /** The world matrix of the body, for picking and labels. */

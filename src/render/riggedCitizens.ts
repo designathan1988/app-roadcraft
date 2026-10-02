@@ -83,7 +83,7 @@ mat4 getBoneMatrix(const in float i) {
 
 const CHILD_SHIRTS = [0x000000, 0x479f94, 0xe5b25d, 0x9672b7] as const;
 
-interface FacialExpression {
+export interface FacialExpression {
   readonly blink: number;
   readonly smile: number;
   readonly brow: number;
@@ -113,7 +113,7 @@ const SYLLABLES = 4.2;
 const SPEECH_JAW = 0.16;
 
 /** Each person carries a quiet, deterministic facial beat rather than a shared loop. */
-function facialExpression(seed: number, time: number, activity?: string, mood = 0): FacialExpression {
+export function facialExpression(seed: number, time: number, activity?: string, mood = 0): FacialExpression {
   const hash = personHash(seed ^ 0x4c9e3721);
   const blinkPhase = (time * (0.72 + ((hash >>> 8) & 15) * 0.018) + (hash & 255) / 255) % 1;
   const blink = blinkPhase > 0.93 ? Math.sin((blinkPhase - 0.93) / 0.07 * Math.PI) : 0;

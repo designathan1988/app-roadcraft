@@ -38,7 +38,7 @@ const controls = new OrbitControls(camera, canvas);
 controls.target.set(0, 0.8, 0);
 // Left button is the player's (select, command); right turns, middle pans, wheel zooms.
 controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.PAN, RIGHT: MOUSE.ROTATE } as unknown as typeof controls.mouseButtons;
-controls.minDistance = 1.5;
+controls.minDistance = 0.3;
 controls.maxDistance = 45;
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.enableDamping = true;

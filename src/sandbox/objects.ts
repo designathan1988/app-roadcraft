@@ -123,6 +123,7 @@ export function box(at: Vector3): SmartObject {
             const ahead = new Vector3(Math.sin(a.heading), 0, Math.cos(a.heading)).multiplyScalar(0.45);
             mesh.position.copy(a.position).add(ahead).setY(0.14);
             mesh.rotation.set(0, a.heading, 0);
+            mesh.scale.set(1, 1, 1);
             a.carrying = null;
             holder = null;
           },

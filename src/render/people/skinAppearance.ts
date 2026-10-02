@@ -134,8 +134,28 @@ export function applySkinAppearance(material: MeshStandardMaterial, geometry: Bu
         'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );',
         'reflectedLight.directDiffuse += mix(irradiance, saturate((dot(geometryNormal, directLight.direction) + 0.15) / 1.15) * directLight.color, vSkinMask * appearanceDetail) * BRDF_Lambert(material.diffuseColor);'));
     if (texturedHair) {
+      // Brows and lashes are cards laid on the skin. Laid exactly on it, the
+      // skin won the depth test over most of them - the brows sank into the
+      // face in dashes - and the crowd's camera, with its long depth range,
+      // cannot tell millimetres apart. As layered surfaces are fixed in
+      // character pipelines: lifted a little off the skin along the normal,
+      // and drawn with a small depth bias towards the eye (a decal's bias),
+      // both in proportion to the body's scale.
       shader.vertexShader = `attribute float hairMask; varying float vHairMask;\n${shader.vertexShader}`
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHairMask = hairMask;');
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+vHairMask = hairMask;
+float cardSlot = floor(hairMask + 0.5);
+bool faceCard = cardSlot > 1.5 && cardSlot < 3.5;
+if (faceCard) transformed += normalize(objectNormal) * 0.002;`)
+        .replace('#include <project_vertex>', `#include <project_vertex>
+if (faceCard) {
+  float bodyScale = length(modelViewMatrix[0].xyz);
+  #ifdef USE_INSTANCING
+    bodyScale *= length(instanceMatrix[0].xyz);
+  #endif
+  mvPosition.z += 0.004 * bodyScale;
+  gl_Position = projectionMatrix * mvPosition;
+}`);
       shader.fragmentShader = `uniform sampler2D personHair; uniform sampler2D personBrow; uniform sampler2D personLash; uniform sampler2D personBeard; uniform float cardTextures[4]; varying float vHairMask;\n${shader.fragmentShader}`
         .replace('#include <alphatest_fragment>', `
           // A card: hair (1), brows (2), lashes (3) or a beard (4), each from its
