@@ -12,6 +12,7 @@ import { createPersonRig } from '@render/people/personRig';
 import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from '@render/people/skinAppearance';
 import { attachFacialMorphs } from '@render/people/facialMorphs';
 import { expressionShapes } from '@people/body/expressions';
+import { channelShapes } from '@render/people/faceExpression';
 import { RIDER_CLIPS } from '@render/riderPoses';
 
 /** The live MakeHuman roster, front and profile, with stable requested ids. */
@@ -52,7 +53,7 @@ export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id)
       if (pose) RIDER_CLIPS.find(c => c.key === pose)?.pose(rig.scene, Number(new URLSearchParams(location.search).get('poseTime') ?? 0));
       const expression = new URLSearchParams(location.search).get('expression');
       if (new URLSearchParams(location.search).get('expressions') === 'live') {
-        await attachFacialMorphs(input, rig, await expressionShapes(person.body));
+        await attachFacialMorphs(input, rig, channelShapes(await expressionShapes(person.body)));
         if (expression && rig.mesh.morphTargetDictionary?.[expression] !== undefined) {
           rig.mesh.morphTargetInfluences![rig.mesh.morphTargetDictionary[expression]!] = 1;
         }
@@ -85,7 +86,7 @@ export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id)
             const start = performance.now();
             for (let n = 0; n < 300; n++) {
               rig.mesh.morphTargetInfluences!.fill(0);
-              rig.mesh.morphTargetInfluences![rig.mesh.morphTargetDictionary!['eyeBlinkLeft']!] = Math.max(0, Math.sin(frame * 0.7 + n));
+              rig.mesh.morphTargetInfluences![rig.mesh.morphTargetDictionary!['faceBlink']!] = Math.max(0, Math.sin(frame * 0.7 + n));
               crowd.setMorphAt(n, rig.mesh);
             }
             crowd.morphTexture!.needsUpdate = true;

@@ -19,7 +19,7 @@ import { bakeInWorker } from './bakePool';
 import { cookPerson, loadCookedPerson, peopleCookHash } from './people/cookedPerson';
 import { HELD, createHeldProps } from './people/heldProps';
 import { attachFacialMorphs } from './people/facialMorphs';
-import { applyFace, faceAt, type FaceWeights } from './people/faceExpression';
+import { applyFace, channelShapes, faceAt, type FaceWeights } from './people/faceExpression';
 import { expressionShapes } from '@people/body/expressions';
 import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from './people/skinAppearance';
 import { loadProxyItem, type ProxyItem } from '@people/body/proxy';
@@ -249,7 +249,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     // city: frame median 17 ms with and without). ?expressions=off for comparison.
     if (new URLSearchParams(location.search).get('expressions') !== 'off') {
       const faceAt = performance.now();
-      await attachFacialMorphs(input, rig, await expressionShapes(person.body));
+      await attachFacialMorphs(input, rig, channelShapes(await expressionShapes(person.body)));
       performance.measure('person-face', { start: faceAt, end: performance.now() });
     }
     {

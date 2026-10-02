@@ -129,10 +129,13 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
    */
   const textures = new Map<string, Texture>();
   const loader = new TextureLoader();
+  /** Textures whose image has arrived (or failed): ready to be shown. */
+  const arrived = new Set<string>();
   const textureOf = (file: string): Texture => {
     let t = textures.get(file);
     if (!t) {
-      t = loader.load(proxyUrl(file), () => requestDraw());
+      const done = (): void => { arrived.add(file); rebuild(); };
+      t = loader.load(proxyUrl(file), done, undefined, done);
       t.colorSpace = SRGBColorSpace;
       // The packs' v runs down from the image's top row: drawn as it is.
       t.flipY = false;
@@ -184,8 +187,14 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
       skin = { key, value: loaded, colour: new Color(p.look.skin) };
       pendingSkin = '';
       rebuild();
-    }).catch(() => { if (request === skinRequest) pendingSkin = ''; });
+    }).catch(() => {
+      if (request !== skinRequest) return;
+      pendingSkin = '';
+      failedSkin = key;
+      rebuild();
+    });
   };
+  let failedSkin = '';
   const rebuild = (): void => {
     if (!morpher || !assets || !person) return;
     ensureSkin(person);
@@ -201,6 +210,22 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
           .finally(() => { for (const n of fresh) loadingItems.delete(n); rebuild(); });
       }
       if (rig) return;
+    }
+    // The new look is put on screen only once all it wears is to hand - the
+    // skin texture and every garment's own - the old one staying until then
+    // (a double buffer). Swapped at once, the person flashed bare, untextured
+    // skin for a moment on every change in the creator.
+    if (rig) {
+      const key = skinKey(person);
+      if (skin?.key !== key && failedSkin !== key) return;
+      const files = wornItems(person.look).map((n) => proxies.get(n)?.textureFile).filter((f): f is string => !!f);
+      let waiting = false;
+      for (const file of files) {
+        if (arrived.has(file)) continue;
+        textureOf(file);
+        waiting = true;
+      }
+      if (waiting) return;
     }
     const positions = morpher.shape(person.body, person.features);
     walkSex = person.body.gender >= 0.5 ? 'male' : 'female';

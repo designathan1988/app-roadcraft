@@ -1,0 +1,350 @@
+{
+  "base": "http://127.0.0.1:4180",
+  "width": 1600,
+  "height": 900,
+  "spots": {
+    "overview": {
+      "gpuMs": 8.05,
+      "cpuDrawMs": 4.64,
+      "frameMedianMs": 16.7,
+      "calls": 465,
+      "mtris": 4.89,
+      "passes": [
+        {
+          "label": "1600x900|scene",
+          "ms": 6.74,
+          "perFrame": 1,
+          "calls": 456,
+          "ktris": 4890
+        },
+        {
+          "label": "800x450|Mesh",
+          "ms": 0.7,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "1600x900|Mesh",
+          "ms": 0.47,
+          "perFrame": 6,
+          "calls": 6,
+          "ktris": 0
+        },
+        {
+          "label": "screen|Mesh",
+          "ms": 0.13,
+          "perFrame": 1,
+          "calls": 1,
+          "ktris": 0
+        }
+      ]
+    },
+    "street": {
+      "gpuMs": 8.01,
+      "cpuDrawMs": 3,
+      "frameMedianMs": 16.6,
+      "calls": 264,
+      "mtris": 6.79,
+      "passes": [
+        {
+          "label": "1600x900|scene",
+          "ms": 6.37,
+          "perFrame": 1,
+          "calls": 255,
+          "ktris": 6794
+        },
+        {
+          "label": "1600x900|Mesh",
+          "ms": 0.78,
+          "perFrame": 6,
+          "calls": 6,
+          "ktris": 0
+        },
+        {
+          "label": "800x450|Mesh",
+          "ms": 0.74,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "screen|Mesh",
+          "ms": 0.12,
+          "perFrame": 1,
+          "calls": 1,
+          "ktris": 0
+        }
+      ]
+    },
+    "close": {
+      "gpuMs": 5.85,
+      "cpuDrawMs": 1.72,
+      "frameMedianMs": 16.6,
+      "calls": 113,
+      "mtris": 1.46,
+      "passes": [
+        {
+          "label": "1600x900|scene",
+          "ms": 3.43,
+          "perFrame": 1,
+          "calls": 104,
+          "ktris": 1457
+        },
+        {
+          "label": "800x450|Mesh",
+          "ms": 1.43,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "1600x900|Mesh",
+          "ms": 0.9,
+          "perFrame": 6,
+          "calls": 6,
+          "ktris": 0
+        },
+        {
+          "label": "screen|Mesh",
+          "ms": 0.09,
+          "perFrame": 1,
+          "calls": 1,
+          "ktris": 0
+        }
+      ]
+    }
+  },
+  "overviewShadowFrozen": {
+    "gpuMs": 7.3,
+    "cpuDrawMs": 3.98,
+    "frameMedianMs": 16.6,
+    "calls": 290,
+    "mtris": 3.11,
+    "passes": [
+      {
+        "label": "1600x900|scene",
+        "ms": 6.06,
+        "perFrame": 1,
+        "calls": 281,
+        "ktris": 3106
+      },
+      {
+        "label": "800x450|Mesh",
+        "ms": 0.73,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      },
+      {
+        "label": "1600x900|Mesh",
+        "ms": 0.4,
+        "perFrame": 6,
+        "calls": 6,
+        "ktris": 0
+      },
+      {
+        "label": "screen|Mesh",
+        "ms": 0.11,
+        "perFrame": 1,
+        "calls": 1,
+        "ktris": 0
+      }
+    ]
+  },
+  "inventoryOverview": [
+    "63 main citizen-mh_#-person",
+    "9 main ?",
+    "8 shadow building-shell-plaster",
+    "8 shadow building-shell-stucco",
+    "8 shadow building-shell-ceramic",
+    "8 shadow building-shell-brick",
+    "8 shadow building-shell-stone",
+    "8 shadow building-shell-concrete",
+    "8 shadow building-shell-wood",
+    "8 shadow building-shell-metal",
+    "8 shadow building-shell-glass",
+    "8 shadow building-shell-tile",
+    "8 shadow building-shell-slate",
+    "8 shadow building-shell-roofing",
+    "8 shadow building-glass",
+    "8 shadow building-concrete",
+    "8 shadow building-door",
+    "8 shadow building-shutter",
+    "8 shadow building-glassDark",
+    "8 main building-concrete",
+    "8 main building-glass",
+    "8 main building-frame",
+    "8 main building-door",
+    "8 main building-shutter",
+    "8 main building-glassDark",
+    "8 main building-curtain",
+    "8 main building-shell-plaster",
+    "8 main building-shell-stucco",
+    "8 main building-shell-ceramic",
+    "8 main building-shell-brick"
+  ],
+  "profileOverview1x": {
+    "idle": "67.5",
+    "inclusive": [
+      "32.5% sze @index-Bnu5TA6g.js:528",
+      "27.4% draw @index-Bnu5TA6g.js:528",
+      "20.5% (anon) @three-DXOyzUaM.js:4220",
+      "20.5% render @three-DXOyzUaM.js:4243",
+      "20.5% render @index-Bnu5TA6g.js:258",
+      "10.3% wt @three-DXOyzUaM.js:4220",
+      "10.3% yt @three-DXOyzUaM.js:4220",
+      "10.3% vt @three-DXOyzUaM.js:4220",
+      "10.3% gt @three-DXOyzUaM.js:4220",
+      "6.8% sync @index-Bnu5TA6g.js:189",
+      "6.0% upload @three-DXOyzUaM.js:4118",
+      "5.1% D @three-DXOyzUaM.js:4196",
+      "5.1% (anon) @three-DXOyzUaM.js:4196",
+      "5.1% K4 @index-Bnu5TA6g.js:528",
+      "5.1% (anon) @index-Bnu5TA6g.js:528",
+      "5.1% advance @index-Bnu5TA6g.js:528",
+      "4.3% setValue @three-DXOyzUaM.js:4118",
+      "4.3% ije @index-Bnu5TA6g.js:528",
+      "4.3% step @index-Bnu5TA6g.js:528",
+      "3.4% ht @three-DXOyzUaM.js:4220",
+      "3.4% L @index-Bnu5TA6g.js:189",
+      "3.4% draw @index-Bnu5TA6g.js:189",
+      "2.6% se @three-DXOyzUaM.js:4196",
+      "2.6% tl @three-DXOyzUaM.js:4118",
+      "2.6% o @three-DXOyzUaM.js:4072",
+      "1.7% qc @three-DXOyzUaM.js:4118",
+      "1.7% r @three-DXOyzUaM.js:5",
+      "1.7% o @three-DXOyzUaM.js:5",
+      "1.7% nearest @index-Bnu5TA6g.js:528",
+      "1.7% gje @index-Bnu5TA6g.js:528"
+    ],
+    "self": [
+      "1.7% sync @index-Bnu5TA6g.js:189",
+      "1.7% qc @three-DXOyzUaM.js:4118",
+      "1.7% upload @three-DXOyzUaM.js:4118",
+      "1.7% L @index-Bnu5TA6g.js:189",
+      "1.7% (anon) @three-DXOyzUaM.js:4220",
+      "1.7% r @three-DXOyzUaM.js:5",
+      "1.7% nearest @index-Bnu5TA6g.js:528",
+      "1.7% setValue @three-DXOyzUaM.js:4118",
+      "1.7% compose @three-DXOyzUaM.js:1",
+      "1.7% d1 @index-Bnu5TA6g.js:528",
+      "0.9% n @three-DXOyzUaM.js:4169",
+      "0.9% o @three-DXOyzUaM.js:4072",
+      "0.9% ht @three-DXOyzUaM.js:4220",
+      "0.9% H @three-DXOyzUaM.js:4196",
+      "0.9% v$ @index-Bnu5TA6g.js:528",
+      "0.9% ae @three-DXOyzUaM.js:4196",
+      "0.9% D @three-DXOyzUaM.js:4196",
+      "0.9% copy @three-DXOyzUaM.js:1",
+      "0.9% clearUpdateRanges @three-DXOyzUaM.js:1",
+      "0.9% Lc @three-DXOyzUaM.js:4118",
+      "0.9% l @three-DXOyzUaM.js:3823",
+      "0.9% t0 @index-Bnu5TA6g.js:528",
+      "0.9% d @three-DXOyzUaM.js:3823",
+      "0.9% set @three-DXOyzUaM.js:1",
+      "0.9% Se @three-DXOyzUaM.js:4196"
+    ]
+  },
+  "fast": {
+    "gpuMs": 7.84,
+    "cpuDrawMs": 4.45,
+    "frameMedianMs": 16.6,
+    "calls": 465,
+    "mtris": 4.9,
+    "passes": [
+      {
+        "label": "1600x900|scene",
+        "ms": 6.61,
+        "perFrame": 1,
+        "calls": 456,
+        "ktris": 4897
+      },
+      {
+        "label": "800x450|Mesh",
+        "ms": 0.65,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      },
+      {
+        "label": "1600x900|Mesh",
+        "ms": 0.47,
+        "perFrame": 6,
+        "calls": 6,
+        "ktris": 0
+      },
+      {
+        "label": "screen|Mesh",
+        "ms": 0.11,
+        "perFrame": 1,
+        "calls": 1,
+        "ktris": 0
+      }
+    ]
+  },
+  "profileOverview4x": {
+    "idle": "59.8",
+    "inclusive": [
+      "38.5% sze @index-Bnu5TA6g.js:528",
+      "19.7% draw @index-Bnu5TA6g.js:528",
+      "17.9% K4 @index-Bnu5TA6g.js:528",
+      "17.9% (anon) @index-Bnu5TA6g.js:528",
+      "17.9% advance @index-Bnu5TA6g.js:528",
+      "12.8% ije @index-Bnu5TA6g.js:528",
+      "12.8% step @index-Bnu5TA6g.js:528",
+      "12.0% (anon) @three-DXOyzUaM.js:4220",
+      "12.0% render @three-DXOyzUaM.js:4243",
+      "12.0% render @index-Bnu5TA6g.js:258",
+      "8.5% yt @three-DXOyzUaM.js:4220",
+      "8.5% vt @three-DXOyzUaM.js:4220",
+      "8.5% gt @three-DXOyzUaM.js:4220",
+      "7.7% sync @index-Bnu5TA6g.js:189",
+      "6.8% wt @three-DXOyzUaM.js:4220",
+      "5.1% draw @index-Bnu5TA6g.js:189",
+      "4.3% gje @index-Bnu5TA6g.js:528",
+      "4.3% upload @three-DXOyzUaM.js:4118",
+      "3.4% nearest @index-Bnu5TA6g.js:528",
+      "3.4% Z$ @index-Bnu5TA6g.js:528",
+      "2.6% L @index-Bnu5TA6g.js:189",
+      "1.7% updateMatrixWorld @three-DXOyzUaM.js:1",
+      "1.7% ht @three-DXOyzUaM.js:4220",
+      "1.7% multiplyQuaternions @three-DXOyzUaM.js:1",
+      "1.7% pose @index-Bnu5TA6g.js:115",
+      "1.7% (anon) @index-Bnu5TA6g.js:115",
+      "1.7% VI @index-Bnu5TA6g.js:115",
+      "1.7% p0 @index-Bnu5TA6g.js:528",
+      "1.7% publish @index-Bnu5TA6g.js:528",
+      "1.7% beginTick @index-Bnu5TA6g.js:528"
+    ],
+    "self": [
+      "3.4% ije @index-Bnu5TA6g.js:528",
+      "3.4% Z$ @index-Bnu5TA6g.js:528",
+      "2.6% L @index-Bnu5TA6g.js:189",
+      "1.7% nearest @index-Bnu5TA6g.js:528",
+      "1.7% (anon) @three-DXOyzUaM.js:4220",
+      "1.7% p0 @index-Bnu5TA6g.js:528",
+      "1.7% beginTick @index-Bnu5TA6g.js:528",
+      "1.7% lje @index-Bnu5TA6g.js:528",
+      "1.7% draw @index-Bnu5TA6g.js:189",
+      "0.9% multiplyMatrices @three-DXOyzUaM.js:1",
+      "0.9% gje @index-Bnu5TA6g.js:528",
+      "0.9% Hc @three-DXOyzUaM.js:4118",
+      "0.9% ht @three-DXOyzUaM.js:4220",
+      "0.9% _onChangeCallback @three-DXOyzUaM.js:1",
+      "0.9% (anon) @three-DXOyzUaM.js:4169",
+      "0.9% makeRotationFromEuler @three-DXOyzUaM.js:1",
+      "0.9% setFromRotationMatrix @three-DXOyzUaM.js:1",
+      "0.9% sync @index-Bnu5TA6g.js:189",
+      "0.9% zF @index-Bnu5TA6g.js:115",
+      "0.9% U4 @index-Bnu5TA6g.js:528",
+      "0.9% ve @three-DXOyzUaM.js:4196",
+      "0.9% qc @three-DXOyzUaM.js:4118",
+      "0.9% upload @three-DXOyzUaM.js:4118",
+      "0.9% LPe @index-Bnu5TA6g.js:528",
+      "0.9% updateMatrix @three-DXOyzUaM.js:1"
+    ]
+  },
+  "status": "☀ Dia 08:39 3195 moradores · 250 a caminho · 12 trabalhando 52 vias 32 nós 90 veículos 231 pessoas sem alertas 47%",
+  "errors": []
+}
