@@ -987,9 +987,12 @@ export function rightOfWay(
   return 'yield';
 }
 
-/** The lesser class of the two roads a movement links. */
+/** Authored priority, retaining the exact legacy class ordering on old roads. */
 function throughRank(w: SimWorld, conn: Connector): number {
-  return Math.min(w.doc.segment(conn.inSegment)?.type ?? 0, w.doc.segment(conn.outSegment)?.type ?? 0);
+  const incoming = w.doc.segment(conn.inSegment);
+  const outgoing = w.doc.segment(conn.outSegment);
+  return Math.min(incoming?.section?.priority ?? incoming?.type ?? 0,
+    outgoing?.section?.priority ?? outgoing?.type ?? 0);
 }
 
 /**

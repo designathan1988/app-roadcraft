@@ -147,7 +147,7 @@ class CasingIndex {
   constructor(private readonly net: Network) {
     for (const [id, segment] of net.doc.segments) {
       const line = net.polylines.get(net.doc, id);
-      const reach = casingHalf(roadProfile(segment.type, segment.lanes, segment.direction));
+      const reach = casingHalf(roadProfile(segment.type, segment.lanes, segment.direction, segment.section));
       for (let i = 0; i < line.n; i++) {
         const point = line.point(i);
         const x0 = Math.floor((point.x - reach) / this.cell);
@@ -176,7 +176,7 @@ class CasingIndex {
       if (id === self) continue;
       const segment = this.net.doc.segment(id);
       if (!segment) continue;
-      const reach = casingHalf(roadProfile(segment.type, segment.lanes, segment.direction));
+      const reach = casingHalf(roadProfile(segment.type, segment.lanes, segment.direction, segment.section));
       if (this.net.polylines.get(this.net.doc, id).distanceTo({ x, y }) <= reach) return true;
     }
     return false;

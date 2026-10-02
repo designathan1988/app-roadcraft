@@ -91,8 +91,8 @@ export function surfaceMode(doc: RoadDoc, cache: PolylineCache, nodeId: NodeId):
   // more than thirty units was drawn as a butt joint with each ribbon's closed
   // end sticking out of the other. The taper machinery in `corners.ts` exists
   // for exactly this shape and could never be reached.
-  const wp = roadProfile(sp.type, sp.lanes, sp.direction);
-  const wq = roadProfile(sq.type, sq.lanes, sq.direction);
+  const wp = roadProfile(sp.type, sp.lanes, sp.direction, sp.section);
+  const wq = roadProfile(sq.type, sq.lanes, sq.direction, sq.section);
   for (const level of SURFACE_LEVELS) {
     if (Math.abs(halfWidth(wp, level) - halfWidth(wq, level)) >= COARSE_EPS) return 'junction';
   }
@@ -120,8 +120,8 @@ function structureSeam(doc: RoadDoc, nodeId: NodeId): boolean {
   if (!node || node.incident.length !== 2) return false;
   const sp = doc.segment(node.incident[0]!), sq = doc.segment(node.incident[1]!);
   if (!sp || !sq || (sp.structure ?? 'ground') === (sq.structure ?? 'ground')) return false;
-  const wp = roadProfile(sp.type, sp.lanes, sp.direction);
-  const wq = roadProfile(sq.type, sq.lanes, sq.direction);
+  const wp = roadProfile(sp.type, sp.lanes, sp.direction, sp.section);
+  const wq = roadProfile(sq.type, sq.lanes, sq.direction, sq.section);
   for (const level of SURFACE_LEVELS) if (Math.abs(halfWidth(wp, level) - halfWidth(wq, level)) >= COARSE_EPS) return false;
   return wp.median === wq.median;
 }

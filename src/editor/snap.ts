@@ -79,7 +79,7 @@ export function findAnchor(
     // remaining topologically disconnected.
     const segRadius = Math.max(
       26 / zoom,
-      casingHalf(roadProfile(seg.type, seg.lanes, seg.direction)),
+      casingHalf(roadProfile(seg.type, seg.lanes, seg.direction, seg.section)),
     );
     const pl = net.polylines.get(doc, id);
     // Reject by bounding box first. `closestPoint` walks every flattened point

@@ -1,5 +1,6 @@
 import { kmh } from './units';
 import type { SegmentDirection } from './doc';
+import type { RoadSection } from './roadSection';
 
 /**
  * Surface levels, in painting order.
@@ -240,8 +241,21 @@ export function roadProfile(
   typeIndex: number,
   configuredLanes?: number | null,
   direction: SegmentDirection = 'both',
+  section?: RoadSection,
 ): RoadType {
   const base = roadType(typeIndex);
+  if (section) {
+    const standard = roadProfile(typeIndex, configuredLanes, direction);
+    const median = direction === 'both' && standard.lanes >= 2 ? section.median : 0;
+    return {
+      ...standard,
+      width: standard.lanes * section.laneWidth + median,
+      sidewalk: section.sidewalk,
+      median,
+      speedLimit: kmh(section.speedKmh),
+      priorityRank: section.priority,
+    };
+  }
   if ((configuredLanes === undefined || configuredLanes === null) &&
     direction === 'both' && base.lanes >= 2) return base;
   const lanes = configuredLanes === undefined || configuredLanes === null
@@ -295,6 +309,12 @@ export const travelLanes = (rt: RoadType, direction: SegmentDirection): number =
 
 export const laneWidth = (rt: RoadType): number =>
   (rt.width - rt.median) / rt.lanes;
+
+/** Materializes the current profile for the first authored edit without changing old maps. */
+export function sectionFromProfile(rt: RoadType): RoadSection {
+  return { laneWidth: laneWidth(rt), sidewalk: rt.sidewalk, median: rt.median,
+    speedKmh: rt.speedLimit / kmh(1), priority: rt.priorityRank };
+}
 
 /**
  * Signed lateral offset of a lane's centreline from the road centreline.

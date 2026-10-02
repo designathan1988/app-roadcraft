@@ -5,6 +5,23 @@ import type { Dictionary } from './index';
  * checked against: a key missing from another dictionary falls back to here.
  */
 export const EN: Dictionary = {
+  'tool.roundabout': 'Roundabout',
+  'hint.roundabout': 'Click vacant ground to place a roundabout · Connect its four arms with the road tool',
+  'hint.mobile.roundabout': 'Tap vacant ground to place a roundabout · Connect its four arms with the road tool',
+  'hint.roundabout.size': 'Choose a roundabout radius between 32 and 128 m.',
+  'hint.roundabout.bounds': 'Keep the whole roundabout inside the map.',
+  'hint.roundabout.occupied': 'Choose open ground with room for the four entrances.',
+  'hint.roundabout.geometry': 'The roundabout does not fit here.',
+  'road.roundabout.radius': 'Roundabout radius',
+  'road.section.title': 'Cross-section · experimental',
+  'road.section.preview': 'Road cross-section preview',
+  'road.section.walk': 'Walk',
+  'road.section.laneWidth': 'Lane width',
+  'road.section.sidewalk': 'Sidewalk on each side',
+  'road.section.median': 'Central reservation',
+  'road.section.speedKmh': 'Speed limit',
+  'road.section.priority': 'Priority (higher goes first)',
+  'road.section.reset': 'Restore class dimensions',
   // ------------------------------------------------------------------ shell
   'app.title': 'Roadcraft — Road Builder',
   'app.name': 'ROADCRAFT',
