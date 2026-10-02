@@ -460,6 +460,10 @@ export class BuildingTool {
   endShapeDrag(cancelled: boolean): void {
     const dragging = this.shapeDragStart !== null;
     const action = this.shapeDragAction;
+    // Read before the drag is put away: the ring is drawn from its start, and
+    // read afterwards it was empty - every wing, stack and cut ended with no
+    // points and built nothing.
+    const ring = this.shapeDragRing();
     this.shapeDragStart = null;
     this.shapeDragShape = null;
     this.shapeDragAction = 'new';
@@ -471,7 +475,7 @@ export class BuildingTool {
       return;
     }
     if (action !== 'new') {
-      this.planPoints = this.shapeDragRing();
+      this.planPoints = ring;
       this.finishPlan();
       this.planCursor = null;
       this.host.changed();
