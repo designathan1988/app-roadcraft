@@ -12,8 +12,8 @@ in the plan's order.
 | Stage | What | State |
 |---|---|---|
 | 0 | measurement base (harness, probe) | **done**, 1c431c3 |
-| 1 | new base for roads and pedestrians | **in progress**: see the breakdown below |
-| 1b | vehicle motion: measure and fix on the new base | not started |
+| 1 | new base for roads and pedestrians | **deferred by player**: remaining work at the end of this file |
+| 1b | vehicle motion: measure and fix on the new base | **in progress** |
 | 2 | skin, phenotype, sex profiles, child clothes | not started |
 | 3 | live expression | not started |
 | 4 | crowd without repetition, plus memory | not started |
@@ -105,3 +105,23 @@ Measure every change, but spend most of the time on code that changes the game.
 - Other sessions' uncommitted files are not yours. In particular `.agents/skills/roadcraft-clothes/`
   belongs to the 3D-assets session. Before Stage 2 (clothes), read what it holds and tell the player
   how you will use it.
+
+## Deferred pedestrian work (player order, 2026-10-01)
+
+Continue with stages 1b through 13 now; return to these items afterwards.
+
+- `fb85974` restores stable facing, `TURN_TIME = 0.25`, and crossing/passage
+  waiting directions. It retains `clearSpot` independent of visual heading.
+  The apparent backward improvement in `3ca3e19` was an orientation artifact,
+  not better movement. The corrective commit is already pushed.
+- Baseline: 13/19 scenarios pass. Remaining failures: bidirectional-10, crowd,
+  bidirectional-dense, side-by-side, gap-two, obstacles. Everyone arrives.
+- Crowd: longest stationary spell 19.9 s, longest starvation 39.4 s.
+- Player city, 60 s: backward 504 ticks, unexplained stop 11.68 s, physical
+  starvation 15.78 s. Compare backward and turn together; never trade reverse
+  movement for spinning. Measure physical contacts as well.
+- Companion shared-route experiments were discarded, not committed: some
+  reduced stops but introduced sliding/contact regressions. No experimental
+  shared-route code remains active.
+- Keep `?people=crowd` optional. Default promotion and old-engine removal
+  remain subject to player approval after the remaining defects are fixed.
