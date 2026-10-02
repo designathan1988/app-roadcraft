@@ -728,6 +728,42 @@ export function opFuseElement(b: Building, id: number): boolean {
 /** How far apart two parts may be and still be welded into one run. */
 const FUSE_GAP = m(0.6);
 
+/**
+ * Moves one block of a building by (dx, dy), with every block that stands on
+ * it (and on those): a brick lifts what is stacked on it. Roof equipment goes
+ * with its roof. Nothing else changes - the block can be put back.
+ */
+export function opMoveBlock(b: Building, volumeId: number, dx: number, dy: number, snap = true): boolean {
+  const v = volumeById(b, volumeId);
+  if (!v) return false;
+  const step = snap ? GRID : 0;
+  const mx = step ? Math.round(dx / step) * step : dx;
+  const my = step ? Math.round(dy / step) * step : dy;
+  if (Math.abs(mx) < 1e-9 && Math.abs(my) < 1e-9) return false;
+  const moving = new Set<number>([v.id]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const o of b.volumes) {
+      if (moving.has(o.id)) continue;
+      const under = b.volumes.find((u) => moving.has(u.id) && o.base === u.base + u.storeys.length && planOverlap(o, u));
+      if (under) {
+        moving.add(o.id);
+        grew = true;
+      }
+    }
+  }
+  for (const o of b.volumes) {
+    if (!moving.has(o.id)) continue;
+    o.x += mx;
+    o.y += my;
+    for (const part of o.roofDetails ?? []) {
+      part.x += mx;
+      part.y += my;
+    }
+  }
+  return true;
+}
+
 /** Moves one volume of a building in its own plan: the block, not the building. */
 export function opMoveVolume(b: Building, volumeId: number, dx: number, dy: number, snap = true): boolean {
   const v = volumeById(b, volumeId);
@@ -884,10 +920,9 @@ export function weldInto(ctx: BuildingContext, draft: Building, skip: readonly B
     }
     absorbed.push(other.id);
   }
-  if (absorbed.length > 0) {
-    cutOverlaps(draft, fresh);
-    fuseFlush(draft);
-  }
+  // Nothing is cut: the blocks of both buildings stay whole, overlapping
+  // where they overlap, and can be moved apart again.
+  void fresh;
   return absorbed;
 }
 

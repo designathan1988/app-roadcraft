@@ -7,7 +7,7 @@ import { localFootprint, edgeFrame, validOutline, cutOutline, overlapArea, roofD
 import { upperStoreyFrom } from '@world/buildings/blueprints';
 import type { Building, Side, Volume } from '@world/buildings/types';
 
-export type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered';
+export type PlanShape = 'rectangle' | 'l' | 'u' | 'circle' | 'hexagon' | 'octagon' | 'chamfered' | 'cross' | 'stepped';
 
 /** Editable polygon starters. Curved forms are deliberately explicit vertices. */
 export function shapePoints(shape: PlanShape): Vec2[] {
@@ -15,6 +15,12 @@ export function shapePoints(shape: PlanShape): Vec2[] {
   if (shape === 'rectangle') return points([[0, 0], [1, 0], [1, 1], [0, 1]]);
   if (shape === 'l') return points([[0, 0], [1, 0], [1, .4], [.4, .4], [.4, 1], [0, 1]]);
   if (shape === 'u') return points([[0, 0], [1, 0], [1, 1], [.7, 1], [.7, .3], [.3, .3], [.3, 1], [0, 1]]);
+  // A cross: four arms of the middle third.
+  if (shape === 'cross') return points([[.3, 0], [.7, 0], [.7, .3], [1, .3], [1, .7], [.7, .7], [.7, 1], [.3, 1], [.3, .7], [0, .7], [0, .3], [.3, .3]]);
+  // A ziggurat plan: every corner set back in two steps, as an Art Deco tower
+  // steps (the Altino Arantes, the Empire State).
+  if (shape === 'stepped') return points([[.3, 0], [.7, 0], [.7, .12], [.85, .12], [.85, .3], [1, .3], [1, .7], [.85, .7], [.85, .88], [.7, .88],
+    [.7, 1], [.3, 1], [.3, .88], [.15, .88], [.15, .7], [0, .7], [0, .3], [.15, .3], [.15, .12], [.3, .12]]);
   if (shape === 'chamfered') return points([[.12, 0], [.88, 0], [1, .12], [1, .88], [.88, 1], [.12, 1], [0, .88], [0, .12]]);
   const count = shape === 'circle' ? 24 : shape === 'hexagon' ? 6 : 8;
   return Array.from({ length: count }, (_, i) => {
@@ -25,7 +31,7 @@ export function shapePoints(shape: PlanShape): Vec2[] {
 
 export function detectPlanShape(volume: Volume): PlanShape | null {
   if (!volume.outline) return 'rectangle';
-  for (const shape of ['rectangle', 'chamfered', 'octagon', 'circle', 'hexagon', 'l', 'u'] as const) {
+  for (const shape of ['rectangle', 'chamfered', 'octagon', 'circle', 'hexagon', 'l', 'u', 'cross', 'stepped'] as const) {
     const expected = shapePoints(shape);
     if (volume.outline.length === expected.length && volume.outline.every((p, i) =>
       Math.hypot(p.x - expected[i]!.x, p.y - expected[i]!.y) < 1e-4)) return shape;

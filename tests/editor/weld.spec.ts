@@ -75,7 +75,7 @@ describe('welding two buildings', () => {
     expect(walls).toEqual(['brick', 'plaster']);
   });
 
-  it('cuts the overlap out of the smaller mass, leaving nothing overlapping', () => {
+  it('joins two overlapping buildings into one, keeping both blocks whole', () => {
     const { ctx } = world();
     const first = place(ctx, { x: 0, y: 60 });
     // A second house a few metres along, so the two footprints overlap.
@@ -84,15 +84,10 @@ describe('welding two buildings', () => {
     const absorbed = weldInto(ctx, draft, []);
     const bounds = (b: Building) => footprintRects(b, 0.02).map((r) => [Math.min(...r.map(p => p.x)).toFixed(1), Math.min(...r.map(p => p.y)).toFixed(1), Math.max(...r.map(p => p.x)).toFixed(1), Math.max(...r.map(p => p.y)).toFixed(1)]);
     expect(absorbed, JSON.stringify({ first: bounds(first), second: bounds(second), pos: [second.x, second.y, second.rotation] })).toEqual([first.id]);
-    expect(draft.volumes.length).toBe(1);
-    expect(draft.volumes[0]!.w).toBeGreaterThan(22.5);
-    // No two masses of the welded record overlap, and the record validates.
-    for (const a of draft.volumes) {
-      for (const c of draft.volumes) {
-        if (a.id === c.id || a.base !== c.base) continue;
-        expect(planOverlap(a, c)).toBe(false);
-      }
-    }
+    // Non-destructive: both blocks are kept as they were, overlapping; what
+    // is drawn is their union. The record validates.
+    expect(draft.volumes.length).toBe(2);
+    expect(planOverlap(draft.volumes[0]!, draft.volumes[1]!)).toBe(true);
     expect(validateBuilding(ctx, draft, [first.id])).toBeNull();
   });
 

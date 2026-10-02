@@ -162,6 +162,7 @@ function migrateVolume(raw: unknown, scale: Scale): Volume | null {
     if (!validOutline(outline)) return null;
     volume.outline = outline.map((p) => ({ x: p.x, y: p.y }));
   }
+  if (raw.mode !== 'void' && raw.mode !== 'intersect' && raw.mode !== 'xor') delete volume.mode;
   if (isFacadePattern(raw.facadePattern)) volume.facadePattern = raw.facadePattern;
   else delete volume.facadePattern;
   if (Array.isArray(raw.roofDetails)) {

@@ -2,7 +2,9 @@ import { BLUEPRINTS, type Blueprint } from '@world/buildings/blueprints';
 import { FINISHES, type Finish, STYLES } from '@world/buildings/materials';
 import {
   BUILDER_TAB_SPECS,
+  DRAW_ACTIONS,
   DRAW_SHAPES,
+  TIER_SHAPES,
   FACADE_SCOPES,
   type BuilderCategoryId,
   type BuilderField,
@@ -69,6 +71,8 @@ export interface BuilderState {
   readonly roof: { readonly pitch: number; readonly ridge: 'x' | 'y'; readonly fall: number; readonly pitched: boolean } | null;
   /** The material the finish tools would paint now. */
   readonly material: { readonly finish: Finish; readonly colour: number } | null;
+  /** What a drawn shape does now. */
+  readonly drawAction: string;
 }
 
 export interface BuilderActions {
@@ -94,6 +98,7 @@ export interface BuilderActions {
   chooseStyle(key: string): void;
   choosePattern(pattern: string): void;
   setScope(scope: string): void;
+  setDrawAction(action: string): void;
   planFinish(): void;
   planBack(): void;
   planCancel(): void;
@@ -489,6 +494,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       state.material?.colour ?? '',
       state.pattern ?? '',
       state.scope,
+      state.drawAction,
       state.roof?.pitch ?? '',
       state.roof?.ridge ?? '',
       state.roof?.fall ?? '',
@@ -537,6 +543,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     if (section.shelf === 'models') box.appendChild(modelsShelf(state));
     if (section.shelf === 'patterns') box.appendChild(patternsShelf(state));
     if (section.shelf === 'scope') box.appendChild(scopeRow(state));
+    if (section.shelf === 'drawAction') box.appendChild(drawActionRow(state));
     if (section.shelf === 'roofParams') box.appendChild(roofParams(state));
     if (section.shelf === 'finishes') box.appendChild(finishesShelf(state));
     return box;
@@ -546,7 +553,7 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     const grid = el('div', 'bw-tiles small');
     for (const tool of tools) {
       const on = tool.kind === 'mode' && (state.tool === tool.id || state.armed === tool.id);
-      const shape = DRAW_SHAPES[tool.id];
+      const shape = DRAW_SHAPES[tool.id] ?? TIER_SHAPES[tool.id];
       const thumb = thumbnails.get(tool.id) ?? (shape ? planSwatch(shape) : undefined);
       const b = tile(tool.id, t(`builder.tool.${tool.id}`), on, () => {
         actions.chooseTool(tool.id);
@@ -602,6 +609,22 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
       row.appendChild(menuItem(t(`creator.dock.scope.${scope}`), state.scope === scope, () => {
         actions.setScope(scope);
       }, false));
+    }
+    return row;
+  }
+
+  /**
+   * Any shape, any operation: the same rectangle, cross or free polygon makes
+   * a new building, a block joined to the selected one, a block on its roof,
+   * or a cut out of it. The operations are what compose any building.
+   */
+  function drawActionRow(state: BuilderState): HTMLElement {
+    const row = el('div', 'bw-params bw-draw-actions');
+    for (const action of DRAW_ACTIONS) {
+      const b = menuItem(t(`builder.drawAction.${action}`), state.drawAction === action, () => actions.setDrawAction(action), false);
+      b.dataset['drawAction'] = action;
+      b.disabled = action !== 'new' && !hasSelection(state);
+      row.appendChild(b);
     }
     return row;
   }
@@ -717,6 +740,21 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
         const value = el('span', 'bw-field-text');
         value.textContent = field.text;
         row.appendChild(value);
+        inspectorBody.appendChild(row);
+        continue;
+      }
+      if (field.options) {
+        const select = el('select', 'bw-field-input bw-field-select');
+        select.dataset['field'] = field.id;
+        for (const option of field.options) {
+          const o = el('option');
+          o.value = String(option.value);
+          o.textContent = t(option.labelKey);
+          o.selected = option.value === field.value;
+          select.appendChild(o);
+        }
+        select.onchange = () => actions.setField(field.id, Number(select.value));
+        row.appendChild(select);
         inspectorBody.appendChild(row);
         continue;
       }

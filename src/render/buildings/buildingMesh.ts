@@ -1,5 +1,6 @@
 import earcut from 'earcut';
 import clipping from 'polygon-clipping';
+import { resolveBlocks } from '@world/buildings/blocks';
 import { asPolygon, edgeFrame, localFootprint, volumeSides } from '@world/buildings/footprints';
 import {
   BufferGeometry,
@@ -1886,7 +1887,9 @@ function writeMatrix(out: Float32Array, offset: number, p: Placement): void {
 export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): BuildingChunk {
   const shell = new Shell();
   const parts = Object.fromEntries(PART_KINDS.map((k) => [k, [] as Placement[]])) as Record<PartKind, Placement[]>;
-  emitBuilding(b, groundAt, shell, parts, pavedAt);
+  // The blocks as drawn: unions, cuts and intersections resolved, the stored
+  // blocks untouched (`world/buildings/blocks.ts`).
+  emitBuilding(resolveBlocks(b), groundAt, shell, parts, pavedAt);
   const batches = {} as Record<PartKind, PartBatch>;
   for (const kind of PART_KINDS) {
     const list = parts[kind];

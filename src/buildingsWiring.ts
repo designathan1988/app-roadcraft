@@ -13,7 +13,7 @@ import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool
 import type { PlanShape } from '@editor/buildingPlans';
 import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
-import { BUILDER_CATALOG, DRAW_SHAPES, OPENING_COMPONENTS, type BuilderCategoryId, type BuilderField } from '@ui/builder/catalog';
+import { BUILDER_CATALOG, DRAW_SHAPES, OPENING_COMPONENTS, TIER_SHAPES, type BuilderCategoryId, type BuilderField } from '@ui/builder/catalog';
 import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
@@ -123,6 +123,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   let gridVisible = false;
   let hideOthers = false;
   let lastHint = '';
+  /** What a drawn shape does: new building, joined block, block on the roof, cut. */
+  let drawAction: 'new' | 'ground' | 'top' | 'cut' = 'new';
 
   const host: ToolHost = {
     context: () => ({ doc, net, groundAt: (x: number, y: number) => scene.terrainHeightAt(x, y) }),
@@ -215,7 +217,21 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       case 'roofShed': tool.setRoof('shed'); return;
       case 'roofSawtooth': tool.setRoof('sawtooth'); return;
       case 'copyStyle': copyStyle(); return;
-      default: break;
+      case 'blockSolid': tool.setBlockMode(null); return;
+      case 'blockVoid': tool.setBlockMode('void'); return;
+      case 'blockIntersect': tool.setBlockMode('intersect'); return;
+      case 'blockXor': tool.setBlockMode('xor'); return;
+      case 'copyBlock': tool.copyBlock(); return;
+      case 'detachBlock': tool.detachBlock(); return;
+      case 'centerBlock': tool.setBlockOffset(0, 0); return;
+      case 'turnBlockLeft': tool.turnBlock(15); return;
+      case 'turnBlockRight': tool.turnBlock(-15); return;
+      default:
+        if (TIER_SHAPES[id]) {
+          tool.reshapeTier(TIER_SHAPES[id] as PlanShape);
+          return;
+        }
+        break;
     }
     // Mode tools.
     if (shapeOfTool(id)) {
@@ -503,6 +519,10 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       tool.applyFacadeGrammar(pattern as never, scope);
       host.changed();
     },
+    setDrawAction: (action) => {
+      drawAction = action === 'ground' || action === 'top' || action === 'cut' ? action : 'new';
+      host.changed();
+    },
     setScope: (scope) => {
       tool.setScope(scope as never);
       host.changed();
@@ -597,6 +617,12 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       case 'pierDepth': tool.setFacadeGeometry({ pierDepth: value / metres }); return;
       case 'pierEvery': tool.setFacadeGeometry({ pierEvery: Math.max(1, Math.round(value)) }); return;
       case 'detailHeight': tool.setRoofDetailHeight(value); return;
+      case 'detailFlag': tool.setRoofDetailFlag((['none', 'plain', 'saoPaulo', 'saoPauloState'] as const)[value] ?? 'none'); return;
+      case 'volW': tool.setVolumeSize(value / metres, null); return;
+      case 'volX': tool.setBlockOffset(value / metres, null); return;
+      case 'volY': tool.setBlockOffset(null, value / metres); return;
+      case 'volBase': tool.setBlockBase(Math.round(value)); return;
+      case 'volD': tool.setVolumeSize(null, value / metres); return;
       default: return;
     }
   }
@@ -631,6 +657,27 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     );
     if (volume) {
       const area = Math.abs(signedArea(localFootprint(volume))) * metres ** 2;
+      // The block's own plan, in metres, about its centre: a setback is made
+      // exact by typing its width and depth.
+      if (!tool.selection?.bay && !tool.selectedElement() && tool.selectedRoofDetail === null) {
+        fields.push(
+          { id: 'volW', labelKey: 'builder.field.width', value: volume.w * metres, unit: 'm', min: 1, max: 400, step: 0.5 },
+          { id: 'volD', labelKey: 'builder.field.depth.plan', value: volume.d * metres, unit: 'm', min: 1, max: 400, step: 0.5 },
+        );
+      }
+      if (!tool.selection?.bay && !tool.selectedElement() && tool.selectedRoofDetail === null) {
+        // Where the block sits: its centre from the centre of the block it
+        // stands on (or the first block), and the level it starts on.
+        const offset = tool.blockOffset();
+        if (offset) {
+          fields.push(
+            { id: 'volX', labelKey: 'builder.field.offsetX', value: offset.x * metres, unit: 'm', min: -400, max: 400, step: 0.5 },
+            { id: 'volY', labelKey: 'builder.field.offsetY', value: offset.y * metres, unit: 'm', min: -400, max: 400, step: 0.5 },
+          );
+        }
+        fields.push({ id: 'volBase', labelKey: 'builder.field.baseLevel', value: volume.base, unit: 'count', min: 0, max: 99, step: 1 });
+        fields.push({ id: 'mode', labelKey: 'builder.field.blockMode', value: 0, text: t(`builder.blockMode.${volume.mode ?? 'solid'}`) });
+      }
       fields.push({ id: 'area', labelKey: 'builder.field.area', value: area, unit: 'm', text: `${area.toFixed(1)} m²` });
       const pitched = volume.roof === 'gable' || volume.roof === 'hip' || volume.roof === 'shed' || volume.roof === 'sawtooth';
       if (pitched) {
@@ -662,6 +709,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     const detail = volume?.roofDetails?.find((part) => part.id === tool.selectedRoofDetail);
     if (detail?.kind === 'spire') {
       fields.push({ id: 'detailHeight', labelKey: 'builder.field.height', value: (detail.h ?? 0) * metres, unit: 'm', min: 0, max: 40, step: 0.1 });
+      const flags = ['none', 'plain', 'saoPaulo', 'saoPauloState'] as const;
+      fields.push({
+        id: 'detailFlag', labelKey: 'builder.field.flag', value: Math.max(0, flags.indexOf(detail.flag ?? 'none')),
+        options: flags.map((flag, value) => ({ value, labelKey: `builder.flag.${flag}` })),
+      });
     }
     return fields;
   }
@@ -727,6 +779,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         }
         : null,
       material: tool.currentMaterial(),
+      drawAction,
     };
   };
 
@@ -766,10 +819,17 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         return;
       }
       const shape = shapeOfTool(toolId);
-      if (shape) {
-        tool.beginShapeDrag(shape, world, 'new', screen);
-        dirty = true;
-        return;
+      if (shape || (toolId === 'sketch' && !tool.planPoints)) {
+        if (drawAction !== 'new' && !tool.selected()) {
+          notify('building.selectFirst');
+          dirty = true;
+          return;
+        }
+        if (shape) {
+          tool.beginShapeDrag(shape, world, drawAction, screen);
+          dirty = true;
+          return;
+        }
       }
       const action = planActionOfTool(toolId);
       if (action) {
@@ -786,7 +846,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       // is its first corner. It used to only start the plan and return, so the
       // press was never armed as a click: three corners clicked gave two
       // points, and a square came out a triangle.
-      if (toolId === 'sketch' && !tool.planPoints) tool.startPlan('new');
+      if (toolId === 'sketch' && !tool.planPoints) tool.startPlan(drawAction);
       tool.pointerDown(screen, world, shift);
       dirty = true;
     },

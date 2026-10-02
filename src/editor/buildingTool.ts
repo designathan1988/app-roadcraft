@@ -10,7 +10,7 @@ import {
   instantiate,
 } from '@world/buildings/blueprints';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
-import { localFootprint } from '@world/buildings/footprints';
+import { localFootprint, overlapArea } from '@world/buildings/footprints';
 import { GRID } from '@world/buildings/geometry';
 import { METERS_PER_UNIT, m } from '@world/units';
 import { MIN_SIZE, baysOn, footprintBox, levelElevation, levelHeight, localDirToWorld, localToWorld, reliefAt, worldToLocal } from '@world/buildings/geometry';
@@ -31,6 +31,8 @@ import {
   type FacadeGeometry,
   type FaceId,
   type Side,
+  type Volume,
+  type BlockMode,
   DEFAULT_MODULE,
   asBuildingId,
   isSide,
@@ -70,8 +72,8 @@ import {
   replaceBuilding,
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
-import { clipRing, cutOverlaps, fuseFlush, groupInto, opFuseElement, opMoveVolume, weldInto } from './buildings';
-import { type PlanShape, type UpperMassPlacement, shapeBody, shapePoints, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
+import { clipRing, groupInto, opMoveBlock, opFuseElement, weldInto } from './buildings';
+import { type PlanShape, type UpperMassPlacement, shapeBody, shapePoints, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, offsetPlan } from './buildingPlans';
 import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
 import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
 import { splitVolumeAtFloor, reshapeTier as reshapeTierPlan } from './buildingProfile';
@@ -624,7 +626,17 @@ export class BuildingTool {
       const draft = cloneBuilding(existing);
       const points = this.planPoints.map((p) => worldToLocal(draft, p));
       if (this.planAction === 'cut') {
-        if (!cutPlanMass(draft, s.volume, points)) return null;
+        // A cut is a block too - a void one, as tall as the block it is drawn
+        // on: it takes its space out when drawn, and stays a block that can be
+        // moved, reshaped or deleted, the cut going with it.
+        const source = volumeById(draft, s.volume);
+        if (!source) return null;
+        const id = addPlanMass(draft, s.volume, points, source.base, source.storeys.length);
+        if (id === null) return null;
+        const cut = volumeById(draft, id);
+        if (!cut) return null;
+        cut.mode = 'void';
+        cut.roof = 'flat';
       } else {
         const source = volumeById(draft, s.volume);
         if (!source) return null;
@@ -634,12 +646,10 @@ export class BuildingTool {
         // as the mass it grows from, so the two read as one building.
         const ring = top ? clipRing(points, localFootprint(source)) : points;
         if (!ring) return null;
-        const id = addPlanMass(draft, s.volume, ring, base, top ? 2 : source.storeys.length);
-        if (id === null) return null;
-        // Drawn over the building, the new mass keeps only what sticks out.
-        const fresh = cutOverlaps(draft, new Set([id]));
-        if (fresh.size === 0) return null;
-        fuseFlush(draft);
+        // A block added to the building: whole, overlapping or not - nothing
+        // of it or of its neighbours is cut away, so it can be moved, pulled
+        // or taken off again later.
+        if (addPlanMass(draft, s.volume, ring, base, top ? 2 : source.storeys.length) === null) return null;
       }
       return draft;
     }
@@ -749,6 +759,188 @@ export class BuildingTool {
     const s = this.selection, id = this.selectedRoofDetail;
     if (!s || id === null || !Number.isFinite(metres)) return;
     this.onSelected((draft) => updateRoofDetail(draft, s.volume, id, { h: metres / METERS_PER_UNIT }));
+  }
+
+  /**
+   * The selected block's width and depth (world units, null keeps one), about
+   * its centre: a setback typed to size stays centred on what carries it.
+   */
+  setVolumeSize(w: number | null, d: number | null): void {
+    const s = this.selection;
+    if (!s) return;
+    this.onSelected((draft) => {
+      const v = volumeById(draft, s.volume);
+      if (!v) return false;
+      if (w !== null && Number.isFinite(w) && w > 0) {
+        v.x += (v.w - w) / 2;
+        v.w = w;
+      }
+      if (d !== null && Number.isFinite(d) && d > 0) {
+        v.y += (v.d - d) / 2;
+        v.d = d;
+      }
+      delete v.reliefs;
+      return true;
+    });
+  }
+
+  /**
+   * The block a block is measured from: the one it stands on (the most floor
+   * shared on the level under it), or for a block on the ground the first
+   * ground block. Null for that first block itself.
+   */
+  referenceOf(b: Building, v: Volume): Volume | null {
+    if (v.base === 0) {
+      const first = b.volumes.find((o) => o.base === 0);
+      return first && first.id !== v.id ? first : null;
+    }
+    let best: Volume | null = null;
+    let area = 0;
+    for (const o of b.volumes) {
+      if (o.id === v.id || !(o.base < v.base && o.base + o.storeys.length >= v.base)) continue;
+      const a = overlapArea(localFootprint(o), localFootprint(v));
+      if (a > area) { area = a; best = o; }
+    }
+    return best;
+  }
+
+  /** The selected block's centre, as an offset from its reference block's centre (world units). */
+  blockOffset(): { x: number; y: number } | null {
+    const b = this.selected();
+    const v = b && this.selection ? volumeById(b, this.selection.volume) : undefined;
+    const r = b && v ? this.referenceOf(b, v) : null;
+    if (!v || !r) return null;
+    return { x: v.x + v.w / 2 - (r.x + r.w / 2), y: v.y + v.d / 2 - (r.y + r.d / 2) };
+  }
+
+  /** Puts the selected block's centre at an offset from its reference block's centre. */
+  setBlockOffset(x: number | null, y: number | null): void {
+    const s = this.selection;
+    if (!s) return;
+    this.onSelected((draft) => {
+      const v = volumeById(draft, s.volume);
+      const r = v ? this.referenceOf(draft, v) : null;
+      if (!v || !r) return false;
+      if (x !== null && Number.isFinite(x)) v.x = r.x + r.w / 2 + x - v.w / 2;
+      if (y !== null && Number.isFinite(y)) v.y = r.y + r.d / 2 + y - v.d / 2;
+      return true;
+    });
+  }
+
+  /** Turns the selected block about its own centre by `degrees` (the block, not the building). */
+  turnBlock(degrees: number): void {
+    const s = this.selection;
+    if (!s) return;
+    this.onSelected((draft) => {
+      const v = volumeById(draft, s.volume);
+      if (!v) return false;
+      const cx = v.x + v.w / 2;
+      const cy = v.y + v.d / 2;
+      const a = (degrees * Math.PI) / 180;
+      const c = Math.cos(a);
+      const sn = Math.sin(a);
+      const ring = localFootprint(v).map((p) => ({
+        x: cx + (p.x - cx) * c - (p.y - cy) * sn,
+        y: cy + (p.x - cx) * sn + (p.y - cy) * c,
+      }));
+      if (!setVolumePlan(v, ring)) return false;
+      delete v.reliefs;
+      delete v.facadeGeometry;
+      return true;
+    });
+  }
+
+  /** The level the selected block starts on. */
+  setBlockBase(level: number): void {
+    const s = this.selection;
+    if (!s) return;
+    this.onSelected((draft) => {
+      const v = volumeById(draft, s.volume);
+      if (!v || !Number.isInteger(level) || level < 0) return false;
+      v.base = level;
+      return true;
+    });
+  }
+
+  /**
+   * A copy of the selected block, set beside it on its free side (or on top
+   * when it stands alone): the way a symmetric wing or a repeated tower is
+   * made. It joins the building; any overlap is cut out of the copy.
+   */
+  copyBlock(): void {
+    const s = this.selection;
+    if (!s) return;
+    let made: number | null = null;
+    const result = this.onSelected((draft) => {
+      const v = volumeById(draft, s.volume);
+      if (!v) return false;
+      const copy = structuredClone(v);
+      copy.id = draft.nextVolumeId++;
+      copy.x += v.w;
+      draft.volumes.push(copy);
+      made = copy.id;
+      return true;
+    });
+    if (result.ok && made !== null) this.selection = { building: s.building, volume: made, bay: null };
+    this.host.changed();
+  }
+
+  /** How the selected block combines with the others: solid (null), void, intersect or exclusive. */
+  setBlockMode(mode: BlockMode | null): void {
+    const s = this.selection;
+    if (!s) return;
+    this.onSelected((draft) => {
+      const v = volumeById(draft, s.volume);
+      if (!v) return false;
+      if (mode) v.mode = mode;
+      else delete v.mode;
+      // A building keeps at least one block of mass.
+      return draft.volumes.some((o) => !o.mode || o.mode === 'xor');
+    });
+  }
+
+  /**
+   * Takes the selected block - and what stands on it - out of the building
+   * into a building of its own, in the same place: what was joined can be
+   * unjoined.
+   */
+  detachBlock(): void {
+    const s = this.selection;
+    const b = this.selected();
+    if (!s || !b || b.volumes.length < 2) return;
+    const v = volumeById(b, s.volume);
+    if (!v) return;
+    const moving = new Set<number>([v.id]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const o of b.volumes) {
+        if (moving.has(o.id)) continue;
+        if (b.volumes.some((u) => moving.has(u.id) && o.base === u.base + u.storeys.length &&
+          overlapArea(localFootprint(o), localFootprint(u)) > 1e-6)) {
+          moving.add(o.id);
+          grew = true;
+        }
+      }
+    }
+    if (moving.size === b.volumes.length) return;
+    const lowest = Math.min(...b.volumes.filter((o) => moving.has(o.id)).map((o) => o.base));
+    let newId: BuildingId | null = null;
+    const result = this.host.commit(() => {
+      const ctx = this.host.context();
+      const rest = cloneBuilding(b);
+      rest.volumes = rest.volumes.filter((o) => !moving.has(o.id));
+      const own = cloneBuilding(b);
+      own.volumes = own.volumes.filter((o) => moving.has(o.id)).map((o) => ({ ...o, base: o.base - lowest }));
+      delete own.elements;
+      const kept = replaceBuilding(ctx, rest, []);
+      if (!kept.ok) return kept;
+      const added = addBuildingRecord(ctx, stripId(own), [b.id]);
+      if (added.ok) newId = added.id ?? null;
+      return added;
+    });
+    if (result.ok && newId !== null) this.selection = { building: newId, volume: (volumeById(this.selected() ?? b, v.id) ?? v).id, bay: null };
+    this.report(result);
+    this.host.changed();
   }
 
   setRoofDetailFlag(flag: 'none' | 'plain' | 'saoPaulo' | 'saoPauloState'): void {
@@ -1464,7 +1656,9 @@ export class BuildingTool {
       }
     }
     const selected = this.selected();
-    if (this.mode === 'edit' && selected && this.selection) {
+    // A part in hand goes where it is clicked: the handles stand aside (the
+    // floor arrow, just over a small roof, swallowed the click meant for it).
+    if (this.mode === 'edit' && selected && this.selection && !this.roofDetailKind && !this.armed && !this.component) {
       const handle = this.handleAt(screen);
       if (handle) {
         this.hoverHandle = handle;
@@ -1588,10 +1782,21 @@ export class BuildingTool {
       if (Math.hypot(screen.x - drag.start.x, screen.y - drag.start.y) > DRAG_START_PIXELS) drag.moved = true;
       // ... unless it took hold of the selected building: then it carries it,
       // the way any object is moved - press on it and drag.
+      // A block is a brick: pressed on and dragged, the block under the
+      // pointer goes (and what stands on it); a building of one block goes
+      // whole. The building as a whole moves by its move handle.
       const held = this.selected();
-      if (drag.moved && held && drag.hit?.building === held.id && this.mode === 'edit' && this.freeHand()) {
-        const z = this.floorOf(held);
-        this.drag = { kind: 'move', origin: cloneBuilding(held), start: this.view.planeAt(drag.start, z), z };
+      const hit = drag.hit;
+      if (drag.moved && held && hit && hit.building === held.id && this.mode === 'edit' && this.freeHand()) {
+        const block = volumeById(held, hit.volume);
+        if (held.volumes.length > 1 && block) {
+          const z = this.floorOf(held) + levelElevation(held, block.base);
+          this.selection = { building: held.id, volume: block.id, bay: null };
+          this.drag = { kind: 'massMove', origin: cloneBuilding(held), volume: block.id, start: this.view.planeAt(drag.start, z), z };
+        } else {
+          const z = this.floorOf(held);
+          this.drag = { kind: 'move', origin: cloneBuilding(held), start: this.view.planeAt(drag.start, z), z };
+        }
         this.pointerMove(screen, world, shift);
       }
       return;
@@ -1672,7 +1877,7 @@ export class BuildingTool {
         const p = this.view.planeAt(screen, drag.z);
         const a = worldToLocal(draft, drag.start);
         const b = worldToLocal(draft, p);
-        opMoveVolume(draft, drag.volume, b.x - a.x, b.y - a.y, !this.free);
+        opMoveBlock(draft, drag.volume, b.x - a.x, b.y - a.y, !this.free);
         const v = volumeById(draft, drag.volume);
         if (v) this.measure = { kind: 'length', value: v.w, x: p.x, y: p.y, z: drag.z };
         break;

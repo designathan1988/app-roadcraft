@@ -105,7 +105,10 @@ export function volumeCorners(b: Building, v: Volume, grow = 0): Vec2[] {
 }
 
 /** Volumes standing on the ground. Everything else stands on these. */
-export const groundVolumes = (b: Building): Volume[] => b.volumes.filter((v) => v.base === 0);
+export const groundVolumes = (b: Building): Volume[] => b.volumes.filter((v) => v.base === 0 && isMass(v));
+
+/** A block that is mass (solid or exclusive), not a cut or a clip of others. */
+export const isMass = (v: Volume): boolean => v.mode !== 'void' && v.mode !== 'intersect';
 
 /** World corner rings of every ground volume: the building's footprint. */
 export function footprintRects(b: Building, grow = 0): Vec2[][] {
@@ -221,11 +224,12 @@ function subtract(rect: Rect, cut: Rect): Rect[] {
  * below its base.
  */
 export function isSupported(b: Building, v: Volume): boolean {
-  if (v.base === 0) return true;
-  if (b.volumes.some((o) => o.outline)) return supportedBy(localFootprint(v), b.volumes.filter((o) => o.id !== v.id && occupiesLevel(o, v.base - 1)).map(localFootprint));
+  // A cut or a clip carries nothing and needs nothing under it.
+  if (v.base === 0 || !isMass(v)) return true;
+  if (b.volumes.some((o) => o.outline)) return supportedBy(localFootprint(v), b.volumes.filter((o) => o.id !== v.id && isMass(o) && occupiesLevel(o, v.base - 1)).map(localFootprint));
   let left: Rect[] = [[v.x, v.y, v.x + v.w, v.y + v.d]];
   for (const o of b.volumes) {
-    if (o.id === v.id || !occupiesLevel(o, v.base - 1)) continue;
+    if (o.id === v.id || !isMass(o) || !occupiesLevel(o, v.base - 1)) continue;
     const cut: Rect = [o.x, o.y, o.x + o.w, o.y + o.d];
     left = left.flatMap((r) => subtract(r, cut));
     if (left.length === 0) return true;

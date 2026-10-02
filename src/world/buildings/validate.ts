@@ -10,7 +10,6 @@ import { MAX_PLINTH, type GroundAt, sampleFootprint } from './foundation';
 import {
   MIN_SIZE,
   buildingBounds,
-  clashes,
   footprintRects,
   groundProjections,
   groundVolumes,
@@ -102,7 +101,10 @@ export function structuralProblem(b: Building): BuildingProblem | null {
       if (geometry.pierEvery !== undefined && (!Number.isInteger(geometry.pierEvery) || geometry.pierEvery < 1 || geometry.pierEvery > 16)) return 'size';
     }
   }
-  if (clashes(b).length > 0) return 'overlap';
+  // Blocks may stand in each other's space: a building is blocks put
+  // together like bricks, and what is drawn is their union. Refusing an
+  // overlap forced every joined block to be cut, and nothing could be moved
+  // back out again.
   if (groundVolumes(b).length === 0) return 'footprint';
   for (const v of b.volumes) if (!isSupported(b, v)) return 'support';
   const elements = b.elements ?? [];

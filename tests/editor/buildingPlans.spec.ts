@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool';
+import { resolveBlocks } from '@world/buildings/blocks';
 
 function setup(): { tool: BuildingTool; doc: RoadDoc } {
   const doc = new RoadDoc(), net = new Network(doc);
@@ -76,7 +77,7 @@ describe('in-world plan drawing', () => {
     expect(doc.buildings.get(id)!.volumes).toHaveLength(3);
   });
 
-  it('cuts a side notch and refuses an unsupported cut under an upper mass', () => {
+  it('cuts a side notch with a void block, leaving the block whole', () => {
     const { tool, doc } = setup();
     tool.startPlan();
     for (const p of [[20, 20], [80, 20], [80, 80], [20, 80]]) click(tool, p[0]!, p[1]!);
@@ -86,6 +87,12 @@ describe('in-world plan drawing', () => {
     for (const p of [[55, 10], [90, 10], [90, 45], [55, 45]]) click(tool, p[0]!, p[1]!);
     expect(tool.preview?.valid).toBe(true);
     tool.finishPlan();
-    expect(doc.buildings.get(id)!.volumes[0]!.outline!.length).toBeGreaterThan(4);
+    const stored = doc.buildings.get(id)!;
+    // The cut is a block of its own; the block it cuts is kept as drawn.
+    expect(stored.volumes).toHaveLength(2);
+    expect(stored.volumes[1]!.mode).toBe('void');
+    expect(stored.volumes[0]!.outline?.length ?? 4).toBe(4);
+    // What is drawn has the notch.
+    expect(resolveBlocks(stored).volumes[0]!.outline!.length).toBeGreaterThan(4);
   });
 });

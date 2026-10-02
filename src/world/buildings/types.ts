@@ -187,7 +187,18 @@ export interface Volume {
    */
   ridge?: 'x' | 'y';
   fall?: Side;
+  /**
+   * How the block combines with the others, never by changing them: absent,
+   * it adds its space (union); 'void' takes its space out of the solid blocks
+   * it overlaps (a cut that stays a block: moved, resized or deleted, the cut
+   * follows); 'intersect' keeps of the solid blocks only what lies inside it;
+   * 'xor' adds where it meets no solid block and removes where it does.
+   * Resolved when drawn (`blocks.ts`), stored as the blocks themselves.
+   */
+  mode?: BlockMode;
 }
+
+export type BlockMode = 'void' | 'intersect' | 'xor';
 
 /** Free parts a building can be given besides its volumes. See docs/buildings.md, "Elements". */
 export const ELEMENT_KINDS = [

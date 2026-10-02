@@ -27,7 +27,7 @@ export interface BuilderToolSpec {
 }
 
 /** What a section of a tab holds: tools, or one of the panel's own shelves. */
-export type BuilderShelf = 'models' | 'patterns' | 'scope' | 'roofParams' | 'finishes';
+export type BuilderShelf = 'models' | 'patterns' | 'scope' | 'roofParams' | 'finishes' | 'drawAction';
 
 export interface BuilderSection {
   /** `builder.section.<title>`; none for a tab with one section. */
@@ -51,8 +51,9 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
   {
     id: 'draw',
     needsSelection: false,
-    sections: [{
-      tools: [mode('rect'), mode('shapeL'), mode('shapeU'), mode('circle'), mode('hexagon'), mode('octagon'), mode('chamfered'), mode('sketch')],
+    sections: [{ title: 'drawWhere', shelf: 'drawAction' }, {
+      title: 'drawShape',
+      tools: [mode('rect'), mode('shapeL'), mode('shapeU'), mode('circle'), mode('hexagon'), mode('octagon'), mode('chamfered'), mode('shapeCross'), mode('shapeStepped'), mode('sketch')],
     }],
   },
   {
@@ -61,6 +62,9 @@ export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
     sections: [
       { title: 'floors', tools: [action('storey'), action('storeyDown'), action('split'), action('setback')] },
       { title: 'volumes', tools: [mode('wing'), mode('stack'), mode('cut'), mode('moveMass')] },
+      { title: 'boolean', tools: [action('blockSolid'), action('blockVoid'), action('blockIntersect'), action('blockXor')] },
+      { title: 'block', tools: [action('copyBlock'), action('detachBlock'), action('centerBlock'), action('turnBlockLeft'), action('turnBlockRight')] },
+      { title: 'blockShape', tools: [action('tierRect'), action('tierChamfered'), action('tierOctagon'), action('tierHexagon'), action('tierCircle'), action('tierL'), action('tierU'), action('tierCross'), action('tierStepped')] },
       { title: 'plan', tools: [action('vertexAdd'), action('vertexRemove')] },
     ],
   },
@@ -131,7 +135,7 @@ export const BUILDER_GALLERIES: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** The plans a closed outline can be recognised as, and drawn as. */
-export const PLAN_SHAPES = ['rectangle', 'l', 'u', 'circle', 'hexagon', 'octagon', 'chamfered'] as const;
+export const PLAN_SHAPES = ['rectangle', 'l', 'u', 'circle', 'hexagon', 'octagon', 'chamfered', 'cross', 'stepped'] as const;
 export type PlanShapeId = (typeof PLAN_SHAPES)[number];
 
 /** The shape a draw tool draws. */
@@ -143,6 +147,21 @@ export const DRAW_SHAPES: Readonly<Record<string, PlanShapeId>> = {
   hexagon: 'hexagon',
   octagon: 'octagon',
   chamfered: 'chamfered',
+  shapeCross: 'cross',
+  shapeStepped: 'stepped',
+};
+
+/** The plan a "block shape" action gives the selected block. */
+export const TIER_SHAPES: Readonly<Record<string, PlanShapeId>> = {
+  tierRect: 'rectangle',
+  tierChamfered: 'chamfered',
+  tierOctagon: 'octagon',
+  tierHexagon: 'hexagon',
+  tierCircle: 'circle',
+  tierL: 'l',
+  tierU: 'u',
+  tierCross: 'cross',
+  tierStepped: 'stepped',
 };
 
 /** The BayComponent an opening tool places. */
@@ -162,6 +181,10 @@ export const OPENING_COMPONENTS: Readonly<Record<string, string>> = {
   pillarBay: 'pillar',
   wallBay: 'wall',
 };
+
+/** What a drawn shape does: a new building, a block joined beside the selection, one on its roof, or a cut out of it. */
+export const DRAW_ACTIONS = ['new', 'ground', 'top', 'cut'] as const;
+export type DrawActionId = (typeof DRAW_ACTIONS)[number];
 
 /** Where an opening or a pattern is applied. */
 export const FACADE_SCOPES = ['bay', 'storey', 'side', 'volume'] as const;
@@ -185,6 +208,8 @@ export interface BuilderField {
   readonly step?: number;
   /** A read-only row (a name, a material, a computed figure). */
   readonly text?: string;
+  /** A choice among named values instead of a number. */
+  readonly options?: readonly { readonly value: number; readonly labelKey: string }[];
 }
 
 /** What the inspector shows for the current selection. */

@@ -195,10 +195,10 @@ describe('foundations', () => {
 });
 
 describe('validation', () => {
-  it('rejects overlapping volumes and volumes over nothing', () => {
+  it('lets blocks overlap, and rejects volumes over nothing', () => {
     const b = building();
     b.volumes.push({ ...JSON.parse(JSON.stringify(b.volumes[0])), id: 2, x: bays(2) });
-    expect(structuralProblem(b)).toBe('overlap');
+    expect(structuralProblem(b)).toBeNull();
     const c = building();
     c.volumes.push({ ...JSON.parse(JSON.stringify(c.volumes[0])), id: 2, x: bays(3), base: 3, w: bays(3) });
     expect(structuralProblem(c)).toBe('support');
