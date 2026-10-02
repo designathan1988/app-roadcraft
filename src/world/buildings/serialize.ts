@@ -40,6 +40,9 @@ import {
   isFacadePattern,
   isRoofDetailKind,
   MAX_ELEMENTS,
+  BUILDING_FUNCTIONS,
+  type BuildingFunction,
+  LOT_SURFACES,
 } from './types';
 import { DEFAULT_GROUND_HEIGHT, DEFAULT_STOREY_HEIGHT } from './blueprints';
 import { MIN_SIZE } from './geometry';
@@ -163,6 +166,7 @@ function migrateVolume(raw: unknown, scale: Scale): Volume | null {
     volume.outline = outline.map((p) => ({ x: p.x, y: p.y }));
   }
   if (raw.mode !== 'void' && raw.mode !== 'intersect' && raw.mode !== 'xor') delete volume.mode;
+  if (!(LOT_SURFACES as readonly unknown[]).includes(raw.open)) delete volume.open;
   if (isFacadePattern(raw.facadePattern)) volume.facadePattern = raw.facadePattern;
   else delete volume.facadePattern;
   if (Array.isArray(raw.roofDetails)) {
@@ -360,6 +364,9 @@ export function migrateBuilding(raw: unknown): Building | null {
   else delete building.name;
   if (typeof raw.blueprint === 'string') building.blueprint = raw.blueprint.slice(0, 80);
   else delete building.blueprint;
+  if ((BUILDING_FUNCTIONS as readonly unknown[]).includes(raw.function)) building.function = raw.function as BuildingFunction;
+  else delete building.function;
+  delete building.cutaway;
   return building;
 }
 

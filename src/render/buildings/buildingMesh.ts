@@ -66,6 +66,7 @@ import {
   SIDES,
   type Volume,
   volumeTop,
+  type LotSurface,
 } from '@world/buildings/types';
 import { type BuildingKit, PART_KINDS, type PartKind } from './kit';
 
@@ -973,6 +974,66 @@ function emitRoofPlant(e: Emitter, b: Building, v: Volume, z: number, trim: Pain
 const DRAIN: Paint = paint({ finish: 'metal', colour: 0x2d3033 });
 const CONDENSER: Paint = paint({ finish: 'metal', colour: 0xc9ccc9 });
 const DOOR_PAINT: Paint = paint({ finish: 'metal', colour: 0x5c6468 });
+
+const LOT_PAINT: Readonly<Record<LotSurface, Paint>> = {
+  grass: paint({ finish: 'concrete', colour: 0x6f9a4c }),
+  paving: paint({ finish: 'stone', colour: 0xc4beb2 }),
+  gravel: paint({ finish: 'concrete', colour: 0xa9a294 }),
+  sand: paint({ finish: 'plaster', colour: 0xe2cf9c }),
+  water: paint({ finish: 'glass', colour: 0x4f8fb3 }),
+};
+const LOT_KERB = paint({ finish: 'stone', colour: 0xb3ada0 });
+
+/**
+ * The open blocks of a building, laid on the ground: a plate of grass,
+ * paving, gravel, sand or water on a low kerb, over the highest ground under
+ * it. When the building is only lots, its free parts (trees, benches, paths,
+ * fences) stand on them here.
+ */
+function emitLots(b: Building, lots: readonly Volume[], withParts: boolean, groundAt: GroundAt, shell: Shell,
+  parts: Record<PartKind, Placement[]>): void {
+  if (lots.length === 0) return;
+  const e = new Emitter(b, shell, parts);
+  const at = (lx: number, ly: number): number => {
+    const w = e.L(lx, ly, 0);
+    return groundAt(w[0], w[1]);
+  };
+  let floor = -Infinity;
+  for (const v of lots) {
+    for (const p of localFootprint(v)) floor = Math.max(floor, at(p.x, p.y));
+    floor = Math.max(floor, at(v.x + v.w / 2, v.y + v.d / 2));
+  }
+  const top = floor + m(0.12);
+  let low = Infinity;
+  for (const v of lots) for (const p of localFootprint(v)) low = Math.min(low, at(p.x, p.y));
+  for (const v of lots) {
+    const ring = localFootprint(v);
+    const flat = ring.flatMap((p) => [p.x, p.y]);
+    const triangles = earcut(flat);
+    const look = LOT_PAINT[v.open ?? 'grass'] ?? LOT_KERB;
+    // Water sits a little lower, inside its kerb.
+    const z = v.open === 'water' ? top - m(0.25) : top;
+    for (let i = 0; i < triangles.length; i += 3) {
+      const p = [triangles[i]!, triangles[i + 1]!, triangles[i + 2]!].map((k) => e.L(flat[2 * k]!, flat[2 * k + 1]!, z));
+      shell.face(p as [V3, V3, V3], [0, 0, 1], look);
+    }
+    // The kerb round it, down to the lowest ground.
+    for (let i = 0; i < ring.length; i++) {
+      const p = ring[i]!;
+      const q = ring[(i + 1) % ring.length]!;
+      const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+      const nx = (q.y - p.y) / len;
+      const ny = -(q.x - p.x) / len;
+      shell.face([e.L(p.x, p.y, low - m(0.3)), e.L(q.x, q.y, low - m(0.3)), e.L(q.x, q.y, top), e.L(p.x, p.y, top)], e.N(nx, ny), LOT_KERB);
+    }
+  }
+  if (withParts) {
+    for (const el of b.elements ?? []) {
+      const look = el.material ? paint(el.material) : elementPaint(b, el.kind);
+      emitElement(e, el, top, low - m(0.3), look);
+    }
+  }
+}
 
 const ELEMENT_CONCRETE: Paint = paint({ finish: 'concrete', colour: 0xcfcac0 });
 
@@ -2005,7 +2066,13 @@ export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): B
   const parts = Object.fromEntries(PART_KINDS.map((k) => [k, [] as Placement[]])) as Record<PartKind, Placement[]>;
   // The blocks as drawn: unions, cuts and intersections resolved, the stored
   // blocks untouched (`world/buildings/blocks.ts`).
-  emitBuilding(resolveBlocks(b), groundAt, shell, parts, pavedAt);
+  const resolved = resolveBlocks(b);
+  // Open blocks are lots: laid on the ground, not built. The rest is the
+  // building; a building that is only lots (a park) has its parts on them.
+  const lots = resolved.volumes.filter((v) => v.open);
+  const closed = resolved.volumes.filter((v) => !v.open);
+  if (closed.length > 0) emitBuilding({ ...resolved, volumes: closed }, groundAt, shell, parts, pavedAt);
+  emitLots(resolved, lots, closed.length === 0, groundAt, shell, parts);
   const batches = {} as Record<PartKind, PartBatch>;
   for (const kind of PART_KINDS) {
     const list = parts[kind];

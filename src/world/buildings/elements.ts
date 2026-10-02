@@ -114,6 +114,8 @@ export function elementClash(b: Building, e: BuildingElement): Volume | null {
   const z0 = e.z;
   const z1 = e.z + e.h;
   for (const v of b.volumes) {
+    // A lot is ground to stand things on, and a cut or a clip is no mass.
+    if (v.open || v.mode === 'void' || v.mode === 'intersect') continue;
     const vz0 = levelElevation(b, v.base);
     const vz1 = levelElevation(b, volumeTop(v));
     // A canopy, an awning or a unit hangs ON the wall: its back meets the

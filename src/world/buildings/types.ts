@@ -196,7 +196,38 @@ export interface Volume {
    * Resolved when drawn (`blocks.ts`), stored as the blocks themselves.
    */
   mode?: BlockMode;
+  /**
+   * An open block: a lot, not a building - no walls, no roof, its plan laid
+   * on the ground as grass, paving, gravel, sand or water (a park, a square,
+   * a schoolyard, a cemetery, a court). Edited like any block.
+   */
+  open?: LotSurface;
 }
+
+export const LOT_SURFACES = ['grass', 'paving', 'gravel', 'sand', 'water'] as const;
+export type LotSurface = (typeof LOT_SURFACES)[number];
+
+/**
+ * What a building is FOR, in the city: where people live, work, study, buy,
+ * eat, are treated, are buried. It picks the building's first form (a model
+ * of blocks, then edited freely), its inside, and its part in the residents'
+ * days. See docs/city-life-plan.md.
+ */
+export const BUILDING_FUNCTIONS = [
+  // homes
+  'house', 'townhouse', 'apartments', 'residentialTower',
+  // public services
+  'cityHall', 'council', 'courthouse', 'postOffice', 'police', 'fireStation', 'hospital', 'clinic',
+  'school', 'university', 'library', 'museum', 'prison', 'church', 'cemetery', 'busStation',
+  // private: shops, food, services, nights out
+  'shop', 'supermarket', 'mall', 'bank', 'pharmacy', 'bakery', 'restaurant', 'snackBar', 'bar',
+  'nightclub', 'cinema', 'hotel', 'gym', 'club', 'gasStation', 'office',
+  // work
+  'factory', 'warehouse',
+  // leisure
+  'park', 'square', 'playground', 'sportsCourt',
+] as const;
+export type BuildingFunction = (typeof BUILDING_FUNCTIONS)[number];
 
 export type BlockMode = 'void' | 'intersect' | 'xor';
 
@@ -291,6 +322,8 @@ export interface Building {
   /** Free parts: stairs, ramps, pillars, canopies, walls, slabs. */
   elements?: BuildingElement[];
   cores: Core[];
+  /** What the building is for (absent: a plain building of its `use`). */
+  function?: BuildingFunction;
   /**
    * Drawing only, never stored: the building cut open above this level, to
    * show its inside (the Construction tool's interior view).

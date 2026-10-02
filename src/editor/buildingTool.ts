@@ -9,6 +9,7 @@ import {
   generateBlock,
   instantiate,
 } from '@world/buildings/blueprints';
+import { cityBuilding } from '@world/buildings/cityBuildings';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
 import { edgeFrame, localFootprint, overlapArea } from '@world/buildings/footprints';
 import { GRID } from '@world/buildings/geometry';
@@ -33,6 +34,7 @@ import {
   type Side,
   type Volume,
   type BlockMode,
+  type BuildingFunction,
   type CoreKind,
   DEFAULT_MODULE,
   asBuildingId,
@@ -1147,6 +1149,15 @@ export class BuildingTool {
     this.onSelected((draft) => opSetRelief(draft, v.id, region, -Math.abs(depth), false));
   }
 
+  /** What the selected building is for (null: nothing in particular). */
+  setFunction(fn: BuildingFunction | null): void {
+    this.onSelected((draft) => {
+      if (fn) draft.function = fn;
+      else delete draft.function;
+      return true;
+    });
+  }
+
   /** How the selected block combines with the others: solid (null), void, intersect or exclusive. */
   setBlockMode(mode: BlockMode | null): void {
     const s = this.selection;
@@ -1256,6 +1267,12 @@ export class BuildingTool {
   }
 
   chooseBlueprint(key: string): void {
+    // A building of the city's catalogue (`city:<function>`), or a plain model.
+    const city = key.startsWith('city:') ? cityBuilding(key.slice(5)) : undefined;
+    if (city) {
+      this.useBody(city.body, key);
+      return;
+    }
     const bp = blueprintByKey(key);
     if (!bp) return;
     this.useBody(bp.body, key);

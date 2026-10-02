@@ -1,4 +1,5 @@
 import { BLUEPRINTS, type Blueprint } from '@world/buildings/blueprints';
+import { CITY_BUILDINGS } from '@world/buildings/cityBuildings';
 import { FINISHES, type Finish, STYLES } from '@world/buildings/materials';
 import {
   BUILDER_TAB_SPECS,
@@ -519,11 +520,11 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
     const ids: string[] = [];
     for (const section of tabSpec(tab).sections) {
       for (const tool of section.tools ?? []) ids.push(tool.id);
-      if (section.shelf === 'models') ids.push(...BLUEPRINTS.map((bp) => bp.key), ...state.userBlueprints.map((bp) => bp.key));
+      if (section.shelf === 'models') ids.push(...CITY_BUILDINGS.map((c) => `city:${c.fn}`), ...BLUEPRINTS.map((bp) => bp.key), ...state.userBlueprints.map((bp) => bp.key));
       if (section.shelf === 'patterns') ids.push(...FACADE_PATTERNS);
       if (section.shelf === 'finishes') ids.push(...FINISHES);
     }
-    const known = new Set<string>([...ELEMENT_KINDS, ...FACADE_PATTERNS, ...FINISHES, ...BLUEPRINTS.map((bp) => bp.key),
+    const known = new Set<string>([...CITY_BUILDINGS.map((c) => `city:${c.fn}`), ...ELEMENT_KINDS, ...FACADE_PATTERNS, ...FINISHES, ...BLUEPRINTS.map((bp) => bp.key),
       ...state.userBlueprints.map((bp) => bp.key), 'window', 'sashWindow', 'wideWindow', 'ribbon', 'bayWindow', 'frenchWindow',
       'door', 'doubleDoor', 'garageDoor', 'loadingDoor', 'solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire',
       'roofFlat', 'roofShed', 'roofGable', 'roofHip', 'roofSawtooth', 'roofTerrace', 'wallRun', 'fenceRun', 'pavementRun', 'stairRun',
@@ -568,10 +569,28 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
 
   function modelsShelf(state: BuilderState): HTMLElement {
     const wrap = el('div', 'bw-gallery');
-    const grid = el('div', 'bw-tiles');
+    // The city's buildings, by what they are for: homes, public services,
+    // shops and places to eat and go out, work, leisure. Each is blocks, and
+    // edited like any building once placed.
+    for (const category of ['homes', 'public', 'commerce', 'work', 'leisure'] as const) {
+      const title = el('div', 'bw-shelf-title');
+      title.textContent = t(`builder.city.${category}`);
+      const cityGrid = el('div', 'bw-tiles small');
+      for (const model of CITY_BUILDINGS.filter((c) => c.category === category)) {
+        const key = `city:${model.fn}`;
+        const b = tile(key, t(`building.fn.${model.fn}`), false, () => actions.choosePreset(key), thumbnails.get(key), true);
+        b.dataset['preset'] = key;
+        cityGrid.appendChild(b);
+      }
+      wrap.append(title, cityGrid);
+    }
+    const genericTitle = el('div', 'bw-shelf-title');
+    genericTitle.textContent = t('builder.city.generic');
+    wrap.appendChild(genericTitle);
+    const grid = el('div', 'bw-tiles small');
     for (const bp of BLUEPRINTS) {
       const label = bp.nameKey ? t(bp.nameKey) : bp.key;
-      const b = tile(bp.key, label, state.tool === 'place' && false, () => actions.choosePreset(bp.key), thumbnails.get(bp.key));
+      const b = tile(bp.key, label, false, () => actions.choosePreset(bp.key), thumbnails.get(bp.key), true);
       b.dataset['preset'] = bp.key;
       grid.appendChild(b);
     }

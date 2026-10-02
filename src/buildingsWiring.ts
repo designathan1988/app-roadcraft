@@ -4,7 +4,7 @@ import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
 import { DEFAULT_PITCH, baysOn, footprintBox, ridgeAlongX, topLevel } from '@world/buildings/geometry';
-import { type Building, volumeById } from '@world/buildings/types';
+import { BUILDING_FUNCTIONS, type Building, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
 import { FINISH_COLOUR } from '@world/buildings/materials';
 import { METERS_PER_UNIT, m } from '@world/units';
@@ -675,6 +675,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       case 'volX': tool.setBlockOffset(value / metres, null); return;
       case 'volY': tool.setBlockOffset(null, value / metres); return;
       case 'volBase': tool.setBlockBase(Math.round(value)); return;
+      case 'function': tool.setFunction(value > 0 ? BUILDING_FUNCTIONS[value - 1] ?? null : null); return;
       case 'volD': tool.setVolumeSize(null, value / metres); return;
       default: return;
     }
@@ -728,6 +729,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
             { id: 'volY', labelKey: 'builder.field.offsetY', value: offset.y * metres, unit: 'm', min: -400, max: 400, step: 0.5 },
           );
         }
+        // What the building is for: any building can become any of them.
+        fields.push({
+          id: 'function', labelKey: 'builder.field.function', value: building.function ? BUILDING_FUNCTIONS.indexOf(building.function) + 1 : 0,
+          options: [{ value: 0, labelKey: 'building.fn.none' }, ...BUILDING_FUNCTIONS.map((fn, i) => ({ value: i + 1, labelKey: `building.fn.${fn}` }))],
+        });
         fields.push({ id: 'volBase', labelKey: 'builder.field.baseLevel', value: volume.base, unit: 'count', min: 0, max: 99, step: 1 });
         fields.push({ id: 'mode', labelKey: 'builder.field.blockMode', value: 0, text: t(`builder.blockMode.${volume.mode ?? 'solid'}`) });
       }

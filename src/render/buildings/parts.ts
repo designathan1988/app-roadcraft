@@ -12,6 +12,7 @@ import {
 } from '@world/buildings/types';
 import { ELEMENT_DEFAULTS, elementAt } from '@world/buildings/elements';
 import { BLUEPRINTS, blueprintByKey, instantiate } from '@world/buildings/blueprints';
+import { cityBuilding } from '@world/buildings/cityBuildings';
 import { buildingBounds, buildingHeight } from '@world/buildings/geometry';
 import { buildBuildingMeshes } from './buildingMesh';
 import { type BuildingKit, createBuildingKit } from './kit';
@@ -69,6 +70,10 @@ function blank(): Building | null {
  * standing on it.
  */
 export function partSample(id: string): Building | null {
+  if (id.startsWith('city:')) {
+    const model = cityBuilding(id.slice(5));
+    return model ? ({ ...instantiate(model.body, { x: 0, y: 0 }, Math.PI / 4), id: -1 } as Building) : null;
+  }
   if (MODEL_KEYS.has(id)) {
     const blueprint = blueprintByKey(id);
     if (!blueprint) return null;
