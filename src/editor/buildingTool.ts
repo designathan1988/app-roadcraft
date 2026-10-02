@@ -967,19 +967,20 @@ export class BuildingTool {
 
   armPrimitive(p: Primitive | null): void {
     this.primitive = p;
+    if (!p) this.setPreview(null);
     this.host.changed();
   }
 
   /**
-   * Drops the basic shape in hand where the pointer is: on a roof it stands
-   * on that roof, centred on the click; against a wall it stands out from
-   * the wall, centred on the click, from the block's floor up to the floor
-   * clicked; on open ground it is a new building. It lands as a block, and
-   * is edited like any other.
+   * The basic shape in hand, placed where the pointer is - on a roof it stands
+   * on that roof, centred there; against a wall it stands out from the wall,
+   * from the block's floor up to the floor pointed at; on open ground it is a
+   * new building - as a draft: the ghost while it is carried, the edit when it
+   * is dropped. Null when there is nothing to put it on.
    */
-  private dropPrimitive(hit: BuildingHit | null, world: Vec2): void {
+  private primitiveDraft(hit: BuildingHit | null, world: Vec2): { draft: Building; existing: BuildingId | null; made: number | null } | null {
     const p = this.primitive;
-    if (!p) return;
+    if (!p) return null;
     const spec = PRIMITIVES[p];
     const size = m(6);
     const ring = (cx: number, cy: number, w: number, d: number, angle = 0): Vec2[] => {
@@ -1000,41 +1001,61 @@ export class BuildingTool {
       const draft = { ...instantiate(body, world, 0), id: PREVIEW_ID } as Building;
       const v = draft.volumes[0];
       if (v) shape(v);
-      const result = this.host.commit(() => addBuildingRecord(this.host.context(), stripId(draft)));
-      if (result.ok && result.id !== undefined) this.selection = { building: result.id, volume: draft.volumes[0]?.id ?? 1, bay: null };
-      this.report(result);
-      this.host.changed();
-      return;
+      return { draft, existing: null, made: v?.id ?? null };
     }
     const building = this.host.context().doc.buildings.get(hit.building);
     const source = building ? volumeById(building, hit.volume) : undefined;
-    if (!building || !source) return;
+    if (!building || !source) return null;
+    const draft = cloneBuilding(building);
     const local = worldToLocal(building, { x: hit.x, y: hit.y });
-    let made: number | null = null;
-    const result = this.host.commit(() => editBuilding(this.host.context(), building.id, (draft) => {
-      if (hit.face === 'top') {
-        made = addPlanMass(draft, source.id, ring(local.x, local.y, size, size), source.base + source.storeys.length, 2);
-      } else {
-        const f = edgeFrame(source, hit.face);
-        const depth = m(4);
-        const along = (local.x - f.x) * f.tx + (local.y - f.y) * f.ty;
-        const cx = f.x + f.tx * along + f.nx * depth / 2;
-        const cy = f.y + f.ty * along + f.ny * depth / 2;
-        const angle = Math.atan2(f.ty, f.tx);
-        made = addPlanMass(draft, source.id, ring(cx, cy, size, depth, angle), source.base, Math.max(1, hit.storey + 1));
-      }
-      const v = made !== null ? volumeById(draft, made) : undefined;
-      if (v) {
-        shape(v);
-        if (hit.face !== 'top') v.base = source.base;
-      }
-      // Dropped on top, the roof under it stays as it was: blocks never change
-      // one another.
-      const under = volumeById(draft, source.id);
-      if (under && hit.face === 'top') under.roof = source.roof;
-      return made !== null;
-    }));
-    if (result.ok && made !== null) this.selection = { building: building.id, volume: made, bay: null };
+    let made: number | null;
+    if (hit.face === 'top') {
+      made = addPlanMass(draft, source.id, ring(local.x, local.y, size, size), source.base + source.storeys.length, 2);
+    } else {
+      const f = edgeFrame(source, hit.face);
+      const depth = m(4);
+      const along = (local.x - f.x) * f.tx + (local.y - f.y) * f.ty;
+      const cx = f.x + f.tx * along + f.nx * depth / 2;
+      const cy = f.y + f.ty * along + f.ny * depth / 2;
+      const angle = Math.atan2(f.ty, f.tx);
+      made = addPlanMass(draft, source.id, ring(cx, cy, size, depth, angle), source.base, Math.max(1, hit.storey + 1));
+    }
+    const v = made !== null ? volumeById(draft, made) : undefined;
+    if (v) {
+      shape(v);
+      if (hit.face !== 'top') v.base = source.base;
+    }
+    // Dropped on top, the roof under it stays as it was: blocks never change
+    // one another.
+    const under = volumeById(draft, source.id);
+    if (under && hit.face === 'top') under.roof = source.roof;
+    return made !== null ? { draft, existing: building.id, made } : null;
+  }
+
+  /** The ghost of the basic shape in hand, where it would land. */
+  private hoverPrimitive(screen: Vec2, world: Vec2): void {
+    const found = this.primitiveDraft(this.pick(screen), world);
+    if (!found) { this.setPreview(null); return; }
+    const problem = validateBuilding(this.host.context(), found.draft, found.existing ?? undefined);
+    this.setPreview({ building: found.draft, valid: problem === null, problem, hides: found.existing, serial: 0 });
+  }
+
+  /** Drops the basic shape in hand where the pointer is (see `primitiveDraft`). It lands as a block, edited like any other. */
+  private dropPrimitive(hit: BuildingHit | null, world: Vec2): void {
+    const found = this.primitiveDraft(hit, world);
+    if (!found) return;
+    this.setPreview(null);
+    const { draft, existing, made } = found;
+    const result = existing === null
+      ? this.host.commit(() => addBuildingRecord(this.host.context(), stripId(draft)))
+      : this.host.commit(() => editBuilding(this.host.context(), existing, (d) => {
+        d.volumes = draft.volumes;
+        return true;
+      }));
+    if (result.ok) {
+      const id = existing ?? result.id;
+      if (id !== undefined && made !== null) this.selection = { building: id, volume: made, bay: null };
+    }
     this.report(result);
     this.host.changed();
   }
@@ -2051,6 +2072,9 @@ export class BuildingTool {
       } else if (this.armed && this.selected()) {
         this.hover = null;
         this.hoverElement(screen, world);
+      } else if (this.primitive) {
+        this.hover = null;
+        this.hoverPrimitive(screen, world);
       } else {
         this.hover = this.pick(screen);
       }
