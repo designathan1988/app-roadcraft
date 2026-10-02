@@ -14,15 +14,33 @@ export async function loadSkinAppearance(person: PersonSpec): Promise<SkinAppear
     : b.asian > b.caucasian ? 'asian' : 'caucasian';
   const age = b.age > 0.8 ? 'old' : b.age > 0.6 ? 'middleage' : 'young';
   const sex = b.gender < 0.5 ? 'female' : 'male';
-  const candidates = index.skins.filter(s => s.origin === origin && s.sex === sex);
-  const skin = candidates.find(s => s.age === age) ?? candidates[0]!;
+  // Each person their own skin among those of their origin, sex and age (the
+  // system pack had one per kind, so a street of one face), and a made-up
+  // face for the women who wear make-up.
+  type Skin = (typeof index.skins)[number] & { makeup?: boolean };
+  const skins = index.skins as Skin[];
+  const madeUp = sex === 'female' && (person.look.makeup ?? 0) > 0;
+  const fits = (s: Skin): boolean => s.origin === origin && s.sex === sex && !!s.makeup === madeUp;
+  const pool = skins.filter(s => fits(s) && s.age === age);
+  const candidates = pool.length ? pool : skins.filter(fits).length ? skins.filter(fits)
+    : skins.filter(s => s.origin === origin && s.sex === sex && !s.makeup);
+  const skin = candidates[Math.abs(person.id * 2654435761 >>> 0) % candidates.length] ?? index.skins[0]!;
   const url = urls[`../../../public/models/people/skins/${skin.name}.webp`];
   if (!url) throw new Error(`Missing skin texture: ${skin.name}`);
   const texture = await new TextureLoader().loadAsync(url);
   texture.colorSpace = SRGBColorSpace;
   const average = new Color().setRGB(skin.average[0]! / 255, skin.average[1]! / 255, skin.average[2]! / 255, SRGBColorSpace);
   const desired = new Color(person.look.skin);
-  const tint = new Color().setRGB(desired.r / Math.max(0.01, average.r), desired.g / Math.max(0.01, average.g), desired.b / Math.max(0.01, average.b));
+  // Match the texture's brightness to the person's skin and only a little of
+  // its hue: the texture, chosen by origin, carries a natural hue of its own.
+  // Scaling each channel to the target turned a rosy (made-up) texture green.
+  const lum = (c: Color): number => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  const bright = lum(desired) / Math.max(0.01, lum(average));
+  const hue = 0.3;
+  const tint = new Color().setRGB(
+    bright + (desired.r / Math.max(0.01, average.r) - bright) * hue,
+    bright + (desired.g / Math.max(0.01, average.g) - bright) * hue,
+    bright + (desired.b / Math.max(0.01, average.b) - bright) * hue);
   let hairTexture: Texture | undefined;
   const garments = await Promise.all(texturedGarments(person.look).map(async name => {
     if (!name || name === 'none') return null;

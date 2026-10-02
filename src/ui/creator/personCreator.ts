@@ -6,6 +6,7 @@ import {
 } from '@people/spec';
 import { hasKey, t } from '../i18n';
 import { hairFor, itemLabel, itemsOf, shoesFor } from '@people/wardrobe';
+import { FACE_PARTS, applyFacePreset } from '@people/facePresets';
 import { skinColour } from '@people/phenotype';
 import { proxyUrl } from '@people/body/proxy';
 import './personCreator.css';
@@ -412,6 +413,26 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
       }
       faces.appendChild(list);
       quick.appendChild(faces);
+      // Each part of the face by name, as a life-simulation game offers it.
+      for (const part of FACE_PARTS) {
+        const r = el('div', 'pc-swatch-row');
+        r.appendChild(el('span', 'pc-slider-name', t(`person.part.${part.key}`)));
+        const options = el('div', 'pc-chips');
+        for (const preset of part.presets) {
+          const on = part.sliders.every((k) => (person.features[k] ?? 0) === (preset.values[k] ?? 0));
+          const button = el('button', 'pc-chip' + (on ? ' active' : ''), t(`person.preset.${part.key}.${preset.key}`));
+          button.type = 'button';
+          button.setAttribute('aria-pressed', String(on));
+          button.addEventListener('click', () => {
+            person = { ...person, features: applyFacePreset(person.features, part, preset) };
+            queueShape();
+            renderControls();
+          });
+          options.appendChild(button);
+        }
+        r.appendChild(options);
+        quick.appendChild(r);
+      }
       swatches(quick, t('person.skin'), SKIN_TONES, person.look.skin, (c) => setLook({ skin: c }));
     }
 

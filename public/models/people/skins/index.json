@@ -242,6 +242,310 @@
     155,
     128
    ]
+  },
+  {
+   "name": "callharvey3d_midtoned_female",
+   "sex": "female",
+   "origin": "african",
+   "age": "young",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    150,
+    104,
+    84
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "cutoff3d_indian_female_enhanced",
+   "sex": "female",
+   "origin": "asian",
+   "age": "young",
+   "makeup": true,
+   "variant": 1,
+   "average": [
+    117,
+    63,
+    48
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "darthfurby_caucasian_female",
+   "sex": "female",
+   "origin": "caucasian",
+   "age": "middleage",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    205,
+    154,
+    127
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "onlytheghosts_middle_aged_eurasian_female",
+   "sex": "female",
+   "origin": "asian",
+   "age": "middleage",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    210,
+    165,
+    136
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "onlytheghosts_old_eurasian_female",
+   "sex": "female",
+   "origin": "asian",
+   "age": "old",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    206,
+    158,
+    129
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "onlytheghosts_young_eurasian_female",
+   "sex": "female",
+   "origin": "asian",
+   "age": "young",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    207,
+    158,
+    129
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_female_bronze",
+   "sex": "female",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    215,
+    145,
+    106
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_female_bronze_with_makeup",
+   "sex": "female",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": true,
+   "variant": 1,
+   "average": [
+    189,
+    125,
+    91
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_female_freckles",
+   "sex": "female",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    199,
+    151,
+    120
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_female_ginger_with_makeup",
+   "sex": "female",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": true,
+   "variant": 1,
+   "average": [
+    209,
+    154,
+    124
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_female_with_violet_makeup",
+   "sex": "female",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": true,
+   "variant": 1,
+   "average": [
+    195,
+    147,
+    130
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_with_makeup",
+   "sex": "female",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": true,
+   "variant": 1,
+   "average": [
+    202,
+    145,
+    136
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_with_natural_makeup",
+   "sex": "female",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": true,
+   "variant": 1,
+   "average": [
+    191,
+    138,
+    116
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "mindfront_aksel_skin",
+   "sex": "male",
+   "origin": "caucasian",
+   "age": "middleage",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    206,
+    161,
+    132
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "mindfront_skin_male_african_middleage",
+   "sex": "male",
+   "origin": "african",
+   "age": "middleage",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    63,
+    39,
+    27
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "onlytheghosts_old_eurasian_male",
+   "sex": "male",
+   "origin": "asian",
+   "age": "old",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    207,
+    152,
+    118
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_male_bronze",
+   "sex": "male",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    212,
+    142,
+    98
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_male_freckles",
+   "sex": "male",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    224,
+    168,
+    141
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
+  },
+  {
+   "name": "toigo_light_skin_male_ginger",
+   "sex": "male",
+   "origin": "caucasian",
+   "age": "young",
+   "makeup": false,
+   "variant": 1,
+   "average": [
+    223,
+    165,
+    136
+   ],
+   "community": true,
+   "license": "unstated",
+   "author": "unknown"
   }
  ]
 }

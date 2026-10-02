@@ -245,7 +245,8 @@ export function randomPerson(id: number, seed: number, keep: { body?: Partial<Pe
   const finished: PersonLook = {
     ...coloured,
     beard: bearded ? 'beard' : 'none',
-    makeup: female && actualYears >= 18 && r() < 0.3 ? 0.15 + r() * 0.25 : 0,
+    // Most women in a street wear some make-up (a made-up skin, `skinAppearance.ts`).
+    makeup: female && actualYears >= 16 && r() < (actualYears < 60 ? 0.6 : 0.3) ? 0.15 + r() * 0.25 : 0,
     outfit,
     extras,
     // Heels (shoes03) only ever on a woman; community shoes cut for the sex.
@@ -306,7 +307,8 @@ function faceShape(r: () => number, body: MacroParams, years: number): Record<st
   for (const [name, amp] of FACE_SLIDERS) out[name] = around(amp);
   // Folded eyelids with an East Asian heritage; bags under the eyes with age.
   out['eye-epicanthus-in-out'] = -body.asian * (0.3 + r() * 0.5);
-  out['eye-bag-decr-incr'] = Math.max(-0.3, Math.min(0.8, (years - 35) / 50 + around(0.2)));
+  // Bags under the eyes only with age: from 35 on everybody looked tired.
+  out['eye-bag-decr-incr'] = Math.max(-0.3, Math.min(0.5, (years - 48) / 50 + around(0.1)));
   {
     // Overlapping artistic profiles, strongest after puberty; not a classifier.
     const adult = Math.max(0, Math.min(1, (years - 10) / 10));
