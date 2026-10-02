@@ -908,19 +908,37 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     weights: readonly number[], x: number, height: number, y: number, heading: number, scale: number,
     lean = 0, ground: Gradient | null = null, expression?: FacialExpression): void {
     const offset = batch.count * batch.width;
-    batch.pixels.fill(0, offset, offset + batch.width);
-    let total = 0;
-    for (let c = 0; c < clips.length; c++) total += Math.max(0, weights[c]!);
-    for (let c = 0; c < clips.length; c++) {
-      const weight = Math.max(0, weights[c]!) / (total || 1);
-      if (weight < 0.001) continue;
-      const clip = clips[c]!;
-      const f = Math.min(clip.frames, Math.max(0, phases[c]!));
-      const fraction = f % 1;
-      const start = Math.floor(f) * batch.width;
-      for (let k = 0; k < batch.width; k++) {
-        batch.pixels[offset + k] = batch.pixels[offset + k]! + weight *
-          (clip.data[start + k]! * (1 - fraction) + clip.data[start + batch.width + k]! * fraction);
+    // Far off (`lod` 2, a body a few pixels tall), the pose is the frame of
+    // the clip that weighs most, copied as it is: blending clips and frames
+    // bone by bone for every body was a quarter of a frame in a town, for a
+    // difference no pixel shows.
+    if (lod === 2) {
+      let best = -1;
+      for (let c = 0; c < clips.length; c++) if (best < 0 || weights[c]! > weights[best]!) best = c;
+      if (best >= 0) {
+        const clip = clips[best]!;
+        const start = Math.round(Math.min(clip.frames, Math.max(0, phases[best]!))) * batch.width;
+        batch.pixels.set(clip.data.subarray(start, start + batch.width), offset);
+      } else batch.pixels.fill(0, offset, offset + batch.width);
+    } else {
+      const pixels = batch.pixels;
+      const width = batch.width;
+      pixels.fill(0, offset, offset + width);
+      let total = 0;
+      for (let c = 0; c < clips.length; c++) total += Math.max(0, weights[c]!);
+      for (let c = 0; c < clips.length; c++) {
+        const weight = Math.max(0, weights[c]!) / (total || 1);
+        if (weight < 0.001) continue;
+        const clip = clips[c]!;
+        const data = clip.data;
+        const f = Math.min(clip.frames, Math.max(0, phases[c]!));
+        const fraction = f % 1;
+        const start = Math.floor(f) * width;
+        const a = weight * (1 - fraction);
+        const b = weight * fraction;
+        for (let k = 0; k < width; k++) {
+          pixels[offset + k] = pixels[offset + k]! + a * data[start + k]! + b * data[start + width + k]!;
+        }
       }
     }
     transform.position.set(x, height, -y);
@@ -1167,8 +1185,13 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
           // three.js uploads each DataTexture update range as one image row.
           // A range spanning multiple citizens exceeds the texture width and
           // leaves their bone palettes frozen on the GPU.
-          for (let i = 0; i < batch.count; i++) {
-            batch.texture.addUpdateRange(i * batch.width, batch.width);
+          // Half the rows or more in use (the texture grows by doubling), the
+          // whole texture goes up in ONE call: a call per body was hundreds of
+          // uploads a frame in a town, for at most twice the bytes.
+          if (batch.count * 2 < batch.rows) {
+            for (let i = 0; i < batch.count; i++) {
+              batch.texture.addUpdateRange(i * batch.width, batch.width);
+            }
           }
           batch.texture.needsUpdate = true;
         }
