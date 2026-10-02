@@ -226,7 +226,7 @@ export function createBuildingKit(): BuildingKit {
     dimParts,
     // Glass, doors and shutters close the openings for the sun: without them
     // the shadow of every building is a lattice of lit windows.
-    castsShadow: new Set<PartKind>(['glass', 'glassDark', 'door', 'shutter', 'concrete', 'railing', 'awning', 'column', 'roofRailing']),
+    castsShadow: new Set<PartKind>(['glass', 'glassDark', 'frame', 'door', 'shutter', 'concrete', 'railing', 'awning', 'column', 'roofRailing']),
     setGhostValid(valid) {
       for (const m of [ghostShell, ghostParts]) {
         m.color.setHex(valid ? 0x65e5c3 : 0xff6f63);

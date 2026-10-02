@@ -1,5 +1,6 @@
 import {
   ACESFilmicToneMapping,
+  Box3,
   Group,
   Frustum,
   Matrix4,
@@ -302,6 +303,10 @@ export function createSceneRenderer(
   scene.add(buildings.group);
   /** The scenery the building footprints were last cut out of. */
   let excludedFor: { scenery: Scenery | null; version: number } = { scenery: null, version: -1 };
+  let tallestFor = -1;
+  let tallestTop = 0;
+  const tallestBox = new Box3();
+  const viewDirection = new Vector3();
   /** The building revision the ground was last graded for. */
   let gradedFor = -1;
   /**
@@ -565,7 +570,16 @@ export function createSceneRenderer(
       // The screen's height covers more ground the lower the camera looks: the
       // shadows are fitted to the ground seen, not to the screen.
       const groundHalfDepth = halfHeight / Math.max(0.3, Math.sin(rig.viewport.elevation));
-      environment.follow(target, halfWidth, groundHalfDepth);
+      // The top of the tallest building, once per rebuild of the layer: the
+      // shadows must reach as high as anything stands, or every terrace and
+      // upper floor seen at close zoom lies outside the shadow map, in sun.
+      if (tallestFor !== buildings.version) {
+        tallestFor = buildings.version;
+        tallestBox.setFromObject(buildings.group);
+        tallestTop = tallestBox.isEmpty() ? 0 : tallestBox.max.y;
+      }
+      rig.camera.getWorldDirection(viewDirection);
+      environment.follow(target, halfWidth, groundHalfDepth, viewDirection, Math.max(0, tallestTop - target.y));
 
       renderer.shadowMap.needsUpdate = true;
       // Cheap (a few hundred objects), and it follows meshes a rebuild or an

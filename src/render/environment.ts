@@ -83,7 +83,7 @@ export interface SceneEnvironment {
   readonly sun: DirectionalLight;
   readonly skyColor: Color;
   /** Points the shadow frustum at what the camera is looking at. */
-  follow(target: Vector3, halfWidth: number, halfHeight: number): void;
+  follow(target: Vector3, halfWidth: number, halfHeight: number, view?: Vector3, rise?: number): void;
   setQuality(quality: EnvironmentQuality): void;
   dispose(): void;
 }
@@ -208,8 +208,12 @@ export function createEnvironment(
   // the car, a pole's apart from the pole. The range now follows the frustum
   // (`fitDepth`) and the bias is stated in world units, `SHADOW_BIAS_WORLD`.
   sun.shadow.normalBias = 0.05;
+  /** Height above the view's ground that the depth range last made room for. */
+  let depthRise = 0;
   const fitDepth = (halfSpan: number): void => {
-    const reach = halfSpan * 1.6 + 240;
+    // Room along the light for everything in the frustum, the tallest roof
+    // included: a tower whose top lay nearer the sun than `near` cast nothing.
+    const reach = halfSpan * 1.6 + 240 + depthRise;
     sun.shadow.camera.near = Math.max(1, SUN_DISTANCE - reach);
     sun.shadow.camera.far = SUN_DISTANCE + reach;
     sun.shadow.bias = -SHADOW_BIAS_WORLD / (sun.shadow.camera.far - sun.shadow.camera.near);
@@ -221,13 +225,35 @@ export function createEnvironment(
   const lightRight = new Vector3();
   const lightUp = new Vector3();
   const snapped = new Vector3();
+  const top = new Vector3();
+  const offset = new Vector3();
+  const centre = new Vector3();
 
   return {
     sun,
     skyColor: horizon,
-    follow(target, halfWidth, halfHeight) {
+    follow(target, halfWidth, halfHeight, view, rise = 0) {
       sky.position.copy(target);
       sky.scale.setScalar(9_000);
+      lightRight.crossVectors(WORLD_UP, sunDirection).normalize();
+      lightUp.crossVectors(sunDirection, lightRight).normalize();
+      // What the camera sees is not a patch of ground but a column: the
+      // ground under the middle of the screen AND everything standing on the
+      // same line of sight up to the tallest roof. Fitted to the ground alone,
+      // a terrace 60 m up at close zoom lay outside the shadow map - drawn in
+      // full sun with a tower right beside it. The frustum is centred on the
+      // column and widened by its extent in the light's view.
+      let du = 0;
+      let dv = 0;
+      if (view && rise > 0 && view.y < -0.05) {
+        top.copy(target).addScaledVector(view, -rise / -view.y);
+        offset.subVectors(top, target);
+        du = offset.dot(lightRight);
+        dv = offset.dot(lightUp);
+      }
+      centre.copy(target)
+        .addScaledVector(lightRight, du / 2)
+        .addScaledVector(lightUp, dv / 2);
       // The shadow frustum is fitted to what the camera can see. Too wide and
       // every shadow is a blurred smear; too narrow and shadows pop in at the
       // edge of the screen.
@@ -236,9 +262,11 @@ export function createEnvironment(
       // far the camera zoomed in. At 2048 texels that is 8 cm a texel, wider
       // than a person's leg, and the filtered shadow of a walking citizen
       // dissolved into smoke. It now follows the view down to close zoom.
-      const want = Math.max(SHADOW_SPAN_MIN, Math.max(halfWidth, halfHeight) * 1.25);
-      if (Math.abs(want - span) > span * 0.08) {
+      const want = Math.max(SHADOW_SPAN_MIN, Math.max(halfWidth, halfHeight) * 1.25) +
+        Math.max(Math.abs(du), Math.abs(dv)) / 2;
+      if (Math.abs(want - span) > span * 0.08 || Math.abs(rise - depthRise) > 20) {
         span = want;
+        depthRise = rise;
         sun.shadow.camera.left = -span;
         sun.shadow.camera.right = span;
         sun.shadow.camera.top = span;
@@ -251,11 +279,9 @@ export function createEnvironment(
       // small shadows crawled and flickered whenever the camera or the
       // figure moved, and read as visible "only in motion".
       const texel = (2 * span) / sun.shadow.mapSize.x;
-      lightRight.crossVectors(WORLD_UP, sunDirection).normalize();
-      lightUp.crossVectors(sunDirection, lightRight).normalize();
-      const u = Math.round(target.dot(lightRight) / texel) * texel;
-      const v = Math.round(target.dot(lightUp) / texel) * texel;
-      const w = target.dot(sunDirection);
+      const u = Math.round(centre.dot(lightRight) / texel) * texel;
+      const v = Math.round(centre.dot(lightUp) / texel) * texel;
+      const w = centre.dot(sunDirection);
       snapped.copy(lightRight).multiplyScalar(u)
         .addScaledVector(lightUp, v)
         .addScaledVector(sunDirection, w);
