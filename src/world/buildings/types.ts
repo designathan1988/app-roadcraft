@@ -329,6 +329,8 @@ export interface Building {
    * show its inside (the Construction tool's interior view).
    */
   cutaway?: number;
+  /** Drawing only: the way the camera looks (world, horizontal), for which walls of the cut floor come down. */
+  cutView?: { readonly x: number; readonly y: number };
   nextVolumeId: number;
   nextElementId?: number;
   name?: string;

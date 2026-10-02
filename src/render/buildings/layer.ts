@@ -7,6 +7,7 @@ import type { GroundAt, PavedAt } from '@world/buildings/foundation';
 import { buildingBounds, footprintRects } from '@world/buildings/geometry';
 import type { Building, BuildingId } from '@world/buildings/types';
 import { m } from '@world/units';
+import { cutOpen } from '@world/buildings/interior';
 import { type BuildingChunk, type BuildingMeshes, assembleBuildingMeshes, buildBuildingMeshes, emitChunk } from './buildingMesh';
 import { type BuildingKit, createBuildingKit } from './kit';
 
@@ -40,6 +41,11 @@ export interface BuildingLayer {
   update(doc: RoadDoc, groundAt: GroundAt, groundKey: string, pavedAt?: PavedAt): boolean;
   setPreview(preview: BuildingPreviewInput | null): void;
   /**
+   * "See inside": every building within `radius` of (x, y) is drawn cut open
+   * at `level`, its rooms and furniture showing; null draws them whole.
+   */
+  setCutaway(spec: CutawaySpec | null): void;
+  /**
    * "Ocultar outros": undefined draws every building solid, null fades them
    * all, and an id fades every building but that one.
    */
@@ -47,6 +53,15 @@ export interface BuildingLayer {
   /** Whether a world point is under a building (for the scenery's plant cull). */
   covers(x: number, y: number): boolean;
   dispose(): void;
+}
+
+export interface CutawaySpec {
+  readonly level: number;
+  /** The way the camera looks, world and horizontal: the walls facing it come down. */
+  readonly view: { readonly x: number; readonly y: number };
+  readonly x: number;
+  readonly y: number;
+  readonly radius: number;
 }
 
 /** How far past a wall a plant is still considered under the building. */
@@ -64,7 +79,32 @@ export function createBuildingLayer(): BuildingLayer {
   let storedKey = '';
   let ghostKey = '';
   let preview: BuildingPreviewInput | null = null;
+  let cutaway: CutawaySpec | null = null;
   let version = 0;
+  /** The buildings drawn cut open, by id and floor: only those near the camera, kept while they stay. */
+  const cutChunks = new Map<string, { key: string; chunk: BuildingChunk }>();
+  const cutChunkFor = (b: Building, level: number, groundAt: GroundAt, pavedAt?: PavedAt): BuildingChunk => {
+    const dir = cutaway ? Math.round(Math.atan2(cutaway.view.y, cutaway.view.x) / (Math.PI / 4)) : 0;
+    const id = `${b.id}|${level}|${dir}`;
+    const key = `${JSON.stringify(b)}|${groundDigest(b, groundAt, pavedAt)}`;
+    const known = cutChunks.get(id);
+    if (known && known.key === key) return known.chunk;
+    // The view snapped to eighths of a turn: the walls that come down change
+    // only when the camera has really turned.
+    const a = dir * (Math.PI / 4);
+    const chunk = emitChunk(cutOpen(b, level, { x: Math.cos(a), y: Math.sin(a) }), groundAt, pavedAt);
+    cutChunks.set(id, { key, chunk });
+    return chunk;
+  };
+  const near = (b: Building): boolean => {
+    if (!cutaway) return false;
+    const box = buildingBounds(b);
+    const dx = Math.max(box.minX - cutaway.x, 0, cutaway.x - box.maxX);
+    const dy = Math.max(box.minY - cutaway.y, 0, cutaway.y - box.maxY);
+    return Math.hypot(dx, dy) <= cutaway.radius;
+  };
+  const drawn = (b: Building, groundAt: GroundAt, pavedAt?: PavedAt): BuildingChunk =>
+    cutaway && near(b) ? cutChunkFor(b, cutaway.level, groundAt, pavedAt) : chunkFor(b, groundAt, pavedAt);
   /**
    * Each building's emitted meshes, keyed by its record and by the ground
    * around it: an edit re-emits one building, a terrain dab only the ones
@@ -114,7 +154,10 @@ export function createBuildingLayer(): BuildingLayer {
     update(doc, groundAt, groundKey, pavedAt) {
       const hides = preview?.hides ?? null;
       const dimKey = dimmed === undefined ? 'off' : String(dimmed ?? 'all');
-      const key = `${doc.buildings.revision}|${groundKey}|${hides}|${dimKey}`;
+      const cutKey = cutaway
+        ? `${cutaway.level}@${Math.round(cutaway.x)},${Math.round(cutaway.y)}/${Math.round(Math.atan2(cutaway.view.y, cutaway.view.x) / (Math.PI / 4))}`
+        : 'whole';
+      const key = `${doc.buildings.revision}|${groundKey}|${hides}|${dimKey}|${cutKey}`;
       let rebuilt = false;
       if (key !== storedKey) {
         storedKey = key;
@@ -127,10 +170,11 @@ export function createBuildingLayer(): BuildingLayer {
         for (const id of chunks.keys()) if (!doc.buildings.has(id)) chunks.delete(id);
         const solid = dimmed === undefined ? shown : shown.filter((b) => b.id === dimmed);
         const others = dimmed === undefined ? [] : shown.filter((b) => b.id !== dimmed);
-        stored = assembleBuildingMeshes(solid.map((b) => chunkFor(b, groundAt, pavedAt)), kit);
+        if (cutChunks.size > 64) cutChunks.clear();
+        stored = assembleBuildingMeshes(solid.map((b) => drawn(b, groundAt, pavedAt)), kit);
         group.add(stored.group);
         faded = others.length > 0
-          ? assembleBuildingMeshes(others.map((b) => chunkFor(b, groundAt, pavedAt)), kit, false, true)
+          ? assembleBuildingMeshes(others.map((b) => drawn(b, groundAt, pavedAt)), kit, false, true)
           : null;
         if (faded) {
           faded.group.renderOrder = 1;
@@ -162,6 +206,9 @@ export function createBuildingLayer(): BuildingLayer {
     },
     setPreview(next) {
       preview = next;
+    },
+    setCutaway(next) {
+      cutaway = next;
     },
     covers(x, y) {
       const list = buckets.get(`${Math.floor(x / CELL)},${Math.floor(y / CELL)}`);

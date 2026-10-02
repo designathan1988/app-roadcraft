@@ -170,3 +170,8 @@
 .bw-params { display: grid; gap: 6px; }
 .bw-params-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .bw-params .bw-menu-item { white-space: nowrap; }
+
+.bw-inside { display: flex; align-items: center; gap: 2px; margin-right: 6px; }
+.bw-inside-level { min-width: 44px; text-align: center; color: var(--bw-text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.bw-inside .bw-icon-button.active { color: var(--bw-active); border-color: var(--bw-active); }
+.bw-inside [hidden] { display: none; }

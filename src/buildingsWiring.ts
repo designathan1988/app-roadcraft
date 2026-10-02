@@ -123,6 +123,8 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   let gridVisible = false;
   let hideOthers = false;
   let lastHint = '';
+  /** See inside, for the whole city: on or off, and the floor seen. */
+  const seeInside = { on: false, level: 0 };
   /** What a drawn shape does: new building, joined block, block on the roof, cut. */
   let drawAction: 'new' | 'ground' | 'top' | 'cut' = 'new';
 
@@ -609,6 +611,13 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       tool.setRoofShape({ fall: side as 0 | 1 | 2 | 3 });
       host.changed();
     },
+    seeInside: (command) => {
+      if (command === 'toggle') seeInside.on = !seeInside.on;
+      else if (command === 'up') seeInside.level = Math.min(60, seeInside.level + 1);
+      else seeInside.level = Math.max(0, seeInside.level - 1);
+      deps.requestDraw();
+      return { ...seeInside };
+    },
     view: (id) => {
       const { w, h } = deps.size();
       switch (id) {
@@ -989,6 +998,20 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     beforeDraw(active) {
       // A gesture's ghost wins; otherwise, in the interior view, the building
       // cut open at its floor.
+      // See inside, city-wide: the buildings around the middle of the view,
+      // re-centred in steps so a pan does not rebuild them every frame.
+      const { w, h } = deps.size();
+      const c = deps.view().toWorld(w / 2, h / 2, w, h);
+      const ahead = deps.view().toWorld(w / 2, h / 2 - 100, w, h);
+      const len = Math.hypot(ahead.x - c.x, ahead.y - c.y) || 1;
+      tool.cutView = { x: (ahead.x - c.x) / len, y: (ahead.y - c.y) / len };
+      if (seeInside.on) {
+        const step = m(40);
+        scene.setBuildingCutaway({
+          level: seeInside.level, x: Math.round(c.x / step) * step, y: Math.round(c.y / step) * step, radius: m(160),
+          view: { x: (ahead.x - c.x) / len, y: (ahead.y - c.y) / len },
+        });
+      } else scene.setBuildingCutaway(null);
       scene.setBuildingPreview(active ? tool.preview ?? tool.interiorPreview() : null);
       if (active) refresh();
     },

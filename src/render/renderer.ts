@@ -39,8 +39,9 @@ import { advanceWind } from './wind';
 import { createSignalHeads, type SignalHeads } from './signals';
 import { buildStructureDetails, type StructureDetails } from './structures';
 import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
-import { createTerrainSurface, type TerrainSurface } from './terrain';
-import { type BuildingPreviewInput, createBuildingLayer } from './buildings/layer';
+import { TERRAIN_CELL, createTerrainSurface, type TerrainSurface } from './terrain';
+import { buildingPads } from '@world/buildings/pads';
+import { type BuildingPreviewInput, type CutawaySpec, createBuildingLayer } from './buildings/layer';
 import type { BuildingId } from '@world/buildings/types';
 import { QUALITY, QualityGovernor, type QualityLevel, type QualitySettings } from './quality';
 
@@ -106,6 +107,8 @@ export interface SceneHandle {
    * null fades them all, an id fades every building but that one.
    */
   setBuildingsDimmed(except: number | null | undefined): void;
+  /** "See inside": the buildings near (x, y) drawn cut open at a floor; null draws them whole. */
+  setBuildingCutaway(spec: CutawaySpec | null): void;
   /** The height the terrain is drawn at — what anything laid on it must clear. */
   terrainHeightAt(x: number, y: number): number;
   /**
@@ -299,6 +302,34 @@ export function createSceneRenderer(
   scene.add(buildings.group);
   /** The scenery the building footprints were last cut out of. */
   let excludedFor: { scenery: Scenery | null; version: number } = { scenery: null, version: -1 };
+  /** The building revision the ground was last graded for. */
+  let gradedFor = -1;
+  /**
+   * Cuts and fills the ground to the roads AND to the buildings: a level
+   * platform under each building and a grassed bank round it. A road keeps the
+   * ground it has claimed; a platform takes the rest.
+   */
+  const shapeGround = (net: Network): void => {
+    gradedFor = net.doc.buildings.revision;
+    const roads = net.doc.segments.size > 0 ? elevation : null;
+    const pads = net.doc.buildings.size > 0
+      ? buildingPads(net.doc.buildings.all(), terrain.naturalRenderedHeightAt, pavedHeightAt, TERRAIN_CELL * 1.5)
+      : null;
+    if (!pads) {
+      terrain.shapeToRoads(roads);
+      return;
+    }
+    terrain.shapeToRoads({
+      shapeBounds: () => [...(roads?.shapeBounds() ?? []), ...pads.shapeBounds()],
+      shapeAt(x, y, ground) {
+        const road = roads ? roads.shapeAt(x, y, ground) : { height: ground, weight: 0 };
+        const pad = pads.shapeAt(x, y, ground);
+        if (pad.weight <= 0) return road;
+        if (road.weight <= 0) return pad;
+        return { height: pad.height + (road.height - pad.height) * road.weight, weight: 1 };
+      },
+    });
+  };
 
   /** `doc.utilityRevision` the pole layer was last built at. */
   let utilityRevision = -1;
@@ -348,7 +379,7 @@ export function createSceneRenderer(
     // Now the ground comes to meet the roads: embankments and cuttings instead
     // of the vertical face the verge skirt used to hang off its own edge, and —
     // from the same rule, where a road is buried deeply enough — tunnels.
-    terrain.shapeToRoads(net.doc.segments.size > 0 ? elevation : null);
+    shapeGround(net);
 
     roads = buildRoadSurfaces(net, elevation, materials, terrain.renderedHeightAt, surfaceReuse);
     world.add(roads.group);
@@ -463,6 +494,9 @@ export function createSceneRenderer(
     setBuildingPreview(preview) {
       buildings.setPreview(preview);
     },
+    setBuildingCutaway(spec) {
+      buildings.setCutaway(spec);
+    },
     setBuildingsDimmed(except) {
       buildings.setDimmed(except === undefined ? undefined : (except as BuildingId | null));
     },
@@ -487,12 +521,14 @@ export function createSceneRenderer(
       // as they already stand; the roads catch up once, when it ends.
       if (options?.holdRoads && elevation && networkRevision === net.revision) {
         if (groundMoved) {
-          terrain.shapeToRoads(net.doc.segments.size > 0 ? elevation : null);
+          shapeGround(net);
           terrainMs = performance.now() - terrainStarted;
         }
       } else {
         rebuildWorld(net);
       }
+      // A building placed, moved or reshaped grades its own site.
+      if (gradedFor !== net.doc.buildings.revision) shapeGround(net);
       buildings.update(net.doc, terrain.renderedHeightAt, `${net.doc.terrainRevision}:${rebuilds}`, pavedHeightAt);
       if (scenery && (excludedFor.scenery !== scenery || excludedFor.version !== buildings.version)) {
         scenery.exclude(net.doc.buildings.size > 0 ? buildings.covers : null);

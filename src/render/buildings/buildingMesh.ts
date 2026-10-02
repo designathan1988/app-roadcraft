@@ -1,6 +1,7 @@
 import earcut from 'earcut';
 import clipping from 'polygon-clipping';
 import { resolveBlocks } from '@world/buildings/blocks';
+import { type Furniture, interiorAt } from '@world/buildings/interior';
 import { asPolygon, edgeFrame, localFootprint, volumeSides } from '@world/buildings/footprints';
 import {
   BufferGeometry,
@@ -490,6 +491,21 @@ function emitBuilding(
       e.rect(face, 0, face.W, face.H - head, face.H, -m(.16), e.N(face.nx, face.ny), frame);
       continue;
     }
+    // Cut open, the floor seen is walled as The Sims walls it: the walls that
+    // face the camera are cut down to a skirting, the ones across the room
+    // stand whole and show their inside.
+    if (b.cutaway !== undefined && bay.level === b.cutaway && b.cutView) {
+      const n = e.N(face.nx, face.ny);
+      const inner = paint({ finish: 'plaster', colour: 0xeee8dc });
+      if (n[0] * b.cutView.x + n[1] * b.cutView.y < 0) {
+        const low = Math.min(m(0.9), face.H);
+        e.rect(face, 0, face.W, 0, low, 0, n, wallOf(v, bay.side, bay.storey));
+        e.rect(face, 0, face.W, 0, low, m(0.25), e.N(-face.nx, -face.ny), inner);
+        e.shell.face([e.P(face, 0, low, 0), e.P(face, face.W, low, 0), e.P(face, face.W, low, m(0.25)), e.P(face, 0, low, m(0.25))], [0, 0, 1], inner);
+        continue;
+      }
+      e.rect(face, 0, face.W, 0, face.H, m(0.25), e.N(-face.nx, -face.ny), inner);
+    }
     emitBay(e, face, bay, wallOf(v, bay.side, bay.storey), trim, awning, left === 'pillar', right === 'pillar', recess, controls);
     const ribDepth = controls?.pierDepth ?? (grammar === 'artDecoCrown' ? m(.65) : grammar === 'artDeco' ? m(.3) : 0);
     if (ribDepth > 0 && bay.index % (controls?.pierEvery ?? 1) === 0) {
@@ -585,11 +601,11 @@ function emitBuilding(
   }
 }
 
-const FLOOR_FINISH = paint({ finish: 'stone', colour: 0xd8d2c6 });
+const FLOOR_FINISH = paint({ finish: 'stone', colour: 0xb9b2a5 });
+const WOOD_FLOOR = paint({ finish: 'wood', colour: 0xa27548 });
 const SHAFT = paint({ finish: 'concrete', colour: 0xb9b6ae });
 const CAB = paint({ finish: 'metal', colour: 0x9aa3a8 });
 const STEP = paint({ finish: 'stone', colour: 0xc9c2b3 });
-const DESK = paint({ finish: 'wood', colour: 0x6e4a32 });
 
 /**
  * Inside a building cut open at level `cut` (the Construction tool's interior
@@ -600,14 +616,18 @@ const DESK = paint({ finish: 'wood', colour: 0x6e4a32 });
  */
 function emitInterior(e: Emitter, b: Building, floor: number, cut: number): void {
   const z = floor + levelElevation(b, cut);
+  // Homes and hotels have wooden floors; everywhere else, stone.
+  const homely = b.function === 'house' || b.function === 'townhouse' || b.function === 'apartments' ||
+    b.function === 'residentialTower' || b.function === 'hotel' || (!b.function && b.use === 'residential');
+  const floorLook = homely && cut > 0 || b.function === 'house' || b.function === 'townhouse' ? WOOD_FLOOR : FLOOR_FINISH;
   for (const v of b.volumes) {
-    if (v.mode === 'void' || v.mode === 'intersect') continue;
+    if (v.mode === 'void' || v.mode === 'intersect' || v.open) continue;
     if (!(v.base <= cut && volumeTop(v) > cut)) continue;
     const flat = localFootprint(v).flatMap((p) => [p.x, p.y]);
     const triangles = earcut(flat);
     for (let i = 0; i < triangles.length; i += 3) {
       const p = [triangles[i]!, triangles[i + 1]!, triangles[i + 2]!].map((k) => e.L(flat[2 * k]!, flat[2 * k + 1]!, z + 0.04));
-      e.shell.face(p as [V3, V3, V3], [0, 0, 1], FLOOR_FINISH);
+      e.shell.face(p as [V3, V3, V3], [0, 0, 1], floorLook);
     }
   }
   const u = b.module;
@@ -642,17 +662,120 @@ function emitInterior(e: Emitter, b: Building, floor: number, cut: number): void
       }
     }
   }
-  if (cut === 0) {
-    // The lobby: a desk facing the way in, across the middle of the front.
-    const ground = b.volumes.filter((v) => v.base === 0 && !v.mode);
-    if (ground.length > 0) {
-      const x0 = Math.min(...ground.map((v) => v.x));
-      const x1 = Math.max(...ground.map((v) => v.x + v.w));
-      const y0 = Math.min(...ground.map((v) => v.y));
-      const cx = (x0 + x1) / 2;
-      const dy = y0 + m(6);
-      e.box(cx - m(2), dy, cx + m(2), dy + m(0.8), z, z + m(1.1), DESK);
+  // The rooms: their walls, with doorways, and what is in them.
+  const inside = interiorAt(b, cut);
+  const wallTop = z + Math.min(levelHeight(b, cut) - m(0.4), m(2.7));
+  // Walls across the camera's line of sight come down to a skirting, as in
+  // The Sims; walls running along it stay up and divide the rooms.
+  const view = b.cutView;
+  const viewLocal = view ? { x: view.x * Math.cos(b.rotation) + view.y * Math.sin(b.rotation), y: -view.x * Math.sin(b.rotation) + view.y * Math.cos(b.rotation) } : null;
+  for (const p of inside.partitions) {
+    const t = m(0.06);
+    const len = Math.hypot(p.x1 - p.x0, p.y1 - p.y0) || 1;
+    // The wall's normal against the view: near 1 means it faces the camera.
+    const facing = viewLocal ? Math.abs((-(p.y1 - p.y0) / len) * viewLocal.x + ((p.x1 - p.x0) / len) * viewLocal.y) : 0;
+    const top = facing > 0.6 ? z + m(0.9) : wallTop;
+    e.box(Math.min(p.x0, p.x1) - t, Math.min(p.y0, p.y1) - t, Math.max(p.x0, p.x1) + t, Math.max(p.y0, p.y1) + t, z, top, PARTITION);
+  }
+  for (const f of inside.furniture) emitFurniture(e, f, z);
+}
+
+const PARTITION = paint({ finish: 'plaster', colour: 0xece6da });
+const FABRIC = paint({ finish: 'plaster', colour: 0x6f7d8c });
+const LINEN = paint({ finish: 'plaster', colour: 0xf1eee6 });
+const WOOD = paint({ finish: 'wood', colour: 0x8a5d3b });
+const DARK = paint({ finish: 'metal', colour: 0x3a3f45 });
+const STEEL = paint({ finish: 'metal', colour: 0xa9b0b5 });
+const WHITEWARE = paint({ finish: 'ceramic', colour: 0xf4f5f3 });
+const GREEN = paint({ finish: 'plaster', colour: 0x4f8a3c });
+const RED_SEAT = paint({ finish: 'plaster', colour: 0x9b2f2f });
+const SCREEN = paint({ finish: 'glass', colour: 0xe9eef2 });
+
+/**
+ * One piece of furniture, from boxes in its own frame: across (`w`), back
+ * (`d`, towards +depth = its back) and up. Turned by its angle (quarter
+ * turns), so every box stays square to the building.
+ */
+function emitFurniture(e: Emitter, f: Furniture, floorZ: number): void {
+  const c = Math.cos(f.angle);
+  const s = Math.sin(f.angle);
+  /** A box of the piece's frame: a from -1..1 across, b from -1 (front) to 1 (back), heights from the floor. */
+  const box = (a0: number, a1: number, b0: number, b1: number, h0: number, h1: number, look: Paint): void => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const a of [a0, a1]) for (const bb of [b0, b1]) {
+      const lx = (a * f.w) / 2;
+      // Facing -y at angle 0: the back is +y.
+      const ly = (bb * f.d) / 2;
+      xs.push(f.x + lx * c - ly * s);
+      ys.push(f.y + lx * s + ly * c);
     }
+    e.box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), floorZ + h0, floorZ + h1, look);
+  };
+  const H = f.h;
+  switch (f.kind) {
+    case 'bed': case 'singleBed': case 'wardBed':
+      box(-1, 1, -1, 1, 0, H * 0.55, f.kind === 'wardBed' ? STEEL : WOOD);
+      box(-0.95, 0.95, -0.95, 0.7, H * 0.55, H, LINEN);
+      box(-0.9, 0.9, 0.72, 0.98, H * 0.55, H * 1.1, LINEN);
+      box(-1, 1, 0.95, 1, 0, H * 1.9, f.kind === 'wardBed' ? STEEL : WOOD);
+      return;
+    case 'sofa': case 'armchair':
+      box(-1, 1, -1, 1, 0, H * 0.5, FABRIC);
+      box(-1, 1, 0.5, 1, H * 0.5, H, FABRIC);
+      box(-1, -0.8, -1, 0.5, H * 0.5, H * 0.75, FABRIC);
+      box(0.8, 1, -1, 0.5, H * 0.5, H * 0.75, FABRIC);
+      return;
+    case 'chair': case 'officeChair': case 'seat':
+      box(-1, 1, -1, 1, H * 0.45, H * 0.52, f.kind === 'seat' ? RED_SEAT : f.kind === 'officeChair' ? DARK : WOOD);
+      box(-1, 1, 0.75, 1, H * 0.52, H, f.kind === 'seat' ? RED_SEAT : f.kind === 'officeChair' ? DARK : WOOD);
+      box(-0.15, 0.15, -0.15, 0.15, 0, H * 0.45, DARK);
+      return;
+    case 'table': case 'desk': case 'altar':
+      box(-1, 1, -1, 1, H * 0.92, H, f.kind === 'altar' ? WHITEWARE : WOOD);
+      for (const [a, bb] of [[-0.9, -0.85], [0.9, -0.85], [-0.9, 0.85], [0.9, 0.85]] as const) box(a - 0.05, a + 0.05, bb - 0.1, bb + 0.1, 0, H * 0.92, f.kind === 'altar' ? WHITEWARE : WOOD);
+      return;
+    case 'pew':
+      box(-1, 1, -1, 0.6, H * 0.45, H * 0.52, WOOD);
+      box(-1, 1, 0.6, 1, 0, H, WOOD);
+      return;
+    case 'shelf': case 'bookshelf': case 'rack': case 'wardrobe': case 'locker':
+      box(-1, 1, -1, 1, 0, H, f.kind === 'rack' || f.kind === 'locker' ? STEEL : WOOD);
+      if (f.kind === 'bookshelf' || f.kind === 'shelf') box(-0.92, 0.92, -1.02, -0.9, H * 0.1, H * 0.92, f.kind === 'bookshelf' ? RED_SEAT : GREEN);
+      return;
+    case 'counter': case 'barCounter': case 'checkout':
+      box(-1, 1, -1, 1, 0, H * 0.94, f.kind === 'checkout' ? STEEL : WOOD);
+      box(-1.02, 1.02, -1.1, 1.02, H * 0.94, H, f.kind === 'barCounter' ? DARK : WHITEWARE);
+      return;
+    case 'fridge': case 'stove': case 'sink': case 'atm': case 'machine': case 'treadmill':
+      box(-1, 1, -1, 1, 0, H, f.kind === 'fridge' || f.kind === 'sink' ? WHITEWARE : f.kind === 'machine' ? STEEL : DARK);
+      if (f.kind === 'stove') box(-0.8, 0.8, -0.8, 0.8, H, H + m(0.02), DARK);
+      return;
+    case 'toilet':
+      box(-1, 1, -0.6, 1, 0, H * 0.5, WHITEWARE);
+      box(-1, 1, 0.6, 1, H * 0.5, H, WHITEWARE);
+      return;
+    case 'bath':
+      box(-1, 1, -1, 1, 0, H, WHITEWARE);
+      return;
+    case 'tv':
+      box(-0.6, 0.6, -1, 1, 0, H * 0.45, WOOD);
+      box(-1, 1, -0.2, 0.2, H * 0.45, H, DARK);
+      return;
+    case 'plant':
+      box(-0.6, 0.6, -0.6, 0.6, 0, H * 0.35, WOOD);
+      box(-1, 1, -1, 1, H * 0.35, H, GREEN);
+      return;
+    case 'bars':
+      for (let a = -1; a <= 1.0001; a += 0.2) box(a - 0.02, a + 0.02, -1, 1, 0, H, DARK);
+      box(-1, 1, -1, 1, H - m(0.08), H, DARK);
+      return;
+    case 'screen': case 'blackboard':
+      box(-1, 1, -1, 1, f.kind === 'screen' ? m(1.5) : m(0.9), m(f.kind === 'screen' ? 1.5 : 0.9) + H, f.kind === 'screen' ? SCREEN : DARK);
+      return;
+    case 'stage': case 'pallet':
+      box(-1, 1, -1, 1, 0, H, f.kind === 'stage' ? DARK : WOOD);
+      return;
   }
 }
 
@@ -1024,7 +1147,7 @@ function emitLots(b: Building, lots: readonly Volume[], withParts: boolean, grou
       const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
       const nx = (q.y - p.y) / len;
       const ny = -(q.x - p.x) / len;
-      shell.face([e.L(p.x, p.y, low - m(0.3)), e.L(q.x, q.y, low - m(0.3)), e.L(q.x, q.y, top), e.L(p.x, p.y, top)], e.N(nx, ny), LOT_KERB);
+      shell.face([e.L(p.x, p.y, top - m(0.3)), e.L(q.x, q.y, top - m(0.3)), e.L(q.x, q.y, top), e.L(p.x, p.y, top)], e.N(nx, ny), LOT_KERB);
     }
   }
   if (withParts) {

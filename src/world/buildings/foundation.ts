@@ -37,7 +37,9 @@ export type PavedAt = (x: number, y: number) => number;
 const NO_PAVING: PavedAt = () => NaN;
 
 /** Components that are a way in, on level 0. */
-export const ACCESS_COMPONENTS: ReadonlySet<BayComponent> = new Set<BayComponent>(['door', 'shopfront', 'loadingDoor']);
+// Doors only: a shopfront is a window on the street, not a way in. Counted
+// as entrances, a row of shopfronts gave a row of flights of steps.
+export const ACCESS_COMPONENTS: ReadonlySet<BayComponent> = new Set<BayComponent>(['door', 'doubleDoor', 'garageDoor', 'loadingDoor']);
 
 /** How far in front of an entrance paving still counts as the street it opens onto. */
 const ENTRANCE_REACH = m(1.5);

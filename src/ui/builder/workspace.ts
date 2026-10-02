@@ -108,6 +108,8 @@ export interface BuilderActions {
   roofFall(side: number): void;
   /** A view command: frame | top | turnLeft | turnRight. */
   view(id: string): void;
+  /** "See inside" for the whole city: toggled, or its floor moved; returns where it stands. */
+  seeInside(command: 'toggle' | 'up' | 'down'): { readonly on: boolean; readonly level: number };
 }
 
 export interface BuilderWorkspace {
@@ -210,7 +212,34 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   appMenu.innerHTML = `${builderIconSvg('menu', 15)}<span></span><i class="bw-caret"></i>`;
   (appMenu.querySelector('span') as HTMLElement).textContent = t('builder.menu.app');
   appMenu.onclick = () => showMenu('app', appMenu);
-  top.append(appMenu, simMenu, help, spacer, controlsSlot, historyGroup);
+  // See inside: every building near the camera cut open at a floor, in any
+  // mode - the city's rooms and their furniture, as The Sims shows a house.
+  const insideGroup = el('div', 'bw-group bw-inside');
+  const insideToggle = el('button', 'bw-icon-button');
+  insideToggle.type = 'button';
+  insideToggle.dataset['i18nTitle'] = 'inside.toggle';
+  insideToggle.innerHTML = builderIconSvg('interiorView', 17);
+  const insideDown = el('button', 'bw-icon-button');
+  insideDown.type = 'button';
+  insideDown.dataset['i18nTitle'] = 'inside.down';
+  insideDown.innerHTML = builderIconSvg('floorDown', 15);
+  const insideLevel = el('span', 'bw-inside-level');
+  const insideUp = el('button', 'bw-icon-button');
+  insideUp.type = 'button';
+  insideUp.dataset['i18nTitle'] = 'inside.up';
+  insideUp.innerHTML = builderIconSvg('floorUp', 15);
+  const showInside = (s: { on: boolean; level: number }): void => {
+    insideToggle.classList.toggle('active', s.on);
+    insideToggle.setAttribute('aria-pressed', String(s.on));
+    insideDown.hidden = insideUp.hidden = insideLevel.hidden = !s.on;
+    insideLevel.textContent = s.level === 0 ? t('inside.ground') : `${s.level + 1}º`;
+  };
+  insideToggle.onclick = () => showInside(actions.seeInside('toggle'));
+  insideDown.onclick = () => showInside(actions.seeInside('down'));
+  insideUp.onclick = () => showInside(actions.seeInside('up'));
+  showInside({ on: false, level: 0 });
+  insideGroup.append(insideToggle, insideDown, insideLevel, insideUp);
+  top.append(appMenu, simMenu, help, spacer, insideGroup, controlsSlot, historyGroup);
 
   /** One drop-down below the bar; the mounted panels are shown, never moved. */
   const drop = el('div', 'bw-drop');

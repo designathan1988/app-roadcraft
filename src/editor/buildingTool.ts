@@ -10,6 +10,7 @@ import {
   instantiate,
 } from '@world/buildings/blueprints';
 import { cityBuilding } from '@world/buildings/cityBuildings';
+import { cutOpen } from '@world/buildings/interior';
 import { FloorCache, type PavedAt, floorHeight } from '@world/buildings/foundation';
 import { edgeFrame, localFootprint, overlapArea } from '@world/buildings/footprints';
 import { GRID } from '@world/buildings/geometry';
@@ -897,6 +898,8 @@ export class BuildingTool {
 
   /** The interior view: the selected building drawn cut open above this level, or null. */
   cutLevel: number | null = null;
+  /** The way the camera looks (world, horizontal), set by the wiring each frame. */
+  cutView: { x: number; y: number } = { x: 0, y: 1 };
   /** A core in hand (lift or stair), or 'remove': the next click on the cut floor places or removes one. */
   coreKind: CoreKind | 'remove' | null = null;
   private cutKey = '';
@@ -918,14 +921,12 @@ export class BuildingTool {
     const b = this.selected();
     if (this.cutLevel === null || !b) return null;
     const level = Math.max(0, Math.min(this.cutLevel, topLevel(b) - 1));
-    const key = `${JSON.stringify(b)}|${level}`;
+    const dir = Math.round(Math.atan2(this.cutView.y, this.cutView.x) / (Math.PI / 4));
+    const key = `${JSON.stringify(b)}|${level}|${dir}`;
     if (key !== this.cutKey) {
       this.cutKey = key;
-      const cut = cloneBuilding(b);
-      cut.volumes = cut.volumes
-        .filter((v) => v.base <= level)
-        .map((v) => ({ ...v, storeys: v.storeys.slice(0, level - v.base + 1) }));
-      cut.cutaway = level;
+      const a = dir * (Math.PI / 4);
+      const cut = cutOpen(cloneBuilding(b), level, { x: Math.cos(a), y: Math.sin(a) });
       this.serial++;
       this.cutPreview = { building: cut, valid: true, problem: null, hides: b.id, serial: this.serial, solid: true };
     }
