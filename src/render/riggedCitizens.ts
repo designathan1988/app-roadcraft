@@ -16,6 +16,7 @@ import { Morpher } from '@people/body/morph';
 import { createPersonRig, personSimplifier } from './people/personRig';
 import { compileAhead } from './uploads';
 import { bakeInWorker } from './bakePool';
+import { cookPerson, loadCookedPerson, peopleCookHash } from './people/cookedPerson';
 import { HELD, createHeldProps } from './people/heldProps';
 import { attachFacialMorphs } from './people/facialMorphs';
 import { expressionShapes } from '@people/body/expressions';
@@ -271,11 +272,25 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
    * A roster person (`people/roster.ts`) as a loaded asset would be: the
    * MakeHuman body morphed, dressed and rigged for the captures.
    */
-  async function personAsset(model: CitizenModel): Promise<GLTF> {
+  async function personAsset(model: CitizenModel, fresh = false): Promise<GLTF> {
+    const person = model.person!;
+    // Cooked ahead (`cookedPerson.ts`, `npm run cook:people`): read back, not built.
+    const cooked = fresh ? null : await loadCookedPerson(model.id);
+    if (cooked) {
+      let mesh: SkinnedMesh | undefined;
+      cooked.traverse((o) => { if (o instanceof SkinnedMesh && !mesh) mesh = o; });
+      if (mesh) {
+        const skin = await loadSkinAppearance(person);
+        resources.add(skin.texture);
+        if (skin.hairTexture) resources.add(skin.hairTexture);
+        for (const map of skin.garments) if (map) resources.add(map);
+        mesh.geometry.userData['skinAppearance'] = skin;
+        return { scene: cooked, parser: null } as unknown as GLTF;
+      }
+    }
     const people = await loadPeopleAssets();
     morpher ??= new Morpher(people.packs);
-    const person = model.person!;
-  
+
     // The garments it wears, loaded first; failing that it is drawn in the
     // tailored shells rather than not at all.
     const proxies = new Map<string, ProxyItem>();
@@ -474,6 +489,28 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
    * walkers, parties, drivers, passengers, riders and people at the kerb
    * alike. `models` must be the crowd whitelist (`CROWD_IDS`), in its order.
    */
+  if (import.meta.env.DEV) {
+    // The cook (`scripts/cook-people.mjs`): every roster person built fresh,
+    // packed and sent to the development server, which writes it to `cooked/`.
+    (window as unknown as { __cookPeople?: () => Promise<{ hash: string | null; ids: string[]; bytes: number }> }).__cookPeople = async () => {
+      const ids: string[] = [];
+      let bytes = 0;
+      for (const model of CROWD) {
+        if (!model.person) continue;
+        const asset = await personAsset(model, true);
+        const waits: Promise<unknown>[] = [];
+        asset.scene.traverse((o) => { if (o instanceof SkinnedMesh) waits.push(o.geometry.userData['lodReady'] as Promise<unknown>); });
+        await Promise.all(waits);
+        const packed = cookPerson(asset.scene);
+        const response = await fetch(`/__cook/people/${model.id}.bin`, { method: 'PUT', body: packed });
+        if (!response.ok) throw new Error(`Cook of ${model.id}: ${response.status}`);
+        ids.push(model.id);
+        bytes += packed.byteLength;
+      }
+      return { hash: peopleCookHash(), ids, bytes };
+    };
+  }
+
   const registry = new CastingRegistry(CROWD.filter((m) => models.includes(m.id))
     .sort((p, q) => models.indexOf(p.id) - models.indexOf(q.id)), CAST_FORGET);
   const helmetFits = (id: string): boolean => !NO_HELMET.has(id);

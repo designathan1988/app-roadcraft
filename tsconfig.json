@@ -34,6 +34,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts", "build-stamp.ts"],
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts", "build-stamp.ts", "cook-plugin.ts"],
   "exclude": ["node_modules", "dist", "tests/**/_*", "tests/**/_*/**"]
 }

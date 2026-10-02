@@ -1,12 +1,13 @@
 import { defineConfig } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
 import { buildStampPlugin } from './build-stamp';
+import { cookPlugin } from './cook-plugin';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
   root: '.',
-  plugins: [buildStampPlugin()],
+  plugins: [buildStampPlugin(), cookPlugin()],
   publicDir: false,
   resolve: {
     alias: {

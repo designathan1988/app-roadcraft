@@ -31,6 +31,7 @@
     "verify:buildings:raw": "npm run build:raw && node scripts/verify-buildings.mjs",
     "screens": "node scripts/run-limited.mjs npm run screens:raw",
     "screens:raw": "npm run build:raw && node scripts/verify-visual.mjs -- --shots",
+    "cook:people": "node scripts/cook-people.mjs",
     "verify:ui": "node scripts/run-limited.mjs npm run verify:ui:raw",
     "verify:ui:raw": "npm run build:raw && node scripts/verify-ui.mjs"
   },

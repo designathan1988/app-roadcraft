@@ -10,3 +10,6 @@ docs/screenshots/
 # 3D assets delivered by the roadcraft-3d-assets skill, imported by hand
 incoming/
 __pycache__/
+
+# People cooked ahead (npm run cook:people); regenerated, never committed
+cooked/
