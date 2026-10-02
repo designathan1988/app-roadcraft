@@ -41,7 +41,7 @@ import { type DraftResult, commitRoadPath, duplicateSegment, joinSegments, recon
 import { roadPathFromGesture, type RoadPathPiece, type RoadPathPoint } from '@editor/roadPath';
 import { commitRoundabout } from '@editor/roundabout';
 import { freeRoadsEnabled } from '@ui/roadSectionEditor';
-import { History, restoreInto, restoreSnapshot } from '@editor/history';
+import { History, restoreInto, restoreSnapshot, serialize } from '@editor/history';
 import { type ImportResult, Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
@@ -544,13 +544,13 @@ function mutate(fn: () => boolean): void {
 
 /** `mutate`, reporting whether the edit actually changed anything. */
 function mutateBuilt(fn: () => boolean): boolean {
-  const before = doc.toJSON();
+  const before = serialize(doc);
   if (!fn()) return false;
   // An edit that reports success without changing anything - the same lane
   // count, a split on an existing endpoint, a pole line traced over itself -
   // used to push an undo step and throw away the redo stack.
-  if (JSON.stringify(before) === JSON.stringify(doc.toJSON())) return false;
-  history.record(RoadDoc.fromJSON(before, { repair: false }));
+  if (before === serialize(doc)) return false;
+  history.recordText(before);
   // A pole or a wire moves `doc.utilityRevision`, not `doc.revision`: the
   // network is unchanged, and rebuilding it (and, behind it, the simulation
   // topology) cost about 330 ms per pole on a large map.

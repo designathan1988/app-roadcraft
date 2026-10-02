@@ -447,7 +447,8 @@ body { user-select: none; -webkit-user-select: none; }
 }
 .statusbar i { width: 1px; height: 12px; background: var(--ui-border); }
 .statusbar .spacer { flex: 1; }
-.statusbar .sky-mode { background: none; border: 1px solid currentColor; border-radius: 10px; color: inherit; font: inherit; padding: 0 8px; margin-right: 6px; cursor: pointer; opacity: 0.85; }
+/* The bar lets clicks through to the map; its one button takes its own. */
+.statusbar .sky-mode { pointer-events: auto; background: none; border: 1px solid currentColor; border-radius: 10px; color: inherit; font: inherit; padding: 0 8px; margin-right: 6px; cursor: pointer; opacity: 0.85; }
 .statusbar .sky-mode:hover { opacity: 1; }
 .statusbar .city-clock { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ui-text, inherit); margin-right: 8px; }
 #auditReadout.bad { color: var(--danger); }

@@ -11,8 +11,15 @@ import { repairNearConnections } from './repair';
  * mixture of model and cache.
  */
 export class History {
-  private readonly undoStack: SerializedDoc[] = [];
-  private readonly redoStack: SerializedDoc[] = [];
+  /**
+   * Each snapshot kept as its JSON text: written once, immutable, and its size
+   * is its length. Kept as objects, every edit serialized the town three times
+   * and rebuilt a whole document from it - `toJSON`, `RoadDoc.fromJSON`,
+   * `toJSON` again, and `JSON.stringify` only to count its bytes - which on a
+   * town of furnished buildings made adding a storey take seconds.
+   */
+  private readonly undoStack: string[] = [];
+  private readonly redoStack: string[] = [];
   /** Approximate bytes held by each stack's entries, index-aligned. */
   private readonly undoBytes: number[] = [];
   private readonly redoBytes: number[] = [];
@@ -39,7 +46,12 @@ export class History {
 
   /** Records the document as it was BEFORE a mutation. */
   record(doc: RoadDoc): void {
-    this.push(this.undoStack, this.undoBytes, doc.toJSON());
+    this.recordText(serialize(doc));
+  }
+
+  /** Records a snapshot already written as text (`serialize`), as it was BEFORE a mutation. */
+  recordText(text: string): void {
+    this.push(this.undoStack, this.undoBytes, text);
     this.redoStack.length = 0;
     this.redoBytes.length = 0;
     this.trim();
@@ -47,20 +59,20 @@ export class History {
 
   undo(current: RoadDoc): SerializedDoc | null {
     const previous = this.undoStack.pop();
-    if (!previous) return null;
+    if (previous === undefined) return null;
     this.undoBytes.pop();
-    this.push(this.redoStack, this.redoBytes, current.toJSON());
+    this.push(this.redoStack, this.redoBytes, serialize(current));
     this.trim();
-    return previous;
+    return JSON.parse(previous) as SerializedDoc;
   }
 
   redo(current: RoadDoc): SerializedDoc | null {
     const next = this.redoStack.pop();
-    if (!next) return null;
+    if (next === undefined) return null;
     this.redoBytes.pop();
-    this.push(this.undoStack, this.undoBytes, current.toJSON());
+    this.push(this.undoStack, this.undoBytes, serialize(current));
     this.trim();
-    return next;
+    return JSON.parse(next) as SerializedDoc;
   }
 
   clear(): void {
@@ -70,9 +82,9 @@ export class History {
     this.redoBytes.length = 0;
   }
 
-  private push(stack: SerializedDoc[], bytes: number[], snapshot: SerializedDoc): void {
-    stack.push(snapshot);
-    bytes.push(JSON.stringify(snapshot).length * 2);
+  private push(stack: string[], bytes: number[], text: string): void {
+    stack.push(text);
+    bytes.push(text.length * 2);
   }
 
   /** Drops the OLDEST undo steps past the count or the byte budget; the newest always stays. */
@@ -86,6 +98,11 @@ export class History {
       this.undoBytes.shift();
     }
   }
+}
+
+/** A document as the text the history keeps. */
+export function serialize(doc: RoadDoc): string {
+  return JSON.stringify(doc.toJSON());
 }
 
 function sum(values: readonly number[]): number {
