@@ -84,6 +84,8 @@ interface Person {
   /** Seconds standing in the queue for a zebra, behind somebody at its kerb, and which. */
   queued: number;
   queuedFor: number;
+  /** The place it holds in the waiting area of the zebra it waits for (`waitSlot`). */
+  slot: WaitSlot | null;
   /** Seconds standing still with its party, and the talk it has struck up. */
   stoodTogether: number;
   talk: GestureView | null;
@@ -147,14 +149,101 @@ interface State {
   taken: Map<string, number>;
   /** Residents' trips that ended since the city last asked. */
   arrivals: number[];
+  /** People waiting at each zebra (mesh crossing index), counted each tick (`plan`). */
+  waiting: Map<number, number>;
 }
 
 const STATES = new WeakMap<SimWorld, State>();
 
+/**
+ * A place to wait at a zebra: one of the slots of the waiting area on one
+ * side of it, held by one person at a time.
+ *
+ * As Unreal's Mass crowd does it (`FCrowdWaitAreaData`, `FCrowdWaitSlot`:
+ * position, facing, radius, occupied; `AcquireWaitingSlot` gives the nearest
+ * vacant one): everybody waiting for a zebra used to make for ONE point at its
+ * kerb and queue behind whoever was there, and a rush of people became a knot
+ * at the corner, pushing into each other until they walked through each other.
+ * Now the side of the kerb by the zebra is set out in rows of places, front
+ * row first, and each person takes the free one nearest; when all are taken
+ * they queue behind as before.
+ */
+interface WaitSlot {
+  readonly key: string;
+  readonly x: number;
+  readonly y: number;
+  readonly row: number;
+  /** Id of the person holding it; -1 for nobody. */
+  owner: number;
+}
+const WAIT_GAP = m(0.7);
+const WAIT_ROWS = 4;
+/** How far past the painted band's edge the area reaches along the kerb, u. */
+const WAIT_SPREAD = m(1);
+const WAIT_AREAS = new WeakMap<object, Map<string, WaitSlot[]>>();
+
+/** The waiting area on the kerb a person reaches a zebra from, laid out once per mesh. */
+function waitArea(mesh: WorldNav['mesh'], crossing: number, fromA: boolean, kerbX: number, kerbY: number): WaitSlot[] {
+  let areas = WAIT_AREAS.get(mesh);
+  if (!areas) { areas = new Map(); WAIT_AREAS.set(mesh, areas); }
+  const key = `${crossing}:${fromA ? 'a' : 'b'}`;
+  const known = areas.get(key);
+  if (known) return known;
+  const c = mesh.crossings[crossing]!;
+  // Across the zebra from this kerb, and the right-hand side facing it: the
+  // other half of the mouth is left to people coming off it.
+  const len = Math.hypot(c.bx - c.ax, c.by - c.ay) || 1;
+  const ux = (fromA ? c.bx - c.ax : c.ax - c.bx) / len, uy = (fromA ? c.by - c.ay : c.ay - c.by) / len;
+  const rx = uy, ry = -ux;
+  const slots: WaitSlot[] = [];
+  for (let row = 0; row < WAIT_ROWS; row++) {
+    const back = KERB_STOP + row * WAIT_GAP;
+    for (let lat = NAV_RADIUS; lat <= c.halfWidth + WAIT_SPREAD; lat += WAIT_GAP) {
+      const x = kerbX - ux * back + rx * lat, y = kerbY - uy * back + ry * lat;
+      const spot = mesh.nearest(x, y, m(0.25));
+      if (!spot || isZebra(mesh.region[spot.t]!) || Math.hypot(spot.x - x, spot.y - y) > m(0.15)) continue;
+      slots.push({ key, x: spot.x, y: spot.y, row, owner: -1 });
+    }
+  }
+  areas.set(key, slots);
+  return slots;
+}
+
+/** Lets go of the place a person held at a zebra, if any. */
+function releaseSlot(p: Person): void {
+  if (p.slot && p.slot.owner === p.id) p.slot.owner = -1;
+  p.slot = null;
+}
+
+/**
+ * The place a person waits at for the zebra of `gate`: the one it holds, or
+ * the free one nearest it, front rows first; null when every one is taken.
+ * A place is free when nobody holds it, or its holder no longer waits there
+ * (gone, crossing, gone another way): it is let go of lazily, as it is found.
+ */
+function waitSlot(s: State, mesh: WorldNav['mesh'], p: Person,
+  gate: { crossing: number; x: number; y: number; fromA: boolean }): WaitSlot | null {
+  const key = `${gate.crossing}:${gate.fromA ? 'a' : 'b'}`;
+  if (p.slot && p.slot.key === key && p.slot.owner === p.id) return p.slot;
+  releaseSlot(p);
+  let best: WaitSlot | null = null, bestScore = Infinity;
+  for (const slot of waitArea(mesh, gate.crossing, gate.fromA, gate.x, gate.y)) {
+    if (slot.owner >= 0) {
+      const holder = s.byId.get(slot.owner);
+      if (holder && holder.slot === slot && holder.mode === 'wait') continue;
+      slot.owner = -1;
+    }
+    const score = Math.hypot(slot.x - p.x, slot.y - p.y) + slot.row * m(0.5);
+    if (score < bestScore) { bestScore = score; best = slot; }
+  }
+  if (best) { best.owner = p.id; p.slot = best; }
+  return best;
+}
+
 function stateOf(w: SimWorld): State {
   let s = STATES.get(w);
   if (!s) {
-    s = { nav: null, people: [], byId: new Map(), nextId: 1, spawnClock: 0, footTris: [], footArea: [], taken: new Map(), arrivals: [] };
+    s = { nav: null, people: [], byId: new Map(), nextId: 1, spawnClock: 0, footTris: [], footArea: [], taken: new Map(), arrivals: [], waiting: new Map() };
     STATES.set(w, s);
   }
   return s;
@@ -170,6 +259,8 @@ const BODY_RADIUS = R + m(0.03);
 /** How far around, how many people, and how many seconds ahead avoidance looks. */
 const ORCA_REACH = m(3);
 const ORCA_NEIGHBOURS = 10;
+/** Neighbours heeded by somebody out of sight. */
+const ORCA_NEIGHBOURS_UNSEEN = 4;
 const ORCA_HORIZON = 1.5;
 const PARTY_HORIZON = 0.4;
 /** Ticks the route's corners are kept for somebody nobody is watching (`SimWorld.focus`). */
@@ -238,6 +329,14 @@ const QUEUE_REACH = m(3);
 const KERB_COST = 2;
 /** Planned wait at a zebra, as extra walking distance, u. */
 const CROSS_COST = m(12);
+/**
+ * And for each person already waiting there, up to a ceiling: a route is
+ * priced by the wait it can expect, as travel-time rerouting prices a jammed
+ * road (SUMO, Demand/Automatic_Routing). At a fixed price every route kept
+ * taking the zebra that a crowd stood at, and the crowd only grew.
+ */
+const JAM_COST = m(3);
+const JAM_COST_MAX = m(60);
 const CELL = m(2.5);
 /** Seconds a leader waits for a companion who has fallen behind before it goes its own way. */
 const PARTY_PATIENCE = 5;
@@ -428,7 +527,7 @@ function create(w: SimWorld, s: State, id: number, x: number, y: number, tri: nu
   const p: Person = {
     id, x, y, heading, v: 0, vx: 0, vy: 0, nvx: 0, nvy: 0, turnV: 0, prevX: x, prevY: y, prevHeading: heading, age: 0, tri,
     pace, ageClass: cls, gender: sex, party, rank, leader: traits.leader ?? null, waitingForParty: 0,
-    blocked: 0, urgent: 0, ghost: 0, replanned: false, facingWalk: false, commitDir: NaN, commitLeft: 0, faceX: 0, faceY: 0, intent: null, queued: 0, queuedFor: -1, stoodTogether: 0, talk: null, sit: null, pause: null,
+    blocked: 0, urgent: 0, ghost: 0, replanned: false, facingWalk: false, commitDir: NaN, commitLeft: 0, faceX: 0, faceY: 0, intent: null, queued: 0, queuedFor: -1, slot: null, stoodTogether: 0, talk: null, sit: null, pause: null,
     goalX: x, goalY: y, goalTri: tri, leaving: false, path: null, ci: 0,
     mode: 'walk', crossing: -1, granted: [], waited: 0, atKerb: false, standX: x, standY: y, waitHeld: 0, view,
   };
@@ -533,7 +632,8 @@ function pickGoal(w: SimWorld, s: State, p: Person): boolean {
 function plan(s: State, p: Person): boolean {
   const mesh = s.nav!.mesh;
   const path = findPath(mesh, p.x, p.y, p.tri, p.goalX, p.goalY, p.goalTri,
-    (from, to, length) => (isZebra(mesh.region[to]!) && mesh.region[from] !== mesh.region[to] ? CROSS_COST : 0) +
+    (from, to, length) => (isZebra(mesh.region[to]!) && mesh.region[from] !== mesh.region[to]
+      ? CROSS_COST + Math.min(JAM_COST_MAX, (s.waiting.get(mesh.region[to]!) ?? 0) * JAM_COST) : 0) +
       (mesh.region[to] === KERB ? length * KERB_COST : 0));
   if (path) easeCorners(mesh, path);
   p.path = path;
@@ -690,6 +790,10 @@ function step(w: SimWorld, s: State): void {
   const watched = (p: Person): boolean =>
     !focus || (focus.detail && Math.hypot(p.x - focus.x, p.y - focus.y) <= focus.r);
 
+  // How many wait at each zebra: what a route about to cross it can expect.
+  s.waiting.clear();
+  for (const p of s.people) if (p.mode === 'wait' && p.crossing >= 0) s.waiting.set(p.crossing, (s.waiting.get(p.crossing) ?? 0) + 1);
+
   // ---- 1. everybody decides, from where everybody stands now
   for (const p of s.people) {
     p.age += DT;
@@ -818,7 +922,10 @@ function step(w: SimWorld, s: State): void {
         }
       }
       if (p.mode === 'wait') {
-        // Walk to the place to wait at, and stop there.
+        // Walk to its place in the waiting area, and stop there; with every
+        // place taken, to the kerb's own spot, to queue behind.
+        const slot = waitSlot(s, mesh, p, gate);
+        if (slot) { gate.wx = slot.x; gate.wy = slot.y; }
         target = { x: gate.wx, y: gate.wy, tri: target.tri };
         limit = Math.sqrt(2 * DECEL * Math.max(0, Math.hypot(gate.wx - p.x, gate.wy - p.y) - m(0.05)));
       } else if (p.mode !== 'cross') limit = Math.sqrt(2 * DECEL * Math.max(0, d - KERB_STOP));
@@ -891,7 +998,7 @@ function step(w: SimWorld, s: State): void {
     // who has stopped. Once there it stays put - a shuffle aside for somebody
     // passing is not a reason to walk back - until pushed well off it.
     const settle = (): void => { p.atKerb = true; p.standX = p.x; p.standY = p.y; };
-    if (p.mode !== 'wait') { p.atKerb = false; p.waitHeld = 0; }
+    if (p.mode !== 'wait') { p.atKerb = false; p.waitHeld = 0; releaseSlot(p); }
     else if (gate && p.v < m(0.1) && Math.hypot(gate.wx - p.x, gate.wy - p.y) < m(0.3)) settle();
     // A queue: whoever comes up behind somebody already waiting for the same
     // zebra stops there and waits too. Everybody making for the one place to
@@ -939,7 +1046,7 @@ function step(w: SimWorld, s: State): void {
     // has none, so the one standing never saw a reason to move, and the two
     // stood there - a companion in its own leader's way most of all.
     let makingRoom = false;
-    if (prefX === 0 && prefY === 0 && watched(p)) {
+    if (prefX === 0 && prefY === 0) {
       for (const q of neighbours(g, p, ROOM_REACH, near)) {
         const qi = q.intent;
         if (!qi || qi.prefX === undefined || qi.prefY === undefined) continue;
@@ -1019,10 +1126,14 @@ function step(w: SimWorld, s: State): void {
     // all give way to it (`shareOf`). Still giving way itself, it stood
     // among bodies that did not move until the last resort. (Giving way only
     // enough to squeeze past held it just as long.)
-    if (p.ghost <= 0 && p.urgent <= 0 && watched(p)) {
+    // Everybody steps round everybody, seen or not: people left to walk into
+    // each other out of sight stood inside each other when the camera came.
+    // Out of sight a body heeds its nearest few (Detour's `maxNeighbours`).
+    if (p.ghost <= 0 && p.urgent <= 0) {
       const around = neighbours(g, p, ORCA_REACH, near)
         .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
-      for (let k = 0; k < around.length && k < ORCA_NEIGHBOURS; k++) {
+      const heeded = watched(p) ? ORCA_NEIGHBOURS : ORCA_NEIGHBOURS_UNSEEN;
+      for (let k = 0; k < around.length && k < heeded; k++) {
         const q = around[k]!;
         const line = LINE_POOL[lines.length] ??= { px: 0, py: 0, dx: 0, dy: 0 };
         // People walking together keep close: between companions avoidance
@@ -1099,7 +1210,9 @@ function step(w: SimWorld, s: State): void {
       const along = want > m(0.2) ? ((p.x - fromX) * d.prefX + (p.y - fromY) * d.prefY) / want : Infinity;
       p.waitHeld = along < want * DT * 0.25 ? p.waitHeld + DT : 0;
     }
-    if (want > m(0.2) && !d.makingRoom && p.mode !== 'wait') {
+    // Nor is standing in the queue behind people waiting for it: walking
+    // through them (`ghost`) is what knotted the bodies at a kerb.
+    if (want > m(0.2) && !d.makingRoom && p.mode !== 'wait' && p.queued <= 0) {
       const along = ((p.x - fromX) * d.prefX + (p.y - fromY) * d.prefY) / want;
       if (along < want * DT * 0.25) p.blocked += DT;
       else p.blocked = Math.max(0, p.blocked - 2 * DT);
@@ -1473,7 +1586,7 @@ const SLIDE_TURNS = [0.45, -0.45, 0.9, -0.9, 1.3, -1.3];
 
 /** The next place on the route where it steps from footway onto a zebra. */
 function nextGate(mesh: WorldNav['mesh'], p: Person, path: NavPath):
-  { crossing: number; chain: number[]; x: number; y: number; across: number; index: number; wx: number; wy: number } | null {
+  { crossing: number; chain: number[]; x: number; y: number; across: number; index: number; wx: number; wy: number; fromA: boolean } | null {
   const from = path.tris[p.ci] === p.tri ? p.ci : Math.max(0, path.tris.indexOf(p.tri));
   for (let i = from; i < path.portals.length && i < from + 60; i++) {
     const a = path.tris[i]!, b = path.tris[i + 1]!;
@@ -1501,7 +1614,7 @@ function nextGate(mesh: WorldNav['mesh'], p: Person, path: NavPath):
       }
       return {
         crossing: mesh.region[b]!, chain, x: q.x, y: q.y, across, index: i + 1,
-        wx: ok ? spot.x : q.x - ux * KERB_STOP, wy: ok ? spot.y : q.y - uy * KERB_STOP,
+        wx: ok ? spot.x : q.x - ux * KERB_STOP, wy: ok ? spot.y : q.y - uy * KERB_STOP, fromA: toA < toB,
       };
     }
   }

@@ -103,6 +103,12 @@ export interface Vehicle {
   lastMovedTick: number;
   /** Seconds spent stationary at a stop line, for gap-acceptance impatience. */
   waited: number;
+  /**
+   * Tick at which admission last refused it ONLY for people at or on a zebra
+   * (its pedestrian checks come after every other one). The people at a kerb
+   * owe a car its turn only while this is current (`heldOnlyByPedestrians`).
+   */
+  heldByPedestriansTick?: number;
   /** Set once the vehicle has come to a full stop, enabling right-on-red. */
   rorCredit: boolean;
   rorStopped: number;

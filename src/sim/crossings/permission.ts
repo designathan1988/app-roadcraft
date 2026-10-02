@@ -112,7 +112,7 @@ function crossingReservedByVehicle(w: SimWorld, node: number, segment: number): 
 function turnOwedToVehicle(w: SimWorld, node: NonNullable<SidewalkEdge["node"]>, crossing: string, controller: SignalController): boolean {
   for (const laneId of w.graph.junctions.get(node)?.inbound ?? []) {
     const head = w.laneHead(laneId);
-    if (!head || head.admittedConnector || head.waited <= PED_COURTESY) continue;
+    if (!head || head.admittedConnector || head.waited <= PED_COURTESY || !heldOnlyByPedestrians(w, head)) continue;
     const lane = w.lanelet(laneId);
     if (!lane || lane.length - head.s > m(8)) continue;
     const conn = head.route[1] ? w.connector(head.route[1]) : undefined;
@@ -126,6 +126,23 @@ function turnOwedToVehicle(w: SimWorld, node: NonNullable<SidewalkEdge["node"]>,
 
 /** Seconds a car stands at a zebra giving way to people arriving at its kerb before it is its turn. */
 export const PED_COURTESY = 8;
+
+/**
+ * Whether the only thing keeping a car at its line is people at or on a zebra:
+ * admission refused it for them, last tick or this one, and for nothing else.
+ *
+ * A car's turn at a zebra is given only to a car that can take it. People at
+ * the kerb used to give way to any car that had stood at the line long
+ * enough, whatever held it there - a gap in the cross traffic, a full street
+ * beyond: the car could not go, the people would not, and the crowd at the
+ * corner grew while the queue behind the car did. SUMO's rule is the same: a
+ * pedestrian crosses unless an approaching vehicle would use the crossing in
+ * that time; a vehicle standing still is not approaching
+ * (sumo.dlr.de/docs/Simulation/Pedestrians.html).
+ */
+export function heldOnlyByPedestrians(w: SimWorld, v: Vehicle): boolean {
+  return v.heldByPedestriansTick !== undefined && w.clock.tick - v.heldByPedestriansTick <= 1;
+}
 
 /**
  * Gap acceptance against approaching traffic on the lanes being crossed.
@@ -158,7 +175,7 @@ export function pedGapAccepted(w: SimWorld, crossing: SidewalkEdge, waited: numb
       // kept stepping off in front of it goes next. On a busy pavement one
       // walker after another arrived and the car gave way to each - over a
       // minute at a bend. Whoever is on the zebra still goes first.
-      if (head.waited > PED_COURTESY) return false;
+      if (head.waited > PED_COURTESY && heldOnlyByPedestrians(w, head)) return false;
       continue;
     }
     const distance = lane.length - head.s;

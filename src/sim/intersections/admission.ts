@@ -216,6 +216,10 @@ function admit(w: SimWorld): void {
       // denials alternate between reasons, and a car that had crept up to the
       // line for one of them found the pedestrian hold a metre BEHIND it and
       // was cut to a standstill - then crept again (audit P1-47).
+      // Refused for people and nothing else: the people at the kerb may owe
+      // it its turn (`heldOnlyByPedestrians`). Refused for anything else, they
+      // owe it nothing - it could not take the turn.
+      if (verdict.reason === 'pedestrian') r.v.heldByPedestriansTick = w.clock.tick;
       const held = r.d - PED_CROSSING_STOP_BUFFER;
       const pedestrianGap = canStopComfortably(r.v.driver, r.v.v, held - r.v.driver.s0) ? held : r.d;
       r.v.constraints.obstacles.push({
