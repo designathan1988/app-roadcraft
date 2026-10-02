@@ -33,6 +33,22 @@ describe('furnishing', () => {
     }
   });
 
+  it('lays a house out as a home, a shop with its stockroom, a restaurant with its kitchen', () => {
+    const of = (fn: string): Building => {
+      const model = cityBuilding(fn)!;
+      return { ...instantiate(model.body, { x: 0, y: 0 }, 0, fn), id: asBuildingId(9), function: fn } as Building;
+    };
+    const kinds = (b: Building, level: number): string[] => interiorAt(b, level).furniture.map((f) => f.kind);
+    const house = of('house');
+    expect(kinds(house, 0)).toEqual(expect.arrayContaining(['sofa', 'tv', 'fridge', 'stove', 'table', 'chair']));
+    expect(kinds(house, 1).filter((k) => k === 'bed').length).toBe(2);
+    expect(kinds(house, 1)).toEqual(expect.arrayContaining(['bath', 'toilet', 'stairwell']));
+    expect(kinds(house, 0)).toContain('stairs');
+    expect(interiorAt(house, 0).partitions.length).toBeGreaterThan(0);
+    expect(kinds(of('shop'), 0)).toEqual(expect.arrayContaining(['counter', 'shelf']));
+    expect(kinds(of('restaurant'), 0)).toEqual(expect.arrayContaining(['counter', 'table', 'chair']));
+  });
+
   it('uses the arrangement the player made, and keeps it when saved', () => {
     const mine = furnishingOf(b, 2).filter((f) => f.kind !== 'tv');
     mine.push({ kind: 'floorLamp', x: 10, y: 10, angle: 0 });

@@ -279,6 +279,24 @@ function build(kind: FurnitureKind): BufferGeometry[] {
       return [rbox(W, 0.14, D, 0, 0, 0, hex(0xb08a5a), 0.01), rbox(W - 0.1, H - 0.18, D - 0.1, 0, 0.14, 0, hex(0xc9a777), 0.03)];
     // Lights: a shade lit warm from inside (the room's light is placed where
     // these are), on a ceiling rose, a pole or a small base.
+    case 'stairs': {
+      // Fourteen treads rising from the front (+z) to the back, a stringer
+      // and a handrail on posts.
+      const steps = 14;
+      const out: BufferGeometry[] = [];
+      for (let i = 0; i < steps; i++) {
+        const h = ((i + 1) / steps) * H;
+        out.push(rbox(W, h, D / steps + 0.004, 0, 0, D / 2 - (i + 0.5) * (D / steps), i % 2 ? OAK : hex(0xa67650), 0.008));
+      }
+      for (const t of [0.1, 0.5, 0.9]) out.push(rbox(0.04, 0.9, 0.04, W / 2 - 0.03, H * t, D / 2 - D * t, WALNUT, 0.01));
+      out.push(rbox(0.06, 0.05, D * 0.95, W / 2 - 0.03, H * 0.5 + 0.9, 0, WALNUT, 0.02));
+      return out;
+    }
+    case 'stairwell':
+      // The opening over the flight: a dark well and a guard rail on three sides.
+      return [rbox(W, 0.012, D, 0, 0, 0, hex(0x2a2622), 0.004),
+        rbox(0.05, H, D, -W / 2, 0, 0, WALNUT, 0.02), rbox(0.05, H, D, W / 2, 0, 0, WALNUT, 0.02),
+        rbox(W, H, 0.05, 0, 0, D / 2, WALNUT, 0.02)];
     case 'ceilingLamp':
       return [cyl(0.05, 0.12, 0, H - 0.12, 0, STEEL, 0.05, 10), cyl(W / 2, 0.2, 0, 0.02, 0, SHADE, W / 2 * 0.55, 20), ball(0.08, 0, 0.05, 0, BULB)];
     case 'floorLamp':

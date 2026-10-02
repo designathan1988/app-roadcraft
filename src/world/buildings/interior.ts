@@ -2,6 +2,7 @@ import { pointInPolygon } from '@core/polygon';
 import type { Vec2 } from '@core/vec2';
 import { m } from '../units';
 import { localFootprint } from './footprints';
+import { baysOn } from './geometry';
 import { deriveSpaces, flatPlan } from './spaces';
 import { type Building, type BuildingFunction, type Volume, volumeTop, type PlacedFurniture } from './types';
 
@@ -23,7 +24,7 @@ export const FURNITURE_KINDS = [
   'bed', 'singleBed', 'sofa', 'armchair', 'table', 'chair', 'desk', 'officeChair', 'shelf', 'bookshelf', 'counter',
   'fridge', 'stove', 'sink', 'toilet', 'bath', 'wardrobe', 'tv', 'plant', 'pew', 'seat', 'wardBed', 'bars', 'screen',
   'altar', 'machine', 'rack', 'locker', 'atm', 'stage', 'barCounter', 'blackboard', 'checkout', 'treadmill', 'pallet',
-  'ceilingLamp', 'floorLamp', 'tableLamp',
+  'ceilingLamp', 'floorLamp', 'tableLamp', 'stairs', 'stairwell',
 ] as const;
 export type FurnitureKind = (typeof FURNITURE_KINDS)[number];
 
@@ -64,6 +65,8 @@ export const FURNITURE_SIZE: Readonly<Record<FurnitureKind, readonly [number, nu
   machine: [1.6, 1.1, 1.6], rack: [4, 1.1, 3.2], locker: [0.5, 0.5, 1.9], atm: [0.7, 0.6, 1.6], stage: [5, 3, 0.6],
   barCounter: [4, 0.7, 1.1], blackboard: [4, 0.1, 1.2], checkout: [1.8, 0.8, 0.95], treadmill: [0.8, 1.9, 1.3], pallet: [1.2, 1, 1.2],
   ceilingLamp: [0.6, 0.6, 0.35], floorLamp: [0.45, 0.45, 1.6], tableLamp: [0.35, 0.35, 0.55],
+  // A flight to the floor above (its foot at the front), and the opening it arrives through.
+  stairs: [1, 3.4, 2.9], stairwell: [1.15, 3.5, 1],
 };
 
 /** The pieces that give light: the room lights are where these are. */
@@ -236,10 +239,11 @@ function furnish(p: Plan, fn: BuildingFunction, level: number, b: Building): voi
   const yStart = p.y0 + front;
   switch (fn) {
     case 'house': case 'townhouse': case 'apartments': case 'residentialTower': case 'hotel':
-      // A block of flats is laid out as flats; a house, a hotel as before.
+      // A block of flats is laid out as flats, a house as a house, a hotel as rooms.
       if ((fn === 'apartments' || fn === 'residentialTower') && level > 0 && flatFloor(p, b)) break;
       if (fn === 'hotel' && level > 0 && roomsFloor(p, b, 1, hotelRoom)) break;
-      if (fn === 'hotel' || level > 0 || fn === 'house' || fn === 'townhouse') homeUnits(p, b, fn === 'hotel');
+      if (fn === 'house' || fn === 'townhouse') { houseFloor(p, b, level); break; }
+      if (fn === 'hotel' || level > 0) homeUnits(p, b, fn === 'hotel');
       else lobby(p);
       return;
     case 'office': case 'cityHall': case 'police': case 'courthouse': case 'postOffice':
@@ -292,12 +296,21 @@ function furnish(p: Plan, fn: BuildingFunction, level: number, b: Building): voi
       p.put('counter', p.x0 + m(3), p.y1 - m(2), Math.PI);
       p.grid('pew', p.x0 + m(4), yStart + m(1), p.x1 - m(1), p.y1 - m(4), m(4), m(1.6));
       return;
-    case 'shop': case 'pharmacy': case 'bakery': case 'gasStation':
-      p.put('counter', cx, p.y1 - m(2.5), Math.PI);
-      p.alongSide('shelf', 'left', yStart + m(1), p.y1 - m(4), m(2.2));
-      p.alongSide('shelf', 'right', yStart + m(1), p.y1 - m(4), m(2.2));
-      p.grid('shelf', p.x0 + m(2), yStart + m(1), p.x1 - m(2), p.y1 - m(5), m(3), m(2.4), RIGHT);
+    case 'shop': case 'pharmacy': case 'bakery': case 'gasStation': {
+      // Flats over the shop; on the street, the shop and its stockroom.
+      if (level > 0 && flatFloor(p, b)) return;
+      const back = backRoom(p, m(4));
+      p.put('counter', cx, back - m(1.3), Math.PI);
+      p.alongSide('shelf', 'left', yStart + m(1), back - m(1.5), m(2.2));
+      p.alongSide('shelf', 'right', yStart + m(1), back - m(1.5), m(2.2));
+      p.grid('shelf', p.x0 + m(2), yStart + m(1), p.x1 - m(2), back - m(2.6), m(3), m(2.4), RIGHT);
+      if (back < p.y1) {
+        for (let x = p.x0 + m(1); x <= p.x1 - m(2.6); x += m(2.6)) p.put('rack', x, p.y1 - m(0.9), face(0, -1));
+        p.put('desk', p.x1 - m(1.3), back + m(1.2), face(0, 1));
+        p.put('toilet', p.x1 - m(0.4), p.y1 - m(0.5), face(-1, 0));
+      }
       return;
+    }
     case 'supermarket':
       p.grid('checkout', p.x0 + m(1), p.y0 + m(3), p.x1 - m(1), p.y0 + m(5), m(3), m(2));
       p.grid('shelf', p.x0 + m(1), p.y0 + m(7), p.x1 - m(1), p.y1 - m(3), m(2.4), m(3.2), RIGHT);
@@ -313,16 +326,24 @@ function furnish(p: Plan, fn: BuildingFunction, level: number, b: Building): voi
       p.grid('seat', p.x0 + m(4), yStart + m(1), p.x1 - m(4), yStart + m(4), m(0.8), m(1.4), Math.PI);
       if (level > 0) p.grid('desk', p.x0 + m(0.5), p.y0 + m(0.5), p.x1 - m(0.5), p.y1 - m(0.5), m(2.4), m(2.6));
       return;
-    case 'restaurant': case 'snackBar':
-      p.put('counter', cx, p.y1 - m(2), Math.PI);
-      p.alongBack('stove', p.x0 + m(1), p.x0 + m(4), m(0.9));
-      dining(p, yStart, p.y1 - m(4));
+    case 'restaurant': case 'snackBar': {
+      if (level > 0 && flatFloor(p, b)) return;
+      // The dining room, the counter, and the kitchen behind its wall.
+      const back = backRoom(p, m(4.5));
+      p.put('counter', cx, back - m(1.2), Math.PI);
+      if (back < p.y1) kitchen(p, back);
+      dining(p, p.y0 + m(0.6), back - m(2.4));
       return;
-    case 'bar':
-      p.put('barCounter', cx, p.y1 - m(2), Math.PI);
-      p.grid('seat', cx - m(1.8), p.y1 - m(3.3), cx + m(1.8), p.y1 - m(2.8), m(0.9), m(0.5), Math.PI);
-      dining(p, yStart, p.y1 - m(5));
+    }
+    case 'bar': {
+      if (level > 0 && flatFloor(p, b)) return;
+      const back = backRoom(p, m(3.5));
+      p.put('barCounter', cx, back - m(1.4), Math.PI);
+      p.grid('seat', cx - m(1.8), back - m(2.7), cx + m(1.8), back - m(2.2), m(0.9), m(0.5), Math.PI);
+      if (back < p.y1) kitchen(p, back);
+      dining(p, p.y0 + m(0.6), back - m(3.4));
       return;
+    }
     case 'nightclub':
       p.put('stage', cx, p.y1 - m(2), Math.PI);
       p.put('barCounter', p.x0 + m(3), cx, -RIGHT);
@@ -555,6 +576,123 @@ function hotelRoom(r: RoomCell): void {
   }
 }
 
+/** The way a piece faces, as a direction in the floor's own axes (+y is the back). */
+const face = (dx: number, dy: number): number => Math.atan2(dx, -dy);
+
+/**
+ * A room across the back of the floor, `depth` deep, behind a wall with a
+ * door near its end: a stockroom, a kitchen. Returns where the wall stands
+ * (the floor's back, when the floor is too shallow for one).
+ */
+function backRoom(p: Plan, depth: number): number {
+  if (p.y1 - p.y0 < depth + m(6)) return p.y1;
+  const y = p.y1 - depth;
+  p.wallAcross(y, p.x0, p.x1, p.x1 - m(1.6));
+  return y;
+}
+
+/** A kitchen behind `wall`: cooking along the back, a prep table. */
+function kitchen(p: Plan, wall: number): void {
+  for (let x = p.x0 + m(0.8); x <= p.x1 - m(2.5); x += m(1)) {
+    const k = Math.round((x - p.x0) / m(1)) % 3;
+    p.put(k === 0 ? 'stove' : k === 1 ? 'sink' : 'fridge', x, p.y1 - m(0.45), face(0, -1));
+  }
+  p.put('table', (p.x0 + p.x1) / 2, (wall + p.y1) / 2 - m(0.3), 0, 0.8);
+}
+
+/**
+ * A floor of a house: walls on the bays' boundaries, so no wall cuts a
+ * window. Downstairs the living room at the front (the sofa facing the TV
+ * across it), the kitchen and the table behind; upstairs two bedrooms over
+ * the front and a bathroom behind. A one-storey house has it all on one
+ * floor; a garage holds its shelves; a small wing is a study.
+ */
+function houseFloor(p: Plan, b: Building, level: number): void {
+  const v = p.v;
+  const bays = Object.values(v.storeys[level - v.base]?.facade.bays ?? {});
+  if (bays.includes('garageDoor')) {
+    p.put('rack', p.x0 + m(0.5), (p.y0 + p.y1) / 2, face(1, 0));
+    p.put('shelf', (p.x0 + p.x1) / 2, p.y1 - m(0.35), face(0, -1));
+    return;
+  }
+  const W = p.x1 - p.x0, D = p.y1 - p.y0;
+  if (W < m(5) || D < m(5)) {
+    p.put('desk', (p.x0 + p.x1) / 2, p.y1 - m(0.6), face(0, -1));
+    p.put('officeChair', (p.x0 + p.x1) / 2, p.y1 - m(1.4), face(0, 1));
+    p.put('bookshelf', p.x0 + m(0.3), (p.y0 + p.y1) / 2, face(1, 0));
+    return;
+  }
+  // The middle wall stands on a boundary between two front windows.
+  const n = Math.max(1, baysOn(b, v, 0));
+  const bay = v.w / n;
+  const mid = Math.min(p.x1 - m(2.5), Math.max(p.x0 + m(2.5), v.x + Math.max(1, Math.round(n / 2)) * bay));
+  const single = v.storeys.length === 1;
+  const top = level === v.base + v.storeys.length - 1;
+  // The stairs: along the back wall of the right-hand side, the foot towards
+  // the middle; the same place on every floor, the opening over it above.
+  const stairs0 = p.x1 - m(3.7);
+  const stairX = p.x1 - m(1.85), stairY = p.y1 - m(0.6);
+  const stairs = (): void => {
+    if (!single) p.put(top ? 'stairwell' : 'stairs', stairX, stairY, face(-1, 0));
+  };
+  if (level === v.base) {
+    const split = p.y0 + D * 0.5;
+    p.wallAcross(split, p.x0, p.x1, mid);
+    // Living room: the TV on a side wall, the sofa across from it.
+    const ly = (p.y0 + split) / 2;
+    p.put('tv', p.x0 + m(0.3), ly, face(1, 0));
+    p.put('sofa', Math.min(p.x1 - m(0.8), p.x0 + m(3.6)), ly, face(-1, 0));
+    p.put('armchair', Math.min(p.x1 - m(0.8), p.x0 + m(2.2)), p.y0 + m(0.8), face(0, 1));
+    p.put('plant', p.x1 - m(0.5), p.y0 + m(0.5), 0);
+    p.put('bookshelf', p.x1 - m(0.3), ly + m(0.6), face(-1, 0));
+    stairs();
+    // Kitchen along the back, the table in the middle of it.
+    const kx1 = single ? mid - m(0.3) : Math.min(mid, stairs0) - m(0.2);
+    for (const [kind, x] of [['fridge', p.x0 + m(0.5)], ['stove', p.x0 + m(1.4)], ['sink', p.x0 + m(2.4)]] as const) {
+      if (x < kx1 - m(0.4)) p.put(kind, x, p.y1 - m(0.45), face(0, -1));
+    }
+    const tx = (p.x0 + kx1) / 2, ty = (split + p.y1) / 2 - m(0.4);
+    p.put('table', tx, ty, 0);
+    for (const dx of [-0.6, 0.6]) for (const dy of [-0.9, 0.9]) p.put('chair', tx + m(dx), ty + m(dy), face(0, dy > 0 ? -1 : 1));
+    if (single) {
+      // A one-storey house: the bedroom and the bathroom at the back.
+      p.wallAlong(mid, split, p.y1, split + m(0.8));
+      const bathY = p.y1 - m(2.2);
+      p.wallAcross(bathY, mid, p.x1, mid + m(0.9));
+      p.put('bed', p.x1 - m(1.15), (split + bathY) / 2, face(-1, 0));
+      p.put('wardrobe', mid + m(0.4), (split + bathY) / 2 + m(0.6), face(1, 0));
+      p.put('bath', p.x1 - m(0.5), p.y1 - m(1), face(0, -1));
+      p.put('toilet', mid + m(0.5), p.y1 - m(0.45), face(0, -1));
+    }
+    return;
+  }
+  // Upstairs: two bedrooms at the front, each with its door on the landing
+  // across the middle; behind it the bathroom (its door on the landing too)
+  // and the stairs.
+  const split = p.y0 + D * 0.5;
+  const hall = split + m(1.2);
+  const DOOR = m(0.5);
+  const doors = [mid - m(1), mid + m(1)];
+  let from = p.x0;
+  for (const d of doors) {
+    p.wall(from, split, d - DOOR, split);
+    from = d + DOOR;
+  }
+  p.wall(from, split, p.x1, split);
+  p.wall(mid, p.y0, mid, split);
+  p.wallAcross(hall, p.x0, stairs0, stairs0 - m(1));
+  p.wall(stairs0, hall, stairs0, p.y1);
+  const by = (p.y0 + split) / 2;
+  p.put('bed', p.x0 + m(1.15), by, face(1, 0));
+  p.put('wardrobe', mid - m(0.4), p.y0 + m(1), face(-1, 0));
+  p.put('bed', p.x1 - m(1.15), by, face(-1, 0));
+  p.put('desk', mid + m(1), p.y0 + m(0.45), face(0, -1));
+  p.put('bath', p.x0 + m(0.5), p.y1 - m(1), face(0, -1));
+  p.put('toilet', stairs0 - m(0.5), p.y1 - m(0.45), face(0, -1));
+  p.put('sink', (p.x0 + stairs0) / 2 + m(0.3), hall + m(0.4), face(0, 1));
+  stairs();
+}
+
 function homeUnits(p: Plan, b: Building, hotel: boolean): void {
   const floor = deriveSpaces(b).find((s) => s.volume === p.v.id && s.level === p.level);
   const units = floor?.spaces.length ? floor.spaces : [{ x: p.v.x, y: p.v.y, w: p.v.w, d: p.v.d }];
@@ -634,8 +772,8 @@ function dining(p: Plan, from: number, to: number): void {
   for (let y = from + m(1); y <= to - m(1); y += m(2.6)) {
     for (let x = p.x0 + m(1.4); x <= p.x1 - m(1.4); x += m(2.8)) {
       if (!p.put('table', x, y, 0, 0.6)) continue;
-      p.put('chair', x - m(0.75), y, RIGHT);
-      p.put('chair', x + m(0.75), y, -RIGHT);
+      p.put('chair', x - m(0.9), y, RIGHT);
+      p.put('chair', x + m(0.9), y, -RIGHT);
     }
   }
 }
