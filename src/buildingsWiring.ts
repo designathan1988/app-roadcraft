@@ -13,7 +13,7 @@ import { BuildingTool, type ToolHost, type ToolView } from '@editor/buildingTool
 import type { PlanShape } from '@editor/buildingPlans';
 import { BlueprintLibrary } from '@editor/blueprintLibrary';
 import type { History } from '@editor/history';
-import { BUILDER_CATALOG, DRAW_SHAPES, OPENING_COMPONENTS, categorySpec, type BuilderCategoryId, type BuilderField } from '@ui/builder/catalog';
+import { BUILDER_CATALOG, DRAW_SHAPES, OPENING_COMPONENTS, type BuilderCategoryId, type BuilderField } from '@ui/builder/catalog';
 import type { Viewport } from '@view/viewport';
 import type { SceneHandle } from '@render/renderer';
 import { drawBuildingOverlay } from '@ui/overlay/buildingOverlay';
@@ -301,6 +301,27 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     }
   }
 
+  /** Puts down whatever is in hand: the pointer selects again. */
+  function backToSelect(): void {
+    clearArming(null);
+    tool.armModelTool('select');
+    toolId = 'select';
+  }
+
+  /** Tools that make something; once it is made, the pointer selects again. */
+  const CREATES = new Set(['sketch', 'place', 'wing', 'stack', 'cut', 'moveMass', ...Object.keys(DRAW_SHAPES)]);
+
+  /**
+   * After a gesture: if a creating tool just made what it makes, it is put
+   * down. Left in hand, the free plan started a second plan when the player
+   * reached for the new building's floor arrow.
+   */
+  function afterGesture(revision: number): void {
+    if (doc.buildings.revision === revision || !CREATES.has(toolId) || tool.planPoints) return;
+    backToSelect();
+    host.changed();
+  }
+
   function defaultSplitFloor(): number {
     const building = tool.selected();
     const volume = building && tool.selection ? volumeById(building, tool.selection.volume) : undefined;
@@ -335,13 +356,11 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     redo: () => deps.redo(),
     setCategory: (id) => {
       category = id;
-      // A category is a shelf, not a button: opening it arms its first MODE
-      // tool, and never runs an action the player did not ask for (switching
-      // to Mass used to add a floor).
-      const spec = categorySpec(id);
-      const first = spec.tools.find((tool) => tool.kind === 'mode');
-      if (first) runTool(first.id);
-      else if (spec.tools[0]) toolId = spec.tools[0].id;
+      // A category is a shelf, not a button: opening it arms nothing. It used
+      // to arm its first tool - the free plan for Create - so the next click
+      // on a house started a plan instead of selecting it. The pointer selects
+      // until a tool is taken up.
+      backToSelect();
       host.changed();
     },
     chooseTool: (id) => {
@@ -427,13 +446,15 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     choosePreset: (key) => {
       // A model in hand is placed by the next click; the plan pencil, if it
       // was the tool, is put down - with it, that click began a plan instead.
-      if (toolId === 'sketch') toolId = 'place';
+      clearArming(null);
+      toolId = 'place';
       tool.chooseBlueprint(key);
       host.changed();
     },
     chooseUserBlueprint(key) {
       const blueprint = userBlueprints.find((item) => item.key === key);
-      if (toolId === 'sketch') toolId = 'place';
+      clearArming(null);
+      toolId = 'place';
       if (blueprint) tool.useBody(blueprint.body, key);
       host.changed();
     },
@@ -482,7 +503,9 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       host.changed();
     },
     planFinish: () => {
+      const revision = doc.buildings.revision;
       tool.finishPlan();
+      afterGesture(revision);
       host.changed();
     },
     planBack: () => {
@@ -800,17 +823,21 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         dirty = true;
         return;
       }
-      if (tool.shapeDragStart) {
-        tool.endShapeDrag(cancelled);
-        dirty = true;
-        return;
-      }
-      tool.pointerUp(cancelled);
+      const revision = doc.buildings.revision;
+      if (tool.shapeDragStart) tool.endShapeDrag(cancelled);
+      else tool.pointerUp(cancelled);
+      afterGesture(revision);
       dirty = true;
     },
     cancelOperation() {
       const used = tool.cancelOperation();
       if (used) dirty = true;
+      // Nothing to cancel but a tool in hand: the right button puts it down.
+      if (toolId !== 'select' && !tool.planPoints) {
+        backToSelect();
+        host.changed();
+        return true;
+      }
       return used;
     },
     key(e) {
@@ -819,12 +846,21 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
         notify('building.copied');
         return true;
       }
+      const revision = doc.buildings.revision;
       const used = tool.key(e.key, ctrl, e.shiftKey);
-      if (used) dirty = true;
+      if (used) {
+        afterGesture(revision);
+        // Escape with nothing left to put down: the pointer selects.
+        if (e.key === 'Escape' && toolId !== 'select' && !tool.planPoints) backToSelect();
+        dirty = true;
+      }
       return used;
     },
     activate() {
       dirty = true;
+      // The pointer selects on arrival: the tool used to wake up holding the
+      // first model, whose ghost then followed every other tool around.
+      if (toolId === 'select' && !tool.planPoints) tool.armModelTool('select');
       // Nothing in hand: open on the models, the shapes a tab away.
       if (!tool.selected() && !tool.planPoints) workspace.showGallery('draw', 'models');
       refresh();

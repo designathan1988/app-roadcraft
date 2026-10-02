@@ -212,6 +212,7 @@ const GLYPH: Readonly<Record<Handle['kind'], string>> = {
   side: '',
   move: '✥',
   rotate: '⟳',
+  scale: '',
   relief: '',
 };
 
@@ -243,6 +244,29 @@ function drawHandle(ctx: CanvasRenderingContext2D, h: Handle, project: (x: numbe
       ctx.moveTo(p.x + ux * 6 * sign, p.y + uy * 6 * sign);
       ctx.lineTo(p.x + (ux * 1 - uy * 4) * sign, p.y + (uy * 1 + ux * 4) * sign);
       ctx.lineTo(p.x + (ux * 1 + uy * 4) * sign, p.y + (uy * 1 - ux * 4) * sign);
+      ctx.closePath();
+      ctx.fill();
+    }
+    return;
+  }
+  if (h.kind === 'scale') {
+    // A diagonal double arrow, out from the plan's centre and back.
+    const q = project(h.x + h.dx * 4, h.y + h.dy * 4, h.z);
+    const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const ux = (q.x - p.x) / len;
+    const uy = (q.y - p.y) / len;
+    ctx.strokeStyle = SELECTION;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(p.x - ux * 5, p.y - uy * 5);
+    ctx.lineTo(p.x + ux * 5, p.y + uy * 5);
+    ctx.stroke();
+    ctx.fillStyle = SELECTION;
+    for (const sign of [1, -1]) {
+      ctx.beginPath();
+      ctx.moveTo(p.x + ux * 6.5 * sign, p.y + uy * 6.5 * sign);
+      ctx.lineTo(p.x + (ux * 2 - uy * 3.5) * sign, p.y + (uy * 2 + ux * 3.5) * sign);
+      ctx.lineTo(p.x + (ux * 2 + uy * 3.5) * sign, p.y + (uy * 2 - ux * 3.5) * sign);
       ctx.closePath();
       ctx.fill();
     }

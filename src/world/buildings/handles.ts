@@ -9,6 +9,7 @@ import {
   reliefAt,
   roofRise,
   sideStart,
+  topLevel,
   volumeHeight,
 } from './geometry';
 import { type Building, type FaceId, volumeById } from './types';
@@ -19,7 +20,7 @@ import { type Building, type FaceId, volumeById } from './types';
  * Pure geometry, shared by the tool (which hit-tests them) and the overlay
  * (which draws them), so the two can never disagree about where a handle is.
  */
-export type HandleKind = 'storeys' | 'side' | 'move' | 'rotate' | 'relief' | 'vertex';
+export type HandleKind = 'storeys' | 'side' | 'move' | 'rotate' | 'scale' | 'relief' | 'vertex';
 
 /** A rectangle of bays and storeys of one face (see `editor/buildings.ts`, `FaceRegion`). */
 export interface HandleRegion {
@@ -44,7 +45,12 @@ export interface Handle {
 }
 
 const HANDLE_OUT = m(1.6);
-const CORNER_OUT = m(3.2);
+/**
+ * How far the move, turn and scale handles stand off the footprint's corner.
+ * At 3.2 m they floated so far out that the move handle sat under the status
+ * bar and the turn ring beside the next building.
+ */
+const CORNER_OUT = m(1.4);
 
 /**
  * `nearest` orders the four footprint corners (front-left, front-right,
@@ -97,6 +103,20 @@ export function buildingHandles(
   const turn = corners[order[1] ?? 1] as { x: number; y: number };
   out.push({ kind: 'move', x: move.x, y: move.y, z: floor, dx: 0, dy: 0 });
   out.push({ kind: 'rotate', x: turn.x, y: turn.y, z: floor, dx: 0, dy: 0 });
+  // Scale: the nearest corner, at the eaves - the corner of the box one pulls
+  // to make the whole plan bigger or smaller.
+  const eaves = floor + levelElevation(b, topLevel(b));
+  const box = [
+    localToWorld(b, f.x0, f.y0), localToWorld(b, f.x1, f.y0), localToWorld(b, f.x1, f.y1), localToWorld(b, f.x0, f.y1),
+  ];
+  const corner = box[order[0] ?? 0] as { x: number; y: number };
+  const centre = localToWorld(b, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
+  const out2 = { x: corner.x - centre.x, y: corner.y - centre.y };
+  const len = Math.hypot(out2.x, out2.y) || 1;
+  out.push({
+    kind: 'scale', x: corner.x + (out2.x / len) * m(0.8), y: corner.y + (out2.y / len) * m(0.8), z: eaves,
+    dx: out2.x / len, dy: out2.y / len,
+  });
   if (region) {
     // Push-pull: an arrow standing off the middle of the picked region, at the
     // depth the region is pushed to now.

@@ -1,6 +1,8 @@
 import { paletteOf, roofMaterial } from '@world/buildings/materials';
 import type { Vec2 } from '@core/vec2';
-import { edgeFrame, localFootprint, offsetRing, supportedBy, overlapArea, roofDetailRing } from '@world/buildings/footprints';
+import clipping from 'polygon-clipping';
+import { signedArea } from '@core/polygon';
+import { asPolygon, edgeFrame, localFootprint, offsetRing, supportedBy, overlapArea, roofDetailRing, roofPartFits } from '@world/buildings/footprints';
 import { setVolumePlan } from './buildingPlans';
 
 import { clamp } from '@core/scalar';
@@ -13,7 +15,7 @@ import {
   storeyUse,
   upperStoreyFrom,
 } from '@world/buildings/blueprints';
-import { MAX_ELEMENT, MIN_ELEMENT, elementClash, elementRing, onGround, runFor, takeElementId } from '@world/buildings/elements';
+import { MAX_ELEMENT, MIN_ELEMENT, elementClash, elementRing, groundElements, onGround, runFor, takeElementId } from '@world/buildings/elements';
 import {
   GRID,
   MIN_SIZE,
@@ -23,6 +25,7 @@ import {
   footprintBox,
   footprintCentre,
   footprintRects,
+  groundProjections,
   isSupported,
   localDirToWorld,
   localToWorld,
@@ -458,6 +461,36 @@ export function opRotate(b: Building, angle: number, pivot?: Vec2): boolean {
   return true;
 }
 
+/**
+ * Scales the whole plan by `factor` about its centre: every mass, the free
+ * parts and the roof equipment move with it; heights stay (storeys are
+ * storeys). The facades keep their rhythm - bays are re-counted on the new
+ * lengths.
+ */
+export function opScalePlan(b: Building, factor: number): boolean {
+  if (!(factor > 0) || Math.abs(factor - 1) < 1e-6) return false;
+  const f = footprintBox(b);
+  const cx = (f.x0 + f.x1) / 2;
+  const cy = (f.y0 + f.y1) / 2;
+  for (const v of b.volumes) {
+    v.x = cx + (v.x - cx) * factor;
+    v.y = cy + (v.y - cy) * factor;
+    v.w *= factor;
+    v.d *= factor;
+    if (v.w < MIN_SIZE || v.d < MIN_SIZE || v.w > MAX_SIZE || v.d > MAX_SIZE) return false;
+    for (const part of v.roofDetails ?? []) {
+      part.x = cx + (part.x - cx) * factor;
+      part.y = cy + (part.y - cy) * factor;
+    }
+    delete v.reliefs;
+  }
+  for (const e of b.elements ?? []) {
+    e.x = cx + (e.x - cx) * factor;
+    e.y = cy + (e.y - cy) * factor;
+  }
+  return true;
+}
+
 export const normaliseAngle = (a: number): number => {
   const tau = Math.PI * 2;
   let r = a % tau;
@@ -628,8 +661,10 @@ export function groupInto(ctx: BuildingContext, targetId: BuildingId, sourceId: 
         (Math.abs(p.x - minX) < 1e-6 || Math.abs(p.x - maxX) < 1e-6) &&
         (Math.abs(p.y - minY) < 1e-6 || Math.abs(p.y - maxY) < 1e-6),
       );
+    // An outline is stored normalized to its bounds (0..1). Stored in local
+    // units it failed validation, and grouping never worked.
     if (plain) delete volume.outline;
-    else volume.outline = ring.map((p) => ({ x: p.x - minX, y: p.y - minY }));
+    else if (!setVolumePlan(volume, ring)) return { ok: false, problem: 'outline' };
     draft.volumes.push(volume);
   }
   for (const el of source.elements ?? []) {
@@ -798,23 +833,21 @@ export function opSubtractRect(b: Building, volumeId: number, cut: { x: number; 
  */
 export function weldInto(ctx: BuildingContext, draft: Building, skip: readonly BuildingId[] = []): BuildingId[] {
   const absorbed: BuildingId[] = [];
+  const fresh = new Set(draft.volumes.map((v) => v.id));
   const mine = buildingBounds(draft, 0.5);
   for (const other of [...ctx.doc.buildings.all()]) {
     if (other.id === draft.id || skip.includes(other.id)) continue;
     const box = buildingBounds(other, 0.5);
     if (box.maxX < mine.minX || box.minX > mine.maxX || box.maxY < mine.minY || box.minY > mine.maxY) continue;
     // Does anything actually touch or overlap? A shared edge counts.
-    let touches = false;
-    for (const rect of footprintRects(draft, 0.02)) {
-      for (const otherRect of footprintRects(other, 0.02)) {
-        const a = polygonBounds(rect);
-        const b = polygonBounds(otherRect);
-        if (a.maxX < b.minX || b.maxX < a.minX || a.maxY < b.minY || b.maxY < a.minY) continue;
-        touches = true;
-        break;
-      }
-      if (touches) break;
-    }
+    // Measured on the real outlines, a hair grown: bounding boxes of turned or
+    // shaped masses touched buildings standing metres away.
+    // Everything that stands on the ground counts, free parts too: the same
+    // shapes the validator compares, so a weld is tried exactly where the
+    // validator would otherwise refuse.
+    const mineRings = [...footprintRects(draft, 0.05), ...groundProjections(draft, 0.05), ...groundElements(draft, 0.05)];
+    const otherRings = [...footprintRects(other), ...groundProjections(other), ...groundElements(other)];
+    const touches = mineRings.some((a) => otherRings.some((c) => overlapArea(a, c) > 1e-6));
     if (!touches) continue;
     for (const v of other.volumes) {
       const ring = localFootprint(v).map((p) => worldToLocal(draft, localToWorld(other, p.x, p.y)));
@@ -832,9 +865,16 @@ export function weldInto(ctx: BuildingContext, draft: Building, skip: readonly B
         wall: v.materials?.wall ?? other.materials?.wall ?? paletteOf(other).wall,
         roof: roofMaterial(other, v),
       };
-      const plain = ring.length === 4;
-      if (plain) delete volume.outline;
-      else volume.outline = ring.map((p) => ({ x: p.x - volume.x, y: p.y - volume.y }));
+      // A box that stays square to this building's frame is a plain volume;
+      // anything else keeps its exact shape as an outline, normalized to its
+      // bounds. Stored in local units (and every four-cornered ring taken for
+      // a box, turned or not) it failed validation: the weld always refused.
+      const b0 = polygonBounds(ring);
+      const square = ring.length === 4 && ring.every((p) =>
+        (Math.abs(p.x - b0.minX) < 1e-6 || Math.abs(p.x - b0.maxX) < 1e-6) &&
+        (Math.abs(p.y - b0.minY) < 1e-6 || Math.abs(p.y - b0.maxY) < 1e-6));
+      if (square) delete volume.outline;
+      else if (!setVolumePlan(volume, ring)) delete volume.outline;
       draft.volumes.push(volume);
     }
     for (const el of other.elements ?? []) {
@@ -844,8 +884,31 @@ export function weldInto(ctx: BuildingContext, draft: Building, skip: readonly B
     }
     absorbed.push(other.id);
   }
-  if (absorbed.length > 0) fuseVolumes(draft);
+  if (absorbed.length > 0) {
+    cutOverlaps(draft, fresh);
+    fuseFlush(draft);
+  }
   return absorbed;
+}
+
+/**
+ * The part of `ring` inside `within` (local units), as one simple ring - the
+ * largest piece when the two meet in several. A mass stacked on a roof is
+ * kept on the roof this way, so a rectangle drawn a little past the eaves
+ * still stands instead of turning red for want of support.
+ */
+export function clipRing(ring: readonly Vec2[], within: readonly Vec2[]): Vec2[] | null {
+  const pieces = clipping.intersection(asPolygon(ring), asPolygon(within)).flatMap((p) => simplePieces(p));
+  let best: Vec2[] | null = null;
+  for (const p of pieces) if (!best || Math.abs(signedArea(p)) > Math.abs(signedArea(best))) best = p;
+  return best && Math.abs(signedArea(best)) > MIN_SIZE * MIN_SIZE ? best : null;
+}
+
+/** Flush neighbours that make one rectangle and look alike become one mass. */
+export function fuseFlush(b: Building): void {
+  for (let guard = 0; guard < 24; guard++) {
+    if (!b.volumes.some((v) => opUnionVolumes(b, v.id, true))) break;
+  }
 }
 
 function polygonBounds(ring: readonly Vec2[]): { minX: number; minY: number; maxX: number; maxY: number } {
@@ -860,6 +923,106 @@ function polygonBounds(ring: readonly Vec2[]): { minX: number; minY: number; max
     maxY = Math.max(maxY, p.y);
   }
   return { minX, minY, maxX, maxY };
+}
+
+const levelsWithin = (inner: Volume, outer: Volume): boolean =>
+  inner.base >= outer.base && inner.base + inner.storeys.length <= outer.base + outer.storeys.length;
+
+/**
+ * The pieces of a plan polygon (one outer ring, maybe holes) as simple rings
+ * without holes: a ring with a hole is split in two through the hole, which
+ * a volume can carry (a volume is one simple outline).
+ */
+function simplePieces(poly: clipping.Polygon, depth = 0): Vec2[][] {
+  const outer = poly[0];
+  if (!outer) return [];
+  if (poly.length === 1 || depth > 3) {
+    const ring = outer.slice(0, -1).map(([x, y]) => ({ x, y }));
+    return [signedArea(ring) < 0 ? ring.reverse() : ring];
+  }
+  const hole = poly[1]!;
+  const xs = hole.map(([x]) => x);
+  const cut = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const ys = outer.map(([, y]) => y);
+  const allX = outer.map(([x]) => x);
+  const y0 = Math.min(...ys) - 1, y1 = Math.max(...ys) + 1;
+  const left: clipping.Polygon = [[[Math.min(...allX) - 1, y0], [cut, y0], [cut, y1], [Math.min(...allX) - 1, y1], [Math.min(...allX) - 1, y0]]];
+  const right: clipping.Polygon = [[[cut, y0], [Math.max(...allX) + 1, y0], [Math.max(...allX) + 1, y1], [cut, y1], [cut, y0]]];
+  return [...clipping.intersection(poly, left), ...clipping.intersection(poly, right)].flatMap((p) => simplePieces(p, depth + 1));
+}
+
+/** A volume shaped as `ring` (local units), carrying `template`'s storeys, roof and look. */
+function volumeFromRing(b: Building, template: Volume, ring: readonly Vec2[]): Volume | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of ring) {
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+  }
+  const w = maxX - minX, d = maxY - minY;
+  if (w < MIN_SIZE || d < MIN_SIZE || Math.abs(signedArea(ring)) < MIN_SIZE * MIN_SIZE || ring.length > 64) return null;
+  const volume = JSON.parse(JSON.stringify(template)) as Volume;
+  volume.id = b.nextVolumeId++;
+  volume.x = minX; volume.y = minY; volume.w = w; volume.d = d;
+  delete volume.reliefs;
+  delete volume.facadeGeometry;
+  const box = ring.length === 4 && ring.every((p) =>
+    (Math.abs(p.x - minX) < 1e-6 || Math.abs(p.x - maxX) < 1e-6) && (Math.abs(p.y - minY) < 1e-6 || Math.abs(p.y - maxY) < 1e-6));
+  if (box) delete volume.outline;
+  else if (!setVolumePlan(volume, ring)) return null;
+  if (volume.roofDetails) volume.roofDetails = volume.roofDetails.filter((part) => roofPartFits(volume, part));
+  return volume;
+}
+
+/**
+ * Makes a building's masses stop standing in the same space, keeping the old
+ * ones whole: wherever a NEW mass (`fresh`) shares floor area and levels with
+ * another, the shared part is cut out of the new one - a wing drawn over the
+ * house becomes the part of it that sticks out, and the two read as one
+ * building. When the new mass is the taller of the two and the old one fits
+ * inside its levels, the old one gives way instead (a tower placed over a
+ * shed). Works on any outline, by polygon difference.
+ *
+ * Returns the ids that are fresh after the cut (a cut mass may come out in
+ * pieces). Refusing the drop with "two volumes would overlap" was the old
+ * answer, and it left the player with a green ghost that would not build.
+ */
+export function cutOverlaps(b: Building, fresh: ReadonlySet<number>): Set<number> {
+  const live = new Set(fresh);
+  for (let guard = 0; guard < 48; guard++) {
+    let pair: [Volume, Volume] | null = null;
+    for (const n of b.volumes) {
+      if (!live.has(n.id)) continue;
+      for (const o of b.volumes) {
+        if (o.id === n.id || live.has(o.id)) continue;
+        if (!(n.base < o.base + o.storeys.length && o.base < n.base + n.storeys.length)) continue;
+        if (overlapArea(localFootprint(n), localFootprint(o)) < MIN_SIZE * MIN_SIZE * 0.05) continue;
+        pair = [n, o];
+        break;
+      }
+      if (pair) break;
+    }
+    if (!pair) break;
+    const [n, o] = pair;
+    // The one that gives way: the new mass, unless the old one sits inside
+    // its levels and does not carry anything.
+    const carries = (v: Volume): boolean => b.volumes.some((x) => x.base === v.base + v.storeys.length && planOverlap(x, v));
+    const doomed = !levelsWithin(n, o) && levelsWithin(o, n) && !carries(o) && o.base === n.base ? o : n;
+    const keeper = doomed === n ? o : n;
+    const rest = clipping.difference(asPolygon(localFootprint(doomed)), asPolygon(localFootprint(keeper)));
+    const made: Volume[] = [];
+    for (const poly of rest) {
+      for (const ring of simplePieces(poly)) {
+        const v = volumeFromRing(b, doomed, ring);
+        if (v) made.push(v);
+      }
+    }
+    b.volumes = b.volumes.filter((v) => v.id !== doomed.id).concat(made);
+    if (live.has(doomed.id)) {
+      live.delete(doomed.id);
+      for (const v of made) live.add(v.id);
+    }
+  }
+  return live;
 }
 
 /** Makes the masses of one building disjoint, then fuses what makes a block. */

@@ -50,6 +50,7 @@ import {
   opAddWing,
   opResize,
   opRotate,
+  opScalePlan,
   opSetComponent,
   opAddElement,
   opMirror,
@@ -69,7 +70,7 @@ import {
   replaceBuilding,
 } from './buildings';
 import { footprintSize, snapPlacement } from './buildingSnap';
-import { groupInto, opFuseElement, opMoveVolume, weldInto } from './buildings';
+import { clipRing, cutOverlaps, fuseFlush, groupInto, opFuseElement, opMoveVolume, weldInto } from './buildings';
 import { type PlanShape, type UpperMassPlacement, shapeBody, shapePoints, setVolumePlan, movePlanEdge, movePlanVertex, changePlanVertex, addPlanMass, addShapedUpperMass, cutPlanMass, offsetPlan } from './buildingPlans';
 import { applyFacadePattern, updateFacadeGeometry, type FacadeTarget } from './buildingFacade';
 import { addRoofDetail, removeRoofDetail, updateRoofDetail } from './buildingRoofs';
@@ -164,6 +165,7 @@ type Drag =
   | { kind: 'move'; origin: Building; start: Vec2; z: number }
   | { kind: 'massMove'; origin: Building; volume: number; start: Vec2; z: number }
   | { kind: 'rotate'; origin: Building; centre: Vec2; z: number; startAngle: number }
+  | { kind: 'scale'; origin: Building; centre: Vec2; z: number; startDist: number; width: number }
   | { kind: 'relief'; origin: Building; volume: number; region: FaceRegion; start: Vec2; z: number; dir: Vec2; depth: number }
   | { kind: 'click'; hit: BuildingHit | null; start: Vec2; moved: boolean; shift: boolean; at: number };
 
@@ -269,16 +271,21 @@ export class BuildingTool {
         .sort((a, b) => b.y - a.y)
         .map((c) => c.i);
     const region = this.faceRegion();
-    const all = buildingHandles(shown, this.selection.volume, floor, nearest,
-      this.activeModelTool === 'extrude' ? region : null);
+    const all = buildingHandles(shown, this.selection.volume, floor, nearest, region);
     const volume = volumeById(shown, this.selection.volume);
     const detailed = (volume?.outline?.length ?? 4) <= 12;
     const selectedSide = this.selection.bay?.side;
+    // A building picked: its arrows, its corners, move, turn, scale. A face
+    // picked (the second click): the push-pull arrow on it, and nothing that
+    // would compete with it. The corner dots only on a plan with more than
+    // four corners - on a box they sat on top of the scale and move handles.
+    const corners = volume?.outline?.length ?? 4;
     return all.filter((h) => h.kind === 'move' || h.kind === 'rotate' || h.kind === 'storeys' ||
-      (!region && h.kind === 'side' && ((volume?.outline?.length ?? 4) <= 8 || this.selection?.bay?.side === h.side)) ||
-      (!region && h.kind === 'vertex' &&
+      (!region && h.kind === 'scale') ||
+      (!region && h.kind === 'side' && (corners <= 8 || this.selection?.bay?.side === h.side)) ||
+      (!region && corners > 4 && h.kind === 'vertex' &&
         (detailed || (h.vertex ?? 0) % 3 === 0 || h.vertex === this.selection?.vertex || h.vertex === selectedSide || h.vertex === (selectedSide ?? -2) + 1)) ||
-      (this.activeModelTool === 'extrude' && h.kind === 'relief'));
+      (region !== null && h.kind === 'relief'));
   }
 
   /** The tool is put away: no ghost, no gesture, no hover. The selection stays. */
@@ -399,6 +406,13 @@ export class BuildingTool {
   beginShapeDrag(shape: PlanShape, at: Vec2, action: PlanAction = 'new', screen: Vec2 | null = this.lastScreen): void {
     this.shapeDragShape = shape;
     this.shapeDragZ = this.view.groundAt(at.x, at.y);
+    // A mass stacked on a roof is drawn on the roof: read on the ground, the
+    // rectangle landed behind the building and was always "without support".
+    const b = this.selected();
+    const source = b && this.selection ? volumeById(b, this.selection.volume) : undefined;
+    if (action === 'top' && b && source) {
+      this.shapeDragZ = this.floorOf(b) + levelElevation(b, source.base + source.storeys.length);
+    }
     this.shapeDragStart = screen ? this.view.planeAt(screen, this.shapeDragZ) : at;
     at = this.shapeDragStart;
     if (screen) {
@@ -614,8 +628,18 @@ export class BuildingTool {
       } else {
         const source = volumeById(draft, s.volume);
         if (!source) return null;
-        const base = this.planAction === 'top' ? source.base + source.storeys.length : 0;
-        if (addPlanMass(draft, s.volume, points, base, this.planAction === 'top' ? 2 : 1) === null) return null;
+        const top = this.planAction === 'top';
+        const base = top ? source.base + source.storeys.length : 0;
+        // On a roof the mass is kept to the roof; on the ground it is as tall
+        // as the mass it grows from, so the two read as one building.
+        const ring = top ? clipRing(points, localFootprint(source)) : points;
+        if (!ring) return null;
+        const id = addPlanMass(draft, s.volume, ring, base, top ? 2 : source.storeys.length);
+        if (id === null) return null;
+        // Drawn over the building, the new mass keeps only what sticks out.
+        const fresh = cutOverlaps(draft, new Set([id]));
+        if (fresh.size === 0) return null;
+        fuseFlush(draft);
       }
       return draft;
     }
@@ -1498,6 +1522,17 @@ export class BuildingTool {
         this.drag = { kind: 'rotate', origin, centre, z: handle.z, startAngle: Math.atan2(p.y - centre.y, p.x - centre.x) };
         break;
       }
+      case 'scale': {
+        const f = footprintBox(origin);
+        const c = localDirToWorld(origin, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
+        const centre = { x: origin.x + c.x, y: origin.y + c.y };
+        const p = this.view.planeAt(screen, handle.z);
+        this.drag = {
+          kind: 'scale', origin, centre, z: handle.z,
+          startDist: Math.max(1e-3, Math.hypot(p.x - centre.x, p.y - centre.y)), width: f.x1 - f.x0,
+        };
+        break;
+      }
     }
   }
 
@@ -1514,9 +1549,11 @@ export class BuildingTool {
     if (!drag) {
       this.hoverHandle = this.mode === 'edit' ? this.handleAt(screen) : null;
       if (this.mode === 'place') {
-        this.hover = this.pick(screen);
-        if (this.hover) this.setPreview(null);
-        else if (!this.activeModelTool || this.activeModelTool === 'draw') this.hoverPlace(world);
+        // A model in hand follows the pointer everywhere, over a building
+        // too: that is how a block is set against a house to join it. It used
+        // to vanish there, and the click selected the house instead.
+        this.hover = null;
+        if (!this.activeModelTool || this.activeModelTool === 'draw') this.hoverPlace(world);
         else this.setPreview(null);
       } else if (this.armed && this.selected()) {
         this.hover = null;
@@ -1530,6 +1567,14 @@ export class BuildingTool {
     if (drag.kind === 'click') {
       // A press that travels is not a click: it neither places nor selects.
       if (Math.hypot(screen.x - drag.start.x, screen.y - drag.start.y) > DRAG_START_PIXELS) drag.moved = true;
+      // ... unless it took hold of the selected building: then it carries it,
+      // the way any object is moved - press on it and drag.
+      const held = this.selected();
+      if (drag.moved && held && drag.hit?.building === held.id && this.mode === 'edit' && this.freeHand()) {
+        const z = this.floorOf(held);
+        this.drag = { kind: 'move', origin: cloneBuilding(held), start: this.view.planeAt(drag.start, z), z };
+        this.pointerMove(screen, world, shift);
+      }
       return;
     }
     const draft = cloneBuilding(drag.origin);
@@ -1578,7 +1623,28 @@ export class BuildingTool {
         const centre = { x: draft.x + c.x + p.x - drag.start.x, y: draft.y + c.y + p.y - drag.start.y };
         const ctx = this.host.context();
         const snap = snapPlacement(ctx.doc, ctx.net, footprintSize(draft), centre, draft.rotation, draft.id);
-        placeAt(draft, snap.anchor, snap.rotation);
+        if (snap.kind === 'road') {
+          // Near a street it faces the street, as a new building does.
+          placeAt(draft, snap.anchor, snap.rotation);
+        } else {
+          // Anywhere else it keeps the bearing the player gave it: snapped to
+          // a neighbour's, moving undid every turn.
+          const step = this.free ? 0 : GRID;
+          const dx = p.x - drag.start.x;
+          const dy = p.y - drag.start.y;
+          draft.x += step ? Math.round(dx / step) * step : dx;
+          draft.y += step ? Math.round(dy / step) * step : dy;
+        }
+        break;
+      }
+      case 'scale': {
+        const p = this.view.planeAt(screen, drag.z);
+        let factor = Math.hypot(p.x - drag.centre.x, p.y - drag.centre.y) / drag.startDist;
+        // The width lands on the half-metre grid, so walls still meet.
+        if (!this.free) factor = Math.max(GRID, Math.round((drag.width * factor) / GRID) * GRID) / drag.width;
+        opScalePlan(draft, factor);
+        const f = footprintBox(draft);
+        this.measure = { kind: 'length', value: f.x1 - f.x0, x: p.x, y: p.y, z: drag.z };
         break;
       }
       case 'massMove': {
@@ -1610,10 +1676,9 @@ export class BuildingTool {
         break;
       }
     }
-    const problem = validateBuilding(this.host.context(), draft, draft.id);
-    // A drag that lands on another building welds on release, so the ghost
-    // reads green while the two masses are made one.
-    const blocking = problem === 'building' ? null : problem;
+    // A drag that lands on another building welds on release: the ghost reads
+    // what the release will do, weld included.
+    const blocking = this.verdict(draft, draft.id);
     this.problem = blocking;
     this.setPreview({ building: draft, valid: blocking === null, problem: blocking, hides: draft.id, serial: 0 });
     this.host.changed();
@@ -1657,6 +1722,28 @@ export class BuildingTool {
       return stored;
     });
     this.report(result);
+  }
+
+  /**
+   * What a drop of `draft` will meet, weld included: the same question the
+   * release asks. The ghost used to call any overlap with another building
+   * green ("they will weld"), and the release then refused it - a green
+   * ghost that would not build.
+   */
+  private verdict(draft: Building, self: BuildingId | undefined): BuildingProblem | null {
+    const ctx = this.host.context();
+    const problem = validateBuilding(ctx, draft, self);
+    if (problem !== 'building') return problem;
+    const trial = cloneBuilding(draft);
+    const absorbed = weldInto(ctx, trial, []);
+    if (absorbed.length === 0) return problem;
+    return validateBuilding(ctx, trial, self === undefined ? absorbed : [self, ...absorbed]);
+  }
+
+  /** Nothing is in hand: the pointer selects, and drags what it selected. */
+  freeHand(): boolean {
+    return !this.component && !this.armed && !this.roofDetailKind && !this.massMoveArmed && !this.planPoints &&
+      (this.activeModelTool === null || this.activeModelTool === 'select');
   }
 
   private click(hit: BuildingHit | null, shift = false): void {
@@ -1719,10 +1806,22 @@ export class BuildingTool {
       this.host.changed();
       return;
     }
+    // A model in hand is set down where its ghost stands, over a building or
+    // not: overlapping, the two join.
+    if (this.mode === 'place' && !this.activeModelTool && this.preview && this.preview.hides === null) {
+      this.placeHere();
+      return;
+    }
     if (hit && (this.mode === 'edit' || this.hover)) {
       const wasPlacing = this.mode === 'place';
       const changedBuilding = this.selection?.building !== hit.building;
-      const bay = hit.face === 'top' ? null : { storey: hit.storey, side: hit.face, index: hit.index };
+      const faceHit = hit.face === 'top' ? null : { storey: hit.storey, side: hit.face, index: hit.index };
+      // The first click picks the building (the mass clicked); a second click
+      // on the same mass picks the face under the pointer. Tools that work on
+      // a face - windows, paint - take the face at once.
+      const wantsFace = this.component !== null || this.activeModelTool === 'paint';
+      const again = !changedBuilding && this.selection?.volume === hit.volume && !this.selection?.element;
+      const bay = wantsFace || again ? faceHit : null;
       this.selection = { building: hit.building, volume: hit.volume, bay };
       if (this.stage === 'facade' && bay) this.materialScope = 'face';
       else if (!bay && (this.materialScope === 'face' || this.materialScope === 'floor')) this.materialScope = 'volume';
@@ -1803,12 +1902,10 @@ export class BuildingTool {
   }
 
   private ghostAt(anchor: Vec2, rotation: number): void {
-    const ctx = this.host.context();
     const draft = { ...instantiate(this.body, anchor, rotation, this.blueprintKey ?? undefined), id: PREVIEW_ID } as Building;
-    const problem = validateBuilding(ctx, draft);
-    // Overlapping another building is a weld, not a refusal: the ghost stays
-    // green and the drop fuses the two.
-    const blocking = problem === 'building' ? null : problem;
+    // Overlapping another building is a weld, not a refusal - when the weld
+    // works: the ghost is green only if the drop will build.
+    const blocking = this.verdict(draft, undefined);
     this.problem = blocking;
     this.setPreview({ building: draft, valid: blocking === null, problem: blocking, hides: null, serial: 0 });
   }
