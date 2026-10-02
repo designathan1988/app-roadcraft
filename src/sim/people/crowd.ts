@@ -758,9 +758,12 @@ function follow(s: State, p: Walker, lead: Walker): void {
   const at = stop && Math.hypot(stop.x - lead.x, stop.y - lead.y) < m(4) ? stop : lead;
   const ground = (q: Vec2): Vec2 | null => {
     const on = onMesh(s, { ...q, h: lead.h }, m(1));
-    return on && Math.hypot(on.x - q.x, on.y - q.y) < m(0.25) ? on : null;
+    return on && Math.hypot(on.x - q.x, on.y - q.y) < m(0.25)
+      && Math.hypot(on.x - at.x, on.y - at.y) >= 2 * AGENT_RADIUS ? on : null;
   };
-  const place = (lined ? null : ground(beside(false))) ?? ground(beside(true)) ?? { x: lead.x, y: lead.y, h: lead.h };
+  // A projected slot must still fit beside the leader. If neither slot
+  // fits, pause here until one opens instead of targeting the leader's body.
+  const place = (lined ? null : ground(beside(false))) ?? ground(beside(true)) ?? { x: p.x, y: p.y, h: p.h };
   // The leader standing: so does the companion, at its place by the leader.
   if (lead.holding) {
     if (!p.waitAt || Math.hypot(p.waitAt.x - place.x, p.waitAt.y - place.y) > RETARGET) waitThere(s, p, place);
