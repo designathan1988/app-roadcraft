@@ -32,6 +32,8 @@ const SECONDS = Number(opt('seconds', '120'));
 const MAP = opt('map', 'player-city');
 /** Extra query for the game, e.g. `people=crowd`. */
 const QUERY = opt('query', '');
+const FOCUS = opt('focus', '');
+const VEHICLES = opt('agents', 'people') === 'vehicles';
 fs.mkdirSync(OUT, { recursive: true });
 
 const browser = await chromium.launch({ channel: 'chrome',
@@ -112,7 +114,8 @@ console.log(JSON.stringify({ ...result, hotspots: result.hotspots.slice(0, 5), w
 
 // Four shots of each of the three busiest places, half a second apart.
 const frames = (n) => page.evaluate((c) => new Promise((res) => { let l = c; const t = () => (--l <= 0 ? res() : requestAnimationFrame(t)); requestAnimationFrame(t); }), n);
-for (const [cell] of result.hotspots.slice(0, 3)) {
+const photoCells = FOCUS ? [[FOCUS, 0]] : VEHICLES ? result.vehicleMotion.hotspots : result.hotspots;
+for (const [cell] of photoCells.slice(0, 3)) {
   const [x, y] = cell.split(',').map(Number);
   const shots = [];
   for (let k = 0; k < 4; k++) {

@@ -189,6 +189,7 @@ export function simOf(doc: RoadDoc, seed: number, intensity = 2): SimWorld {
   sim.clock.paused = false;
   // DRIVE=v2 runs the suite against Drive v2 as it replaces the legacy model.
   if (process.env.DRIVE === 'v2') sim.driveModel = 'v2';
+  if (process.env.VEHICLE_MOTION === 'physical') sim.motionModel = 'physical';
   return sim;
 }
 

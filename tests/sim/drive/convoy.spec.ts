@@ -8,6 +8,9 @@ import { makeDriver } from '@sim/vehicles/driver';
 import { createVehicle } from '@sim/vehicles/state';
 import { planFrom } from '@sim/routing/router';
 import { step } from '@sim/pipeline';
+import { physicalSpeed } from '@sim/drive/physicalMotion';
+import { DT } from '@sim/params';
+import { m } from '@world/units';
 
 /**
  * P1-21: a movement with no conflict point - the way on at a bend, a right
@@ -17,6 +20,21 @@ import { step } from '@sim/pipeline';
  * car at a time, each stopping at the line until the one ahead had cleared.
  */
 describe('a convoy through a movement that crosses nothing', () => {
+  it('brakes inside the preferred standing gap without an instantaneous stop', () => {
+    const archetype = ARCHETYPES.find(candidate => candidate.id === 'hatch')!;
+    const driver = makeDriver(archetype, () => 0.5);
+    let speed = m(0.8), gap = driver.s0 - m(0.2), acceleration = 0;
+    for (let tick = 0; tick < 300; tick++) {
+      const next = physicalSpeed(driver, speed, m(10), acceleration,
+        [{ kind: 'conflict', gap, speed: 0 }], DT);
+      acceleration = (next - speed) / DT;
+      expect(acceleration).toBeGreaterThanOrEqual(-driver.bEmergency - 1e-6);
+      gap -= (speed + next) * DT / 2;
+      expect(gap).toBeGreaterThan(0);
+      speed = next;
+    }
+    expect(speed).toBe(0);
+  });
   for (const model of ['v1', 'v2'] as const) {
     it(`does not stop the car behind at the line (${model})`, () => {
       const doc = new RoadDoc();

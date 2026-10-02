@@ -6,6 +6,7 @@ import type { Vehicle } from './state';
 import { desiredSpeed } from './driver';
 import { resolveSpeed } from './idm';
 import { nextSpeed } from '../drive/operational';
+import { physicalSpeed } from '../drive/physicalMotion';
 import { planFrom } from '../routing/router';
 import { bodyClassOfArchetype } from './archetypes';
 import { COARSE_EPS } from '@core/scalar';
@@ -64,7 +65,9 @@ export function integrateAll(w: SimWorld): void {
     const speedCap = Math.min(wanted, here.speedLimit, curveCap, positioning);
     // Drive v2 drives with the adaptive cruise control model and a driver's
     // jerk limits (`drive/operational.ts`); v1 with the plain IDM.
-    const next = w.driveModel === 'v2'
+    const next = w.motionModel === 'physical'
+      ? physicalSpeed(v.driver, v.v, speedCap, v.accel, v.constraints.obstacles, DT)
+      : w.driveModel === 'v2'
       ? nextSpeed(v.driver, v.v, speedCap, v.accel, v.constraints.obstacles, DT).v
       : resolveSpeed(v.driver, v.v, speedCap, v.constraints.obstacles, DT);
     const ds = Math.max(0, 0.5 * (v.v + next) * DT);
