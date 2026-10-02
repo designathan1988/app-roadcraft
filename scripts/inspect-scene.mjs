@@ -345,6 +345,30 @@ if (want('people')) {
   }
 }
 
+if (want('expressions')) {
+  const speaker = await page.evaluate(() => {
+    const R = window.__roadcraft;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const p = R.sim.pedViews.find(person => person.gesture?.kind === 'talk');
+      if (p) return { id: p.id, x: p.x, y: p.y, heading: p.heading, child: p.ageClass === 'child' };
+      R.runSim(2); R.sim.clock.paused = true;
+    }
+    return null;
+  });
+  if (!speaker) throw new Error('No naturally talking walker found in the inspection city');
+  for (let frame = 0; frame < 6; frame++) {
+    const p = await page.evaluate(id => {
+      const R = window.__roadcraft, person = R.sim.pedViews.find(p => p.id === id);
+      return person ? { x: person.x, y: person.y, h: R.scene().elevationAt(person.x, person.y), talking: person.gesture?.kind === 'talk' } : null;
+    }, speaker.id);
+    if (!p) break;
+    await shoot(`expression-${frame}`, { x: p.x, y: p.y, h: p.h + M(speaker.child ? 1 : 1.55),
+      azimuth: speaker.heading + 0.2, elevation: 0.03, distance: M(2.3), fov: 35, width: 900, height: 900 },
+    `walker ${speaker.id}, talking=${p.talking}, +${frame * 0.3}s`, 35, frame === 0 ? 1500 : 0);
+    await page.evaluate(() => { window.__roadcraft.runSim(0.3); window.__roadcraft.sim.clock.paused = true; });
+  }
+}
+
 if (want('creator')) {
   await page.keyboard.press('k');
   await page.locator('.person-creator').waitFor({ state: 'visible' });

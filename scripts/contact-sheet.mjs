@@ -21,7 +21,8 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', `--use-angle=${process.platform === 'win32' ? 'd3d11' : 'vulkan'}`, '--enable-gpu', '--ignore-gpu-blocklist'],
 });
 try {
-  const page = await browser.newPage();
+const page = await browser.newPage();
+page.on('console', message => { if (message.text().startsWith('EXPRESSION_BENCHMARK ')) console.log(message.text()); });
   await page.goto(`${BASE}/?${QUERY}`, { waitUntil: 'networkidle' });
 const url = await page.evaluate(async ({ ids, portraits }) => {
   if (window.__roadcraft) window.__roadcraft.sim.clock.paused = true;

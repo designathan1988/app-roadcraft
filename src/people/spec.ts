@@ -9,6 +9,8 @@ import { phenotype } from './phenotype';
 export interface PersonSpec {
   readonly id: number;
   readonly name: string;
+  /** Resting expression, -1 subdued through 0 neutral to 1 cheerful. */
+  readonly mood?: number;
   readonly body: MacroParams;
   /** Regional sliders, -1..1, by slider name (`l-`/`r-` for one side). */
   readonly features: Readonly<Record<string, number>>;
@@ -307,6 +309,7 @@ export function normalizePerson(raw: unknown): PersonSpec | null {
   return {
     id: o['id'],
     name: typeof o['name'] === 'string' ? o['name'].slice(0, 40) : '',
+    ...(typeof o['mood'] === 'number' && Number.isFinite(o['mood']) ? { mood: Math.max(-1, Math.min(1, o['mood'])) } : {}),
     body,
     features,
     look: {

@@ -15,6 +15,8 @@ import type { CitizenModel } from './citizenCasting';
 import { loadPeopleAssets } from '@people/body/assets';
 import { Morpher } from '@people/body/morph';
 import { createPersonRig } from './people/personRig';
+import { attachFacialMorphs } from './people/facialMorphs';
+import { expressionShapes } from '@people/body/expressions';
 import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from './people/skinAppearance';
 import { loadProxyItem, type ProxyItem } from '@people/body/proxy';
 import { wornItems } from '@people/spec';
@@ -140,22 +142,45 @@ interface FacialExpression {
   readonly jaw: number;
   readonly lookLeft: number;
   readonly lookRight: number;
+  readonly frown: number;
+  /** Mouth shapes of the syllable being said: rounded, spread, closed. */
+  readonly visemeO: number;
+  readonly visemeE: number;
+  readonly visemeM: number;
 }
 
+/** Syllables per second of ordinary speech, and how far the jaw opens on one (full open is a shout). */
+const SYLLABLES = 4.2;
+const SPEECH_JAW = 0.16;
+
 /** Each person carries a quiet, deterministic facial beat rather than a shared loop. */
-function facialExpression(seed: number, time: number, activity?: string): FacialExpression {
+function facialExpression(seed: number, time: number, activity?: string, mood = 0): FacialExpression {
   const hash = personHash(seed ^ 0x4c9e3721);
   const blinkPhase = (time * (0.72 + ((hash >>> 8) & 15) * 0.018) + (hash & 255) / 255) % 1;
   const blink = blinkPhase > 0.93 ? Math.sin((blinkPhase - 0.93) / 0.07 * Math.PI) : 0;
-  const talking = activity === 'talk' ? 0.32 + 0.25 * Math.sin(time * 5 + (hash >>> 16)) : 0;
   const look = Math.sin(time * 0.55 + (hash >>> 5)) * 0.32;
+  // Speech: one syllable after another, the jaw opening and closing on each,
+  // each syllable with its own mouth shape - never the same loop for all.
+  let jaw = 0, visemeO = 0, visemeE = 0, visemeM = 0;
+  if (activity === 'talk') {
+    const beat = time * SYLLABLES + ((hash >>> 16) & 255) / 64;
+    const syllable = Math.floor(beat);
+    const open = Math.sin((beat - syllable) * Math.PI);
+    const shape = personHash(hash ^ syllable) % 4;
+    jaw = SPEECH_JAW * open;
+    visemeO = shape === 0 ? 0.45 * open : 0;
+    visemeE = shape === 1 ? 0.45 * open : 0;
+    visemeM = shape === 2 ? 0.5 * (1 - open) : 0;
+  }
   return {
     blink,
-    smile: activity === 'talk' ? 0.32 : ((hash >>> 24) & 3) === 0 ? 0.12 : 0,
+    smile: Math.max(0, (activity === 'talk' ? 0.22 : ((hash >>> 24) & 3) === 0 ? 0.12 : 0) + mood * 0.25),
     brow: activity === 'talk' ? 0.08 : 0,
-    jaw: Math.max(0, talking),
+    jaw,
     lookLeft: Math.max(0, look),
     lookRight: Math.max(0, -look),
+    frown: Math.max(0, -mood) * 0.25,
+    visemeO, visemeE, visemeM,
   };
 }
 
@@ -170,12 +195,19 @@ function setFacialExpression(batch: CitizenBatch, slot: number, expression: Faci
       const index = targets[name];
       if (index !== undefined) influences[index] = value;
     };
-    set('AU_45_Blink', expression.blink);
-    set('HB_07_MouthSmile', expression.smile);
-    set('AK_03_BrowInnerUp', expression.brow);
-    set('AK_25_JawOpen', expression.jaw);
-    set('AU_61_EyesTurnLeft', expression.lookLeft);
-    set('AU_62_EyesTurnRight', expression.lookRight);
+    set('blinkLeft', expression.blink);
+    set('blinkRight', expression.blink);
+    set('smile', expression.smile);
+    set('browLeftUp', expression.brow);
+    set('browRightUp', expression.brow);
+    set('open', expression.jaw);
+    set('visemeO', expression.visemeO);
+    set('visemeE', expression.visemeE);
+    set('visemeM', expression.visemeM);
+    set('frownLeft', expression.frown);
+    set('frownRight', expression.frown);
+    set('lookLeft', expression.lookLeft);
+    set('lookRight', expression.lookRight);
     const mesh = batch.meshes[i]!;
     // three allocates an InstancedMesh's morph texture from `count`. Batches
     // start invisible at count zero, so reserve their fixed capacity only for
@@ -436,13 +468,17 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     try {
       for (const [name, item] of await Promise.all(wornItems(person.look).map(async (n) => [n, await loadProxyItem(n)] as const))) proxies.set(name, item);
     } catch { proxies.clear(); }
-    const rig = createPersonRig({
+    const input = {
       proxies,
       texturedSkin: true,
       data: people.mesh, skeleton: people.skeleton, bodyRange: people.bodyRange,
       positions: morpher.shape(person.body, person.features), look: person.look,
       capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),
-    });
+    };
+    const rig = createPersonRig(input);
+    if (new URLSearchParams(location.search).get('expressions') === 'live') {
+      await attachFacialMorphs(input, rig, await expressionShapes(person.body));
+    }
     {
       const skin = await loadSkinAppearance(person);
       resources.add(skin.texture);
@@ -501,6 +537,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
           const geometry = new BufferGeometry();
           for (const name of Object.keys(o.geometry.attributes)) geometry.setAttribute(name, o.geometry.getAttribute(name));
           geometry.setIndex(indices);
+          geometry.morphAttributes = o.geometry.morphAttributes;
+          geometry.morphTargetsRelative = o.geometry.morphTargetsRelative;
           geometry.boundingBox = o.geometry.boundingBox;
           geometry.boundingSphere = o.geometry.boundingSphere;
           variants.push(geometry);
@@ -701,7 +739,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         mixWeights.push(play.weight);
       }
       emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), 0, ground,
-        facialExpression(ped.id, time, ped.gesture?.kind));
+        facialExpression(ped.id, time, ped.gesture?.kind, CROWD[index]?.person?.mood));
     },
     /**
      * Somebody in or on a vehicle, or stepping between a vehicle and the

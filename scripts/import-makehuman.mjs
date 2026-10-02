@@ -47,7 +47,6 @@ const LICENCE = {
 const GENITAL_GROUP = 'helper-genital';
 const EXCLUDED_TARGET_DIRS = new Map([
   ['genitals', 'genital targets are not shipped (project rule)'],
-  ['expression', 'facial expression units are animation data, not body shape; out of H0 scope'],
   ['_images', 'slider icons (UI images), not needed by the game'],
 ]);
 const EXCLUDED_TEXTURES = new Map([
@@ -572,6 +571,7 @@ async function main() {
   for (const e of targetFiles) {
     const rel = e.path.slice(`${DATA}targets/`.length);
     const dir = rel.split('/')[0];
+    if (dir === 'expression') continue; // Runtime expressions have their own compact pack.
     if (EXCLUDED_TARGET_DIRS.has(dir)) {
       skipped.push({ path: e.path, reason: EXCLUDED_TARGET_DIRS.get(dir) });
       continue;
@@ -834,7 +834,40 @@ async function main() {
   console.log(`downloaded ${downloadedBytes} bytes, read from cache ${cachedBytes} bytes; ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 }
 
-main().catch((err) => {
+async function importExpressions() {
+  const units = {
+    blinkLeft: 'eye-left-closure', blinkRight: 'eye-right-closure',
+    smile: 'mouth-corner-puller', open: 'mouth-open',
+    browLeftUp: 'eyebrows-left-up', browRightUp: 'eyebrows-right-up',
+    frownLeft: 'eyebrows-left-down', frownRight: 'eyebrows-right-down',
+    visemeO: 'mouth-protusion', visemeE: 'mouth-retraction', visemeM: 'mouth-compression',
+  };
+  const base = JSON.parse(await readFile(join(OUT, 'base.json'), 'utf8'));
+  const dropped = new Set(base.zeroedVertices?.[GENITAL_GROUP] ?? []);
+  const jobs = ['african', 'asian', 'caucasian'].flatMap(origin => Object.entries(units).map(([name, file]) => ({
+    name: `${origin}/${name}`, group: origin, path: `${DATA}targets/expression/units/${origin}/${file}.target.gz`,
+  })));
+  const parsed = await pool(jobs, 3, async job => {
+    const data = parseTarget((await repoFile(job.path)).toString('utf8'));
+    for (const v of data.idx) if (v < 0 || v >= base.vertexCount) throw new Error(`${job.path}: invalid vertex ${v}`);
+    return { ...job, ...data };
+  });
+  const packed = packTargets(parsed, v => dropped.has(v));
+  await writeFile(join(OUT, 'expressions.bin'), packed.buf);
+  await writeFile(join(OUT, 'expressions.json'), JSON.stringify({
+    format: 'roadcraft-expressions/1', source: { repo: MPFB2_REPO, sha: MPFB2_SHA },
+    units: 'decimetres; delta = int16 * scale', vertexCount: base.vertexCount,
+    entryCount: packed.total, deltaOffset: packed.deltaOffset, targets: packed.index,
+  }));
+  const licenses = JSON.parse(await readFile(join(OUT, 'LICENSES.json'), 'utf8'));
+  licenses.assets = licenses.assets.filter(a => a.output !== 'expressions.bin');
+  for (const job of jobs) licenses.assets.push({ path: job.path, licence: LICENCE.id,
+    author: LICENCE.author, source: RAW + job.path, sha: MPFB2_SHA, output: 'expressions.bin' });
+  await writeFile(join(OUT, 'LICENSES.json'), JSON.stringify(licenses, null, 2) + '\n');
+  console.log(`Expressions: ${packed.index.length} targets, ${packed.buf.length} bytes, max error ${packed.worstErr} dm`);
+}
+
+(process.argv.includes('--expressions-only') ? importExpressions() : main().then(importExpressions)).catch((err) => {
   console.error(err);
   process.exit(1);
 });
