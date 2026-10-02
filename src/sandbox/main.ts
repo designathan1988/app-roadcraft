@@ -4,6 +4,7 @@ import {
   RingGeometry, SRGBColorSpace, Scene, Vector2, Vector3, WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 
 import { CROWD } from '@render/citizenCasting';
 import { Agent } from './agent';
@@ -237,7 +238,29 @@ async function start(): Promise<void> {
     requestAnimationFrame(loop);
   };
   loop();
-  (window as unknown as { __lab: unknown }).__lab = { agents, things, select, camera, controls };
+  (window as unknown as { __lab: unknown }).__lab = { agents, things, select, camera, controls, exportRig };
+}
+
+/**
+ * A person as a GLB (rest pose, skeleton and skinning, vertex colours) and its
+ * skeleton as JSON (bone names, parents, rest positions in metres): what an
+ * animation tool needs to make clips for this rig. Written by the dev server.
+ */
+async function exportRig(index = 0): Promise<{ glb: number; bones: number }> {
+  const agent = agents[index]!;
+  const glb = await new GLTFExporter().parseAsync(agent.body.root, { binary: true }) as ArrayBuffer;
+  const bones = agent.body.mesh.skeleton.bones;
+  const p = new Vector3();
+  const skeleton = {
+    rig: 'Rocketbox Bip01 (as the game uses it)', units: 'metres', up: '+Y', forward: '+Z',
+    bones: bones.map((b) => {
+      b.getWorldPosition(p);
+      return { name: b.name, parent: b.parent && (b.parent as { isBone?: boolean }).isBone ? b.parent.name : null, rest: [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4)] };
+    }),
+  };
+  await fetch('/__cook/export/person-rocketbox-rig.glb', { method: 'PUT', body: glb });
+  await fetch('/__cook/export/person-rocketbox-skeleton.json', { method: 'PUT', body: JSON.stringify(skeleton, null, 1) });
+  return { glb: glb.byteLength, bones: bones.length };
 }
 
 function meshesOf(o: Object3D): Mesh[] {

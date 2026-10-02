@@ -16,6 +16,14 @@ export interface Nav {
 }
 
 export const AGENT_RADIUS = 0.3;
+/**
+ * The ground is eroded a little wider than a body: a route then keeps a hand's
+ * breadth off every wall, and the crowd never has the wall itself inside the
+ * agent's radius to steer against (the scraping and stopping at corners).
+ */
+const ERODE = AGENT_RADIUS + 0.08;
+/** Detour's update flags, all of them, as the official crowd demo runs them. */
+const ANTICIPATE_TURNS = 1, OBSTACLE_AVOIDANCE = 2, SEPARATION = 4, OPTIMIZE_VIS = 8, OPTIMIZE_TOPO = 16;
 const CS = 0.08;
 const CH = 0.04;
 
@@ -42,7 +50,7 @@ export async function buildNav(meshes: readonly Mesh[]): Promise<Nav> {
     walkableSlopeAngle: 40,
     walkableHeight: Math.ceil(1.8 / CH),
     walkableClimb: Math.ceil(0.25 / CH),
-    walkableRadius: Math.ceil(AGENT_RADIUS / CS),
+    walkableRadius: Math.ceil(ERODE / CS),
     maxEdgeLen: 40,
     maxSimplificationError: 1.1,
     minRegionArea: 8,
@@ -65,10 +73,18 @@ export async function buildNav(meshes: readonly Mesh[]): Promise<Nav> {
         radius: AGENT_RADIUS,
         height: 1.8,
         maxSpeed: 1.35,
-        maxAcceleration: 5,
-        collisionQueryRange: AGENT_RADIUS * 8,
+        // RecastDemo's crowd tool: acceleration 8, query range 12 radii, path
+        // optimisation over 30 radii, and every steering flag: the corridor is
+        // re-straightened by visibility and topology as the agent goes, so it
+        // does not cling to the corners it was first given.
+        maxAcceleration: 8,
+        collisionQueryRange: AGENT_RADIUS * 12,
         pathOptimizationRange: AGENT_RADIUS * 30,
-        separationWeight: 1.5,
+        // Light: Detour warns a high separation makes steering hard in tight
+        // spaces; at 2 a walker stalled for good beside somebody standing.
+        separationWeight: 0.5,
+        updateFlags: ANTICIPATE_TURNS | OBSTACLE_AVOIDANCE | SEPARATION | OPTIMIZE_VIS | OPTIMIZE_TOPO,
+        obstacleAvoidanceType: 0,
       });
     },
     update(dt) {

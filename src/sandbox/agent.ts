@@ -42,7 +42,18 @@ interface Running {
   started: boolean;
 }
 
-const TURN_RATE = 5; // rad/s
+/** Fastest turn of the body, rad/s. */
+const TURN_RATE = 4;
+/**
+ * Turning is a damped follow, not a jump to the crowd's velocity: Detour's
+ * avoidance nudges the velocity a little each frame, and a body facing it
+ * exactly swung side to side (the Recast forum's advice: smooth the turn, and
+ * only turn above a walking speed).
+ */
+const TURN_GAIN = 6; // 1/s
+const TURN_ABOVE = 0.25; // m/s
+/** The velocity the body reads is smoothed over this, s. */
+const VELOCITY_SMOOTH = 0.2;
 const FADE = 0.25; // s
 const WALK_FULL = 0.9; // m/s at which the walk is fully blended in
 const ARRIVED = 0.12; // m
@@ -136,8 +147,12 @@ export class Agent {
       this.position.set(p.x, p.y, p.z);
     }
     const vel = this.crowd.velocity();
-    const speed = this.sliding ? 0.4 : Math.hypot(vel.x, vel.z);
-    if (!this.sliding && speed > 0.15) this.turnTo(Math.atan2(vel.x, vel.z), dt);
+    const k = 1 - Math.exp(-dt / VELOCITY_SMOOTH);
+    this.smoothX += ((this.sliding ? 0 : vel.x) - this.smoothX) * k;
+    this.smoothZ += ((this.sliding ? 0 : vel.z) - this.smoothZ) * k;
+    const smooth = Math.hypot(this.smoothX, this.smoothZ);
+    const speed = this.sliding ? 0.4 : smooth;
+    if (!this.sliding && smooth > TURN_ABOVE) this.turnTo(Math.atan2(this.smoothX, this.smoothZ), dt);
 
     // ---- the body's pose: a step's clip over the walk and the stand
     const playing = this.action !== null;
@@ -200,6 +215,14 @@ export class Agent {
           this.crowd.resetMoveTarget();
           return true;
         }
+        // Close, and getting no closer (the spot taken by somebody standing
+        // there): this is as near as it gets, the walk is over.
+        if (d < this.bestGoto - 0.05) { this.bestGoto = d; this.bestGotoAt = run.t; }
+        if (run.t === 0) { this.bestGoto = d; this.bestGotoAt = 0; }
+        if (d < 1.2 && run.t - this.bestGotoAt > 1.5) {
+          this.crowd.resetMoveTarget();
+          return true;
+        }
         // Stuck behind something for long: give up on this step.
         return run.t > 40;
       }
@@ -238,9 +261,16 @@ export class Agent {
     }
   }
 
+  private bestGoto = Infinity;
+  private bestGotoAt = 0;
+  private smoothX = 0;
+  private smoothZ = 0;
+
   private turnTo(goal: number, dt: number): void {
     const diff = wrap(goal - this.heading);
-    const stepTurn = Math.sign(diff) * Math.min(Math.abs(diff), TURN_RATE * dt);
+    // Damped: a share of what is left each frame, never faster than TURN_RATE.
+    const wanted = diff * Math.min(1, TURN_GAIN * dt);
+    const stepTurn = Math.sign(wanted) * Math.min(Math.abs(wanted), TURN_RATE * dt);
     this.heading = wrap(this.heading + stepTurn);
   }
 
