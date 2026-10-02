@@ -514,6 +514,7 @@ export function createSceneRenderer(
     environment.setQuality({ shadows: quality.shadows, shadowMapSize: quality.shadowMapSize });
     post?.dispose();
     post = createPostChain(renderer, scene, rig.camera, quality, level);
+    post.setNight(Math.max(0, lastDark));
     resize();
     // Vegetation density is baked into the instanced meshes, so it only takes
     // effect on the next rebuild. Forcing one here keeps the tier honest.
@@ -589,6 +590,7 @@ export function createSceneRenderer(
       // The passes hold the camera they were made with.
       post.dispose();
       post = createPostChain(renderer, scene, rig.camera, quality, governor.current);
+      post.setNight(Math.max(0, lastDark));
       resize();
       onAssetsReady();
     },
@@ -745,6 +747,7 @@ export function createSceneRenderer(
       const dark = environment.setTimeOfDay(clock);
       if (Math.abs(dark - lastDark) > 0.01) {
         lastDark = dark;
+        post.setNight(dark);
         buildings.setNight(dark);
         sceneryKit.setNight(dark);
         agents.setNight(dark);

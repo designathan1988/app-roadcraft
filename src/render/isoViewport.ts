@@ -13,9 +13,10 @@ import type { Facing, Viewport } from '@view/viewport';
 /**
  * Close inspection of pedestrian faces, gaits and the people inside vehicles.
  * At 18 (a view 14 m tall) a person was about eighty pixels high; at 5 the view
- * is 4 m tall and a person fills about half of it.
+ * is 4 m tall and a person fills about half of it; at 2 (the player asked to
+ * come closer, 2026-10-02) the view is 1.6 m tall: a face and shoulders.
  */
-export const MIN_HALF_HEIGHT = 5;
+export const MIN_HALF_HEIGHT = 2;
 export const MAX_HALF_HEIGHT = 950;
 
 /**

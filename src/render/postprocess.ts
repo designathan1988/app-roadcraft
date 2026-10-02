@@ -41,6 +41,13 @@ export interface PostChain {
   readonly target: WebGLRenderTarget | null;
   render(delta: number): void;
   setSize(width: number, height: number, pixelRatio: number): void;
+  /**
+   * How dark it is, 0 by day to 1 at night: the bloom is for lights in the
+   * dark (lamps, headlights, lit windows). By day it set the white paint of
+   * every zebra and line glowing in the sun; it is off then (and its passes
+   * with it), and comes up with the dusk.
+   */
+  setNight(dark: number): void;
   dispose(): void;
 }
 
@@ -60,6 +67,9 @@ export function createPostChain(
       },
       setSize() {
         /* the renderer's own resize is enough */
+      },
+      setNight() {
+        /* no bloom without the chain */
       },
       dispose() {
         /* nothing owned */
@@ -120,7 +130,9 @@ export function createPostChain(
   // Light that is brighter than white spills a little round itself: the sun
   // on glass, lit windows and lamps at night. Only what is really bright
   // blooms; the day scene keeps its edges.
-  const bloom = new UnrealBloomPass(new Vector2(size.x, size.y), level === 'ultra' ? 0.42 : 0.32, 0.55, 0.92);
+  const bloomStrength = level === 'ultra' ? 0.42 : 0.32;
+  const bloom = new UnrealBloomPass(new Vector2(size.x, size.y), bloomStrength, 0.55, 0.92);
+  bloom.enabled = false;
   composer.addPass(bloom);
   if (quality.smaa) composer.addPass(new SMAAPass());
   composer.addPass(new OutputPass());
@@ -134,6 +146,10 @@ export function createPostChain(
     render(delta) {
       (grade.uniforms['uTime'] as { value: number }).value += delta;
       composer.render(delta);
+    },
+    setNight(dark) {
+      bloom.enabled = dark > 0.05;
+      bloom.strength = bloomStrength * Math.min(1, dark);
     },
     setSize(width, height, pixelRatio) {
       composer.setPixelRatio(pixelRatio);

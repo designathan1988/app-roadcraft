@@ -251,21 +251,23 @@ const BENCH_LOOK = 60;
 /**
  * How often somebody walking alone stops for a moment to do something, ticks
  * between looks; and the chance, at each look, that they do. On a square or
- * in a park (open ground) people dance, cheer, crouch to a child, take
- * photos; on a footway they read, drink, check a phone, wave to somebody.
+ * in a park (open ground) people take a photo, laugh, take a call; on a
+ * footway they drink, check a phone, listen to music, wave to somebody.
  */
 const PAUSE_LOOK = 45;
 const PAUSE_CHANCE = { child: 0.03, adult: 0.05, elder: 0.04 } as const;
 const PAUSE_STREET: readonly [GestureView['kind'], number, number][] = [
   // [what, shortest, longest] seconds
-  ['phone', 8, 20], ['read', 10, 25], ['drink', 8, 16], ['headphones', 8, 18], ['wave', 5, 6],
-  ['photo', 8, 9], ['bag', 6, 12], ['crouch', 7, 12], ['umbrella', 8, 14],
+  // What people do stopped on a pavement, and nothing odd there (the player,
+  // 2026-10-02): no crouching, no bag on the ground, no reading or photos
+  // in the middle of the footway, no umbrella under a clear sky.
+  ['phone', 8, 20], ['drink', 8, 16], ['headphones', 8, 18], ['wave', 5, 6],
 ];
-/** Share of the stops on a footway that are a trip and a fall instead. */
-const FALL_SHARE = 0.03;
+/** Share of the stops on a footway that are a trip and a fall instead: none (the player, 2026-10-02: nobody falls in the street). The draw is kept, so the run of random numbers is unchanged. */
+const FALL_SHARE = 0;
 const PAUSE_OPEN: readonly [GestureView['kind'], number, number][] = [
-  ['photo', 8, 9], ['dance', 10, 22], ['cheer', 8, 15], ['crouch', 8, 14], ['read', 12, 30], ['drink', 8, 16],
-  ['laugh', 6, 10], ['wave', 5, 6],
+  // A square or a park: a photo, a laugh, a call; no dancing or crouching.
+  ['photo', 8, 9], ['phone', 8, 20], ['drink', 8, 16], ['laugh', 6, 10], ['wave', 5, 6],
 ];
 const BENCH_PASS_REACH = m(8);
 const BENCH_PASS = { child: 0, adult: 0.05, elder: 0.2 } as const;
