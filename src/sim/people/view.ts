@@ -61,6 +61,8 @@ export interface PedView {
   turnV: number;
   /** Seconds since this person appeared: their animation clock. */
   age: number;
+  /** How they walk, when not as everybody does: unsteady, late at night. */
+  style?: 'drunk' | undefined;
 
   readonly ageClass: PersonAgeClass;
   readonly gender: PersonGender;

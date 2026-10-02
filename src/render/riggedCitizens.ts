@@ -51,7 +51,7 @@ const WALK_SHUFFLE = 2;
 /** The Rocketbox library clips, baked after the walks in this order. */
 const LIBRARY = [
   'start', 'stop', 'run', 'turnLeft', 'turnRight',
-  'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp', 'walkSlow',
+  'idle', 'look', 'phone', 'talk', 'listen', 'sitDown', 'sitIdle', 'standUp', 'walkSlow', 'walkDrunk',
   'read', 'bag', 'trolley', 'umbrella', 'cheer', 'dance', 'wave', 'drink', 'photo', 'crouchDown', 'crouchIdle', 'crouchUp', 'laugh', 'angry', 'argue', 'knock', 'headphones', 'eatIdle', 'workTable',
 ] as const satisfies readonly LibraryClipName[];
 type Played = (typeof LIBRARY)[number];

@@ -1540,6 +1540,8 @@ function publishCrossings(w: SimWorld, s: State): void {
 
 function publishViews(w: SimWorld, s: State): void {
   const views = w.pedViews;
+  const hour = (w.city.minutes(w) % 1440) / 60;
+  const night = hour >= 22.5 || hour < 4;
   const byId = w.pedViewById;
   views.length = 0;
   byId.clear();
@@ -1565,6 +1567,8 @@ function publishViews(w: SimWorld, s: State): void {
       }
     } else { p.stoodTogether = 0; p.talk = null; }
     v.gesture = p.sit && p.sit.phase !== 'approach' ? p.sit.gesture : p.pause ?? p.talk;
+    // Late at night, the odd adult walks home unsteadily.
+    v.style = night && p.ageClass === 'adult' && p.id % 17 === 3 ? 'drunk' : undefined;
     const region = nav && p.tri >= 0 ? nav.mesh.region[p.tri]! : FOOTWAY;
     v.ground = isZebra(region) ? 'crossing' : region === OPEN ? 'open' : 'footway';
     const seg = nav && p.tri >= 0 ? nav.segment[p.tri]! : -1;
