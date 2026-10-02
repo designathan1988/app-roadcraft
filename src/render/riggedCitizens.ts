@@ -287,6 +287,15 @@ function skinMaterial(material: MeshStandardMaterial | MeshDepthMaterial, unifor
   material.customProgramCacheKey = () => `citizen-skinning-v2-look${look}`;
 }
 
+/** How far over somebody who tripped is, radians, `t` seconds into a fall that lasts `hold`. */
+function fallLean(t: number, hold: number): number {
+  const down = 0.7, up = 1.4;
+  const ease = (u: number): number => u * u * (3 - 2 * u);
+  if (t < down) return (Math.PI / 2) * Math.min(1, ease(t / down) * 1.04);
+  if (t > hold - up) return (Math.PI / 2) * ease(Math.max(0, hold - t) / up);
+  return Math.PI / 2;
+}
+
 /** Longest stretch of baking between two frames, milliseconds. */
 const SLICE_MS = 4;
 let sliceStart = 0;
@@ -860,6 +869,9 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
      */
     /** `ground`: the footway's gradient under the walker, so both feet stand on it (`groundShear.ts`). */
     draw(ped: PedView, x: number, y: number, heading: number, deck: number, alpha: number, ground: Gradient | null = null, lean = 0) {
+      // A fall: over onto the ground in under a second, a few seconds there,
+      // and back up (the body tipped about its feet, as a bed lays it down).
+      if (ped.gesture?.kind === 'fall') lean = fallLean(ped.gesture.t, ped.gesture.hold ?? 6);
       const hash = personHash(ped.id);
       const body = bodyFor({ seed: ped.id, gender: ped.gender, ageClass: ped.ageClass, company: companyOf(ped.party),
         companyId: ped.party.id, hasChild: ped.party.hasChild, x, y });

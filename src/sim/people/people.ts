@@ -257,6 +257,8 @@ const PAUSE_STREET: readonly [GestureView['kind'], number, number][] = [
   ['phone', 8, 20], ['read', 10, 25], ['drink', 8, 16], ['headphones', 8, 18], ['wave', 5, 6],
   ['photo', 8, 9], ['bag', 6, 12], ['crouch', 7, 12], ['umbrella', 8, 14],
 ];
+/** Share of the stops on a footway that are a trip and a fall instead. */
+const FALL_SHARE = 0.03;
 const PAUSE_OPEN: readonly [GestureView['kind'], number, number][] = [
   ['photo', 8, 9], ['dance', 10, 22], ['cheer', 8, 15], ['crouch', 8, 14], ['read', 12, 30], ['drink', 8, 16],
   ['laugh', 6, 10], ['wave', 5, 6],
@@ -698,8 +700,10 @@ function step(w: SimWorld, s: State): void {
     if (!p.sit && !p.leader && p.party.size === 1 && p.mode === 'walk' && p.tri >= 0 &&
         (p.id * 7 + w.clock.tick) % PAUSE_LOOK === 0 && !isZebra(mesh.region[p.tri]!) &&
         w.rng.people.float() < PAUSE_CHANCE[p.ageClass]) {
-      const menu = mesh.region[p.tri] === OPEN ? PAUSE_OPEN : PAUSE_STREET;
-      const [kind, lo, hi] = menu[Math.floor(w.rng.people.float() * menu.length) % menu.length]!;
+      const open = mesh.region[p.tri] === OPEN;
+      const menu = open ? PAUSE_OPEN : PAUSE_STREET;
+      const [kind, lo, hi] = !open && p.ageClass !== 'child' && w.rng.people.float() < FALL_SHARE ? ['fall', 6, 8] as const
+        : menu[Math.floor(w.rng.people.float() * menu.length) % menu.length]!;
       p.pause = { kind, phase: 'hold', t: 0, hold: lo + (hi - lo) * w.rng.people.float() };
       p.vx = 0; p.vy = 0; p.v = 0;
       continue;

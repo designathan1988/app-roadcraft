@@ -31,7 +31,9 @@ export interface PartyView {
 export type GestureKind = 'look' | 'phone' | 'talk' | 'bench'
   // Something a person stops a moment to do (`people.ts` pauses).
   | 'read' | 'drink' | 'photo' | 'wave' | 'headphones' | 'bag' | 'dance' | 'cheer' | 'crouch' | 'laugh'
-  | 'argue' | 'umbrella' | 'trolley' | 'knock' | 'eat' | 'work';
+  | 'argue' | 'umbrella' | 'trolley' | 'knock' | 'eat' | 'work'
+  // A trip and a fall: down, a few seconds on the ground, up again.
+  | 'fall';
 export type GesturePhase = 'approach' | 'hold' | 'step' | 'turn' | 'sitDown' | 'seated' | 'standUp' | 'leave';
 export interface GestureView {
   kind: GestureKind;
