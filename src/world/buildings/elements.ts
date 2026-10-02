@@ -1,4 +1,5 @@
 import type { Vec2 } from '@core/vec2';
+import { pointInPolygon } from '@core/polygon';
 import { m } from '../units';
 import { edgeFrame, localFootprint, overlapArea } from './footprints';
 import { STEP_RISE, STEP_RUN } from './foundation';
@@ -114,6 +115,14 @@ export function elementClash(b: Building, e: BuildingElement): Volume | null {
   for (const v of b.volumes) {
     const vz0 = levelElevation(b, v.base);
     const vz1 = levelElevation(b, volumeTop(v));
+    // A canopy, an awning or a unit hangs ON the wall: its back meets the
+    // face, and on a face that is not square to the frame its box cuts a
+    // corner of the wall. What matters is that it hangs outside - its centre
+    // is not inside the mass. Tested as boxes, every one was refused.
+    if (ON_FACADE.has(e.kind)) {
+      if (z0 < vz1 - EPS && vz0 < z1 - EPS && pointInPolygon({ x: e.x, y: e.y }, localFootprint(v))) return v;
+      continue;
+    }
     if (z0 < vz1 - EPS && vz0 < z1 - EPS &&
       (v.outline ? overlapArea(localFootprint(v), [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]) > EPS
         : x0 < v.x + v.w - EPS && v.x < x1 - EPS && y0 < v.y + v.d - EPS && v.y < y1 - EPS)) return v;
@@ -147,6 +156,22 @@ const snap = (v: number, step = GRID): number => Math.round(v / step) * step;
  * no room to run straight out from the facade turns and runs along it.
  */
 export function elementsAgainstBay(b: Building, v: Volume, bay: BayRef, kind: ElementKind): Omit<BuildingElement, 'id'>[] {
+  const made = elementsAgainstBayAxis(b, v, bay, kind);
+  if (!ON_FACADE.has(kind)) return made;
+  // Hung on a face that is not square to the frame, it is turned to lie flat
+  // on the wall rather than standing at a corner of it.
+  const frame = edgeFrame(v, bay.side);
+  return made.map((e) => {
+    const fn = FACING_NORMAL[e.facing];
+    let angle = Math.atan2(frame.ny, frame.nx) - Math.atan2(fn.y, fn.x);
+    angle = Math.atan2(Math.sin(angle), Math.cos(angle));
+    return Math.abs(angle) > 1e-3 ? { ...e, angle } : e;
+  });
+}
+
+const FACING_NORMAL: Readonly<Record<Side, Vec2>> = { 0: { x: 0, y: -1 }, 1: { x: 1, y: 0 }, 2: { x: 0, y: 1 }, 3: { x: -1, y: 0 } };
+
+function elementsAgainstBayAxis(b: Building, v: Volume, bay: BayRef, kind: ElementKind): Omit<BuildingElement, 'id'>[] {
   const [dw, dd, dh] = ELEMENT_DEFAULTS[kind];
   const frame = edgeFrame(v, bay.side);
   const n = { x: frame.nx, y: frame.ny };

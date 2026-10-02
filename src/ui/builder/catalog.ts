@@ -1,68 +1,125 @@
 /**
- * The Builder's tool catalogue: nine categories, each with the tools its tray
- * shows. This is the single source the top bar, the tray and the tool state
- * machine read, so a tool exists in exactly one place.
+ * The Builder's tool catalogue: seven tabs, each showing all it offers at
+ * once, in short sections. This is the single source the panel and the tool
+ * state machine read, so a tool exists in exactly one place.
  *
- * `mode` tools take the pointer (draw a footprint, place an opening, paint a
- * face); `action` tools run once, on the current selection; `menu` tools open
- * a temporary gallery (the starters, the facade patterns, the finishes).
+ * It replaces three groups, nine categories and a gallery behind every
+ * family: the player clicked three times to reach a window, and "Massa" and
+ * "Face" said nothing about what was inside them.
+ *
+ * `mode` tools take the pointer (draw a plan, place a window, hang a canopy);
+ * `action` tools run once on the selection. Selecting is not a tool: the
+ * pointer selects whenever nothing else is in hand.
  */
 
 import { FACADE_PATTERNS, type FacadePattern } from '@world/buildings/types';
 
-export const BUILDER_CATEGORIES = [
-  'select',
-  'draw',
-  'mass',
-  'face',
-  'openings',
-  'structure',
-  'roof',
-  'components',
-  'finish',
-] as const;
-export type BuilderCategoryId = (typeof BUILDER_CATEGORIES)[number];
+export const BUILDER_TABS = ['models', 'draw', 'mass', 'facade', 'parts', 'roof', 'paint'] as const;
+export type BuilderCategoryId = (typeof BUILDER_TABS)[number];
 
-/**
- * What the Builder does, in three groups: build the mass, put things on it,
- * dress it. Nine flat buttons made the player read all of them to find the
- * one; three say where to start, and the row under them says what is inside.
- *
- * `select` is not here: it is a global control, like the snap and the grid.
- */
-export const BUILDER_GROUPS = [
-  { id: 'create', categories: ['draw', 'mass', 'face'] },
-  { id: 'insert', categories: ['openings', 'structure', 'roof', 'components'] },
-  { id: 'appearance', categories: ['finish'] },
-] as const;
-
-export type BuilderGroupId = (typeof BUILDER_GROUPS)[number]['id'];
-
-export function groupOfCategory(id: BuilderCategoryId): BuilderGroupId | null {
-  const group = BUILDER_GROUPS.find((g) => (g.categories as readonly string[]).includes(id));
-  return group ? group.id : null;
-}
-
-export type BuilderToolKind = 'mode' | 'action' | 'menu';
+export type BuilderToolKind = 'mode' | 'action';
 
 export interface BuilderToolSpec {
   /** Stable id: the i18n key is `builder.tool.<id>` and the icon is looked up by it. */
   readonly id: string;
   readonly kind: BuilderToolKind;
-  /** A destructive action, drawn in the danger colour. */
   readonly danger?: boolean;
 }
 
+/** What a section of a tab holds: tools, or one of the panel's own shelves. */
+export type BuilderShelf = 'models' | 'patterns' | 'scope' | 'roofParams' | 'finishes';
 
-/**
- * A family of tools behind one button: the tray shows the family, and clicking
- * it opens the variants. Twenty buttons for twenty window and door types is
- * not a toolbar, it is a wall.
- */
+export interface BuilderSection {
+  /** `builder.section.<title>`; none for a tab with one section. */
+  readonly title?: string;
+  readonly tools?: readonly BuilderToolSpec[];
+  readonly shelf?: BuilderShelf;
+}
+
+export interface BuilderTabSpec {
+  readonly id: BuilderCategoryId;
+  /** Works on a building: greyed out until one is selected. */
+  readonly needsSelection: boolean;
+  readonly sections: readonly BuilderSection[];
+}
+
+const mode = (id: string): BuilderToolSpec => ({ id, kind: 'mode' });
+const action = (id: string): BuilderToolSpec => ({ id, kind: 'action' });
+
+export const BUILDER_TAB_SPECS: readonly BuilderTabSpec[] = [
+  { id: 'models', needsSelection: false, sections: [{ shelf: 'models' }] },
+  {
+    id: 'draw',
+    needsSelection: false,
+    sections: [{
+      tools: [mode('rect'), mode('shapeL'), mode('shapeU'), mode('circle'), mode('hexagon'), mode('octagon'), mode('chamfered'), mode('sketch')],
+    }],
+  },
+  {
+    id: 'mass',
+    needsSelection: true,
+    sections: [
+      { title: 'floors', tools: [action('storey'), action('storeyDown'), action('split'), action('setback')] },
+      { title: 'volumes', tools: [mode('wing'), mode('stack'), mode('cut'), mode('moveMass')] },
+      { title: 'plan', tools: [action('vertexAdd'), action('vertexRemove')] },
+    ],
+  },
+  {
+    id: 'facade',
+    needsSelection: true,
+    sections: [
+      { title: 'pattern', shelf: 'patterns' },
+      { title: 'windows', tools: [mode('window'), mode('sashWindow'), mode('wideWindow'), mode('ribbon'), mode('bayWindow'), mode('frenchWindow')] },
+      { title: 'doors', tools: [mode('door'), mode('doubleDoor'), mode('garageDoor'), mode('loadingDoor')] },
+      { title: 'bays', tools: [mode('balcony'), mode('shopfront'), mode('pillarBay'), mode('wallBay')] },
+      { title: 'scope', shelf: 'scope' },
+      { title: 'relief', tools: [action('inset'), action('outset'), action('flush')] },
+    ],
+  },
+  {
+    id: 'parts',
+    needsSelection: true,
+    sections: [
+      { title: 'structure', tools: [mode('stair'), mode('ramp'), mode('pillar'), mode('canopy'), mode('wall'), mode('slab')] },
+      { title: 'runs', tools: [mode('wallRun'), mode('fenceRun'), mode('pavementRun'), mode('railing'), mode('stairRun')] },
+      { title: 'greenery', tools: [mode('tree'), mode('flowers'), mode('rocks')] },
+      { title: 'furniture', tools: [mode('bench'), mode('planter'), mode('parking'), mode('ac'), mode('awning')] },
+      { title: 'roofGear', tools: [mode('solar'), mode('skylight'), mode('vent'), mode('chimney'), mode('waterTank'), mode('spire')] },
+    ],
+  },
+  {
+    id: 'roof',
+    needsSelection: true,
+    sections: [
+      { tools: [action('roofFlat'), action('roofTerrace'), action('roofGable'), action('roofHip'), action('roofShed'), action('roofSawtooth')] },
+      { title: 'roofShape', shelf: 'roofParams' },
+    ],
+  },
+  {
+    id: 'paint',
+    needsSelection: false,
+    sections: [
+      { tools: [mode('paint'), action('copyStyle')] },
+      { shelf: 'finishes' },
+    ],
+  },
+];
+
+export function tabSpec(id: BuilderCategoryId): BuilderTabSpec {
+  return BUILDER_TAB_SPECS.find((t) => t.id === id) as BuilderTabSpec;
+}
+
+/** Every tab with its tools, flat: the shape the tests and the wiring read. */
+export const BUILDER_CATALOG: readonly { readonly id: BuilderCategoryId; readonly tools: readonly BuilderToolSpec[] }[] =
+  BUILDER_TAB_SPECS.map((tab) => ({ id: tab.id, tools: tab.sections.flatMap((s) => s.tools ?? []) }));
+
+/** Which tab a tool is on. */
+export function tabOfTool(id: string): BuilderCategoryId | null {
+  return BUILDER_CATALOG.find((tab) => tab.tools.some((t) => t.id === id))?.id ?? null;
+}
+
+/** Kept for the thumbnail studio and the icon test: families of pictured parts. */
 export const BUILDER_GALLERIES: Readonly<Record<string, readonly string[]>> = {
-  floors: ['storey', 'storeyDown', 'split', 'setback'],
-  volumes: ['wing', 'stack', 'cut', 'moveMass'],
-  planShape: ['vertexAdd', 'vertexRemove'],
   shapes: ['rect', 'shapeL', 'shapeU', 'circle', 'hexagon', 'octagon', 'chamfered'],
   openWindows: ['window', 'sashWindow', 'wideWindow', 'ribbon', 'bayWindow', 'frenchWindow'],
   openDoors: ['door', 'doubleDoor', 'garageDoor', 'loadingDoor'],
@@ -72,106 +129,6 @@ export const BUILDER_GALLERIES: Readonly<Record<string, readonly string[]>> = {
   roofGear: ['solar', 'skylight', 'vent', 'chimney', 'waterTank', 'spire'],
   roofs: ['roofFlat', 'roofTerrace', 'roofGable', 'roofHip', 'roofShed', 'roofSawtooth'],
 };
-
-export interface BuilderCategorySpec {
-  readonly id: BuilderCategoryId;
-  readonly tools: readonly BuilderToolSpec[];
-}
-
-const mode = (id: string): BuilderToolSpec => ({ id, kind: 'mode' });
-const action = (id: string, danger = false): BuilderToolSpec => ({ id, kind: 'action', danger });
-const menu = (id: string): BuilderToolSpec => ({ id, kind: 'menu' });
-
-export const BUILDER_CATALOG: readonly BuilderCategorySpec[] = [
-  { id: 'select', tools: [mode('select')] },
-  {
-    id: 'draw',
-    tools: [
-      menu('shapes'),
-      mode('sketch'),
-      menu('models'),
-    ],
-  },
-  {
-    id: 'mass',
-    tools: [
-      menu('floors'),
-      menu('volumes'),
-      menu('planShape'),
-    ],
-  },
-  {
-    id: 'face',
-    tools: [
-      mode('pushpull'),
-      action('inset'),
-      action('outset'),
-      action('flush'),
-      menu('patterns'),
-    ],
-  },
-  {
-    id: 'openings',
-    tools: [
-      menu('openWindows'),
-      menu('openDoors'),
-      mode('balcony'),
-      mode('shopfront'),
-      mode('pillarBay'),
-      mode('wallBay'),
-      mode('freeOpening'),
-    ],
-  },
-  {
-    id: 'structure',
-    tools: [
-      mode('stair'),
-      mode('ramp'),
-      mode('pillar'),
-      mode('canopy'),
-      mode('wall'),
-      mode('slab'),
-      menu('runs'),
-    ],
-  },
-  {
-    id: 'roof',
-    tools: [
-      menu('roofs'),
-      menu('roofShape'),
-    ],
-  },
-  {
-    id: 'components',
-    tools: [
-      menu('greenery'),
-      menu('furniture'),
-      menu('roofGear'),
-      menu('moreComponents'),
-    ],
-  },
-  {
-    id: 'finish',
-    tools: [
-      mode('paint'),
-      menu('material'),
-      menu('colour'),
-      action('copyStyle'),
-    ],
-  },
-];
-
-export function categorySpec(id: BuilderCategoryId): BuilderCategorySpec {
-  return BUILDER_CATALOG.find((c) => c.id === id) as BuilderCategorySpec;
-}
-
-export function toolSpec(id: string): { category: BuilderCategoryId; tool: BuilderToolSpec } | null {
-  for (const category of BUILDER_CATALOG) {
-    const tool = category.tools.find((t) => t.id === id);
-    if (tool) return { category: category.id, tool };
-  }
-  return null;
-}
 
 /** The plans a closed outline can be recognised as, and drawn as. */
 export const PLAN_SHAPES = ['rectangle', 'l', 'u', 'circle', 'hexagon', 'octagon', 'chamfered'] as const;
@@ -202,7 +159,6 @@ export const OPENING_COMPONENTS: Readonly<Record<string, string>> = {
   door: 'door',
   shopfront: 'shopfront',
   loadingDoor: 'loadingDoor',
-  pillarr: 'pillar',
   pillarBay: 'pillar',
   wallBay: 'wall',
 };

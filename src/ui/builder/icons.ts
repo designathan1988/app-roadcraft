@@ -184,9 +184,21 @@ export type BuilderIconId = keyof typeof P;
 
 const FALLBACK = '<path d="M4 4h16v16H4Z"/>';
 
+/** The seven tabs of Construction, drawn with the glyph of what they hold. */
+const TAB_ICON: Readonly<Record<string, BuilderIconId>> = {
+  'tab-models': 'create',
+  'tab-draw': 'draw',
+  'tab-mass': 'mass',
+  'tab-facade': 'face',
+  'tab-parts': 'components',
+  'tab-roof': 'roof',
+  'tab-paint': 'appearance',
+};
+
 /** The glyph body for an id, ready to drop inside an `<svg>`. */
 export function builderIcon(id: string): string {
-  return P[id as BuilderIconId] ?? FALLBACK;
+  const alias = TAB_ICON[id];
+  return P[(alias ?? id) as BuilderIconId] ?? FALLBACK;
 }
 
 /** A complete inline SVG for an id. */

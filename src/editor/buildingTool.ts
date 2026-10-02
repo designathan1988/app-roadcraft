@@ -890,6 +890,25 @@ export class BuildingTool {
     this.host.changed();
   }
 
+  /**
+   * One more storey in the selected mass, a copy of storey `at`, put in at
+   * `at` (below it) or `at + 1` (above it); whatever stands on the mass rises.
+   */
+  insertStorey(at: number, above: boolean): void {
+    const s = this.selection;
+    if (!s) return;
+    this.onSelected((draft) => {
+      const v = volumeById(draft, s.volume);
+      if (!v) return false;
+      const index = Math.max(0, Math.min(v.storeys.length - 1, at));
+      const copy = structuredClone(v.storeys[index]!);
+      if (!opSetStoreys(draft, v.id, v.storeys.length + 1)) return false;
+      v.storeys.pop();
+      v.storeys.splice(above ? index + 1 : index, 0, copy);
+      return true;
+    });
+  }
+
   splitAtFloor(afterFloor: number): void {
     const s = this.selection;
     if (!s) return;

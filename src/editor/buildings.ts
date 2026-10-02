@@ -1266,10 +1266,17 @@ export function opMirror(b: Building): boolean {
       v.facadeGeometry = controls;
     }
     if (v.fall !== undefined) v.fall = flipSide(v.fall);
+    // The roof equipment goes with its roof: left where it was, it stood off
+    // the mirrored roof and the mirror was refused as "out of limits".
+    for (const part of v.roofDetails ?? []) {
+      part.x = -part.x;
+      part.rotation = -part.rotation;
+    }
   }
   for (const e of b.elements ?? []) {
     e.x = -e.x;
     e.facing = flipSide(e.facing);
+    if (e.angle) e.angle = -e.angle;
   }
   for (const core of b.cores) core.x = -(core.x + b.module);
   const after = footprintCentre(b);

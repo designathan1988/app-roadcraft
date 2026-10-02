@@ -3,7 +3,7 @@ import { signedArea } from '@core/polygon';
 import { RoadDoc } from '@world/doc';
 import type { Network } from '@world/network';
 import { bodyOf } from '@world/buildings/blueprints';
-import { DEFAULT_PITCH, baysOn, footprintBox, levelElevation, localDirToWorld, ridgeAlongX, topLevel } from '@world/buildings/geometry';
+import { DEFAULT_PITCH, baysOn, footprintBox, ridgeAlongX, topLevel } from '@world/buildings/geometry';
 import { type Building, volumeById } from '@world/buildings/types';
 import { localFootprint } from '@world/buildings/footprints';
 import { FINISH_COLOUR } from '@world/buildings/materials';
@@ -117,7 +117,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
   let painting = false;
   let studio: ThumbnailStudio | null = null;
   let inspectorOpen = true;
-  let category: BuilderCategoryId = 'select';
+  let category: BuilderCategoryId = 'models';
   let toolId = 'select';
   let snapMode: string = 'auto';
   let gridVisible = false;
@@ -379,9 +379,13 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       host.changed();
     },
     floorCommand: (command) => {
-      if (command === 'duplicate') tool.addStoreys(1);
-      else if (command === 'insertAbove') tool.splitAtFloor(defaultSplitFloor() + 1);
-      else tool.splitAtFloor(defaultSplitFloor());
+      // The floor in hand is the one the floor chip shows: the picked face's
+      // storey, or the top one. Inserting used to cut the mass in two (and
+      // "below" did nothing); now it adds a storey there.
+      const volume = tool.selected() && tool.selection ? volumeById(tool.selected()!, tool.selection.volume) : undefined;
+      const at = tool.selection?.bay?.storey ?? (volume ? volume.storeys.length - 1 : 0);
+      if (command === 'insertAbove') tool.insertStorey(at, true);
+      else tool.insertStorey(at, false);
       host.changed();
     },
     setSnap: (mode) => {
@@ -433,6 +437,15 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           if (tool.groupWith(best.id)) notify('builder.grouped');
           break;
         }
+        case 'save': {
+          if (!building) break;
+          const name = window.prompt(t('building.blueprintName'), '');
+          if (name !== null && name.trim() !== '' && library.save(name, bodyOf(building))) {
+            userBlueprints = library.list();
+            notify('building.blueprintSaved');
+          }
+          break;
+        }
         case 'delete':
           if (building) tool.deleteSelected();
           break;
@@ -462,14 +475,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       library.remove(key);
       userBlueprints = library.list();
       host.changed();
-    },
-    saveBlueprint(name) {
-      const building = tool.selected();
-      if (building && library.save(name, bodyOf(building))) {
-        userBlueprints = library.list();
-        notify('building.blueprintSaved');
-        host.changed();
-      }
     },
     // The finish tools paint the selected free part when there is one (a
     // stair, a pavement, a canopy), and the model's surface otherwise.
@@ -534,9 +539,14 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     view: (id) => {
       const { w, h } = deps.size();
       switch (id) {
-        case 'frame':
-          tool.focusSelected();
+        case 'frame': {
+          // Asked for: the camera goes to the selection. (A stored edit never
+          // moves it - `host.focus` stays quiet - but this is the player's own
+          // request, and it used to do nothing at all.)
+          const building = tool.selected();
+          if (building) deps.focusBuilding?.(building);
           break;
+        }
         case 'top':
           // A true plan view: straight down, keeping the bearing.
           deps.view().setOrbit(deps.view().azimuth, Math.PI / 2);
@@ -601,27 +611,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
     }
     if (DRAW_SHAPES[toolId]) return 'sketch';
     return toolId;
-  }
-
-  /**
-   * Where the little bar of actions goes: over the selection, in screen
-   * space, kept inside the viewport and clear of the top bar. It carries only
-   * what the gizmos do not (duplicate, mirror, group, demolish).
-   */
-  function quickBar(): { x: number; y: number } | null {
-    const building = tool.selected();
-    if (!building || tool.planPoints || tool.shapeDragStart) return null;
-    const volume = tool.selection ? volumeById(building, tool.selection.volume) : undefined;
-    const f = footprintBox(building);
-    const c = localDirToWorld(building, (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2);
-    const top = volume ? levelElevation(building, volume.base + volume.storeys.length) : 0;
-    // Well clear of the roof: the storey chevrons and the height handle live
-    // there, and the bar used to sit right on top of them, swallowing the
-    // clicks meant for the building.
-    const s = view.project(building.x + c.x, building.y + c.y, tool.floorOf(building) + top + m(4.6));
-    const { w, h } = deps.size();
-    void h;
-    return { x: Math.max(60, Math.min(w - 60, s.x)), y: Math.max(78, s.y) };
   }
 
   /** The precise numbers of the current selection, for the inspector. */
@@ -723,7 +712,6 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
           ...(material === undefined ? {} : { material }),
         }
         : null,
-      quickBar: quickBar(),
       hint: t(`hint.builder.${hintKey()}`),
       planning: Array.isArray(tool.planPoints) && !tool.shapeDragStart,
       planPoints: tool.planPoints?.length ?? 0,
@@ -862,7 +850,7 @@ export function createBuildingWiring(deps: BuildingWiringDeps): BuildingWiring {
       // first model, whose ghost then followed every other tool around.
       if (toolId === 'select' && !tool.planPoints) tool.armModelTool('select');
       // Nothing in hand: open on the models, the shapes a tab away.
-      if (!tool.selected() && !tool.planPoints) workspace.showGallery('draw', 'models');
+      if (!tool.selected() && !tool.planPoints) workspace.showGallery('models');
       refresh();
     },
     deactivate() {

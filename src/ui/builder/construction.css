@@ -1,0 +1,172 @@
+/* Construction's panel and the game's chrome after the 2026-10-02 rework.
+   Loaded after workspace.css: what is here wins. */
+
+/* --- the rail: icons only ----------------------------------------------------
+   A caption under every mode said again what the icon and its tooltip say. */
+.bw-rail .toolbar .tool { height: 44px; padding: 0; gap: 0; }
+.bw-rail .toolbar .tool > span:last-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.bw-rail .toolbar .tool-icon svg { width: 22px; height: 22px; }
+.bw-dock { left: 68px; width: 372px; }
+
+/* --- the top bar carries the global tools and the camera ---------------------
+   Demolish and Inspect act on whatever is under the pointer in any mode, and
+   the camera belongs to every mode: none of them is a mode of its own, and
+   the camera's floating bar sat over the map in a corner nobody asked for. */
+.bw-controls { gap: 2px; }
+.bw-controls .tool {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 7px;
+  position: relative;
+}
+.bw-controls .tool > span:last-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.bw-controls .tool .tool-icon svg { width: 18px; height: 18px; }
+.bw-controls .tool[data-key]::after { display: none; }
+.bw-controls .camera-controls {
+  position: static;
+  display: flex;
+  gap: 2px;
+  padding: 0 0 0 6px;
+  margin-left: 4px;
+  border: 0;
+  border-left: 1px solid var(--bw-border);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.bw-controls .camera-controls .icon-button { width: 30px; height: 30px; }
+.bw-controls .camera-controls .icon-button svg { width: 16px; height: 16px; }
+.bw-controls .bw-controls-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--bw-border); }
+
+/* --- the hint: one line, never a second ---------------------------------------
+   Two lines on one tool and one on the next made the panel jump, and the
+   buttons moved out from under the pointer. */
+#builder[data-mode="builder"] .bw-foot .bw-hint,
+.bw-foot .hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bw-foot { min-height: 16px; }
+
+/* --- Construction's tabs -------------------------------------------------------- */
+.bw-host-builder { gap: 10px; }
+.bw-context { gap: 3px; }
+.bw-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  width: 100%;
+  padding: 3px;
+  border: 1px solid var(--bw-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bw-bg) 40%, transparent);
+}
+.bw-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--bw-muted);
+  font-size: 11px;
+  line-height: 1.1;
+}
+.bw-tab svg { flex: none; width: 16px; height: 16px; }
+.bw-tabs .bw-tab { font-size: 11px; }
+.bw-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bw-tab:hover:not(:disabled) { color: var(--bw-text); background: color-mix(in srgb, var(--bw-active) 8%, transparent); }
+.bw-tab.active { color: var(--bw-active); border-color: var(--bw-active); background: color-mix(in srgb, var(--bw-active) 13%, transparent); }
+.bw-tab:disabled { opacity: 0.32; cursor: default; }
+
+.bw-planrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; width: 100%; }
+.bw-planrow[hidden] { display: none; }
+
+.bw-shelf { display: grid; gap: 12px; width: 100%; }
+.bw-section-box { display: grid; gap: 6px; }
+.bw-shelf-title {
+  color: var(--bw-muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.bw-empty { margin: 4px 0; color: var(--bw-muted); font-size: 11.5px; }
+
+/* Small tiles: four to a row, picture over a short name. */
+.bw-tiles.small { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.bw-tile.small { width: auto; min-width: 0; padding: 5px 3px 4px; font-size: 9.5px; position: relative; }
+.bw-tile.small .bw-tile-art,
+.bw-tile.small img.bw-tile-art { width: 100%; height: 40px; }
+.bw-tile.small img.bw-tile-art { object-fit: cover; border-radius: 4px; }
+.bw-tile.small .bw-tile-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bw-tile.small .chips i { height: 28px; width: 10px; }
+.bw-tile:disabled { opacity: 0.35; }
+.bw-tile { position: relative; }
+.bw-tile-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bw-danger) 85%, black);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+}
+.bw-tile-remove:hover { background: var(--bw-danger); }
+.bw-params { justify-content: flex-start; border-top: 0; padding-top: 0; }
+
+/* --- the selection: numbers and what can be done to it ------------------------- */
+.bw-inspector { top: 64px; max-height: calc(100dvh - 64px - 60px); }
+.bw-inspector-actions {
+  display: flex;
+  gap: 3px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--bw-border);
+}
+.bw-inspector.collapsed .bw-inspector-actions { display: none; }
+.bw-inspector-actions .bw-action { flex: 1; height: 30px; }
+.bw-inspector-actions .bw-action.danger:hover { color: var(--bw-danger); border-color: var(--bw-danger); }
+
+@media (max-width: 780px) {
+  .bw-tabs { grid-template-columns: repeat(7, 1fr); }
+  .bw-tabs .bw-tab { font-size: 11px; }
+.bw-tab span { display: none; }
+  .bw-tab { height: 36px; }
+  .bw-controls .camera-controls { display: none; }
+}
+
+/* Rows of options wrap inside the panel; nothing scrolls it sideways. */
+.bw-panel-body { overflow-x: hidden; }
+.bw-params { display: grid; gap: 6px; }
+.bw-params-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.bw-params .bw-menu-item { white-space: nowrap; }

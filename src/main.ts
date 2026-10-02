@@ -2015,7 +2015,19 @@ function mountUnifiedChrome(): void {
   move(document.getElementById('topMenu'), hosts.appMenu);
   // Pausing is a speed, and every speed is inside the simulation menu: the
   // bar keeps only the camera. The button itself stays wired to the spacebar.
+  // Demolish and Inspect act on whatever is under the pointer, in any mode:
+  // they are the bar's tools, not modes on the rail. The camera's buttons
+  // join them - a bar of their own floated over the map's corner.
+  move(document.querySelector('.toolbar .tool[data-tool="bulldoze"]'), hosts.controls);
+  move(document.querySelector('.toolbar .tool[data-tool="inspect"]'), hosts.controls);
+  move(document.getElementById('cameraControls'), hosts.controls);
   move(document.getElementById('resetView'), hosts.controls);
+  // The rail shows icons only; its names live in the tooltips.
+  for (const button of document.querySelectorAll<HTMLButtonElement>('.toolbar .tool, .bw-controls .tool')) {
+    const label = button.querySelector<HTMLElement>('[data-i18n]')?.dataset['i18n'];
+    if (label) button.dataset['i18nTitle'] = label;
+    button.title = `${button.textContent?.trim() ?? ''}${button.dataset['key'] ? ` (${button.dataset['key']})` : ''}`;
+  }
   // The hint bar is the band's foot line now: floating over the map it landed
   // on the panel's own last row and the two sentences drew over each other.
   move(document.getElementById('hint'), hosts.hint);
