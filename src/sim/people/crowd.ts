@@ -37,8 +37,8 @@ import { CrowdPointIndex } from './crowdIndex';
  *  4. in a party, a place beside the leader.
  *
  * VISUAL ORIENTATION is not movement: the body turns towards the velocity
- * it actually moves at; standing, it keeps its facing. A turn never changes
- * the velocity or the position.
+ * it actually moves at; standing, it keeps its facing (or faces the way it
+ * waits to go). A turn never changes the velocity or the position.
  *
  * Selected with `?people=crowd`. Recast's WebAssembly must be loaded first
  * (`initCrowd`).
@@ -190,7 +190,11 @@ const EASE_AFTER = 0.6;
 const SHUFFLE = m(0.3);
 const EASE_HOLD = 1.5;
 const EASE_GOING = 0.4;
-/** Speed at which the visual turn limit reaches the walking rate, u/s. */
+/**
+ * Walking: above this the body faces the way it moves, u/s. Slower, a
+ * person shuffles - a step aside, a step to let somebody by - facing where
+ * it means to go.
+ */
 const WALKING = m(0.4);
 /** Desired speed below which a person means to go nowhere, u/s. */
 const MEANS = m(0.05);
@@ -199,7 +203,7 @@ const STILL = m(0.12);
 /** Fastest turn of the body walking and on the spot, rad/s, and the time it takes to settle on a new facing, s. */
 const TURN_RATE = 4;
 const PIVOT_RATE = 2 * Math.PI;
-const TURN_TIME = 0.1;
+const TURN_TIME = 0.25;
 /** Ticks between looks at the way ahead (staggered across people). */
 export const THINK_EVERY = 15;
 /** A zebra this close along the way ahead is asked for, u. */
@@ -1530,6 +1534,19 @@ function overshoot(s: State, p: Walker): void {
   ask(s, p, p.settle.at);
 }
 
+/** The way a waiting walker faces: across the zebra, or into the passage it waits for. */
+function waitFacing(p: Walker): number | null {
+  if (p.mode !== 'wait') return null;
+  if (p.zebra) {
+    const z = p.zebra;
+    const len = Math.hypot(z.b.x - z.a.x, z.b.y - z.a.y) || 1;
+    const fromA = Math.hypot(p.x - z.a.x, p.y - z.a.y) < Math.hypot(p.x - z.b.x, p.y - z.b.y);
+    return Math.atan2((z.b.y - z.a.y) / len * (fromA ? 1 : -1), (z.b.x - z.a.x) / len * (fromA ? 1 : -1));
+  }
+  if (p.narrow) return Math.atan2(p.narrow.n.dir.y * p.narrow.d, p.narrow.n.dir.x * p.narrow.d);
+  return null;
+}
+
 function step(w: SimWorld, s: State): void {
   ensureNav(w, s);
   if (!s.nav || !s.crowd) return;
@@ -1575,10 +1592,12 @@ function step(w: SimWorld, s: State): void {
       p.heading = Math.atan2(vel.z, vel.x);
       p.prevHeading = p.heading;
     }
-    // Visual orientation reads actual velocity, including the start of a
-    // step aside. A stopped body retains its last facing.
+    // VISUAL ORIENTATION, which moves nothing: walking, the way it walks;
+    // shuffling, the way it means to go; standing, the way it waits to go.
     const want = p.agent.desiredVelocity();
-    const face = p.speed > m(0.01) ? Math.atan2(vel.z, vel.x) : null;
+    const face = p.speed >= WALKING ? Math.atan2(vel.z, vel.x)
+      : Math.hypot(want.x, want.z) > MEANS ? Math.atan2(want.z, want.x)
+        : p.holding ? waitFacing(p) : null;
     if (face !== null && !firstPose) {
       const delta = Math.atan2(Math.sin(face - p.heading), Math.cos(face - p.heading));
       // Turning on the spot is quicker than turning while walking.
