@@ -81,7 +81,7 @@ const HAND_WALK_AT = { walkHandL: WALK_SHUFFLE + 1 + LIBRARY.length + DIRECTIONA
  * it in front (`carryBox`), after the hand-in-hand walks. Drawing swaps each
  * for its carried twin, same timing, so the gait needs to know nothing of it.
  */
-const CARRIED = ['walk', 'walkShuffle', 'idle', 'turnLeft', 'turnRight'] as const satisfies readonly GaitClipName[];
+const CARRIED = ['walk', 'walkShuffle', 'idle', 'turnLeft', 'turnRight', 'walkBack', 'walkLeft', 'walkRight'] as const satisfies readonly GaitClipName[];
 const CARRY_AT = Object.fromEntries(CARRIED.map((name, i) =>
   [name, WALK_SHUFFLE + 3 + LIBRARY.length + DIRECTIONAL.length + RIDER_CLIPS.length + i])) as
   Readonly<Partial<Record<GaitClipName, number>>>;
@@ -620,13 +620,15 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
   const rest = clipTransferFor(body.rig, body.mesh, library[sex].walkSlow, REST_AMPLITUDE);
   const restFrames = await bakeFrames(body, () => rest.pose(0), 1, true, 1);
   clips[DIRECTIONAL_AT.walkRest] = { ...restFrames, frames: 1, duration: 1, loop: true, stride: 0 };
-  for (const [name, angle] of [['walkBack', Math.PI], ['walkLeft', Math.PI / 2], ['walkRight', -Math.PI / 2]] as const) {
+  const directional = async (angle: number, carry: boolean): Promise<ClipFrames> => {
     body.reset();
     const warped = directionalWalkFor(body.rig, body.mesh, library[sex].walkSlow, SHUFFLE_AMPLITUDE, angle);
     const facts = clips[WALK_SHUFFLE]!;
-    const frames = await bakeFrames(body, time => warped.pose(time), facts.duration, true);
-    clips[DIRECTIONAL_AT[name]] = { ...frames, duration: facts.duration, loop: true, stride: facts.stride * warped.strideScale };
-  }
+    const frames = await bakeFrames(body, time => { warped.pose(time); if (carry) carryBox(body.rig); }, facts.duration, true, FPS, carry);
+    return { ...frames, duration: facts.duration, loop: true, stride: facts.stride * warped.strideScale };
+  };
+  const SIDEWAYS = [['walkBack', Math.PI], ['walkLeft', Math.PI / 2], ['walkRight', -Math.PI / 2]] as const;
+  for (const [name, angle] of SIDEWAYS) clips[DIRECTIONAL_AT[name]] = await directional(angle, false);
   for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = await bakeRiderClip(body, clip);
   clips[HAND_WALK_AT.walkHandL] = await bakeWalk(body, sex, undefined, 'L');
   clips[HAND_WALK_AT.walkHandR] = await bakeWalk(body, sex, undefined, 'R');
@@ -635,6 +637,8 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
   for (const name of ['idle', 'turnLeft', 'turnRight'] as const) {
     clips[CARRY_AT[name]!] = await bakeLibraryClip(body, library[sex][name], undefined, name, true);
   }
+  // Stepping aside or back with the box, too: it never leaves the hands.
+  for (const [name, angle] of SIDEWAYS) clips[CARRY_AT[name]!] = await directional(angle, true);
   return { clips, helmet };
 }
 
@@ -1023,7 +1027,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         let best = -1;
         for (let i = 0; i < mixWeights.length; i++) if (best < 0 || mixWeights[i]! > mixWeights[best]!) best = i;
         const clip = best >= 0 ? mixClips[best] : undefined;
-        if (clip?.hands && mixWeights[best]! > 0.5) {
+        if (clip?.hands && mixWeights[best]! > 0) {
           const frame = Math.min(clip.frames, Math.max(0, Math.round(mixPhases[best]!)));
           boxR.fromArray(clip.hands, frame * 32 + 12);
           boxL.fromArray(clip.hands, frame * 32 + 28);

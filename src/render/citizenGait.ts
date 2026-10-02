@@ -455,6 +455,8 @@ function play(g: Gait, key: PlayKey, phase = 0, fade = FADE): void {
  */
 function standingKey(ped: PedView, g: Gait, hash: number, clips: GaitClips): Single {
   const act = ped.gesture;
+  // Arms full: just standing, holding it, whatever else is going on.
+  if (ped.carry) return 'idle';
   if (act?.kind === 'talk' && act.phase === 'hold') {
     // One speaks at a time, and the turn passes round the party. Some
     // parties are merry - the one speaking laughs now and then - and some
@@ -466,8 +468,6 @@ function standingKey(ped: PedView, g: Gait, hash: number, clips: GaitClips): Sin
     return mood === 3 ? 'argue' : mood % 4 === 1 && beat === 2 ? 'laugh' : 'talk';
   }
   if (act?.kind === 'phone') return 'phone';
-  // Arms full: just standing, holding it.
-  if (ped.carry) return 'idle';
   if (act?.kind === 'crouch') {
     // Down, a while there (tying a lace, a word to a child), and up again.
     const hold = act.hold ?? 8;

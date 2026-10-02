@@ -1241,6 +1241,8 @@ function slotBeside(mesh: WorldNav['mesh'], lead: Person, p: Person, crowded: bo
  */
 function pickSeat(w: SimWorld, s: State, p: Person, decided = false): boolean {
   if (p.party.size !== 1 || p.leader || !s.nav) return false;
+  // Arms full of a box: on to wherever it is going.
+  if (p.view.carry) return false;
   if (!decided && w.rng.people.float() >= BENCH_CHANCE[p.ageClass]) return false;
   let best: WorldNav['seats'][number] | null = null;
   let bestD = decided ? BENCH_PASS_REACH : BENCH_REACH;
