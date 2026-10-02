@@ -539,6 +539,7 @@ export const EN: Dictionary = {
   'status.vehicles.other': '{count} vehicles',
   'status.people.one': '1 person',
   'status.people.other': '{count} people',
+  'status.residents': '{count} residents · {travelling} on the way · {working} at work',
   'status.clear': 'no alerts',
   'status.impossible.one': '1 node cannot be built',
   'status.impossible.other': '{count} nodes cannot be built',

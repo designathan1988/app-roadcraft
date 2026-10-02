@@ -68,6 +68,8 @@ export interface BuildingKit {
   /** The furniture models, built the first time an interior is drawn. */
   furniture(): { readonly geometry: Readonly<Record<FurnitureKind, BufferGeometry>>; readonly material: MeshStandardMaterial };
   setGhostValid(valid: boolean): void;
+  /** Lights the windows from inside as night falls: 0 by day, 1 at night. */
+  setNight(dark: number): void;
   dispose(): void;
 }
 
@@ -239,6 +241,14 @@ export function createBuildingKit(): BuildingKit {
         unique.add(furniture.material);
       }
       return furniture;
+    },
+    setNight(dark) {
+      // Rooms lit behind the glass: a warm glow, more in the clear glass.
+      for (const [kind, k] of [['glass', 0.55], ['glassDark', 0.35]] as const) {
+        const mat = material[kind] as MeshStandardMaterial;
+        mat.emissive.setHex(0xffc27a);
+        mat.emissiveIntensity = dark * k;
+      }
     },
     setGhostValid(valid) {
       for (const m of [ghostShell, ghostParts]) {

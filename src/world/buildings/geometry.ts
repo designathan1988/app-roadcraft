@@ -110,6 +110,15 @@ export const groundVolumes = (b: Building): Volume[] => b.volumes.filter((v) => 
 /** A block that is mass (solid or exclusive), not a cut or a clip of others. */
 export const isMass = (v: Volume): boolean => v.mode !== 'void' && v.mode !== 'intersect';
 
+/**
+ * World corner rings of the BUILT ground volumes: what a person cannot walk
+ * through. Open lots - a front garden, a car park, a square - are left out:
+ * they are walked across to the door.
+ */
+export function solidFootprints(b: Building, grow = 0): Vec2[][] {
+  return groundVolumes(b).filter((v) => !v.open).map((v) => volumeCorners(b, v, grow));
+}
+
 /** World corner rings of every ground volume: the building's footprint. */
 export function footprintRects(b: Building, grow = 0): Vec2[][] {
   return groundVolumes(b).map((v) => volumeCorners(b, v, grow));
@@ -251,7 +260,8 @@ export function coveredSpans(b: Building, v: Volume, side: FaceId, level: number
   if (b.volumes.some((o) => o.outline)) {
     const a = edgeFrame(v, side);
     for (const o of b.volumes) {
-      if (o.id === v.id || !occupiesLevel(o, level)) continue;
+      // An open lot (a garden, a car park) or a cut stands against no wall.
+      if (o.id === v.id || !occupiesLevel(o, level) || o.open || !isMass(o)) continue;
       for (const edge of volumeSides(o)) {
         const c = edgeFrame(o, edge);
         if (a.nx * c.nx + a.ny * c.ny > -.9999) continue;
@@ -265,7 +275,7 @@ export function coveredSpans(b: Building, v: Volume, side: FaceId, level: number
     return out.sort((p, q) => p[0] - q[0]);
   }
   for (const o of b.volumes) {
-    if (o.id === v.id || !occupiesLevel(o, level)) continue;
+    if (o.id === v.id || !occupiesLevel(o, level) || o.open || !isMass(o)) continue;
     let touches: boolean;
     let from: number;
     let to: number;

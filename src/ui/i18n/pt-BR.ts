@@ -527,6 +527,7 @@ export const PT_BR: Dictionary = {
   'status.vehicles.other': '{count} veículos',
   'status.people.one': '1 pessoa',
   'status.people.other': '{count} pessoas',
+  'status.residents': '{count} moradores · {travelling} a caminho · {working} trabalhando',
   'status.clear': 'sem alertas',
   'status.impossible.one': '1 nó impossível de construir',
   'status.impossible.other': '{count} nós impossíveis de construir',

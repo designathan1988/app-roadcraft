@@ -304,6 +304,7 @@ export function createSceneRenderer(
   /** The scenery the building footprints were last cut out of. */
   let excludedFor: { scenery: Scenery | null; version: number } = { scenery: null, version: -1 };
   let tallestFor = -1;
+  let lastDark = -1;
   let tallestTop = 0;
   const tallestBox = new Box3();
   const viewDirection = new Vector3();
@@ -577,6 +578,12 @@ export function createSceneRenderer(
         tallestFor = buildings.version;
         tallestBox.setFromObject(buildings.group);
         tallestTop = tallestBox.isEmpty() ? 0 : tallestBox.max.y;
+      }
+      // Day and night, by the residents' clock (`sim/city`).
+      const dark = environment.setTimeOfDay(sim.city.minutes(sim));
+      if (Math.abs(dark - lastDark) > 0.01) {
+        lastDark = dark;
+        buildings.setNight(dark);
       }
       rig.camera.getWorldDirection(viewDirection);
       environment.follow(target, halfWidth, groundHalfDepth, viewDirection, Math.max(0, tallestTop - target.y));

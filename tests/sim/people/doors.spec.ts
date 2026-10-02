@@ -16,6 +16,8 @@ describe('where people come from and go to', () => {
     const sim = new SimWorld(doc, net, 0xbe7c);
     sim.rebuildTopology();
     sim.pedestrianIntensity = 30;
+    // The anonymous crowd of a city without residents' days (`sim/city`).
+    sim.city.enabled = false;
     sim.usePedestrianEngine(createPeopleEngine());
     step(sim, { traffic: false, pedestrians: true });
     const doors = [...sim.sidewalks.nodes.values()].filter((n) => n.id.startsWith('B:')).map((n) => n.at);

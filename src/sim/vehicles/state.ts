@@ -205,6 +205,11 @@ export interface Vehicle {
   errand: ErrandKind | null;
   /** The kerb stop under way, from choosing the place to pulling away. */
   kerbStop: KerbStop | null;
+  /**
+   * A resident driving to a building (`sim/city`): the car pulls in at `at`
+   * on `lanelet`, in front of the door, and is parked there.
+   */
+  commute: { readonly trip: number; readonly lanelet: LaneletId; readonly at: number } | null;
   /** Further tasks of the same stop: the next passenger of a bus, the mate's return. */
   kerbQueue: KerbStop[];
   /** Own age at the last bus stop served. */
@@ -287,6 +292,7 @@ export function createVehicle(
     peopleAge: [],
     errand: null,
     kerbStop: null,
+    commute: null,
     kerbQueue: [],
     lastServiceAge: 0,
     shadow: null,

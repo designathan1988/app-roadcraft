@@ -22,6 +22,7 @@ import { publishCrossingStates, publishPedViews } from './peds/publish';
 import type { PedView } from './people/view';
 import type { PedestrianEngine } from './people/engine';
 import { legacyPedestrians } from './peds/engine';
+import { CityLife } from './city/life';
 /** The body class a signal plan is protected for: an ordinary car. */const CAR_CLASS: BodyClass = 1;
 
 /** A queue is counted this far back from the stop line. */
@@ -150,6 +151,14 @@ export class SimWorld {
   pedestrianIntensity = 1;
   /** Shared demand multiplier for the current simulation period. */
   demandMultiplier = 1;
+  /**
+   * Traffic from outside: cars at the map's edge entries, people at doors and
+   * road ends. Off once the city has residents (`sim/city`): what moves is
+   * then their own trips.
+   */
+  edgeTraffic = true;
+  /** The residents' days (`sim/city/life.ts`), stepped by the pipeline. */
+  city: CityLife = new CityLife();
   /**
    * Share of the population ceilings this device carries (1, or
    * `NARROW_SCREEN_SHARE` on a narrow screen). SET BY THE COMPOSITION ROOT:

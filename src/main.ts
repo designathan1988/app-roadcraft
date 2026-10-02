@@ -3293,6 +3293,13 @@ function updateStatus(): void {
   text('nodeCount', nodeCountLabel(doc.nodes.size));
   text('vehicleCount', vehicleCountLabel(sim.vehicles.size));
   text('pedCount', peopleCountLabel(sim.pedViews.length));
+  // The time of day and the residents' day (`sim/city`).
+  const minutes = sim.city.minutes(sim) % 1440;
+  text('cityClock', `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(Math.floor(minutes % 60)).padStart(2, '0')}`);
+  const life = sim.city.counts();
+  text('residentCount', life.residents > 0
+    ? t('status.residents', { count: life.residents, travelling: life.walking + life.driving, working: life.atWork })
+    : '');
   // The city's numbers, computed all along and shown nowhere (audit P2-02).
   text('metricTrips', String(sim.completedTrips));
   text('metricLost', String(sim.entryDemandLost));

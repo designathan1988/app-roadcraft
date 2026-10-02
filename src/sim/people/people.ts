@@ -32,6 +32,8 @@ import { keepRight, orcaLine, solveOrca, wallLine, type OrcaBody, type OrcaLine 
 
 interface Person {
   readonly id: number;
+  /** A resident's trip (city life): walks to its goal and in, and is reported when it gets there. */
+  trip?: number;
   x: number;
   y: number;
   heading: number;
@@ -137,6 +139,8 @@ interface State {
   footArea: number[];
   /** Bench seats taken, by key, to the person on them. */
   taken: Map<string, number>;
+  /** Residents' trips that ended since the city last asked. */
+  arrivals: number[];
 }
 
 const STATES = new WeakMap<SimWorld, State>();
@@ -144,7 +148,7 @@ const STATES = new WeakMap<SimWorld, State>();
 function stateOf(w: SimWorld): State {
   let s = STATES.get(w);
   if (!s) {
-    s = { nav: null, people: [], byId: new Map(), nextId: 1, spawnClock: 0, footTris: [], footArea: [], taken: new Map() };
+    s = { nav: null, people: [], byId: new Map(), nextId: 1, spawnClock: 0, footTris: [], footArea: [], taken: new Map(), arrivals: [] };
     STATES.set(w, s);
   }
   return s;
@@ -278,7 +282,9 @@ export function createPeopleEngine(): PedestrianEngine {
     },
     dispatch(w, enabled) {
       const s = stateOf(w);
-      if (!enabled || !s.nav) return;
+      // A city with residents has only their walks (`sim/city`): nobody else
+      // comes in at the doors or the map's edges.
+      if (!enabled || !s.nav || !w.edgeTraffic) return;
       s.spawnClock += DT;
       if (s.spawnClock < SPAWN_INTERVAL) return;
       s.spawnClock = 0;
@@ -292,6 +298,29 @@ export function createPeopleEngine(): PedestrianEngine {
     // The world forces a topology rebuild after a reset, which rebinds (and
     // so rebuilds the mesh); here everybody simply leaves.
     reset(w) { STATES.delete(w); },
+    walkTrip(w, trip) {
+      const s = stateOf(w);
+      const mesh = s.nav?.mesh;
+      if (!mesh) return null;
+      const from = mesh.nearest(trip.fromX, trip.fromY, m(6));
+      const to = mesh.nearest(trip.toX, trip.toY, m(6));
+      if (!from || !to) return null;
+      const p = create(w, s, s.nextId, from.x, from.y, from.t, Math.atan2(to.y - from.y, to.x - from.x),
+        { ageClass: trip.ageClass, gender: trip.seed % 2 ? 'f' : 'm' });
+      p.goalX = to.x; p.goalY = to.y; p.goalTri = to.t;
+      p.leaving = true;
+      if (!plan(s, p)) { s.byId.delete(p.id); s.people.splice(s.people.indexOf(p), 1); return null; }
+      p.trip = trip.trip;
+      const first = p.path?.corners[0];
+      if (first) p.heading = p.prevHeading = p.view.heading = Math.atan2(first.y - p.y, first.x - p.x);
+      return p.id;
+    },
+    takeArrivals(w) {
+      const s = stateOf(w);
+      const out = s.arrivals;
+      s.arrivals = [];
+      return out;
+    },
     bridge: {
       // Somebody a car could stop for: alone, not a child, walking on the
       // footway along that side of the lane, nearest the front first.
@@ -383,6 +412,8 @@ function create(w: SimWorld, s: State, id: number, x: number, y: number, tri: nu
 
 function remove(s: State, p: Person): void {
   standUp(s, p);
+  // A resident's walk ends here, wherever that is: the city is told.
+  if (p.trip !== undefined) s.arrivals.push(p.trip);
   s.byId.delete(p.id);
   const i = s.people.indexOf(p);
   if (i >= 0) s.people.splice(i, 1);
@@ -509,12 +540,12 @@ function rebind(w: SimWorld, s: State): void {
     p.granted = p.crossing >= 0 ? [p.crossing] : [];
     const goal = mesh.locate(p.goalX, p.goalY);
     if (goal < 0 || !(p.goalTri = goal, plan(s, p))) {
-      if (!pickGoal(w, s, p)) remove(s, p);
+      if (p.trip !== undefined || !pickGoal(w, s, p)) remove(s, p);
     }
   }
   // A city just opened is populated at once, all over; from then on people
   // only come and go through doors and the map's edges.
-  if (!s.people.length) {
+  if (!s.people.length && w.edgeTraffic) {
     const target = peopleTarget(w);
     for (let i = 0; i < target * 4 && s.people.length < target; i++) spawn(w, s, true);
   }
@@ -975,7 +1006,7 @@ function step(w: SimWorld, s: State): void {
     // zebra already granted stays granted).
     if (p.blocked > REPLAN_AFTER && !p.replanned) {
       p.replanned = true;
-      if (!plan(s, p)) pickGoal(w, s, p);
+      if (!plan(s, p) && p.trip === undefined) pickGoal(w, s, p);
     } else if (p.blocked === 0) p.replanned = false;
   }
 

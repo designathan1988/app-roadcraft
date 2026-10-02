@@ -90,6 +90,8 @@ export function step(w: SimWorld, opts: StepOptions = {}): void {
   // 2. routing and population
   stepDispatch(w, traffic);
   w.pedEngine.dispatch(w, pedestrians);
+  // The residents' days: their trips start, their cars pull in (`sim/city`).
+  w.city.step(w);
   ensureVehicleRoutes(w);
   lap('2 dispatch+routes');
   // Lane choice sits between routing and constraints: it must see a settled

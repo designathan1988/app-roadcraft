@@ -85,6 +85,11 @@ export interface SceneEnvironment {
   /** Points the shadow frustum at what the camera is looking at. */
   follow(target: Vector3, halfWidth: number, halfHeight: number, view?: Vector3, rise?: number): void;
   setQuality(quality: EnvironmentQuality): void;
+  /**
+   * The time of day, minutes after midnight: the sun's path, the sky, the
+   * light; the moon at night. Returns how dark it is, 0 by day to 1 at night.
+   */
+  setTimeOfDay(minutes: number): number;
   dispose(): void;
 }
 
@@ -117,6 +122,15 @@ const SKY_FRAGMENT = `
     gl_FragColor = vec4(sky, 1.0);
   }
 `;
+
+const DAY_ZENITH = new Color(0x4d7fc4);
+const NIGHT_ZENITH = new Color(0x0b1424);
+const DAY_HORIZON = new Color(0xc9dcea);
+const DUSK_HORIZON = new Color(0xf0b383);
+const NIGHT_HORIZON = new Color(0x1c2638);
+const DAY_SUN = new Color(0xfff0d2);
+const DUSK_SUN = new Color(0xffa860);
+const MOON = new Color(0x9fb4d8);
 
 export function createEnvironment(
   scene: Scene,
@@ -288,6 +302,36 @@ export function createEnvironment(
       sun.position.copy(snapped).addScaledVector(sunDirection, SUN_DISTANCE);
       sun.target.position.copy(snapped);
       sun.target.updateMatrixWorld();
+    },
+    setTimeOfDay(minutes) {
+      const hour = (((minutes / 60) % 24) + 24) % 24;
+      // The sun's day: up at six, highest at noon, down at six, crossing the
+      // sky from east to west round the bearing that throws shadows well.
+      const day = (hour - 6) / 12;
+      const height = Math.sin(Math.PI * day);
+      // How much daylight: full from a few degrees up, none below the horizon.
+      const light = Math.min(1, Math.max(0, (height + 0.1) / 0.25));
+      const dark = 1 - light;
+      if (height > -0.1) {
+        const elevation = Math.max(0.12, height) * (58 * Math.PI) / 180;
+        const azimuth = SUN_AZIMUTH + (Math.min(1, Math.max(0, day)) - 0.5) * (110 * Math.PI) / 180;
+        sunDirection.set(Math.cos(azimuth) * Math.cos(elevation), Math.sin(elevation), Math.sin(azimuth) * Math.cos(elevation)).normalize();
+      } else {
+        // The moon: high, cold and faint, from a fixed bearing.
+        sunDirection.set(Math.cos(SUN_AZIMUTH + 0.6) * 0.55, 0.83, Math.sin(SUN_AZIMUTH + 0.6) * 0.55).normalize();
+      }
+      // Low sun is warm and weaker; the moon is blue.
+      const warm = Math.max(0, 1 - height * 2.2);
+      sun.color.setRGB(1, 0.94 - warm * 0.2, 0.81 - warm * 0.38).lerp(MOON, dark);
+      sun.intensity = 3.6 * (0.25 + 0.75 * Math.min(1, height * 2.5 + 0.2)) * light + 0.5 * dark;
+      hemisphere.intensity = 0.32 * light + 0.12 * dark;
+      ambient.intensity = 0.07 * light + 0.05 * dark;
+      zenith.copy(DAY_ZENITH).lerp(NIGHT_ZENITH, dark);
+      horizon.copy(DAY_HORIZON).lerp(DUSK_HORIZON, warm * light * 0.7).lerp(NIGHT_HORIZON, dark);
+      sunColor.copy(DAY_SUN).lerp(DUSK_SUN, warm).multiplyScalar(light);
+      (scene.fog as Fog).color.copy(horizon).lerp(zenith, 0.18);
+      scene.environmentIntensity = 0.6 * (0.2 + 0.8 * light);
+      return dark;
     },
     setQuality(next) {
       sun.castShadow = next.shadows;

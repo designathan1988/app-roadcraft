@@ -1,6 +1,6 @@
 import type { MultiPoly } from '@core/clipper';
 import { CROSSWALK_DEPTH } from '@world/approach';
-import { footprintRects } from '@world/buildings/geometry';
+import { solidFootprints } from '@world/buildings/geometry';
 import type { SegmentId } from '@world/ids';
 import { buildNavMesh, FOOTWAY, KERB, isZebra, type NavCrossingInput, type NavInput, type NavMesh, type NavObstacle, type NavStrip } from '@world/nav/navmesh';
 import { Level, halfWidth } from '@world/roadTypes';
@@ -130,7 +130,7 @@ export function buildWorldNav(w: SimWorld): WorldNav {
   for (const post of signalPosts(net, w.graph)) obstacles.push({ x: post.x, y: post.y, r: SIGNAL_POST_RADIUS });
   for (const pole of w.doc.poles.values()) obstacles.push({ x: pole.x, y: pole.y, r: POLE_BASE_RADIUS });
 
-  const solids = [...w.doc.buildings.all()].flatMap((b) => footprintRects(b));
+  const solids = [...w.doc.buildings.all()].flatMap((b) => solidFootprints(b));
 
   // Paths to doors, run half a metre on past the door into the building, so
   // the door itself stands on the mesh once the footprint is cut out.

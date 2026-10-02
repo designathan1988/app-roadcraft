@@ -71,6 +71,8 @@ function nextGap(w: SimWorld, rate: number): number {
  * longest anywhere in the city come in first.
  */
 export function stepDispatch(w: SimWorld, enabled: boolean): void {
+  // A city with residents drives its own cars (`sim/city`): none come in.
+  if (!w.edgeTraffic) return;
   if (!enabled) return;
   w.vehicleSpawnClock += DT;
   const now = w.vehicleSpawnClock;

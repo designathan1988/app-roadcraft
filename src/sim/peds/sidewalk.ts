@@ -15,7 +15,7 @@ import { COARSE_EPS } from '@core/scalar';
 import { WalkableSurface } from '@world/walkable';
 import { Corridor, type CorridorFrame } from './corridor';
 import { PED_BEHAVIOUR } from './behaviour';
-import { facadeBays, footprintRects } from '@world/buildings/geometry';
+import { facadeBays, solidFootprints } from '@world/buildings/geometry';
 import { ACCESS_COMPONENTS } from '@world/buildings/foundation';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { SIGNAL_POST_RADIUS, signalPosts } from '@world/signalPosts';
@@ -325,7 +325,7 @@ export class SidewalkGraph {
     }
 
     const walkable = this.walkable;
-    this.accessFootprints = [...doc.buildings.all()].flatMap((building) => footprintRects(building));
+    this.accessFootprints = [...doc.buildings.all()].flatMap((building) => solidFootprints(building));
     const walks = [...this.baseWalkEdges.values()].filter((edge) =>
       edge.segment !== undefined && doc.segment(edge.segment)?.structure === 'ground');
     if (walkable && walks.length) {

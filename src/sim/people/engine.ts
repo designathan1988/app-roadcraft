@@ -30,6 +30,25 @@ export interface PedestrianEngine {
   /** Everybody leaves (a new map, an opened file); the engine starts over on the map as it is. */
   reset(w: SimWorld): void;
   readonly bridge: PeopleBridge;
+  /**
+   * A resident walking from one place to another (`sim/city`): put on the
+   * footway at `from`, walking to `to` and in. Returns the walker's id, or
+   * null when there is no way there. Engines without it carry no walks.
+   */
+  walkTrip?(w: SimWorld, trip: ResidentWalk): number | null;
+  /** The trips (by `ResidentWalk.trip`) that ended since the last call. */
+  takeArrivals?(w: SimWorld): number[];
+}
+
+export interface ResidentWalk {
+  /** The city's id for this trip, handed back when it ends. */
+  readonly trip: number;
+  readonly fromX: number;
+  readonly fromY: number;
+  readonly toX: number;
+  readonly toY: number;
+  readonly seed: number;
+  readonly ageClass: PersonAgeClass;
 }
 
 /**

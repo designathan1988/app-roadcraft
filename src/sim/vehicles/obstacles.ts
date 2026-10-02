@@ -144,6 +144,10 @@ export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet 
   // Pulling in to the kerb to let somebody out or in (`kerbStops.ts`).
   const kerb = kerbStopObstacle(v);
   if (kerb) constraints.obstacles.push(kerb);
+  // A resident's car pulling in at the door it is going to (`sim/city`).
+  if (v.commute && v.lanelet === v.commute.lanelet) {
+    constraints.obstacles.push({ gap: Math.max(0, v.commute.at - v.s + v.driver.s0), speed: 0, kind: 'kerbStop' });
+  }
 
   const lane = w.lanelet(v.lanelet);
   if (!lane) return constraints;

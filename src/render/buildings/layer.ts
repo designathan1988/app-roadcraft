@@ -45,6 +45,8 @@ export interface BuildingLayer {
    * at `level`, its rooms and furniture showing; null draws them whole.
    */
   setCutaway(spec: CutawaySpec | null): void;
+  /** Windows lit from inside at night (see `BuildingKit.setNight`). */
+  setNight(dark: number): void;
   /**
    * "Ocultar outros": undefined draws every building solid, null fades them
    * all, and an id fades every building but that one.
@@ -206,6 +208,9 @@ export function createBuildingLayer(): BuildingLayer {
     },
     setPreview(next) {
       preview = next;
+    },
+    setNight(dark) {
+      kit.setNight(dark);
     },
     setCutaway(next) {
       cutaway = next;
