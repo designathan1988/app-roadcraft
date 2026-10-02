@@ -25,6 +25,9 @@ export const PT_BR: Dictionary = {
   'app.region': 'Construtor de estradas Roadcraft',
   'app.canvas': 'Mapa interativo da cidade',
 
+  'action.sampleTown': 'Vila de exemplo',
+  'confirm.sampleTown': 'Construir uma vila de exemplo num mapa novo? O mapa atual já foi salvo automaticamente.',
+  'hint.sampleTown': 'Vila de exemplo construída · o mapa anterior volta com Ctrl+Z',
   'action.newMap': 'Novo mapa',
   'action.saveMap': 'Salvar mapa',
   'action.openMap': 'Abrir mapa',

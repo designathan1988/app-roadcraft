@@ -45,6 +45,7 @@ import { History, restoreInto, restoreSnapshot } from '@editor/history';
 import { type ImportResult, Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
+import { buildSampleTown } from '@world/sampleTown';
 import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
 import { roadSwatch } from '@ui/roadSwatch';
 import { mountBuildStamp } from '@ui/buildStamp';
@@ -251,7 +252,9 @@ function worldBounds() {
 }
 
 // ------------------------------------------------------------------ state
-let tool: Tool = 'road';
+// The game opens on the map, nothing in hand: no tool panel open over the view
+// until the player picks a tool.
+let tool: Tool = 'inspect';
 let roadTypeIndex = 1;
 let alignment: Alignment = 'straight';
 let roadHeightOffset = 0;
@@ -1910,8 +1913,26 @@ function setTool(next: Tool): void {
   buildings.workspace.setMode(buildingActive ? 'builder' : 'road');
   if (buildingActive) buildings.activate();
   else buildings.deactivate();
+  syncToolPanel();
   updateHint();
   requestDraw();
+}
+
+/**
+ * The tool panel is shown only while it has something to show: with nothing
+ * in hand (Inspect, the tool the game opens on) and nothing picked, it stood
+ * open over the map with a page of key bindings.
+ */
+function syncToolPanel(): void {
+  const panel = document.querySelector<HTMLElement>('.bw-dock');
+  const inspector = document.getElementById('inspector');
+  if (!panel) return;
+  panel.hidden = tool === 'inspect' && (!inspector || inspector.classList.contains('hidden') || inspector.hidden);
+}
+{
+  // Picking a road or a junction to inspect opens the panel; closing it shuts it.
+  const inspector = document.getElementById('inspector');
+  if (inspector) new MutationObserver(() => syncToolPanel()).observe(inspector, { attributes: true, attributeFilter: ['class', 'hidden'] });
 }
 
 /** The Person Creator (`ui/creator/personCreator.ts`); its people are saved with the city. */
@@ -2140,6 +2161,20 @@ mountAbout();
   updateRoadHeightValue();
   fitView();
   flashHint('hint.newMap');
+};
+(document.getElementById('sampleTown') as HTMLButtonElement).onclick = () => {
+  if (!window.confirm(t('confirm.sampleTown'))) return;
+  history.record(doc);
+  // A town built on a fresh map: streets, blocks of buildings, its people.
+  const town = new RoadDoc();
+  buildSampleTown(town);
+  applySnapshot(town.toJSON(), 'import');
+  roadHeightOffset = 0;
+  roadHeightEdited = false;
+  updateRoadHeightValue();
+  fitView();
+  sim.clock.paused = false;
+  flashHint('hint.sampleTown');
 };
 (document.getElementById('saveMap') as HTMLButtonElement).onclick = () => {
   exportToFile(doc, sessionSettings());

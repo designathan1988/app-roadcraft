@@ -1,6 +1,7 @@
 import { m } from '@world/units';
 import { FOOTWAY, KERB, NAV_RADIUS, OPEN, closestOnSegment, isZebra } from '@world/nav/navmesh';
 import { findPath, funnel, type NavPath } from '@world/nav/path';
+import type { NavMesh } from '@world/nav/navmesh';
 import type { SidewalkEdge } from '../peds/sidewalk';
 import { DT, PED, PED_CEILING, PED_DENSITY } from '../params';
 import { emptyCrossingState } from '../crossings/state';
@@ -506,9 +507,58 @@ function plan(s: State, p: Person): boolean {
   const path = findPath(mesh, p.x, p.y, p.tri, p.goalX, p.goalY, p.goalTri,
     (from, to, length) => (isZebra(mesh.region[to]!) && mesh.region[from] !== mesh.region[to] ? CROSS_COST : 0) +
       (mesh.region[to] === KERB ? length * KERB_COST : 0));
+  if (path) easeCorners(mesh, path);
   p.path = path;
   p.ci = 0;
   return path !== null;
+}
+
+/** Room a route keeps from the edge of the ground - the kerb, a wall - where it turns, u. */
+const CORNER_ROOM = m(0.8);
+
+/**
+ * Moves each turning point of a route off the edge of the ground.
+ *
+ * The shortest line through the mesh turns exactly on its corners, and the
+ * corners of a footway are the kerb's edge: between two turns on the same
+ * side of a street the route ran along the kerb stone itself, and everybody
+ * walking that way walked in single file on the very edge of the pavement,
+ * the outer ones spilling onto the road. People keep clear of a kerb and of
+ * a wall, so the turns are pushed in by `CORNER_ROOM` (as far as the ground
+ * allows), and the straight runs between them come off the edge with them.
+ * The goal stays where it is (a door, a seat), and nothing is moved on or
+ * next to a zebra, whose way across is fixed.
+ */
+function easeCorners(mesh: NavMesh, path: NavPath): void {
+  const corners = path.corners;
+  for (let i = 0; i < corners.length - 1; i++) {
+    const c = corners[i]!;
+    const tri = path.tris[c.tri] ?? -1;
+    if (tri < 0 || isZebra(mesh.region[tri]!)) continue;
+    const before = path.tris[c.tri - 1];
+    if (before !== undefined && isZebra(mesh.region[before]!)) continue;
+    const layer = mesh.layer[tri]!;
+    let px = 0, py = 0;
+    mesh.wallSegmentsNear(c.x, c.y, CORNER_ROOM, layer, (ax, ay, bx, by, nx, ny) => {
+      const q = closestOnSegment(ax, ay, bx, by, c.x, c.y);
+      if (Math.hypot(c.x - q.x, c.y - q.y) > CORNER_ROOM) return;
+      const off = Math.max(0, (c.x - ax) * nx + (c.y - ay) * ny);
+      if (off >= CORNER_ROOM) return;
+      px += nx * (CORNER_ROOM - off);
+      py += ny * (CORNER_ROOM - off);
+    });
+    const push = Math.hypot(px, py);
+    if (push < 1e-6) continue;
+    // Two walls meeting at the corner both push: never further than the room.
+    if (push > CORNER_ROOM * 1.4) { px *= (CORNER_ROOM * 1.4) / push; py *= (CORNER_ROOM * 1.4) / push; }
+    for (const k of [1, 0.6, 0.3]) {
+      const x = c.x + px * k, y = c.y + py * k;
+      const u = mesh.locate(x, y);
+      if (u < 0 || mesh.layer[u] !== layer || isZebra(mesh.region[u]!)) continue;
+      c.x = x; c.y = y;
+      break;
+    }
+  }
 }
 
 // -------------------------------------------------------------------- rebind

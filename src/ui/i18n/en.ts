@@ -29,6 +29,9 @@ export const EN: Dictionary = {
   'app.region': 'Roadcraft road builder',
   'app.canvas': 'Interactive city map',
 
+  'action.sampleTown': 'Sample town',
+  'confirm.sampleTown': 'Build a sample town on a new map? The current map is already saved.',
+  'hint.sampleTown': 'Sample town built · the previous map comes back with Ctrl+Z',
   'action.newMap': 'New map',
   'action.saveMap': 'Save map',
   'action.openMap': 'Open map',
