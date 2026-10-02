@@ -109,8 +109,26 @@ export function wallMaterial(b: Building, v: Volume, side: FaceId, storey?: numb
     v.materials?.sides?.[side] ?? v.materials?.wall ?? b.materials?.wall ?? paletteOf(b).wall;
 }
 
+/**
+ * Flat roofs as a town has them: tar-dark membrane, grey membrane, white
+ * reflective sheet, beige gravel, bare concrete slab. One per building, by
+ * its id - a whole town under one grey membrane read as a model, not a place.
+ */
+const FLAT_ROOFS: readonly MaterialSpec[] = [
+  FLAT_ROOF_MATERIAL,
+  spec('roofing', 0x4f4d49),
+  spec('roofing', 0x8f8c84),
+  spec('roofing', 0xc8c5bc),
+  spec('roofing', 0x8c8170),
+  spec('concrete', 0x9d9a92),
+  spec('roofing', 0x5f5a52),
+];
+
 export function roofMaterial(b: Building, v: Volume): MaterialSpec {
-  return v.materials?.roof ?? b.materials?.roof ?? (isPitched(v.roof) ? paletteOf(b).roof : FLAT_ROOF_MATERIAL);
+  if (v.materials?.roof ?? b.materials?.roof) return (v.materials?.roof ?? b.materials?.roof)!;
+  if (isPitched(v.roof)) return paletteOf(b).roof;
+  const pick = (Math.imul((b.id | 0) + 7, 2654435761) >>> 0) % FLAT_ROOFS.length;
+  return FLAT_ROOFS[pick]!;
 }
 
 export const trimMaterial = (b: Building): MaterialSpec => b.materials?.trim ?? paletteOf(b).trim;

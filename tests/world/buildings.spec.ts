@@ -378,11 +378,15 @@ describe('materials', () => {
     expect(v.materials).toBeUndefined();
   });
 
-  it('gives a flat roof its membrane and a pitched one the palette tiles until told otherwise', () => {
+  it('gives a flat roof a roofing of its own and a pitched one the palette tiles until told otherwise', () => {
     const b = building();
     const v = b.volumes[0]!;
     v.roof = 'flat';
-    expect(roofMaterial(b, v)).toEqual(FLAT_ROOF_MATERIAL);
+    // One of the town's flat roofs, the same every time for the same building.
+    const flat = roofMaterial(b, v);
+    expect(['roofing', 'concrete']).toContain(flat.finish);
+    expect(roofMaterial(b, v)).toEqual(flat);
+    void FLAT_ROOF_MATERIAL;
     v.roof = 'gable';
     expect(roofMaterial(b, v)).toEqual(PALETTE_MATERIALS[b.palette]!.roof);
     expect(applyMaterial(b, { scope: 'volume', volume: v.id, slot: 'roof' }, { finish: 'metal', colour: 0x333333 })).toBe(true);
