@@ -62,6 +62,8 @@ const SEATED: GestureView = { kind: 'bench', phase: 'seated', t: 0 };
 const PHONE: GestureView = { kind: 'phone', phase: 'hold', t: 0 };
 const TALK: GestureView = { kind: 'talk', phase: 'hold', t: 0 };
 const LOOK: GestureView = { kind: 'look', phase: 'hold', t: 0 };
+const EAT: GestureView = { kind: 'eat', phase: 'hold', t: 0 };
+const WORK: GestureView = { kind: 'work', phase: 'hold', t: 0 };
 
 /** Every place a body can be at the furniture of one floor, in world axes. */
 function spotsOf(b: Building, level: number): Spot[] {
@@ -217,9 +219,12 @@ lamps(world: SimWorld, spec: CutawaySpec | null, groundAt: GroundAt, pavedAt: Pa
         const sitting = SITS.has(spot.use);
         // Something to do: a seated pair talks, somebody checks the phone,
         // somebody at a shelf looks along it.
+        // At a table, a meal; at the stove, the sink or a counter, work.
         const gesture = spot.use === 'bed' ? null
-          : sitting ? (r.id % 5 === 0 ? PHONE : SEATED)
-            : r.id % 3 === 0 ? TALK : r.id % 3 === 1 ? (spot.use === 'shelf' ? LOOK : PHONE) : null;
+          : spot.use === 'seat' ? (r.id % 5 === 0 ? PHONE : EAT)
+            : sitting ? (r.id % 5 === 0 ? PHONE : SEATED)
+              : spot.use === 'kitchen' || spot.use === 'counter' ? WORK
+                : r.id % 3 === 0 ? TALK : r.id % 3 === 1 ? (spot.use === 'shelf' ? LOOK : PHONE) : null;
         // One view per resident, kept from frame to frame: the renderer keeps
         // each body's animation by its view, and a new one every frame started
         // the clip over every frame - nobody ever finished sitting down.
