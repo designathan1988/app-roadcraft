@@ -1,3 +1,4 @@
+import { MeshoptSimplifier } from 'meshoptimizer';
 import {
   Bone,
   BufferAttribute,
@@ -456,7 +457,7 @@ export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look:
   geometry.computeBoundingSphere();
   // Coarser levels for people further off (`riggedCitizens.ts` picks one per
   // figure): the same vertices, fewer triangles.
-  geometry.userData['lodIndices'] = LOD_CELLS.map((cell) => new BufferAttribute(clusterIndex(out.positions, out.colours, out.index, cell), 1));
+  setLevels(geometry, out.positions, out.colours, out.index);
   return geometry;
 }
 
@@ -628,7 +629,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   if (texturedSkin) smoothSkinSeams(geometry);
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
-  geometry.userData['lodIndices'] = LOD_CELLS.map((cell) => new BufferAttribute(clusterIndex(out.positions, out.colours, out.index, cell), 1));
+  setLevels(geometry, out.positions, out.colours, out.index, groups.map((g) => ({ start: g.start, count: g.count })));
   return geometry;
 }
 
@@ -657,6 +658,57 @@ function smoothSkinSeams(geometry: BufferGeometry): void {
 
 /** Cell sizes of the coarser levels, metres. */
 const LOD_CELLS = [0.03, 0.08] as const;
+
+/**
+ * The coarser levels of a person: per level, the share of the triangles kept
+ * and the error allowed, as a share of the body's size.
+ */
+const LOD_LEVELS: readonly (readonly [number, number])[] = [[0.3, 0.008], [0.1, 0.03]];
+
+let simplifierReady = false;
+/** Resolves once the simplifier is loaded: wait for it before building people (`riggedCitizens.ts`). */
+export const personSimplifier: Promise<void> = MeshoptSimplifier.ready.then(() => { simplifierReady = true; }, () => undefined);
+
+/**
+ * The coarser levels, on the same vertices: `lodIndices` (and `lodGroups`,
+ * a material group per range, when the body has groups).
+ *
+ * Simplified edge by edge with meshoptimizer, keeping the shape, the colour
+ * boundaries (a hem, a collar, the lips) and every open border (a hair card,
+ * the lashes, a sleeve's edge). Grid clustering took the first vertex of each
+ * cell and crushed the face into shards - what the player saw as monsters.
+ */
+function setLevels(geometry: BufferGeometry, positions: readonly number[], colours: readonly number[], index: readonly number[],
+  groups?: readonly { start: number; count: number }[]): void {
+  if (!simplifierReady) {
+    geometry.userData['lodIndices'] = LOD_CELLS.map((cell) => new BufferAttribute(clusterIndex(positions, colours, index, cell), 1));
+    return;
+  }
+  const pos = Float32Array.from(positions);
+  const col = Float32Array.from(colours);
+  const all = Uint32Array.from(index);
+  const ranges = groups && groups.length ? groups : [{ start: 0, count: all.length }];
+  const levels: BufferAttribute[] = [];
+  const levelGroups: { start: number; count: number; materialIndex: number }[][] = [];
+  for (const [ratio, error] of LOD_LEVELS) {
+    const out: number[] = [];
+    const made: { start: number; count: number; materialIndex: number }[] = [];
+    ranges.forEach((range, materialIndex) => {
+      const start = out.length;
+      if (range.count >= 3) {
+        const part = all.subarray(range.start, range.start + range.count);
+        const target = Math.max(3, Math.floor((range.count * ratio) / 3) * 3);
+        const [kept] = MeshoptSimplifier.simplifyWithAttributes(part.slice(), pos, 3, col, 3, [0.6, 0.6, 0.6], null, target, error, ['LockBorder']);
+        for (let i = 0; i < kept.length; i++) out.push(kept[i]!);
+      }
+      made.push({ start, count: out.length - start, materialIndex });
+    });
+    levels.push(new BufferAttribute(Uint32Array.from(out), 1));
+    levelGroups.push(made);
+  }
+  geometry.userData['lodIndices'] = levels;
+  if (groups && groups.length) geometry.userData['lodGroups'] = levelGroups;
+}
 
 /**
  * Vertex clustering: every vertex is replaced by the first one in its cell

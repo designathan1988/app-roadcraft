@@ -14,7 +14,7 @@ import { CITIZEN_ASSET_URLS, CITIZEN_LICENSES } from './citizenAssets';
 import type { CitizenModel } from './citizenCasting';
 import { loadPeopleAssets } from '@people/body/assets';
 import { Morpher } from '@people/body/morph';
-import { createPersonRig } from './people/personRig';
+import { createPersonRig, personSimplifier } from './people/personRig';
 import { attachFacialMorphs } from './people/facialMorphs';
 import { expressionShapes } from '@people/body/expressions';
 import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from './people/skinAppearance';
@@ -557,6 +557,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       positions: morpher.shape(person.body, person.features), look: person.look,
       capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),
     };
+    await personSimplifier;
     const rig = createPersonRig(input);
     // Live faces: blinking, gaze, mood, speech (measured free in the player
     // city: frame median 17 ms with and without). ?expressions=off for comparison.
@@ -617,10 +618,13 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         const variants = [o.geometry];
         // A built person carries its levels ready-made (`personRig.ts`).
         const ready: unknown = o.geometry.userData['lodIndices'];
-        if (Array.isArray(ready)) for (const indices of ready as BufferAttribute[]) {
+        const readyGroups = o.geometry.userData['lodGroups'] as { start: number; count: number; materialIndex: number }[][] | undefined;
+        if (Array.isArray(ready)) for (const [level, indices] of (ready as BufferAttribute[]).entries()) {
           const geometry = new BufferGeometry();
           for (const name of Object.keys(o.geometry.attributes)) geometry.setAttribute(name, o.geometry.getAttribute(name));
           geometry.setIndex(indices);
+          // A dressed body's garments are material groups: each level has its own ranges.
+          for (const g of readyGroups?.[level] ?? []) geometry.addGroup(g.start, g.count, g.materialIndex);
           geometry.morphAttributes = o.geometry.morphAttributes;
           geometry.morphTargetsRelative = o.geometry.morphTargetsRelative;
           geometry.boundingBox = o.geometry.boundingBox;
@@ -780,7 +784,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
           const material = batch.meshes[i]!.material;
           for (const m of Array.isArray(material) ? material : [material]) {
             const detail = m.userData['appearanceDetail'] as { value: number } | undefined;
-            if (detail) detail.value = lod === 0 ? 1 : 0;
+            if (detail) detail.value = lod <= 1 ? 1 : 0;
           }
         }
       }
