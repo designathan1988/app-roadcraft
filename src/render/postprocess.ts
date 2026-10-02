@@ -37,6 +37,8 @@ import type { QualityLevel, QualitySettings } from './quality';
 
 export interface PostChain {
   readonly enabled: boolean;
+  /** What the scene is drawn into (null: the screen): shaders are compiled ahead for it. */
+  readonly target: WebGLRenderTarget | null;
   render(delta: number): void;
   setSize(width: number, height: number, pixelRatio: number): void;
   dispose(): void;
@@ -52,6 +54,7 @@ export function createPostChain(
   if (!quality.postProcessing) {
     return {
       enabled: false,
+      target: null,
       render() {
         renderer.render(scene, camera);
       },
@@ -127,6 +130,7 @@ export function createPostChain(
 
   return {
     enabled: true,
+    target,
     render(delta) {
       (grade.uniforms['uTime'] as { value: number }).value += delta;
       composer.render(delta);

@@ -15,6 +15,7 @@ import type { CitizenModel } from './citizenCasting';
 import { loadPeopleAssets } from '@people/body/assets';
 import { Morpher } from '@people/body/morph';
 import { createPersonRig, personSimplifier } from './people/personRig';
+import { compileAhead } from './uploads';
 import { attachFacialMorphs } from './people/facialMorphs';
 import { expressionShapes } from '@people/body/expressions';
 import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from './people/skinAppearance';
@@ -701,6 +702,9 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         batch.local.push(o.matrixWorld.clone());
         group.add(mesh);
       }
+      // Its shaders built before it is drawn (`uploads.ts`).
+      await Promise.all(batch.meshes.map((mesh) => compileAhead(mesh)));
+      if (disposed) return;
       batches.set(index, batch);
       group.userData.animationBytes = (group.userData.animationBytes ?? 0) + clips.reduce((sum, clip) => sum + clip.data.byteLength, 0);
     group.userData.ready = true;

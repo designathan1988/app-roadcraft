@@ -37,7 +37,7 @@ import { createInspector, type Inspector } from './inspector';
 import { buildRoadSurfaces, type RoadSurfaces, type SurfaceReuse } from './roadSurfaces';
 import { PLANT_NEAR_ZOOM, buildGardens, buildScenery, createSceneryKit, type GardenPlant, type Scenery, type SceneryKit } from './scenery';
 import { localToWorld } from '@world/buildings/geometry';
-import { drainUploads } from './uploads';
+import { drainCompiles, drainUploads } from './uploads';
 import type { Building } from '@world/buildings/types';
 import { GRASS_MIN_ZOOM } from './grass';
 import { advanceWind } from './wind';
@@ -361,6 +361,10 @@ export function createSceneRenderer(
   /** The buildings' garden plants, and the buildings and ground they were planted for. */
   let gardens: Scenery | null = null;
   let gardensFor = '';
+  // Materials whose shaders were compiled ahead (`compileAsync`), and when the scene was last checked.
+  const compiledMaterials = new WeakSet<Material>();
+  let compileCheckedAt = 0;
+  let compiling = false;
   /** The buildings cut open, for the people drawn inside them (`indoors.ts`). */
   let cutSpec: CutawaySpec | null = null;
   let skyMode: SkyMode = 'day';
@@ -628,6 +632,32 @@ export function createSceneRenderer(
         gardens = buildGardens(gardenPlants(net.doc.buildings.all(), terrain.renderedHeightAt), sceneryKit);
         for (const mesh of gardens.meshes) world.add(mesh);
       }
+      // Every shader the scene needs, compiled ahead and in parallel (the
+      // browser's KHR_parallel_shader_compile): checked every two seconds for
+      // materials not seen yet - hidden ones too, and what was added since (a
+      // vehicle model, a body). Left to the first frame a material is drawn
+      // in, that frame stalled for a quarter to half a second.
+      if (!compiling && performance.now() - compileCheckedAt > 2000) {
+        compileCheckedAt = performance.now();
+        const hidden: Object3D[] = [];
+        let fresh = false;
+        scene.traverse((o) => {
+          const material = (o as Mesh).material as Material | Material[] | undefined;
+          if (material) for (const m of Array.isArray(material) ? material : [material]) if (!compiledMaterials.has(m)) { compiledMaterials.add(m); fresh = true; }
+          if (!o.visible) { hidden.push(o); o.visible = true; }
+        });
+        if (fresh) {
+          compiling = true;
+          // compileAsync gathers what to compile at once; the scene is shown
+          // as it was straight after.
+          // For the target the scene is drawn into (`drainCompiles`).
+          const previous = renderer.getRenderTarget();
+          renderer.setRenderTarget(post.target);
+          void renderer.compileAsync(scene, rig.camera).catch(() => {}).finally(() => { compiling = false; });
+          renderer.setRenderTarget(previous);
+        }
+        for (const o of hidden) o.visible = false;
+      }
 
       const detailed = rig.viewport.zoom >= quality.detailCutoffZoom;
       if (roads) roads.group.visible = true;
@@ -708,6 +738,7 @@ export function createSceneRenderer(
       post.render(delta);
       // One waiting texture a frame to the GPU, before anybody draws it.
       drainUploads(renderer, 1);
+      drainCompiles(renderer, rig.camera, scene, post.target);
 
       if (delta > 0) fps = fps * 0.9 + (1 / Math.min(1, delta)) * 0.1;
     },
