@@ -75,6 +75,15 @@ const RIDER_AT = Object.fromEntries(RIDER_CLIPS.map((clip, i) => [clip.key, WALK
 /** The walk hand in hand, holding with the left or the right: baked after the riders. */
 const HAND_WALK_AT = { walkHandL: WALK_SHUFFLE + 1 + LIBRARY.length + DIRECTIONAL.length + RIDER_CLIPS.length,
   walkHandR: WALK_SHUFFLE + 2 + LIBRARY.length + DIRECTIONAL.length + RIDER_CLIPS.length } as const;
+/**
+ * The clips somebody carrying a box plays, baked again with both arms holding
+ * it in front (`carryBox`), after the hand-in-hand walks. Drawing swaps each
+ * for its carried twin, same timing, so the gait needs to know nothing of it.
+ */
+const CARRIED = ['walk', 'walkShuffle', 'idle', 'turnLeft', 'turnRight'] as const satisfies readonly GaitClipName[];
+const CARRY_AT = Object.fromEntries(CARRIED.map((name, i) =>
+  [name, WALK_SHUFFLE + 3 + LIBRARY.length + DIRECTIONAL.length + RIDER_CLIPS.length + i])) as
+  Readonly<Partial<Record<GaitClipName, number>>>;
 /** Anything `drawClip` can play. */
 export type CitizenClipKey = RiderClipKey | 'walk' | Played;
 
@@ -405,11 +414,15 @@ async function bakeFrames(body: BakeRig, pose: (time: number) => void, duration:
  * as recorded, anything less the elder's. `stride` is the ground one cycle
  * covers on THIS body, so moving it by that much per cycle plants the feet.
  */
-async function bakeWalk(body: BakeRig, sex: WalkSex, amplitude?: WalkAmplitude, hand?: 'L' | 'R'): Promise<ClipFrames> {
+async function bakeWalk(body: BakeRig, sex: WalkSex, amplitude?: WalkAmplitude, hand?: 'L' | 'R', carry = false): Promise<ClipFrames> {
   body.reset();
   const walk = neutralWalkFor(body.rig, body.mesh, sex, amplitude);
   const duration = walkDuration(sex);
-  const baked = await bakeFrames(body, time => { walk.pose(time); if (hand) holdHandOut(body.rig, hand); }, duration, true);
+  const baked = await bakeFrames(body, time => {
+    walk.pose(time);
+    if (hand) holdHandOut(body.rig, hand);
+    if (carry) carryBox(body.rig);
+  }, duration, true, FPS, carry);
   const share = amplitude ? strideShare(walkSource(sex), amplitude) : 1;
   return { ...baked, duration, loop: true, stride: WALK_ADVANCE[sex] * walk.scale * share };
 }
@@ -419,14 +432,17 @@ async function bakeWalk(body: BakeRig, sex: WalkSex, amplitude?: WalkAmplitude, 
  * resampled to the baked frames (`gaitClipOf`). A cycle baked with its swing
  * shrunk to `amplitude` covers that much less ground.
  */
-async function bakeLibraryClip(body: BakeRig, clip: LibraryClip, amplitude?: WalkAmplitude, name?: string): Promise<ClipFrames> {
+async function bakeLibraryClip(body: BakeRig, clip: LibraryClip, amplitude?: WalkAmplitude, name?: string, carry = false): Promise<ClipFrames> {
   body.reset();
   const transfer = clipTransferFor(body.rig, body.mesh, clip, amplitude);
   const room = LIMB_ROOM[name ?? ''] ?? LIMB_ROOM_DEFAULT;
   // A long standing or seated loop is slow motion, captured at 10 fps in the
   // library; baking it at 30 tripled the memory and the load for nothing.
-  const baked = await bakeFrames(body, time => { transfer.pose(time); clearLimbs(body.rig, room[0], room[1]); }, clip.duration, clip.loop, bakeFps(clip),
-    HELD_CLIPS.has(name ?? ''));
+  const baked = await bakeFrames(body, time => {
+    transfer.pose(time);
+    clearLimbs(body.rig, room[0], room[1]);
+    if (carry) carryBox(body.rig);
+  }, clip.duration, clip.loop, bakeFps(clip), carry || HELD_CLIPS.has(name ?? ''));
   const facts = gaitClipOf(clip, transfer.scale, baked.frames);
   const share = amplitude ? strideShare(clip.source, amplitude) : 1;
   return { ...baked, ...facts, stride: facts.stride * share };
@@ -486,6 +502,57 @@ function holdHandOut(rig: Object3D, side: 'L' | 'R'): void {
     const dir = to.sub(from);
     if (dir.lengthSq() < 1e-10) continue;
     turnInWorld(bone, limbQ.setFromUnitVectors(dir.normalize(), want));
+  }
+}
+
+/**
+ * Both arms holding a box in front: the upper arms down and a little forward,
+ * the forearms level and reaching ahead, the hands on the box's sides, thumbs
+ * up and fingers forward (so the palms face each other, on either hand). The
+ * legs, hips and head walk or stand on as the clip has them.
+ */
+function carryBox(rig: Object3D): void {
+  rig.updateMatrixWorld(true);
+  const chest = rig.getObjectByName('Bip01_Spine2');
+  if (!chest) return;
+  const forward = new Vector3(0, 0, 1);
+  for (const side of ['L', 'R'] as const) {
+    const upper = rig.getObjectByName(`Bip01_${side}_UpperArm`);
+    const fore = rig.getObjectByName(`Bip01_${side}_Forearm`);
+    const hand = rig.getObjectByName(`Bip01_${side}_Hand`);
+    const finger = rig.getObjectByName(`Bip01_${side}_Finger2`);
+    const thumb = rig.getObjectByName(`Bip01_${side}_Finger0`);
+    if (!upper || !fore || !hand) continue;
+    chest.getWorldPosition(limbB);
+    upper.getWorldPosition(limbA);
+    const out = limbA.clone().sub(limbB).setY(0);
+    out.addScaledVector(forward, -out.dot(forward));
+    if (out.lengthSq() < 1e-8) continue;
+    out.normalize();
+    const aims: [Object3D, Object3D, Vector3][] = [
+      [upper, fore, new Vector3().addScaledVector(out, 0.14).add(new Vector3(0, -0.95, 0)).addScaledVector(forward, 0.12).normalize()],
+      [fore, hand, new Vector3().addScaledVector(out, -0.2).add(new Vector3(0, 0.12, 0)).addScaledVector(forward, 1).normalize()],
+    ];
+    if (finger) aims.push([hand, finger, new Vector3().addScaledVector(out, -0.1).addScaledVector(forward, 1).normalize()]);
+    for (const [bone, next, want] of aims) {
+      const from = bone.getWorldPosition(new Vector3());
+      const dir = next.getWorldPosition(new Vector3()).sub(from);
+      if (dir.lengthSq() < 1e-10) continue;
+      turnInWorld(bone, limbQ.setFromUnitVectors(dir.normalize(), want));
+    }
+    if (finger && thumb) {
+      // Rolled about the fingers until the thumb is up.
+      const at = hand.getWorldPosition(new Vector3());
+      const along = finger.getWorldPosition(new Vector3()).sub(at).normalize();
+      const t = thumb.getWorldPosition(new Vector3()).sub(at);
+      t.addScaledVector(along, -t.dot(along));
+      const up = new Vector3(0, 1, 0).addScaledVector(along, -along.y);
+      if (t.lengthSq() > 1e-10 && up.lengthSq() > 1e-10) {
+        t.normalize(); up.normalize();
+        const angle = Math.atan2(new Vector3().crossVectors(t, up).dot(along), t.dot(up));
+        turnInWorld(hand, limbQ.setFromAxisAngle(along, angle));
+      }
+    }
   }
 }
 
@@ -562,6 +629,11 @@ async function bake(asset: GLTF, sex: WalkSex, library: RocketboxLibrary): Promi
   for (const clip of RIDER_CLIPS) clips[RIDER_AT[clip.key]] = await bakeRiderClip(body, clip);
   clips[HAND_WALK_AT.walkHandL] = await bakeWalk(body, sex, undefined, 'L');
   clips[HAND_WALK_AT.walkHandR] = await bakeWalk(body, sex, undefined, 'R');
+  clips[CARRY_AT.walk!] = await bakeWalk(body, sex, undefined, undefined, true);
+  clips[CARRY_AT.walkShuffle!] = await bakeLibraryClip(body, library[sex].walkSlow, SHUFFLE_AMPLITUDE, undefined, true);
+  for (const name of ['idle', 'turnLeft', 'turnRight'] as const) {
+    clips[CARRY_AT[name]!] = await bakeLibraryClip(body, library[sex][name], undefined, name, true);
+  }
   return { clips, helmet };
 }
 
@@ -605,6 +677,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   const held = createHeldProps();
   group.add(held.group);
   resources.add(held);
+  const boxR = new Vector3(), boxL = new Vector3(), boxAt = new Vector3(), boxSize = new Vector3(), boxTurn = new Quaternion();
   const handMatrix = new Matrix4();
   const matrix = new Matrix4();
   const helmetBone = new Matrix4();
@@ -934,8 +1007,9 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       plays.length = 0;
       gaitPlays(gait, batch.gait, plays);
       mixClips.length = 0; mixPhases.length = 0; mixWeights.length = 0;
+      const carrying = ped.carry !== undefined;
       for (const play of plays) {
-        mixClips.push(batch.clips[GAIT_AT[play.name]]!);
+        mixClips.push(batch.clips[(carrying ? CARRY_AT[play.name] : undefined) ?? GAIT_AT[play.name]]!);
         mixPhases.push(play.frame);
         mixWeights.push(play.weight);
       }
@@ -943,7 +1017,24 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         lod === 0 ? facialExpression(ped.id, time, ped.gesture?.kind, CROWD[index]?.person?.mood) : undefined);
       // In the hand, what the gesture is done with, where the hand is in the
       // clip carrying the most weight this frame.
-      const thing = ped.gesture ? HELD[ped.gesture.kind] : undefined;
+      if (carrying && lod < 2) {
+        // The box between the two hands, as wide as they are apart.
+        let best = -1;
+        for (let i = 0; i < mixWeights.length; i++) if (best < 0 || mixWeights[i]! > mixWeights[best]!) best = i;
+        const clip = best >= 0 ? mixClips[best] : undefined;
+        if (clip?.hands && mixWeights[best]! > 0.5) {
+          const frame = Math.min(clip.frames, Math.max(0, Math.round(mixPhases[best]!)));
+          boxR.fromArray(clip.hands, frame * 32 + 12);
+          boxL.fromArray(clip.hands, frame * 32 + 28);
+          const width = Math.min(0.5, Math.max(0.24, boxR.distanceTo(boxL) - 0.07));
+          boxAt.addVectors(boxR, boxL).multiplyScalar(0.5);
+          boxAt.z += 0.03; boxAt.y += 0.02;
+          handMatrix.compose(boxAt, boxTurn, boxSize.set(width, 0.3, 0.38));
+          handMatrix.premultiply(transform.matrix);
+          held.placeMatrix('box', handMatrix);
+        }
+      }
+      const thing = ped.gesture && !carrying ? HELD[ped.gesture.kind] : undefined;
       if (thing && lod < 2) {
         let best = -1;
         for (let i = 0; i < mixWeights.length; i++) if (best < 0 || mixWeights[i]! > mixWeights[best]!) best = i;

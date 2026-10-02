@@ -67,6 +67,8 @@ export interface PedView {
   style?: 'drunk' | undefined;
   /** Walking hand in hand: which hand holds the partner's. */
   hand?: 'L' | 'R' | undefined;
+  /** Carrying something in both arms in front: a box. */
+  carry?: 'box' | undefined;
 
   readonly ageClass: PersonAgeClass;
   readonly gender: PersonGender;

@@ -292,6 +292,8 @@ const DRUNK_WALKS = ['walkShuffle', 'walkSlow', 'walkDrunk'] as const satisfies 
 /** Walking hand in hand: the walk with the hand on the partner's side held out to them. */
 const HAND_L_WALKS = ['walkHandL'] as const satisfies readonly Cycle[];
 const HAND_R_WALKS = ['walkHandR'] as const satisfies readonly Cycle[];
+/** Carrying a box: the clips the arms are baked holding it in (`riggedCitizens` CARRY_AT). */
+const CARRY_WALKS = ['walkShuffle', 'walk'] as const satisfies readonly Cycle[];
 
 /** Natural pace of a walk cycle on a body of `size`, m/s. */
 const naturalPace = (clip: GaitClip, size: number): number => clip.stride * size / clip.duration;
@@ -302,8 +304,10 @@ const naturalPace = (clip: GaitClip, size: number): number => clip.stride * size
  * exactly as captured; between two, the stride is interpolated; below the
  * shuffle, its stride shortens with the pace as a person's does.
  */
-function pace(g: Gait, clips: GaitClips, elder: boolean, size: number, speed: number, drunk = false, hand?: 'L' | 'R'): void {
-  const walks = drunk ? DRUNK_WALKS : hand === 'L' ? HAND_L_WALKS : hand === 'R' ? HAND_R_WALKS : elder ? ELDER_WALKS : ADULT_WALKS;
+function pace(g: Gait, clips: GaitClips, elder: boolean, size: number, speed: number, drunk = false, hand?: 'L' | 'R',
+  carry = false): void {
+  const walks = carry ? CARRY_WALKS : drunk ? DRUNK_WALKS : hand === 'L' ? HAND_L_WALKS : hand === 'R' ? HAND_R_WALKS
+    : elder ? ELDER_WALKS : ADULT_WALKS;
   const first = clips[walks[0]];
   const last = clips[walks[walks.length - 1]!];
   g.walkA = g.walkB = walks[0];
@@ -437,6 +441,8 @@ function standingKey(ped: PedView, g: Gait, hash: number, clips: GaitClips): Sin
     return mood === 3 ? 'argue' : mood % 4 === 1 && beat === 2 ? 'laugh' : 'talk';
   }
   if (act?.kind === 'phone') return 'phone';
+  // Arms full: just standing, holding it.
+  if (ped.carry) return 'idle';
   if (act?.kind === 'crouch') {
     // Down, a while there (tying a lace, a word to a child), and up again.
     const hold = act.hold ?? 8;
@@ -533,7 +539,9 @@ export function stepGait(g: Gait, ped: PedView, clips: GaitClips, time: number, 
     // walk: it used to stay in the walk stop, feet planted, while the body
     // swung round to face the road at every kerb - most of the rotation the
     // audit found on motionless legs.
-    moving(g, ped, clips, dt, speed, size, hash, elder);
+    // Somebody carrying a box walks on steadily, as an elder does: no
+    // breaking into a run, no start and stop with the arms swinging.
+    moving(g, ped, clips, dt, speed, size, hash, elder || ped.carry !== undefined);
   } else {
     standing(g, ped, clips, dt, turned, spin, isTurn, hash, turnSign);
     // A walk fading out under a turn or a stop keeps stepping with whatever
@@ -642,7 +650,7 @@ function moving(g: Gait, ped: PedView, clips: GaitClips, dt: number, speed: numb
       now.phase + CLIP_FLOOR * dt / clips.stop.duration));
   }
 
-  pace(g, clips, elder, size, speed, ped.style === 'drunk', ped.hand);
+  pace(g, clips, elder, size, speed, ped.style === 'drunk', ped.hand, ped.carry !== undefined);
   // Non-forward locomotion uses the short capture: long lateral strides
   // would cross the legs. Cardinal blend weights share one footfall phase.
   const x = Math.cos(g.direction), y = Math.sin(g.direction);

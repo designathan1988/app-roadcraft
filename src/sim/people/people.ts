@@ -25,10 +25,10 @@ import { keepRight, orcaLine, solveOrca, wallLine, type OrcaBody, type OrcaLine 
  * step onto a zebra it has not been allowed onto or into somebody is not
  * made: the body stops. So a person can not be dragged backwards, slide
  * sideways, jump, stand in the road or inside a lamp post, whatever happens
- * around it — those are not rules checked afterwards, they are the only way
+ * around it â€” those are not rules checked afterwards, they are the only way
  * the body can move.
  *
- * `docs/design/agency-architecture.md` §3.
+ * `docs/design/agency-architecture.md` Â§3.
  */
 
 interface Person {
@@ -190,7 +190,7 @@ const BACK_MAX = m(0.15);
 const SIDE_MAX = m(0.35);
 /** The shuffle aside a body can make walking forward at `fwd`, u/s: none to speak of at a walk. */
 const sideAt = (fwd: number): number => Math.max(m(0.08), SIDE_MAX - Math.abs(fwd) * 0.3);
-/** How quickly a body changes its velocity, u/s². */
+/** How quickly a body changes its velocity, u/sÂ². */
 const BODY_ACCEL = m(2.5);
 const SIDE_ACCEL = m(0.8);
 /** Pushed this far off its place at a kerb, somebody waiting walks back to it, u. */
@@ -211,7 +211,7 @@ const GHOST_CROSSING = 3;
 const GHOST_WALKING = 8;
 const GHOST_HOLD = 1.5;
 const DECEL = m(1.6);
-/** Braking to a stop at a bench, u/s². */
+/** Braking to a stop at a bench, u/sÂ². */
 const HARD_DECEL = m(4);
 const TURN_RATE = 3.2;
 const TURN_ACCEL = 12;
@@ -1546,6 +1546,7 @@ function publishViews(w: SimWorld, s: State): void {
   const views = w.pedViews;
   const hour = (w.city.minutes(w) % 1440) / 60;
   const night = hour >= 22.5 || hour < 4;
+  const day = hour >= 6 && hour < 20.5;
   const byId = w.pedViewById;
   views.length = 0;
   byId.clear();
@@ -1576,6 +1577,9 @@ function publishViews(w: SimWorld, s: State): void {
     v.hand = undefined;
     // Late at night, the odd adult walks home unsteadily.
     v.style = night && p.ageClass === 'adult' && p.id % 17 === 3 ? 'drunk' : undefined;
+    // In the day, the odd adult on their own carries a box (a delivery, a
+    // purchase, a move) in both arms.
+    v.carry = day && p.ageClass === 'adult' && p.party.size === 1 && p.id % 13 === 4 ? 'box' : undefined;
     const region = nav && p.tri >= 0 ? nav.mesh.region[p.tri]! : FOOTWAY;
     v.ground = isZebra(region) ? 'crossing' : region === OPEN ? 'open' : 'footway';
     const seg = nav && p.tri >= 0 ? nav.segment[p.tri]! : -1;

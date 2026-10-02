@@ -10,7 +10,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  * one small model in metres, its grip at the origin of the hand bone it is
  * held in, drawn instanced: one draw per kind for the whole town.
  */
-export type HeldKind = 'newspaper' | 'cup' | 'phone' | 'camera' | 'bag' | 'umbrella';
+export type HeldKind = 'newspaper' | 'cup' | 'phone' | 'camera' | 'bag' | 'umbrella' | 'box';
 
 /** Which hand holds what each gesture shows, and what it is. */
 export const HELD: Readonly<Partial<Record<string, { kind: HeldKind; left?: boolean }>>> = {
@@ -64,6 +64,12 @@ function model(kind: HeldKind): BufferGeometry {
       parts.push(paint(new BoxGeometry(0.012, 0.1, 0.012), hex(0x6b5134), 0, -0.05, 0));
       parts.push(paint(new BoxGeometry(0.3, 0.34, 0.12), hex(0xb08a5a), 0, -0.27, 0));
       break;
+    case 'box':
+      // A cardboard box a unit each way (scaled to the arms that hold it),
+      // its lid taped down the middle.
+      parts.push(paint(new BoxGeometry(1, 1, 1), hex(0x8f6236)));
+      parts.push(paint(new BoxGeometry(0.12, 0.01, 1.01), hex(0xb59a6c), 0, 0.5, 0));
+      break;
     case 'umbrella': {
       // Upright: the shaft through the fist, the canopy above the head.
       parts.push(paint(new CylinderGeometry(0.012, 0.012, 0.95, 6), hex(0x2a2a2a), 0, 0.33, 0));
@@ -90,7 +96,7 @@ const UPRIGHT: Partial<Record<HeldKind, readonly [number, number, number]>> = {
 };
 
 const UP = new Vector3(0, 1, 0);
-const HELD_KINDS: readonly HeldKind[] = ['newspaper', 'cup', 'phone', 'camera', 'bag', 'umbrella'];
+const HELD_KINDS: readonly HeldKind[] = ['newspaper', 'cup', 'phone', 'camera', 'bag', 'umbrella', 'box'];
 const CAPACITY = 300;
 
 export interface HeldProps {
@@ -98,6 +104,8 @@ export interface HeldProps {
   begin(): void;
   /** One `kind` in the hand whose matrix (model to world) is `hand`, on a body drawn at `scale` world units per metre. */
   place(kind: HeldKind, hand: Matrix4, scale: number): void;
+  /** One `kind` drawn with exactly this matrix (model to world): a box held in both hands. */
+  placeMatrix(kind: HeldKind, matrix: Matrix4): void;
   dispose(): void;
 }
 
@@ -137,6 +145,12 @@ export function createHeldProps(): HeldProps {
         out.compose(position, upright, size.set(scale, scale, scale));
       } else out.compose(position, turn, size.set(scale, scale, scale));
       mesh.setMatrixAt(mesh.count++, out);
+      mesh.instanceMatrix.needsUpdate = true;
+    },
+    placeMatrix(kind, matrix) {
+      const mesh = meshes.get(kind)!;
+      if (mesh.count >= CAPACITY) return;
+      mesh.setMatrixAt(mesh.count++, matrix);
       mesh.instanceMatrix.needsUpdate = true;
     },
     dispose() {
