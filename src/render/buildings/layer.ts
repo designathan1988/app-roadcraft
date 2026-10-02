@@ -1,4 +1,4 @@
-import { Group } from 'three';
+import { Group, type InstancedMesh } from 'three';
 
 import { pointInPolygon } from '@core/polygon';
 import type { Vec2 } from '@core/vec2';
@@ -9,7 +9,7 @@ import type { Building, BuildingId } from '@world/buildings/types';
 import { m } from '@world/units';
 import { cutOpen } from '@world/buildings/interior';
 import { type BuildingChunk, type BuildingMeshes, assembleBuildingMeshes, buildBuildingMeshes, emitChunk } from './buildingMesh';
-import { type BuildingKit, createBuildingKit } from './kit';
+import { type BuildingKit, type PartKind, createBuildingKit } from './kit';
 
 /**
  * The buildings layer: the stored buildings and the editor's preview, each
@@ -48,6 +48,11 @@ export interface BuildingLayer {
   /** Windows lit from inside at night (see `BuildingKit.setNight`). */
   setNight(dark: number): void;
   /**
+   * From afar (true) the frames and railings are drawn by their street faces
+   * only and cast no shadow: their depth and their shadow are under a pixel.
+   */
+  setFar(far: boolean): void;
+  /**
    * "Ocultar outros": undefined draws every building solid, null fades them
    * all, and an id fades every building but that one.
    */
@@ -85,6 +90,21 @@ export function createBuildingLayer(): BuildingLayer {
   let preview: BuildingPreviewInput | null = null;
   let cutaway: CutawaySpec | null = null;
   let version = 0;
+  let far = false;
+  /** Puts the near or far parts on every stored batch (`setFar`). */
+  const applyFar = (): void => {
+    for (const batch of [stored, faded]) {
+      batch?.group.traverse((o) => {
+        const mesh = o as InstancedMesh;
+        if (!mesh.isInstancedMesh) return;
+        const kind = mesh.name.startsWith('building-') ? (mesh.name.slice(9) as PartKind) : null;
+        const lighter = kind ? kit.far[kind] : undefined;
+        if (!kind || !lighter) return;
+        mesh.geometry = far ? lighter : kit.geometry[kind];
+        mesh.castShadow = !far && kit.castsShadow.has(kind);
+      });
+    }
+  };
   /** The buildings drawn cut open, by id and floor: only those near the camera, kept while they stay. */
   const cutChunks = new Map<string, { key: string; chunk: BuildingChunk }>();
   const cutChunkFor = (b: Building, level: number, groundAt: GroundAt, pavedAt?: PavedAt): BuildingChunk => {
@@ -189,6 +209,7 @@ export function createBuildingLayer(): BuildingLayer {
           group.add(faded.group);
         }
         index(doc.buildings.all());
+        applyFar();
         version++;
         rebuilt = true;
       }
@@ -217,6 +238,11 @@ export function createBuildingLayer(): BuildingLayer {
     },
     setNight(dark) {
       kit.setNight(dark);
+    },
+    setFar(next) {
+      if (next === far) return;
+      far = next;
+      applyFar();
     },
     setCutaway(next) {
       cutaway = next;

@@ -55,6 +55,8 @@ export const PART_KINDS: readonly PartKind[] = [
 
 export interface BuildingKit {
   readonly geometry: Readonly<Record<PartKind, BufferGeometry>>;
+  /** Lighter geometry for the parts whose depth is lost from afar (`FAR_KINDS`). */
+  readonly far: Readonly<Partial<Record<PartKind, BufferGeometry>>>;
   readonly material: Readonly<Record<PartKind, Material>>;
   /** The merged shell - walls, plinths, bands, roofs, steps - one material per finish, vertex coloured. */
   readonly shell: Readonly<Record<Finish, MeshStandardMaterial>>;
@@ -110,6 +112,60 @@ function railingGeometry(): BufferGeometry {
     parts.push(box(0.015, 0.94, 0.015, -0.5, 0.5, i / 4));
     parts.push(box(0.015, 0.94, 0.015, 0.5, 0.5, i / 4));
   }
+  const merged = mergeGeometries(parts) as BufferGeometry;
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+/** A flat quad facing `axis` ('z' out of the wall, 'x' along it), centred at (x, y, z). */
+function quad(w: number, h: number, x: number, y: number, z: number, axis: 'z' | 'x' | '-x' = 'z'): BufferGeometry {
+  const g = new PlaneGeometry(w, h);
+  if (axis === 'x') g.rotateY(Math.PI / 2);
+  if (axis === '-x') g.rotateY(-Math.PI / 2);
+  g.translate(x, y, z);
+  return g;
+}
+
+/**
+ * The far versions: what of a part is seen from a distance, its faces to the
+ * street only. A frame bar is a pixel or less from the overview; its sides,
+ * top and back were five sixths of its triangles and two million in a town.
+ */
+function frameFarGeometry(): BufferGeometry {
+  const t = 0.045;
+  const parts = [
+    quad(1, t, 0, 0.5 - t / 2, 0.5),
+    quad(1, t, 0, -0.5 + t / 2, 0.5),
+    quad(t, 1, 0.5 - t / 2, 0, 0.5),
+    quad(t, 1, -0.5 + t / 2, 0, 0.5),
+    quad(t * 0.8, 1, 0, 0, 0.5),
+    quad(1, t * 0.8, 0, 0.18, 0.5),
+  ];
+  const merged = mergeGeometries(parts) as BufferGeometry;
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+function railingFarGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [
+    quad(1, 0.06, 0, 0.97, 1.025),
+    quad(1, 0.04, 0, 0.12, 1.015),
+    quad(1, 0.06, -0.525, 0.97, 0.5, '-x'),
+    quad(1, 0.06, 0.525, 0.97, 0.5, 'x'),
+  ];
+  for (let i = 0; i <= 10; i++) parts.push(quad(0.015, 0.94, -0.5 + i / 10, 0.5, 1.0075));
+  for (let i = 1; i < 4; i++) {
+    parts.push(quad(0.015, 0.94, -0.5075, 0.5, i / 4, '-x'));
+    parts.push(quad(0.015, 0.94, 0.5075, 0.5, i / 4, 'x'));
+  }
+  const merged = mergeGeometries(parts) as BufferGeometry;
+  for (const p of parts) p.dispose();
+  return merged;
+}
+
+function roofRailingFarGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [quad(1, 0.06, 0, 0.97, 0.025), quad(1, 0.04, 0, 0.45, 0.015)];
+  for (let i = 0; i <= 4; i++) parts.push(quad(0.02, 0.94, -0.5 + i / 4, 0.5, 0.01));
   const merged = mergeGeometries(parts) as BufferGeometry;
   for (const p of parts) p.dispose();
   return merged;
@@ -253,11 +309,17 @@ export function createBuildingKit(): BuildingKit {
   dimParts.opacity = 0.16;
 
   const unique = new Set<Material>([...Object.values(material), ...Object.values(shell), ...Object.values(dimShell), ghostShell, ghostParts, dimParts]);
-  const geometries = new Set<BufferGeometry>(Object.values(geometry));
+  const far: Partial<Record<PartKind, BufferGeometry>> = {
+    frame: frameFarGeometry(),
+    railing: railingFarGeometry(),
+    roofRailing: roofRailingFarGeometry(),
+  };
+  const geometries = new Set<BufferGeometry>([...Object.values(geometry), ...Object.values(far)]);
   let furniture: { geometry: Record<FurnitureKind, BufferGeometry>; material: MeshStandardMaterial } | null = null;
 
   return {
     geometry,
+    far,
     material,
     shell,
     ghostShell,

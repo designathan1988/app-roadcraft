@@ -660,6 +660,8 @@ export function createSceneRenderer(
       }
 
       const detailed = rig.viewport.zoom >= quality.detailCutoffZoom;
+      // A window frame's bar is about 0.14 u: under half a pixel below this zoom.
+      buildings.setFar(rig.viewport.zoom < 3);
       if (roads) roads.group.visible = true;
       if (details) details.group.visible = true;
       for (const mesh of scenery?.meshes ?? []) mesh.visible = quality.detailProps && detailed;
