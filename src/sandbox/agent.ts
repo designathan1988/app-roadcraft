@@ -2,7 +2,7 @@ import type { CrowdAgent } from '@recast-navigation/core';
 import { Matrix4, type Object3D, Vector3 } from 'three';
 
 import { CARRY_AT, GAIT_AT, LIBRARY_AT } from '@render/citizenBake';
-import { facialExpression } from '@render/riggedCitizens';
+import { applyFace, faceAt } from '@render/people/faceExpression';
 import type { Body, Layer } from './body';
 import type { Nav } from './nav';
 
@@ -309,21 +309,10 @@ export class Agent {
     const influences = mesh.morphTargetInfluences;
     const targets = mesh.morphTargetDictionary;
     if (!influences || !targets) return;
-    const talking = this.action?.clip === LIBRARY_AT.talk || this.action?.clip === LIBRARY_AT.argue;
-    const e = facialExpression(this.seed, this.clock, talking ? 'talk' : undefined,
-      this.action?.clip === LIBRARY_AT.laugh ? 1 : this.action?.clip === LIBRARY_AT.argue ? -1 : 0);
-    influences.fill(0);
-    const set = (name: string, value: number): void => {
-      const index = targets[name];
-      if (index !== undefined) influences[index] = value;
-    };
-    set('blinkLeft', e.blink); set('blinkRight', e.blink);
-    set('smile', e.smile);
-    set('browLeftUp', e.brow); set('browRightUp', e.brow);
-    set('open', e.jaw);
-    set('visemeO', e.visemeO); set('visemeE', e.visemeE); set('visemeM', e.visemeM);
-    set('frownLeft', e.frown); set('frownRight', e.frown);
-    set('lookLeft', e.lookLeft); set('lookRight', e.lookRight);
+    const clip = this.action?.clip;
+    const activity = clip === undefined ? undefined
+      : (Object.keys(LIBRARY_AT) as (keyof typeof LIBRARY_AT)[]).find((name) => LIBRARY_AT[name] === clip);
+    applyFace(influences, targets, faceAt(this.seed, this.clock, activity));
   }
 
   /** The world matrix of the body, for picking and labels. */

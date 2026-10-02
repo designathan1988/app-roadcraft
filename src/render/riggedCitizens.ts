@@ -19,6 +19,7 @@ import { bakeInWorker } from './bakePool';
 import { cookPerson, loadCookedPerson, peopleCookHash } from './people/cookedPerson';
 import { HELD, createHeldProps } from './people/heldProps';
 import { attachFacialMorphs } from './people/facialMorphs';
+import { applyFace, faceAt, type FaceWeights } from './people/faceExpression';
 import { expressionShapes } from '@people/body/expressions';
 import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from './people/skinAppearance';
 import { loadProxyItem, type ProxyItem } from '@people/body/proxy';
@@ -83,20 +84,6 @@ mat4 getBoneMatrix(const in float i) {
 
 const CHILD_SHIRTS = [0x000000, 0x479f94, 0xe5b25d, 0x9672b7] as const;
 
-export interface FacialExpression {
-  readonly blink: number;
-  readonly smile: number;
-  readonly brow: number;
-  readonly jaw: number;
-  readonly lookLeft: number;
-  readonly lookRight: number;
-  readonly frown: number;
-  /** Mouth shapes of the syllable being said: rounded, spread, closed. */
-  readonly visemeO: number;
-  readonly visemeE: number;
-  readonly visemeM: number;
-}
-
 /**
  * Whether somebody seated in a vehicle is talking now: in spells of a few
  * seconds, now and then, each person on their own rhythm.
@@ -108,65 +95,13 @@ function seatedChat(seed: number, time: number): boolean {
   return ((time + (hash >>> 8 & 255) / 10) % cycle) < cycle * 0.3;
 }
 
-/** Syllables per second of ordinary speech, and how far the jaw opens on one (full open is a shout). */
-const SYLLABLES = 4.2;
-const SPEECH_JAW = 0.16;
-
-/** Each person carries a quiet, deterministic facial beat rather than a shared loop. */
-export function facialExpression(seed: number, time: number, activity?: string, mood = 0): FacialExpression {
-  const hash = personHash(seed ^ 0x4c9e3721);
-  const blinkPhase = (time * (0.72 + ((hash >>> 8) & 15) * 0.018) + (hash & 255) / 255) % 1;
-  const blink = blinkPhase > 0.93 ? Math.sin((blinkPhase - 0.93) / 0.07 * Math.PI) : 0;
-  const look = Math.sin(time * 0.55 + (hash >>> 5)) * 0.32;
-  // Speech: one syllable after another, the jaw opening and closing on each,
-  // each syllable with its own mouth shape - never the same loop for all.
-  let jaw = 0, visemeO = 0, visemeE = 0, visemeM = 0;
-  if (activity === 'talk') {
-    const beat = time * SYLLABLES + ((hash >>> 16) & 255) / 64;
-    const syllable = Math.floor(beat);
-    const open = Math.sin((beat - syllable) * Math.PI);
-    const shape = personHash(hash ^ syllable) % 4;
-    jaw = SPEECH_JAW * open;
-    visemeO = shape === 0 ? 0.45 * open : 0;
-    visemeE = shape === 1 ? 0.45 * open : 0;
-    visemeM = shape === 2 ? 0.5 * (1 - open) : 0;
-  }
-  return {
-    blink,
-    smile: Math.max(0, (activity === 'talk' ? 0.22 : ((hash >>> 24) & 3) === 0 ? 0.12 : 0) + mood * 0.25),
-    brow: activity === 'talk' ? 0.08 : 0,
-    jaw,
-    lookLeft: Math.max(0, look),
-    lookRight: Math.max(0, -look),
-    frown: Math.max(0, -mood) * 0.25,
-    visemeO, visemeE, visemeM,
-  };
-}
-
-function setFacialExpression(batch: CitizenBatch, slot: number, expression: FacialExpression): void {
+function setFacialExpression(batch: CitizenBatch, slot: number, face: FaceWeights): void {
   for (let i = 0; i < batch.meshes.length; i++) {
     const source = batch.sources[i]!;
     const influences = source.morphTargetInfluences;
     const targets = source.morphTargetDictionary;
     if (!influences || !targets) continue;
-    influences.fill(0);
-    const set = (name: string, value: number): void => {
-      const index = targets[name];
-      if (index !== undefined) influences[index] = value;
-    };
-    set('blinkLeft', expression.blink);
-    set('blinkRight', expression.blink);
-    set('smile', expression.smile);
-    set('browLeftUp', expression.brow);
-    set('browRightUp', expression.brow);
-    set('open', expression.jaw);
-    set('visemeO', expression.visemeO);
-    set('visemeE', expression.visemeE);
-    set('visemeM', expression.visemeM);
-    set('frownLeft', expression.frown);
-    set('frownRight', expression.frown);
-    set('lookLeft', expression.lookLeft);
-    set('lookRight', expression.lookRight);
+    applyFace(influences, targets, face);
     const mesh = batch.meshes[i]!;
     // three allocates an InstancedMesh's morph texture from `count`. Batches
     // start invisible at count zero, so reserve their fixed capacity only for
@@ -538,7 +473,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   /** Writes one citizen: blended bone palette plus instance transform. */
   function emit(batch: CitizenBatch, clips: readonly ClipFrames[], phases: readonly number[],
     weights: readonly number[], x: number, height: number, y: number, heading: number, scale: number,
-    lean = 0, ground: Gradient | null = null, expression?: FacialExpression): void {
+    lean = 0, ground: Gradient | null = null, expression?: FaceWeights): void {
     const offset = batch.count * batch.width;
     // Far off (`lod` 2, a body a few pixels tall), the pose is the frame of
     // the clip that weighs most, copied as it is: blending clips and frames
@@ -672,7 +607,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         mixWeights.push(play.weight);
       }
       emit(batch, mixClips, mixPhases, mixWeights, x, deck, y, gaitHeading(gait), m(scale), lean, ground,
-        lod === 0 ? facialExpression(ped.id, time, ped.gesture?.kind, CROWD[index]?.person?.mood) : undefined);
+        lod === 0 ? faceAt(ped.id, time, ped.gesture?.kind, CROWD[index]?.person?.mood) : undefined);
       // In the hand, what the gesture is done with, where the hand is in the
       // clip carrying the most weight this frame.
       if (carrying && lod < 2) {
@@ -794,7 +729,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         pelvisY - leftY * drop * Math.sin(lean) - leftY * shiftLeft - aheadY * shiftAhead, heading, scale, lean, null,
         // In a seat a face lives too: blinking, glancing, a passenger
         // chatting now and then (wall time: the render's own clock).
-        lod === 0 ? facialExpression(identity.seed, performance.now() / 1000 + identity.seed * 0.13,
+        lod === 0 ? faceAt(identity.seed, performance.now() / 1000 + identity.seed * 0.13,
           seatedChat(identity.seed, performance.now() / 1000) ? 'talk' : undefined, CROWD[body.index]?.person?.mood) : undefined);
       if (helmet) {
         // This body's helmet on the head of the pose carrying the most

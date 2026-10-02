@@ -504,8 +504,9 @@ export function createPersonCreator(host: PersonCreatorHost): PersonCreator {
       clothes.appendChild(tintRow);
       swatches(clothes, t('person.dye'), CLOTH_COLOURS, person.look.outfitTint ?? -1, (c) => wear({ outfitTint: c }));
       gallery(clothes, t('person.footwear'), shoesFor(sex, WARDROBE.footwear), person.look.footwear, (n) => wear({ footwear: n }));
-      gallery(clothes, t('person.hat'), [...WARDROBE.hats.filter(() => !female), ...itemsOf('hat', { sex })], person.look.hat, (n) => wear({ hat: n }), true);
-      for (const [kind, key] of [['glasses', 'person.glasses'], ['jewelry', 'person.jewelry'], ['gloves', 'person.gloves']] as const) {
+      gallery(clothes, t('person.hat'), [...WARDROBE.hats.filter(() => !female), ...itemsOf('hat', { sex }), ...itemsOf('helmet')], person.look.hat, (n) => wear({ hat: n }), true);
+      for (const [kind, key] of [['glasses', 'person.glasses'], ['jewelry', 'person.jewelry'], ['gloves', 'person.gloves'], ['socks', 'person.socks'],
+        ['underwear', 'person.underwear'], ['mask', 'person.mask'], ['horns', 'person.horns'], ['equipment', 'person.equipment']] as const) {
         const family = itemsOf(kind, { sex });
         if (family.length) gallery(clothes, t(key), family, (person.look.extras ?? []).find((n) => family.includes(n)), (n) => wearExtra(family, n), true);
       }

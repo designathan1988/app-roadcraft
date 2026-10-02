@@ -103,7 +103,7 @@ export const ALL_FOOTWEAR: readonly string[] = [...WARDROBE.footwear, ...itemsOf
 export const ALL_BROWS: readonly string[] = [...WARDROBE.brows, ...itemsOf('eyebrows')];
 export const ALL_LASHES: readonly string[] = [...WARDROBE.lashes, ...itemsOf('eyelashes')];
 export const ALL_HATS: readonly string[] = [...WARDROBE.hats, ...itemsOf('hat'), ...itemsOf('helmet')];
-const EXTRA_NAMES = new Set(COMMUNITY.filter((i) => ['bottom', 'skirt', 'beard', 'glasses', 'gloves', 'jewelry', 'mask', 'horns'].includes(i.kind)).map((i) => i.name));
+const EXTRA_NAMES = new Set(COMMUNITY.filter((i) => ['bottom', 'skirt', 'beard', 'glasses', 'gloves', 'jewelry', 'mask', 'horns', 'underwear', 'socks', 'equipment'].includes(i.kind)).map((i) => i.name));
 
 /** The items a look wears, by name: what has to be loaded to draw it. */
 export function wornItems(look: PersonLook): string[] {

@@ -332,22 +332,6 @@
    "triangles": 8467
   },
   {
-   "name": "elvs_braid_bun",
-   "kind": "hair",
-   "pack": "hair02",
-   "license": "unstated",
-   "author": "unknown",
-   "tags": [
-    "female",
-    "casual",
-    "contemporary",
-    "hair"
-   ],
-   "street": true,
-   "vertices": 11029,
-   "triangles": 21016
-  },
-  {
    "name": "elvs_braided_rows",
    "kind": "hair",
    "pack": "hair02",
@@ -2538,23 +2522,6 @@
    "triangles": 45701
   },
   {
-   "name": "elvs_double_handkerchief_halter_dress",
-   "kind": "dress",
-   "pack": "dress02",
-   "license": "CC-BY-4.0",
-   "author": "Elvaerwyn",
-   "tags": [
-    "dress",
-    "ladiesware",
-    "female",
-    "halter",
-    "halter dress"
-   ],
-   "street": true,
-   "vertices": 21648,
-   "triangles": 21954
-  },
-  {
    "name": "elvs_fashion_stylized_qipoa",
    "kind": "dress",
    "pack": "dress02",
@@ -2585,24 +2552,6 @@
    "street": true,
    "vertices": 16698,
    "triangles": 18881
-  },
-  {
-   "name": "elvs_fringe_hippy_dress",
-   "kind": "dress",
-   "pack": "dress02",
-   "license": "unstated",
-   "author": "unknown",
-   "tags": [
-    "female",
-    "formal",
-    "festive",
-    "vintage",
-    "dress",
-    "fringe club"
-   ],
-   "street": true,
-   "vertices": 9633,
-   "triangles": 6768
   },
   {
    "name": "elvs_fringe_leather_dress",
@@ -2800,23 +2749,6 @@
    "triangles": 9596
   },
   {
-   "name": "elvs_halter_dress_long",
-   "kind": "dress",
-   "pack": "dress02",
-   "license": "CC-BY-4.0",
-   "author": "Elvaerwyn",
-   "tags": [
-    "dress",
-    "ladiesware",
-    "female",
-    "halter",
-    "halter dress"
-   ],
-   "street": true,
-   "vertices": 15755,
-   "triangles": 15548
-  },
-  {
    "name": "elvs_halter_dress_mini",
    "kind": "dress",
    "pack": "dress02",
@@ -2832,23 +2764,6 @@
    "street": true,
    "vertices": 15240,
    "triangles": 15492
-  },
-  {
-   "name": "elvs_halter_dress_tiered",
-   "kind": "dress",
-   "pack": "dress02",
-   "license": "CC-BY-4.0",
-   "author": "Elvaerwyn",
-   "tags": [
-    "dress",
-    "ladiesware",
-    "female",
-    "halter",
-    "halter dress"
-   ],
-   "street": true,
-   "vertices": 20871,
-   "triangles": 21076
   },
   {
    "name": "elvs_ladies_apron",
@@ -4258,23 +4173,6 @@
    "triangles": 1832
   },
   {
-   "name": "elvs_caesar_sandals1",
-   "kind": "shoes",
-   "pack": "shoes02",
-   "license": "CC-BY-4.0",
-   "author": "Elvaerwyn",
-   "tags": [
-    "sandal",
-    "ladiesware",
-    "female",
-    "shoe",
-    "ceasar"
-   ],
-   "street": true,
-   "vertices": 91058,
-   "triangles": 91704
-  },
-  {
    "name": "elvs_flatshoe_bow1",
    "kind": "shoes",
    "pack": "shoes02",
@@ -5418,7 +5316,938 @@
    "street": false,
    "vertices": 598,
    "triangles": 800
+  },
+  {
+   "name": "kwnet_at_pantyhose01",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "AGPL-3.0",
+   "author": "kwnet",
+   "tags": [
+    "lingerie",
+    "female",
+    "underwear"
+   ],
+   "street": false,
+   "vertices": 2807,
+   "triangles": 4654
+  },
+  {
+   "name": "marco_105_armsleeve02",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "AGPL-3.0",
+   "author": "FGH",
+   "tags": [
+    "fgh_fashion",
+    "underwear"
+   ],
+   "street": false,
+   "vertices": 322,
+   "triangles": 528
+  },
+  {
+   "name": "marco_105_stocking01",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "AGPL-3.0",
+   "author": "FGH",
+   "tags": [
+    "fgh_fashion",
+    "underwear"
+   ],
+   "street": false,
+   "vertices": 992,
+   "triangles": 1676
+  },
+  {
+   "name": "marco_105_stocking02",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "AGPL-3.0",
+   "author": "FGH",
+   "tags": [
+    "fgh_fashion",
+    "underwear"
+   ],
+   "street": false,
+   "vertices": 1008,
+   "triangles": 1676
+  },
+  {
+   "name": "punkduck_strappy_lace_thong",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 864,
+   "triangles": 1044
+  },
+  {
+   "name": "v0rt3x_armsleeves_black_fishnet_large",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rT3X",
+   "tags": [],
+   "street": false,
+   "vertices": 552,
+   "triangles": 720
+  },
+  {
+   "name": "v0rt3x_armsleeves_black_fishnet_medium",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rT3X",
+   "tags": [],
+   "street": false,
+   "vertices": 552,
+   "triangles": 720
+  },
+  {
+   "name": "v0rt3x_armsleeves_black_fishnet_small",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rT3X",
+   "tags": [],
+   "street": false,
+   "vertices": 552,
+   "triangles": 720
+  },
+  {
+   "name": "v0rt3x_armsleeves_white_fishnet_large",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rT3X",
+   "tags": [],
+   "street": false,
+   "vertices": 552,
+   "triangles": 720
+  },
+  {
+   "name": "v0rt3x_armsleeves_white_fishnet_medium",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rT3X",
+   "tags": [],
+   "street": false,
+   "vertices": 552,
+   "triangles": 720
+  },
+  {
+   "name": "v0rt3x_armsleeves_white_fishnet_small",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rT3X",
+   "tags": [],
+   "street": false,
+   "vertices": 552,
+   "triangles": 720
+  },
+  {
+   "name": "v0rt3x_stockings_black_fishnet_large",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rt3X",
+   "tags": [],
+   "street": false,
+   "vertices": 1484,
+   "triangles": 2088
+  },
+  {
+   "name": "v0rt3x_stockings_black_fishnet_medium",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rt3X",
+   "tags": [],
+   "street": false,
+   "vertices": 1484,
+   "triangles": 2088
+  },
+  {
+   "name": "v0rt3x_stockings_black_fishnet_small",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rt3X",
+   "tags": [],
+   "street": false,
+   "vertices": 1484,
+   "triangles": 2088
+  },
+  {
+   "name": "v0rt3x_stockings_white_fishnet_large",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rt3X",
+   "tags": [],
+   "street": false,
+   "vertices": 1484,
+   "triangles": 2088
+  },
+  {
+   "name": "v0rt3x_stockings_white_fishnet_medium",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rt3X",
+   "tags": [],
+   "street": false,
+   "vertices": 1484,
+   "triangles": 2088
+  },
+  {
+   "name": "v0rt3x_stockings_white_fishnet_small",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "V0rt3X",
+   "tags": [],
+   "street": false,
+   "vertices": 1484,
+   "triangles": 2088
+  },
+  {
+   "name": "wolgade_female_panties_01",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "wolgade",
+   "tags": [
+    "female",
+    "underwear",
+    "panties"
+   ],
+   "street": false,
+   "vertices": 996,
+   "triangles": 1518
+  },
+  {
+   "name": "wolgade_female_top_01",
+   "kind": "underwear",
+   "pack": "underwear01",
+   "license": "CC0-1.0",
+   "author": "wolgade",
+   "tags": [
+    "female"
+   ],
+   "street": false,
+   "vertices": 1278,
+   "triangles": 2156
+  },
+  {
+   "name": "elvs_bow_bottom_panty",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "underwear",
+    "fashion",
+    "bow",
+    "ladies",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 4003,
+   "triangles": 3863
+  },
+  {
+   "name": "elvs_bow_front_bra",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "bra",
+    "fashion",
+    "bow",
+    "ladies",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 8936,
+   "triangles": 9116
+  },
+  {
+   "name": "elvs_crude_bootyshorts",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "shorts",
+    "pant",
+    "ladies ware",
+    "bootyshort",
+    "fashion"
+   ],
+   "street": false,
+   "vertices": 316,
+   "triangles": 460
+  },
+  {
+   "name": "jaldmic_stockings",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "AGPL-3.0",
+   "author": "JALdMIC",
+   "tags": [
+    "stockings"
+   ],
+   "street": false,
+   "vertices": 2101,
+   "triangles": 2680
+  },
+  {
+   "name": "mindfront_bikini_01",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "swimwear"
+   ],
+   "street": false,
+   "vertices": 2023,
+   "triangles": 3404
+  },
+  {
+   "name": "punkduck_babydoll",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 1297,
+   "triangles": 2128
+  },
+  {
+   "name": "punkduck_bandeau_bikini_bra",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini"
+   ],
+   "street": false,
+   "vertices": 1176,
+   "triangles": 1906
+  },
+  {
+   "name": "punkduck_bandeau_bikini_slip",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini"
+   ],
+   "street": false,
+   "vertices": 694,
+   "triangles": 1144
+  },
+  {
+   "name": "punkduck_bandeau_bra",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "AGPL-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 1111,
+   "triangles": 1410
+  },
+  {
+   "name": "punkduck_bikini02_bra",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini"
+   ],
+   "street": false,
+   "vertices": 2856,
+   "triangles": 4024
+  },
+  {
+   "name": "punkduck_bikini02_slip",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini"
+   ],
+   "street": false,
+   "vertices": 1542,
+   "triangles": 2108
+  },
+  {
+   "name": "punkduck_brazilian_bikini_bra",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini",
+    "swimwear"
+   ],
+   "street": false,
+   "vertices": 2925,
+   "triangles": 4296
+  },
+  {
+   "name": "punkduck_brazilian_bikini_slip",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini",
+    "swimwear"
+   ],
+   "street": false,
+   "vertices": 1386,
+   "triangles": 1956
+  },
+  {
+   "name": "punkduck_french_lingerie_bra",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 1456,
+   "triangles": 1774
+  },
+  {
+   "name": "punkduck_french_lingerie_mini_briefs",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 726,
+   "triangles": 966
+  },
+  {
+   "name": "punkduck_french_lingerie_stockings",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 2348,
+   "triangles": 3904
+  },
+  {
+   "name": "punkduck_french_lingerie_suspender_belt",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 2164,
+   "triangles": 3324
+  },
+  {
+   "name": "punkduck_french_lingerie_thong",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 532,
+   "triangles": 700
+  },
+  {
+   "name": "punkduck_frill_bikini_bottom",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini"
+   ],
+   "street": false,
+   "vertices": 957,
+   "triangles": 1438
+  },
+  {
+   "name": "punkduck_frill_bikini_top",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini"
+   ],
+   "street": false,
+   "vertices": 916,
+   "triangles": 1424
+  },
+  {
+   "name": "punkduck_sport_bra",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "sport",
+    "underwear"
+   ],
+   "street": false,
+   "vertices": 1310,
+   "triangles": 1836
+  },
+  {
+   "name": "punkduck_sport_briefs",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "sport",
+    "underwear"
+   ],
+   "street": false,
+   "vertices": 528,
+   "triangles": 756
+  },
+  {
+   "name": "punkduck_string_2",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 327,
+   "triangles": 506
+  },
+  {
+   "name": "punkduck_string_4",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "AGPL-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 759,
+   "triangles": 1050
+  },
+  {
+   "name": "punkduck_string_5",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 773,
+   "triangles": 1084
+  },
+  {
+   "name": "punkduck_teddy_erotic_lingerie",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 2077,
+   "triangles": 3386
+  },
+  {
+   "name": "punkduck_transparent_bra",
+   "kind": "underwear",
+   "pack": "underwear02",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 799,
+   "triangles": 1232
+  },
+  {
+   "name": "elvs_all_tied_up_bikini",
+   "kind": "underwear",
+   "pack": "underwear03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "bathing suit",
+    "bikini",
+    "ladies wear",
+    "summer"
+   ],
+   "street": false,
+   "vertices": 106732,
+   "triangles": 155930
+  },
+  {
+   "name": "elvs_vintage_swimwear1_50s_strapless",
+   "kind": "underwear",
+   "pack": "underwear03",
+   "license": "CC-BY-4.0",
+   "author": "Elvaerwyn",
+   "tags": [
+    "one piece",
+    "vintage",
+    "ladies wear",
+    "summer",
+    "swimwear"
+   ],
+   "street": false,
+   "vertices": 1405,
+   "triangles": 1984
+  },
+  {
+   "name": "joepal_plain_bra",
+   "kind": "underwear",
+   "pack": "underwear03",
+   "license": "unstated",
+   "author": "unknown",
+   "tags": [],
+   "street": false,
+   "vertices": 2664,
+   "triangles": 4916
+  },
+  {
+   "name": "mindfront_f_one-piece_swimsuit_01",
+   "kind": "underwear",
+   "pack": "underwear03",
+   "license": "CC-BY-4.0",
+   "author": "Mindfront (Sweden)",
+   "tags": [
+    "female",
+    "swimwear"
+   ],
+   "street": false,
+   "vertices": 4023,
+   "triangles": 6676
+  },
+  {
+   "name": "punkduck_female_strapless_bodysuit",
+   "kind": "underwear",
+   "pack": "underwear03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 1744,
+   "triangles": 2984
+  },
+  {
+   "name": "punkduck_halterneck_romper",
+   "kind": "underwear",
+   "pack": "underwear03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "dress"
+   ],
+   "street": false,
+   "vertices": 1859,
+   "triangles": 2998
+  },
+  {
+   "name": "punkduck_one_piece_bikini01",
+   "kind": "underwear",
+   "pack": "underwear03",
+   "license": "CC-BY-4.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "bikini"
+   ],
+   "street": false,
+   "vertices": 1924,
+   "triangles": 2874
+  },
+  {
+   "name": "punkduck_shapewear",
+   "kind": "underwear",
+   "pack": "underwear03",
+   "license": "CC-BY-3.0",
+   "author": "punkduck",
+   "tags": [
+    "female",
+    "lingerie"
+   ],
+   "street": false,
+   "vertices": 852,
+   "triangles": 1428
+  },
+  {
+   "name": "joepal_crude_high_socks",
+   "kind": "socks",
+   "pack": "underwear04",
+   "license": "CC0-1.0",
+   "author": "Joel Palmius",
+   "tags": [],
+   "street": false,
+   "vertices": 394,
+   "triangles": 696
+  },
+  {
+   "name": "joepal_crude_low_socks",
+   "kind": "socks",
+   "pack": "underwear04",
+   "license": "CC0-1.0",
+   "author": "Joel Palmius",
+   "tags": [],
+   "street": false,
+   "vertices": 312,
+   "triangles": 496
+  },
+  {
+   "name": "toigo_lace_frill_socks",
+   "kind": "socks",
+   "pack": "underwear04",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "socks"
+   ],
+   "street": false,
+   "vertices": 748,
+   "triangles": 1152
+  },
+  {
+   "name": "toigo_leg_warmer_socks",
+   "kind": "socks",
+   "pack": "underwear04",
+   "license": "CC0-1.0",
+   "author": "MRT",
+   "tags": [
+    "socks"
+   ],
+   "street": false,
+   "vertices": 4158,
+   "triangles": 7776
+  },
+  {
+   "name": "culturalibre_hand_claws",
+   "kind": "equipment",
+   "pack": "equipment01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [
+    "superhero",
+    "weapon"
+   ],
+   "street": false,
+   "vertices": 23641,
+   "triangles": 14123
+  },
+  {
+   "name": "culturalibre_hero_kalistick",
+   "kind": "equipment",
+   "pack": "equipment01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 580,
+   "triangles": 320
+  },
+  {
+   "name": "culturalibre_hero_kalistick_lefthanded",
+   "kind": "equipment",
+   "pack": "equipment01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 234,
+   "triangles": 320
+  },
+  {
+   "name": "culturalibre_magic_sceptre",
+   "kind": "equipment",
+   "pack": "equipment01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 1524,
+   "triangles": 2680
+  },
+  {
+   "name": "culturalibre_war_hammer",
+   "kind": "equipment",
+   "pack": "equipment01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [
+    "hero",
+    "superhero",
+    "weapon"
+   ],
+   "street": false,
+   "vertices": 3024,
+   "triangles": 2364
+  },
+  {
+   "name": "culturalibre_wooden_bow",
+   "kind": "equipment",
+   "pack": "equipment01",
+   "license": "CC0-1.0",
+   "author": "culturalibre",
+   "tags": [],
+   "street": false,
+   "vertices": 753,
+   "triangles": 732
+  },
+  {
+   "name": "joepal_crude_sword",
+   "kind": "equipment",
+   "pack": "equipment01",
+   "license": "CC0-1.0",
+   "author": "Joel Palmius",
+   "tags": [],
+   "street": false,
+   "vertices": 291,
+   "triangles": 476
+  },
+  {
+   "name": "o4saken_dagger",
+   "kind": "equipment",
+   "pack": "equipment01",
+   "license": "AGPL-3.0",
+   "author": "o4saken",
+   "tags": [
+    "dagger"
+   ],
+   "street": false,
+   "vertices": 1812,
+   "triangles": 3026
   }
  ],
- "skipped": []
+ "skipped": [
+  {
+   "name": "elvs_braid_bun",
+   "pack": "hair02",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\hair02\\hair\\elvs_braid_bun\\bunstex12.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_braid_bun.webp 512 1\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\hair02\\\\hair\\\\elvs_braid_bun\\\\bunstex12.png'\r\n"
+  },
+  {
+   "name": "elvs_double_handkerchief_halter_dress",
+   "pack": "dress02",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\dress02\\clothes\\elvs_double_handkerchief_halter_dress\\chiefdoubletex1.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_double_handkerchief_halter_dress.webp 512 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\dress02\\\\clothes\\\\elvs_double_handkerchief_halter_dress\\\\chiefdoubletex1.png'\r\n"
+  },
+  {
+   "name": "elvs_fringe_hippy_dress",
+   "pack": "dress02",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\dress02\\clothes\\elvs_fringe_hippy_dress\\fringestex12.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_fringe_hippy_dress.webp 512 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\dress02\\\\clothes\\\\elvs_fringe_hippy_dress\\\\fringestex12.png'\r\n"
+  },
+  {
+   "name": "elvs_halter_dress_long",
+   "pack": "dress02",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\dress02\\clothes\\elvs_halter_dress_long\\halterdresslongtex2.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_halter_dress_long.webp 512 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\dress02\\\\clothes\\\\elvs_halter_dress_long\\\\halterdresslongtex2.png'\r\n"
+  },
+  {
+   "name": "elvs_halter_dress_tiered",
+   "pack": "dress02",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\dress02\\clothes\\elvs_halter_dress_tiered\\tieredtex2b.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_halter_dress_tiered.webp 512 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\dress02\\\\clothes\\\\elvs_halter_dress_tiered\\\\tieredtex2b.png'\r\n"
+  },
+  {
+   "name": "elvs_caesar_sandals1",
+   "pack": "shoes02",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\shoes02\\clothes\\elvs_caesar_sandals1\\sandaltex.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_caesar_sandals1.webp 256 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\shoes02\\\\clothes\\\\elvs_caesar_sandals1\\\\sandaltex.png'\r\n"
+  },
+  {
+   "name": "elvs_lace_panty",
+   "pack": "underwear02",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\underwear02\\clothes\\elvs_lace_panty\\pantytex2.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_lace_panty.webp 256 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\underwear02\\\\clothes\\\\elvs_lace_panty\\\\pantytex2.png'\r\n"
+  },
+  {
+   "name": "elvs_bandeau_swimwear_top_1",
+   "pack": "underwear03",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\underwear03\\clothes\\elvs_bandeau_swimwear_top_1\\bratex2.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_bandeau_swimwear_top_1.webp 256 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\underwear03\\\\clothes\\\\elvs_bandeau_swimwear_top_1\\\\bratex2.png'\r\n"
+  },
+  {
+   "name": "elvs_camisole1",
+   "pack": "underwear03",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\underwear03\\clothes\\elvs_camisole1\\camitext2a.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_camisole1.webp 256 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\underwear03\\\\clothes\\\\elvs_camisole1\\\\camitext2a.png'\r\n"
+  },
+  {
+   "name": "elvs_swimwear_micro_shorts",
+   "pack": "underwear03",
+   "why": "texture: Command failed: python C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py C:\\Codex-Shared\\Road\\.cache\\makehuman-community\\x\\underwear03\\clothes\\elvs_swimwear_micro_shorts\\microshorttex2.png C:\\Codex-Shared\\Road\\public\\models\\people\\proxies\\elvs_swimwear_micro_shorts.webp 256 0\nTraceback (most recent call last):\r\n  File \"C:\\Codex-Shared\\Road\\scripts\\texture-to-webp.py\", line 14, in <module>\r\n    img = Image.open(src).convert('RGBA').resize((size, size), Image.Resampling.BILINEAR)\r\n          ^^^^^^^^^^^^^^^\r\n  File \"C:\\Users\\jonathanrodriguesti\\AppData\\Roaming\\Python\\Python312\\site-packages\\PIL\\Image.py\", line 3715, in open\r\n    raise UnidentifiedImageError(msg)\r\nPIL.UnidentifiedImageError: cannot identify image file 'C:\\\\Codex-Shared\\\\Road\\\\.cache\\\\makehuman-community\\\\x\\\\underwear03\\\\clothes\\\\elvs_swimwear_micro_shorts\\\\microshorttex2.png'\r\n"
+  }
+ ]
 }

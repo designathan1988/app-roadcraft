@@ -16,14 +16,15 @@ import sexes from './wardrobeSex.json';
 const SEX = sexes as Record<string, 'female' | 'male' | 'any'>;
 
 /**
- * The items the game uses: a curated choice of the imported packs, the best
- * and mutually different ones, which the player edits in the wardrobe
- * catalogue (the `source` in the json). The rest stay on disk unused.
+ * The items reviewed for the street: a curated choice of the imported packs,
+ * which the player edits in the wardrobe catalogue (the `source` in the json).
+ * Every imported item is offered in the Person Creator (player, 2026-10-02:
+ * "tudo"); a passer-by wears only reviewed ones.
  */
 const SELECTED = new Set<string>(selection.names);
 
 export type CommunityKind = 'top' | 'bottom' | 'skirt' | 'dress' | 'suit' | 'beard' | 'hat' | 'glasses' | 'gloves'
-  | 'jewelry' | 'helmet' | 'mask' | 'horns';
+  | 'jewelry' | 'helmet' | 'mask' | 'horns' | 'underwear' | 'socks' | 'equipment';
 
 export interface WardrobeItem {
   readonly name: string;
@@ -92,7 +93,7 @@ const HAIR: Record<string, { length: 'short' | 'long'; sex: WardrobeItem['sex'] 
 
 interface CommunityEntry { name: string; kind: string; triangles: number; street: boolean; license: string; author: string; tags: string[] }
 
-export const COMMUNITY: readonly WardrobeItem[] = (community.items as CommunityEntry[]).filter((i) => SELECTED.has(i.name)).map((i) => {
+export const COMMUNITY: readonly WardrobeItem[] = (community.items as CommunityEntry[]).map((i) => {
   const kind = i.kind as WardrobeItem['kind'];
   const costume = COSTUME.test(`${i.name} ${i.tags.join(' ')}`.toLowerCase());
   return {
@@ -101,7 +102,7 @@ export const COMMUNITY: readonly WardrobeItem[] = (community.items as CommunityE
     sex: HAIR[i.name]?.sex ?? SEX[i.name] ?? sexOf(i.name, i.tags),
     ...(kind === 'hair' ? { length: HAIR[i.name]?.length ?? lengthOf(i.name, i.tags) } : {}),
     triangles: i.triangles,
-    street: i.street && !costume && i.triangles <= STREET_TRIANGLES,
+    street: SELECTED.has(i.name) && i.street && !costume && i.triangles <= STREET_TRIANGLES,
     license: i.license,
     author: i.author,
   };

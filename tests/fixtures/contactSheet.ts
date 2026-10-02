@@ -85,7 +85,7 @@ export async function contactSheet(ids: readonly string[] = CROWD.map(p => p.id)
             const start = performance.now();
             for (let n = 0; n < 300; n++) {
               rig.mesh.morphTargetInfluences!.fill(0);
-              rig.mesh.morphTargetInfluences![rig.mesh.morphTargetDictionary!['blinkLeft']!] = Math.max(0, Math.sin(frame * 0.7 + n));
+              rig.mesh.morphTargetInfluences![rig.mesh.morphTargetDictionary!['eyeBlinkLeft']!] = Math.max(0, Math.sin(frame * 0.7 + n));
               crowd.setMorphAt(n, rig.mesh);
             }
             crowd.morphTexture!.needsUpdate = true;

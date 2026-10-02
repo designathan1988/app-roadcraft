@@ -1,4 +1,3 @@
-/* global Image, document */
 // Packs the MakeHuman COMMUNITY asset packs (hair, clothes, shoes, hats,
 // glasses, jewellery, beards, brows, lashes) for the game, next to the system
 // items `import-makehuman-proxies.mjs` writes. Reads the packs downloaded to
@@ -10,16 +9,16 @@
 // and in community.json, for the credits. Fantasy items (masks, horns,
 // helmets) are for the Person Creator, never put on a passer-by.
 //
-// Only the items in src/people/wardrobeSelection.json (the curated choice,
-// edited in the wardrobe catalogue) are written; --all writes every item.
-// community.json always lists every item, for the catalogue.
+// Every item is written (player, 2026-10-02: "tudo"): the Person Creator
+// offers all of them; src/people/wardrobeSelection.json is the reviewed
+// choice a passer-by in the street may wear. Textures are resized with
+// Python/PIL (scripts/texture-to-webp.py), no browser.
 //
-//   node scripts/import-makehuman-community.mjs [--all]
+//   node scripts/import-makehuman-community.mjs
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { chromium } from 'playwright';
 import { pack } from './import-makehuman-proxies.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,8 +26,6 @@ const CACHE = join(ROOT, '.cache', 'makehuman-community');
 const UNPACKED = join(CACHE, 'x');
 const OUT = join(ROOT, 'public', 'models', 'people', 'proxies');
 const SITE = 'https://files.makehumancommunity.org/asset_packs';
-const ALL = process.argv.includes('--all');
-const SELECTED = new Set(JSON.parse(readFileSync(join(ROOT, 'src', 'people', 'wardrobeSelection.json'), 'utf8')).names);
 
 /**
  * What each pack holds: the kind of item, the texture size, whether the
@@ -68,6 +65,11 @@ const PACKS = {
   hats02: { kind: 'helmet', size: 256, street: false },
   masks01: { kind: 'mask', size: 256, street: false },
   bodyparts01: { kind: 'horns', size: 256, street: false },
+  underwear01: { kind: 'underwear', size: 256, street: false },
+  underwear02: { kind: 'underwear', size: 256, street: false },
+  underwear03: { kind: 'underwear', size: 256, street: false },
+  underwear04: { kind: 'socks', size: 256, street: false },
+  equipment01: { kind: 'equipment', size: 256, street: false },
 };
 
 /** The item's licence as its .mhclo states it, normalised and recorded (every item is imported: player's decision). */
@@ -106,8 +108,6 @@ function items(dir) {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch({ channel: 'chrome' });
-  const page = await browser.newPage();
   const taken = [];
   const skipped = [];
   let bytes = 0;
@@ -120,6 +120,11 @@ async function main() {
       if (existsSync(join(OUT, `${name}.json`)) && !taken.some((t) => t.name === name)) {
         const old = JSON.parse(readFileSync(join(OUT, `${name}.json`), 'utf8'));
         if (!old.community) { skipped.push({ name, pack: packName, why: 'name taken by a system item' }); continue; }
+        // Already in the game, possibly retouched since (shirt logos painted
+        // out): kept as it is, only listed.
+        taken.push({ name, kind: old.kind, pack: packName, license: old.license, author: old.author, tags: old.tags,
+          street: old.street, vertices: old.vertexCount, triangles: old.triangleCount });
+        continue;
       }
       let packed;
       try {
@@ -132,33 +137,10 @@ async function main() {
       let texture = null;
       if (diffuse && existsSync(diffuse)) {
         try {
-          const raw = readFileSync(diffuse).toString('base64');
-          const mime = /\.jpe?g$/i.test(diffuse) ? 'image/jpeg' : 'image/png';
-          const data = await page.evaluate(async ({ raw, mime, size, grey }) => {
-            const img = new Image();
-            img.src = `data:${mime};base64,${raw}`;
-            await img.decode();
-            const c = document.createElement('canvas');
-            c.width = c.height = size;
-            const g = c.getContext('2d');
-            g.drawImage(img, 0, 0, size, size);
-            const d = g.getImageData(0, 0, size, size);
-            let r = 0, gg = 0, b = 0, n = 0;
-            for (let i = 0; i < d.data.length; i += 4) {
-              if (d.data[i + 3] < 200) continue;
-              r += d.data[i]; gg += d.data[i + 1]; b += d.data[i + 2]; n++;
-            }
-            if (grey) {
-              for (let i = 0; i < d.data.length; i += 4) {
-                const l = 0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2];
-                d.data[i] = d.data[i + 1] = d.data[i + 2] = l;
-              }
-              g.putImageData(d, 0, 0);
-            }
-            return { webp: c.toDataURL('image/webp', 0.84).split(',')[1], average: n ? [r / n, gg / n, b / n].map(Math.round) : null };
-          }, { raw, mime, size: opts.size, grey: !!opts.grey });
-          if (ALL || SELECTED.has(name)) writeFileSync(join(OUT, `${name}.webp`), Buffer.from(data.webp, 'base64'));
-          bytes += Buffer.from(data.webp, 'base64').length;
+          const result = execFileSync('python', [join(ROOT, 'scripts', 'texture-to-webp.py'), diffuse,
+            join(OUT, `${name}.webp`), String(opts.size), opts.grey ? '1' : '0'], { encoding: 'utf8' });
+          const data = JSON.parse(result.trim());
+          bytes += statSync(join(OUT, `${name}.webp`)).size;
           texture = { file: `${name}.webp`, average: data.average };
         } catch (e) {
           skipped.push({ name, pack: packName, why: `texture: ${e.message ?? e}` });
@@ -176,17 +158,14 @@ async function main() {
         street: opts.street !== false,
         community: true,
       };
-      if (ALL || SELECTED.has(name)) {
-        writeFileSync(join(OUT, `${name}.bin`), bin);
-        writeFileSync(join(OUT, `${name}.json`), JSON.stringify(out));
-      }
+      writeFileSync(join(OUT, `${name}.bin`), bin);
+      writeFileSync(join(OUT, `${name}.json`), JSON.stringify(out));
       bytes += bin.length;
       taken.push({ name, kind: opts.kind, pack: packName, license, author: out.author, tags: out.tags, street: out.street,
         vertices: meta.vertexCount, triangles: meta.triangleCount });
       console.log(`${opts.kind.padEnd(9)} ${name.padEnd(48)} ${license.padEnd(9)} ${String(meta.triangleCount).padStart(6)} t`);
     }
   }
-  await browser.close();
   writeFileSync(join(OUT, 'community.json'), JSON.stringify({
     format: 'roadcraft-people-community/1',
     note: 'MakeHuman community asset packs; each item keeps the licence its .mhclo states. CC-BY items are credited in the About panel.',
