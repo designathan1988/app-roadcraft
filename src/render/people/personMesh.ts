@@ -38,6 +38,8 @@ export interface PersonMeshData {
   readonly vertexCount: number;
   /** Quads (a, b, c, d), d === c for a triangle. */
   readonly faces: Uint16Array;
+  readonly uvs?: Float32Array;
+  readonly faceUvs?: Uint16Array;
   readonly faceGroup: Uint8Array;
   readonly faceGroups: readonly string[];
   readonly vertexGroups: Readonly<Record<string, readonly (readonly [number, number])[]>>;

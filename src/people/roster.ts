@@ -1,5 +1,5 @@
 import { ageFromYears } from './body/macro';
-import { CLOTH_COLOURS, WARDROBE, randomPerson, type BottomStyle, type PersonSpec, type TopStyle } from './spec';
+import { CLOTH_COLOURS, WARDROBE, randomPerson, type AppearanceOptions, type BottomStyle, type PersonSpec, type TopStyle } from './spec';
 
 /**
  * The street's people: a fixed roster of MakeHuman bodies, made once from
@@ -98,7 +98,7 @@ function dressUnlike(r: () => number, used: Set<string>, outfits: readonly strin
   return { outfit: pick(r, outfits), outfitTint: pick(r, palette) };
 }
 
-export function makeRoster(): RosterEntry[] {
+export function makeRoster(options: AppearanceOptions = {}): RosterEntry[] {
   const out: RosterEntry[] = [];
   const used = new Set<string>();
   let n = 0;
@@ -115,7 +115,7 @@ export function makeRoster(): RosterEntry[] {
             gender: female ? r() * 0.2 : 0.8 + r() * 0.2,
             age: ageFromYears(years),
           },
-        });
+        }, options);
         const dress = DRESS[wardrobe];
         const top = pick(r, dress.top);
         const topColour = pick(r, dress.topColours);
@@ -130,7 +130,8 @@ export function makeRoster(): RosterEntry[] {
             shoes: wardrobe === 'business' ? pick(r, [0x22252b, 0x3a2418]) : wardrobe === 'sport-casual' ? pick(r, [0xf2f0ea, 0x22252b]) : base.look.shoes,
             // The MakeHuman outfit for the wardrobe: a suit for business, a
             // sports suit for sport, everyday clothes otherwise.
-            ...dressUnlike(r, used, OUTFIT[wardrobe][female ? 'female' : 'male'], wardrobe === 'business' ? SOBER : CLOTH_COLOURS),
+            ...(options.appearance === 'natural' && age === 'child' ? {}
+              : dressUnlike(r, used, OUTFIT[wardrobe][female ? 'female' : 'male'], wardrobe === 'business' ? SOBER : CLOTH_COLOURS)),
           },
         };
         // Riders reach the controls of the two-wheelers as they are drawn

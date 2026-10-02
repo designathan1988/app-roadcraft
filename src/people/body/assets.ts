@@ -24,6 +24,8 @@ export interface PeopleAssets {
   readonly mesh: {
     readonly vertexCount: number;
     readonly faces: Uint16Array;
+    readonly uvs: Float32Array;
+    readonly faceUvs: Uint16Array;
     readonly faceGroup: Uint8Array;
     readonly faceGroups: readonly string[];
     readonly vertexGroups: Readonly<Record<string, readonly (readonly [number, number])[]>>;
@@ -61,6 +63,8 @@ export function loadPeopleAssets(): Promise<PeopleAssets> {
       return s;
     };
     const faces = section('faceVerts');
+    const uvs = section('uvs');
+    const faceUvs = section('faceUvs');
     const groups = section('faceGroup');
     return {
       packs: { base, baseBin: baseData, macro, macroBin: macroData, local, localBin: localData, modifiers },
@@ -69,6 +73,8 @@ export function loadPeopleAssets(): Promise<PeopleAssets> {
       mesh: {
         vertexCount: base.vertexCount,
         faces: new Uint16Array(baseData, faces.byteOffset, faces.count * 4),
+        uvs: new Float32Array(baseData, uvs.byteOffset, uvs.count * 2),
+        faceUvs: new Uint16Array(baseData, faceUvs.byteOffset, faceUvs.count * 4),
         faceGroup: new Uint8Array(baseData, groups.byteOffset, groups.count),
         faceGroups: base.faceGroups,
         vertexGroups: base.vertexGroups,

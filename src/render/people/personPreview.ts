@@ -22,6 +22,7 @@ import { captureBind, captureBindRotations, neutralWalkFor, walkDuration, type N
 import { createPersonRig, type PersonRig } from './personRig';
 import { loadProxyItem, proxyUrl, type ProxyItem } from '@people/body/proxy';
 import { wornItems } from '@people/spec';
+import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from './skinAppearance';
 
 /**
  * The Person Creator's 3D preview: the person as the street will see them -
@@ -51,6 +52,10 @@ export interface PersonPreview {
 }
 
 export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
+  const natural = new URLSearchParams(location.search).get('appearance') === 'natural';
+  let skin: { key: string; value: SkinAppearance; colour: Color } | null = null;
+  let pendingSkin = '';
+  let skinRequest = 0;
   let assets: PeopleAssets | null = null;
   let morpher: Morpher | null = null;
   let renderer: WebGLRenderer | null = null;
@@ -160,8 +165,30 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
   const loadingItems = new Set<string>();
   /** Garments that could not be loaded: never asked for again (drawn in the shells). */
   const failedItems = new Set<string>();
+  const skinKey = (p: PersonSpec): string => {
+    const b = p.body;
+    return `${p.look.hairCut ?? 'none'}|${b.gender < 0.5}|${b.age > 0.8 ? 2 : b.age > 0.6 ? 1 : 0}|${b.african > b.asian && b.african > b.caucasian ? 0 : b.asian > b.caucasian ? 1 : 2}`;
+  };
+  const ensureSkin = (p: PersonSpec): void => {
+    const key = skinKey(p);
+    if (!natural || !active || skin?.key === key || pendingSkin === key) return;
+    pendingSkin = key;
+    const request = ++skinRequest;
+    void loadSkinAppearance(p).then((loaded) => {
+      if (request !== skinRequest || !active || !person || skinKey(person) !== key) {
+        loaded.texture.dispose(); loaded.hairTexture?.dispose();
+        if (request === skinRequest) pendingSkin = '';
+        return;
+      }
+      skin?.value.texture.dispose(); skin?.value.hairTexture?.dispose();
+      skin = { key, value: loaded, colour: new Color(p.look.skin) };
+      pendingSkin = '';
+      rebuild();
+    }).catch(() => { if (request === skinRequest) pendingSkin = ''; });
+  };
   const rebuild = (): void => {
     if (!morpher || !assets || !person) return;
+    ensureSkin(person);
     // The look's garments first: the person is rebuilt once they are to hand.
     const missing = wornItems(person.look).filter((n) => !proxies.has(n) && !failedItems.has(n));
     if (missing.length) {
@@ -179,16 +206,28 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
     walkSex = person.body.gender >= 0.5 ? 'male' : 'female';
     const next = createPersonRig({
       data: assets.mesh, skeleton: assets.skeleton, bodyRange: assets.bodyRange,
-      positions, look: person.look, capture: captureBind(walkSex), captureAxes: captureBindRotations(walkSex), proxies,
+      positions, look: person.look, texturedSkin: natural, capture: captureBind(walkSex), captureAxes: captureBindRotations(walkSex), proxies,
     });
     if (rig) {
       scene.remove(rig.scene);
       rig.mesh.geometry.dispose();
+      rig.mesh.skeleton.dispose();
       const old = rig.mesh.material;
-      for (const m of Array.isArray(old) ? old : [old]) m.dispose();
+      for (const m of new Set(Array.isArray(old) ? old : [old])) m.dispose();
     }
     rig = next;
     texture(rig, person.look);
+    if (natural && skin?.key === skinKey(person)) {
+      const desired = new Color(person.look.skin);
+      const tint = skin.value.tint.clone().multiply(new Color().setRGB(
+        desired.r / Math.max(0.0001, skin.colour.r), desired.g / Math.max(0.0001, skin.colour.g),
+        desired.b / Math.max(0.0001, skin.colour.b)));
+      const material = Array.isArray(rig.mesh.material) ? rig.mesh.material[0]! : rig.mesh.material;
+      applySkinAppearance(material as MeshStandardMaterial, rig.mesh.geometry, {
+        ...skin.value, tint, hair: new Color(person.look.hair),
+        beard: ['none', 'stubble', 'moustache', 'beard'].indexOf(person.look.beard ?? 'none'), makeup: person.look.makeup ?? 0,
+      });
+    }
     rig.mesh.castShadow = true;
     scene.add(rig.scene);
     height = rig.height;
@@ -200,7 +239,14 @@ export function createPersonPreview(canvas: HTMLCanvasElement): PersonPreview {
     ready,
     setActive(on) {
       active = on;
-      if (!on) return;
+      if (!on) {
+        ++skinRequest;
+        pendingSkin = '';
+        skin?.value.texture.dispose(); skin?.value.hairTexture?.dispose();
+        skin = null;
+        return;
+      }
+      rebuild();
       if (!renderer) {
         renderer = new WebGLRenderer({ canvas, antialias: true });
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));

@@ -13,7 +13,7 @@ in the plan's order.
 |---|---|---|
 | 0 | measurement base (harness, probe) | **done**, 1c431c3 |
 | 1 | new base for roads and pedestrians | **deferred by player**: remaining work at the end of this file |
-| 1b | vehicle motion: measure and fix on the new base | **verified behind `?motion=physical`**, b43bd33; default approval pending |
+| 1b | vehicle motion: measure and fix on the new base | **default in Drive v2**, player approved; b43bd33, 2695613 |
 | 2 | skin, phenotype, sex profiles, child clothes | **in progress** |
 | 3 | live expression | not started |
 | 4 | crowd without repetition, plus memory | not started |

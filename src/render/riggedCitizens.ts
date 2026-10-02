@@ -15,6 +15,7 @@ import type { CitizenModel } from './citizenCasting';
 import { loadPeopleAssets } from '@people/body/assets';
 import { Morpher } from '@people/body/morph';
 import { createPersonRig } from './people/personRig';
+import { applySkinAppearance, loadSkinAppearance, type SkinAppearance } from './people/skinAppearance';
 import { loadProxyItem, type ProxyItem } from '@people/body/proxy';
 import { wornItems } from '@people/spec';
 import { captureBind, captureBindRotations } from './citizenWalk';
@@ -428,6 +429,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     const people = await loadPeopleAssets();
     morpher ??= new Morpher(people.packs);
     const person = model.person!;
+    const natural = new URLSearchParams(location.search).get('appearance') === 'natural';
     // The garments it wears, loaded first; failing that it is drawn in the
     // tailored shells rather than not at all.
     const proxies = new Map<string, ProxyItem>();
@@ -436,10 +438,17 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
     } catch { proxies.clear(); }
     const rig = createPersonRig({
       proxies,
+      texturedSkin: natural,
       data: people.mesh, skeleton: people.skeleton, bodyRange: people.bodyRange,
       positions: morpher.shape(person.body, person.features), look: person.look,
       capture: captureBind(model.gender === 'f' ? 'female' : 'male'), captureAxes: captureBindRotations(model.gender === 'f' ? 'female' : 'male'),
     });
+    if (natural) {
+      const skin = await loadSkinAppearance(person);
+      resources.add(skin.texture);
+      if (skin.hairTexture) resources.add(skin.hairTexture);
+      rig.mesh.geometry.userData['skinAppearance'] = skin;
+    }
     return { scene: rig.scene, parser: null } as unknown as GLTF;
   }
 
@@ -516,6 +525,8 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
           material.roughness = 0.88;
           material.metalness = 0;
           skinMaterial(material, uniform, o, materialIndex === 0 ? (CROWD[index]?.look ?? 0) : 0);
+          const skin = o.geometry.userData['skinAppearance'] as SkinAppearance | undefined;
+          if (skin) applySkinAppearance(material, o.geometry, skin);
           resources.add(material);
           return material;
         });

@@ -103,6 +103,7 @@ export interface PersonRigInput {
   /** The morphed body, decimetres (`Morpher.shape`). */
   readonly positions: Float32Array;
   readonly look: PersonLook;
+  readonly texturedSkin?: boolean;
   /** The capture avatar's bind, by capture bone name (`captureBind`). */
   readonly capture: ReadonlyMap<string, Vector3>;
   /** And its bones' own axes (`captureBindRotations`). */
@@ -258,14 +259,33 @@ export function createPersonRig(input: PersonRigInput): PersonRig {
     }
     return out;
   };
+  const fitted = dressed ? items.map((name) => {
+    const item = input.proxies!.get(name)!;
+    const skin = proxySkin(item.pack, data.joints, data.weights);
+    return { name, item, positions: pose(fitProxy(item.pack, positions), skin), skin };
+  }) : [];
+  // Child clothing remains tailored to child anatomy. Accessories do not turn
+  // a clothed child into the bare body used underneath an adult outfit.
+  const shell = !look.outfit && fitted.length
+    ? clothedGeometry(data, posed, fitted.some(w => w.item.pack.kind === 'hair')
+      ? { ...look, hairStyle: 'none' } : look, input.texturedSkin) : undefined;
   const geometry = dressed
-    ? dressedGeometry(data, posed, look, items.map((name) => {
-      const item = input.proxies!.get(name)!;
-      const skin = proxySkin(item.pack, data.joints, data.weights);
-      return { name, item, positions: pose(fitProxy(item.pack, positions), skin), skin };
-    }))
-    : clothedGeometry(data, posed, look);
+    ? dressedGeometry(data, posed, look, fitted, input.texturedSkin, shell)
+    : clothedGeometry(data, posed, look, input.texturedSkin);
+  shell?.dispose();
   const skeleton = new Skeleton(bones);
+  if (input.texturedSkin) {
+    const anchor = (name: string): Vector3 => {
+      const point = new Vector3(); let count = 0;
+      for (const [a, b] of data.vertexGroups[name] ?? []) for (let v = a; v <= b; v++) {
+        point.x += posed[v * 3]!; point.y += posed[v * 3 + 1]!; point.z += posed[v * 3 + 2]!; count++;
+      }
+      return point.divideScalar(Math.max(1, count));
+    };
+    const mouth = anchor('joint-mouth'), jaw = anchor('joint-jaw'), crown = anchor('joint-head-2');
+    geometry.userData['faceOrigin'] = mouth;
+    geometry.userData['faceScale'] = Math.max(0.08, crown.distanceTo(jaw));
+  }
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, side: DoubleSide });
   const mesh = new SkinnedMesh(geometry, material);
   mesh.name = 'person';
@@ -290,13 +310,14 @@ interface Builder {
  * The person as one indexed geometry, hems cut in, colours in the vertices,
  * skin weights per vertex (bone indices in the skeleton's order).
  */
-export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look: PersonLook): BufferGeometry {
+export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look: PersonLook, texturedSkin = false): BufferGeometry {
   // The tailoring is measured in the packs' decimetres.
   const cut = tailor(data, posed.map((x) => x * 10));
   const parts = facesFor(data, look, cut);
   const planes = hemPlanes(data, posed, look);
   const out: Builder = { positions: [], colours: [], joints: [], weights: [], index: [] };
   const colourOf = partColours(look);
+  const uvs: number[] = [], skinMask: number[] = [];
   // Original vertices are copied once per part they appear in (a vertex has one colour).
   const copied = new Map<string, number>();
   const edges = new Map<string, number>();
@@ -317,13 +338,15 @@ export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look:
   // head alone. Shared with the neck, it flexed when the neck turned, and a
   // helmet fitted at rest no longer held it.
   const headBone = data.boneNames.indexOf('head');
-  const emitOriginal = (part: Part, v: number): number => {
-    const key = `${part}:${v}`;
+  const emitOriginal = (part: Part, v: number, uv: number): number => {
+    const key = `${part}:${v}${texturedSkin ? `:${uv}` : ''}`;
     const known = copied.get(key);
     if (known !== undefined) return known;
     const at = out.positions.length / 3;
     out.positions.push(posed[v * 3]!, posed[v * 3 + 1]!, posed[v * 3 + 2]!);
     out.colours.push(...vertexColour(part, v));
+    uvs.push(data.uvs?.[uv * 2] ?? 0, data.uvs?.[uv * 2 + 1] ?? 0);
+    skinMask.push(part === 'skin' ? 1 - (look.hairStyle === 'none' ? 0 : cut.hair[v]!) : 0);
     let head = 0;
     for (let k = 0; k < 4; k++) if (data.joints[v * 4 + k] === headBone) head += data.weights[v * 4 + k]! / 65535;
     for (let k = 0; k < 4; k++) {
@@ -352,6 +375,8 @@ export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look:
     const at = out.positions.length / 3;
     for (let k = 0; k < 3; k++) out.positions.push(out.positions[lo * 3 + k]! + (out.positions[hi * 3 + k]! - out.positions[lo * 3 + k]!) * s);
     for (let k = 0; k < 3; k++) out.colours.push(out.colours[lo * 3 + k]! + (out.colours[hi * 3 + k]! - out.colours[lo * 3 + k]!) * s);
+    for (let k = 0; k < 2; k++) uvs.push(uvs[lo * 2 + k]! + (uvs[hi * 2 + k]! - uvs[lo * 2 + k]!) * s);
+    skinMask.push(skinMask[lo]! + (skinMask[hi]! - skinMask[lo]!) * s);
     const blend = new Map<number, number>();
     for (const [v, share] of [[lo, 1 - s], [hi, s]] as const) {
       for (let k = 0; k < 4; k++) {
@@ -384,7 +409,7 @@ export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look:
       for (const tri of triangles) {
         // Sutherland-Hodgman against every hem of the part, in turn: what is
         // left of the triangle after each cut is cut by the next.
-        let polygon = tri.map((v) => emitOriginal(part, v));
+        let polygon = tri.map((v) => emitOriginal(part, v, data.faceUvs?.[f * 4 + quad.indexOf(v)] ?? 0));
         for (const plane of hems) {
           const ds = polygon.map((o) => distance(plane, o));
           if (ds.every((d) => d >= 0)) continue;
@@ -408,12 +433,18 @@ export function clothedGeometry(data: PersonMeshData, posed: Float32Array, look:
   }
 
   const geometry = new BufferGeometry();
+  if (texturedSkin) {
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
+    geometry.setAttribute('skinMask', new BufferAttribute(new Float32Array(skinMask), 1));
+    geometry.setAttribute('hairMask', new BufferAttribute(new Float32Array(out.positions.length / 3), 1));
+  }
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(out.positions), 3));
   geometry.setAttribute('color', new BufferAttribute(new Float32Array(out.colours), 3));
   geometry.setAttribute('skinIndex', new BufferAttribute(new Uint16Array(out.joints), 4));
   geometry.setAttribute('skinWeight', new BufferAttribute(new Float32Array(out.weights), 4));
   geometry.setIndex(out.index);
   geometry.computeVertexNormals();
+  if (texturedSkin) smoothSkinSeams(geometry);
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   // Coarser levels for people further off (`riggedCitizens.ts` picks one per
@@ -443,11 +474,17 @@ const SOLID = 0.45;
  * vertices, hair dyed the look's colour, an outfit dyed when the look says
  * so. One geometry, skin weights per vertex, as the crowd draws it.
  */
-export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look: PersonLook, worn: readonly WornItem[]): BufferGeometry {
-  const out: Builder = { positions: [], colours: [], joints: [], weights: [], index: [] };
+export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look: PersonLook, worn: readonly WornItem[], texturedSkin = false, shell?: BufferGeometry): BufferGeometry {
+  const values = (name: string): number[] => shell ? Array.from(shell.getAttribute(name).array) : [];
+  const out: Builder = {
+    positions: values('position'), colours: values('color'), joints: values('skinIndex'), weights: values('skinWeight'),
+    index: shell?.index ? Array.from(shell.index.array) : [],
+  };
   // Texture coordinates and a draw group per item, for drawing it textured
   // close up (`personPreview.ts`); the crowd draws the vertex colours whole.
-  const uvs: number[] = [];
+  const uvs: number[] = shell?.hasAttribute('uv') ? values('uv') : new Array(out.positions.length / 3 * 2).fill(0);
+  const skinMask: number[] = shell?.hasAttribute('skinMask') ? values('skinMask') : new Array(out.positions.length / 3).fill(0);
+  const hairMask: number[] = new Array(out.positions.length / 3).fill(0);
   const groups: { start: number; count: number; name: string }[] = [];
   const headBone = data.boneNames.indexOf('head');
   const pushSkin = (joints: ArrayLike<number>, weights: ArrayLike<number>, o: number, scale: number): void => {
@@ -470,16 +507,18 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   const eyeOf = eyeColourer(data, posed, iris);
   const body = data.faceGroups.indexOf('body');
   const eyes = new Set([data.faceGroups.indexOf('helper-l-eye'), data.faceGroups.indexOf('helper-r-eye')]);
-  const emitted = new Map<number, number>();
-  const emit = (v: number, colour: [number, number, number]): number => {
-    const known = emitted.get(v);
+  const emitted = new Map<string, number>();
+  const emit = (v: number, colour: [number, number, number], uv: number, skin: number): number => {
+    const key = texturedSkin ? `${v}:${uv}` : `${v}`;
+    const known = emitted.get(key);
     if (known !== undefined) return known;
     const at = out.positions.length / 3;
     out.positions.push(posed[v * 3]!, posed[v * 3 + 1]!, posed[v * 3 + 2]!);
     out.colours.push(...colour);
-    uvs.push(0, 0);
+    uvs.push(data.uvs?.[uv * 2] ?? 0, data.uvs?.[uv * 2 + 1] ?? 0);
+    skinMask.push(skin);
     pushSkin(data.joints, data.weights, v * 4, 65535);
-    emitted.set(v, at);
+    emitted.set(key, at);
     return at;
   };
   const bodyColour = (v: number): [number, number, number] => {
@@ -487,17 +526,19 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     const h = hairy ? Math.min(1, cut.hair[v]! * 1.6) : 0;
     return [skin.r + (hair.r * 0.8 - skin.r) * h, skin.g + (hair.g * 0.8 - skin.g) * h, skin.b + (hair.b * 0.8 - skin.b) * h];
   };
-  for (let f = 0; f < data.faceGroup.length; f++) {
+  for (let f = 0; !shell && f < data.faceGroup.length; f++) {
     const g = data.faceGroup[f]!;
     const isEye = eyes.has(g);
     if (g !== body && !isEye) continue;
     const quad = [data.faces[f * 4]!, data.faces[f * 4 + 1]!, data.faces[f * 4 + 2]!, data.faces[f * 4 + 3]!];
     if (!isEye && quad.some((v) => hidden.has(v))) continue;
-    const o = quad.map((v) => emit(v, isEye ? eyeOf(v) : bodyColour(v)));
+    const o = quad.map((v, corner) => emit(v, isEye ? eyeOf(v) : bodyColour(v), data.faceUvs?.[f * 4 + corner] ?? 0,
+      isEye ? 0 : 1 - (hairy ? Math.min(1, cut.hair[v]! * 1.6) : 0)));
     out.index.push(o[0]!, o[1]!, o[2]!);
     if (quad[3] !== quad[2]) out.index.push(o[0]!, o[2]!, o[3]!);
   }
 
+  while (hairMask.length < out.positions.length / 3) hairMask.push(0);
   groups.push({ start: 0, count: out.index.length, name: 'body' });
   // --- the items
   const tint = look.outfitTint === null || look.outfitTint === undefined ? null : new Color(look.outfitTint);
@@ -510,6 +551,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     for (let v = 0; v < n; v++) {
       out.positions.push(w.positions[v * 3]!, w.positions[v * 3 + 1]!, w.positions[v * 3 + 2]!);
       uvs.push(pack.uvs?.[v * 2] ?? 0, pack.uvs?.[v * 2 + 1] ?? 0);
+      hairMask.push(kind === 'hair' ? 1 : 0);
       // Texture pixels are sRGB; vertex colours are drawn as linear (as
       // `Color` converts the look's colours). Taken raw, every garment came
       // out pale and washed out.
@@ -536,7 +578,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     for (let i = 0; i + 2 < idx.length; i += 3) {
       const a = idx[i]!, b = idx[i + 1]!, c = idx[i + 2]!;
       // A crowd draws no see-through cloth: of a hair card only what is hair.
-      if (transparent && texture && (alpha[a]! + alpha[b]! + alpha[c]!) / 3 < SOLID) continue;
+      if (transparent && texture && !(texturedSkin && pack.kind === 'hair') && (alpha[a]! + alpha[b]! + alpha[c]!) / 3 < SOLID) continue;
       out.index.push(base + a, base + b, base + c);
     }
     groups.push({ start, count: out.index.length - start, name: w.name });
@@ -544,6 +586,11 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
 
   const geometry = new BufferGeometry();
   geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
+  if (texturedSkin) {
+    while (skinMask.length < out.positions.length / 3) skinMask.push(0);
+    geometry.setAttribute('skinMask', new BufferAttribute(new Float32Array(skinMask), 1));
+    geometry.setAttribute('hairMask', new BufferAttribute(new Float32Array(hairMask), 1));
+  }
   groups.forEach((g, i) => geometry.addGroup(g.start, g.count, i));
   geometry.userData['wornGroups'] = groups.map((g) => g.name);
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(out.positions), 3));
@@ -552,10 +599,34 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
   geometry.setAttribute('skinWeight', new BufferAttribute(new Float32Array(out.weights), 4));
   geometry.setIndex(out.index);
   geometry.computeVertexNormals();
+  if (texturedSkin) smoothSkinSeams(geometry);
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   geometry.userData['lodIndices'] = LOD_CELLS.map((cell) => new BufferAttribute(clusterIndex(out.positions, out.colours, out.index, cell), 1));
   return geometry;
+}
+
+/** UV splits must not produce a lighting seam across continuous skin. */
+function smoothSkinSeams(geometry: BufferGeometry): void {
+  const positions = geometry.getAttribute('position'), normals = geometry.getAttribute('normal');
+  const mask = geometry.getAttribute('skinMask');
+  const groups = new Map<string, number[]>();
+  for (let i = 0; i < positions.count; i++) {
+    if (mask.getX(i) <= 0) continue;
+    const key = `${positions.getX(i)},${positions.getY(i)},${positions.getZ(i)}`;
+    const ids = groups.get(key);
+    if (ids) ids.push(i); else groups.set(key, [i]);
+  }
+  const sum = new Vector3();
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    sum.set(0, 0, 0);
+    for (const i of ids) {
+      sum.x += normals.getX(i); sum.y += normals.getY(i); sum.z += normals.getZ(i);
+    }
+    sum.normalize();
+    for (const i of ids) normals.setXYZ(i, sum.x, sum.y, sum.z);
+  }
 }
 
 /** Cell sizes of the coarser levels, metres. */
