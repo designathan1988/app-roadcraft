@@ -569,6 +569,7 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
     const base = out.positions.length / 3;
     const n = w.positions.length / 3;
     const alpha = new Float32Array(n);
+    const inset = pack.uvs ? insetUvs(pack.uvs, pack.index, n, texture ? 2 / Math.max(texture.width, texture.height) : 0) : null;
     for (let v = 0; v < n; v++) {
       out.positions.push(w.positions[v * 3]!, w.positions[v * 3 + 1]!, w.positions[v * 3 + 2]!);
       uvs.push(pack.uvs?.[v * 2] ?? 0, pack.uvs?.[v * 2 + 1] ?? 0);
@@ -578,7 +579,10 @@ export function dressedGeometry(data: PersonMeshData, posed: Float32Array, look:
       // Texture pixels are sRGB; vertex colours are drawn as linear (as
       // `Color` converts the look's colours). Taken raw, every garment came
       // out pale and washed out.
-      const raw = sampleTexture(texture, pack.uvs?.[v * 2] ?? 0, pack.uvs?.[v * 2 + 1] ?? 0) ?? [0.55, 0.55, 0.55, 1];
+      // Read a little inside the vertex's own triangles: on a seam the
+      // vertex sits on its island's edge, and the scaled-down texture there
+      // is the background - the brown line along every shoulder seam.
+      const raw = sampleTexture(texture, inset?.[v * 2] ?? 0, inset?.[v * 2 + 1] ?? 0) ?? [0.55, 0.55, 0.55, 1];
       const t: [number, number, number, number] = [toLinear(raw[0]), toLinear(raw[1]), toLinear(raw[2]), raw[3]];
       alpha[v] = t[3];
       const lum = 0.3 * t[0] + 0.59 * t[1] + 0.11 * t[2];
@@ -773,4 +777,28 @@ function eyeColourer(data: PersonMeshData, posed: Float32Array, iris: Color): (v
     const t = (r.front - posed[v * 3 + 2]!) / r.depth;
     return t < 0.02 ? [0.05, 0.04, 0.035] : t < 0.07 ? [iris.r, iris.g, iris.b] : [0.93, 0.91, 0.88];
   };
+}
+
+/**
+ * Each vertex's UV moved `reach` (UV units) towards the middle of the
+ * triangles around it: a point inside its own island of the texture.
+ */
+function insetUvs(uvs: ArrayLike<number>, index: ArrayLike<number>, n: number, reach: number): Float32Array {
+  const out = new Float32Array(n * 2);
+  for (let v = 0; v < n; v++) { out[v * 2] = uvs[v * 2] ?? 0; out[v * 2 + 1] = uvs[v * 2 + 1] ?? 0; }
+  if (reach <= 0) return out;
+  const pull = new Float32Array(n * 2);
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const a = index[i]!, b = index[i + 1]!, c = index[i + 2]!;
+    const cu = (out[a * 2]! + out[b * 2]! + out[c * 2]!) / 3, cv = (out[a * 2 + 1]! + out[b * 2 + 1]! + out[c * 2 + 1]!) / 3;
+    for (const k of [a, b, c]) { pull[k * 2] = pull[k * 2]! + cu - out[k * 2]!; pull[k * 2 + 1] = pull[k * 2 + 1]! + cv - out[k * 2 + 1]!; }
+  }
+  for (let v = 0; v < n; v++) {
+    const du = pull[v * 2]!, dv = pull[v * 2 + 1]!;
+    const len = Math.hypot(du, dv);
+    if (len < 1e-9) continue;
+    out[v * 2] = out[v * 2]! + (du / len) * reach;
+    out[v * 2 + 1] = out[v * 2 + 1]! + (dv / len) * reach;
+  }
+  return out;
 }
