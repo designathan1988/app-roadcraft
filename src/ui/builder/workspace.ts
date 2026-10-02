@@ -15,7 +15,7 @@ import {
   tabSpec,
 } from './catalog';
 import { FACADE_PATTERNS, ELEMENT_KINDS } from '@world/buildings/types';
-import { plural, t } from '../i18n';
+import { applyTranslations, onLanguageChange, plural, t } from '../i18n';
 import { builderIconSvg } from './icons';
 import { materialSwatch } from '../materialSwatch';
 import { planSwatch } from '../planSwatch';
@@ -377,6 +377,10 @@ export function initBuilderWorkspace(actions: BuilderActions): BuilderWorkspace 
   inspector.append(inspectorHead, inspectorActions, inspectorBody);
 
   root.append(top, drop, rail, dock, inspector);
+  // Built after the language was applied: translate its own titles now, and
+  // again whenever the language changes.
+  applyTranslations(root);
+  onLanguageChange(() => applyTranslations(root));
 
   // ------------------------------------------------------------ state
   let mode: ChromeMode = 'road';

@@ -1,7 +1,7 @@
 import earcut from 'earcut';
 import clipping from 'polygon-clipping';
 import { resolveBlocks } from '@world/buildings/blocks';
-import { type Furniture, interiorAt } from '@world/buildings/interior';
+import { FURNITURE_KINDS, FURNITURE_SIZE, type Furniture, type FurnitureKind, interiorAt } from '@world/buildings/interior';
 import { asPolygon, edgeFrame, localFootprint, volumeSides } from '@world/buildings/footprints';
 import {
   BufferGeometry,
@@ -344,6 +344,8 @@ class Emitter {
     private readonly b: Building,
     readonly shell: Shell,
     parts: Record<PartKind, Placement[]>,
+    /** Furniture pieces, by kind, drawn instanced from the furniture kit. */
+    readonly furniture: Partial<Record<FurnitureKind, Placement[]>> = {},
   ) {
     this.c = Math.cos(b.rotation);
     this.s = Math.sin(b.rotation);
@@ -408,8 +410,9 @@ function emitBuilding(
   shell: Shell,
   parts: Record<PartKind, Placement[]>,
   pavedAt?: PavedAt,
+  furniture: Partial<Record<FurnitureKind, Placement[]>> = {},
 ): void {
-  const e = new Emitter(b, shell, parts);
+  const e = new Emitter(b, shell, parts, furniture);
   const bays = facadeBays(b);
   const f: Foundation = foundationOf(b, groundAt, bays, pavedAt);
   const floor = f.floor;
@@ -677,108 +680,23 @@ function emitInterior(e: Emitter, b: Building, floor: number, cut: number): void
     const top = facing > 0.6 ? z + m(0.9) : wallTop;
     e.box(Math.min(p.x0, p.x1) - t, Math.min(p.y0, p.y1) - t, Math.max(p.x0, p.x1) + t, Math.max(p.y0, p.y1) + t, z, top, PARTITION);
   }
-  for (const f of inside.furniture) emitFurniture(e, f, z);
+  for (const f of inside.furniture) placeFurniture(e, f, z);
+}
+
+/**
+ * One piece of furniture, as an instance of its model: scaled from the
+ * model's own size to the piece, standing on the floor, its front turned the
+ * way the piece faces (at angle 0, towards -y in the building's frame).
+ */
+function placeFurniture(e: Emitter, f: Furniture, floorZ: number): void {
+  const [w, d, h] = FURNITURE_SIZE[f.kind];
+  const p = e.L(f.x, f.y, floorZ + 0.05);
+  const front = e.N(Math.sin(f.angle), -Math.cos(f.angle));
+  const list = (e.furniture[f.kind] ??= []);
+  list.push({ x: p[0], y: p[1], z: p[2], yaw: Math.atan2(front[0], -front[1]), sx: f.w / w, sy: f.h / h, sz: f.d / d });
 }
 
 const PARTITION = paint({ finish: 'plaster', colour: 0xece6da });
-const FABRIC = paint({ finish: 'plaster', colour: 0x6f7d8c });
-const LINEN = paint({ finish: 'plaster', colour: 0xf1eee6 });
-const WOOD = paint({ finish: 'wood', colour: 0x8a5d3b });
-const DARK = paint({ finish: 'metal', colour: 0x3a3f45 });
-const STEEL = paint({ finish: 'metal', colour: 0xa9b0b5 });
-const WHITEWARE = paint({ finish: 'ceramic', colour: 0xf4f5f3 });
-const GREEN = paint({ finish: 'plaster', colour: 0x4f8a3c });
-const RED_SEAT = paint({ finish: 'plaster', colour: 0x9b2f2f });
-const SCREEN = paint({ finish: 'glass', colour: 0xe9eef2 });
-
-/**
- * One piece of furniture, from boxes in its own frame: across (`w`), back
- * (`d`, towards +depth = its back) and up. Turned by its angle (quarter
- * turns), so every box stays square to the building.
- */
-function emitFurniture(e: Emitter, f: Furniture, floorZ: number): void {
-  const c = Math.cos(f.angle);
-  const s = Math.sin(f.angle);
-  /** A box of the piece's frame: a from -1..1 across, b from -1 (front) to 1 (back), heights from the floor. */
-  const box = (a0: number, a1: number, b0: number, b1: number, h0: number, h1: number, look: Paint): void => {
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (const a of [a0, a1]) for (const bb of [b0, b1]) {
-      const lx = (a * f.w) / 2;
-      // Facing -y at angle 0: the back is +y.
-      const ly = (bb * f.d) / 2;
-      xs.push(f.x + lx * c - ly * s);
-      ys.push(f.y + lx * s + ly * c);
-    }
-    e.box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), floorZ + h0, floorZ + h1, look);
-  };
-  const H = f.h;
-  switch (f.kind) {
-    case 'bed': case 'singleBed': case 'wardBed':
-      box(-1, 1, -1, 1, 0, H * 0.55, f.kind === 'wardBed' ? STEEL : WOOD);
-      box(-0.95, 0.95, -0.95, 0.7, H * 0.55, H, LINEN);
-      box(-0.9, 0.9, 0.72, 0.98, H * 0.55, H * 1.1, LINEN);
-      box(-1, 1, 0.95, 1, 0, H * 1.9, f.kind === 'wardBed' ? STEEL : WOOD);
-      return;
-    case 'sofa': case 'armchair':
-      box(-1, 1, -1, 1, 0, H * 0.5, FABRIC);
-      box(-1, 1, 0.5, 1, H * 0.5, H, FABRIC);
-      box(-1, -0.8, -1, 0.5, H * 0.5, H * 0.75, FABRIC);
-      box(0.8, 1, -1, 0.5, H * 0.5, H * 0.75, FABRIC);
-      return;
-    case 'chair': case 'officeChair': case 'seat':
-      box(-1, 1, -1, 1, H * 0.45, H * 0.52, f.kind === 'seat' ? RED_SEAT : f.kind === 'officeChair' ? DARK : WOOD);
-      box(-1, 1, 0.75, 1, H * 0.52, H, f.kind === 'seat' ? RED_SEAT : f.kind === 'officeChair' ? DARK : WOOD);
-      box(-0.15, 0.15, -0.15, 0.15, 0, H * 0.45, DARK);
-      return;
-    case 'table': case 'desk': case 'altar':
-      box(-1, 1, -1, 1, H * 0.92, H, f.kind === 'altar' ? WHITEWARE : WOOD);
-      for (const [a, bb] of [[-0.9, -0.85], [0.9, -0.85], [-0.9, 0.85], [0.9, 0.85]] as const) box(a - 0.05, a + 0.05, bb - 0.1, bb + 0.1, 0, H * 0.92, f.kind === 'altar' ? WHITEWARE : WOOD);
-      return;
-    case 'pew':
-      box(-1, 1, -1, 0.6, H * 0.45, H * 0.52, WOOD);
-      box(-1, 1, 0.6, 1, 0, H, WOOD);
-      return;
-    case 'shelf': case 'bookshelf': case 'rack': case 'wardrobe': case 'locker':
-      box(-1, 1, -1, 1, 0, H, f.kind === 'rack' || f.kind === 'locker' ? STEEL : WOOD);
-      if (f.kind === 'bookshelf' || f.kind === 'shelf') box(-0.92, 0.92, -1.02, -0.9, H * 0.1, H * 0.92, f.kind === 'bookshelf' ? RED_SEAT : GREEN);
-      return;
-    case 'counter': case 'barCounter': case 'checkout':
-      box(-1, 1, -1, 1, 0, H * 0.94, f.kind === 'checkout' ? STEEL : WOOD);
-      box(-1.02, 1.02, -1.1, 1.02, H * 0.94, H, f.kind === 'barCounter' ? DARK : WHITEWARE);
-      return;
-    case 'fridge': case 'stove': case 'sink': case 'atm': case 'machine': case 'treadmill':
-      box(-1, 1, -1, 1, 0, H, f.kind === 'fridge' || f.kind === 'sink' ? WHITEWARE : f.kind === 'machine' ? STEEL : DARK);
-      if (f.kind === 'stove') box(-0.8, 0.8, -0.8, 0.8, H, H + m(0.02), DARK);
-      return;
-    case 'toilet':
-      box(-1, 1, -0.6, 1, 0, H * 0.5, WHITEWARE);
-      box(-1, 1, 0.6, 1, H * 0.5, H, WHITEWARE);
-      return;
-    case 'bath':
-      box(-1, 1, -1, 1, 0, H, WHITEWARE);
-      return;
-    case 'tv':
-      box(-0.6, 0.6, -1, 1, 0, H * 0.45, WOOD);
-      box(-1, 1, -0.2, 0.2, H * 0.45, H, DARK);
-      return;
-    case 'plant':
-      box(-0.6, 0.6, -0.6, 0.6, 0, H * 0.35, WOOD);
-      box(-1, 1, -1, 1, H * 0.35, H, GREEN);
-      return;
-    case 'bars':
-      for (let a = -1; a <= 1.0001; a += 0.2) box(a - 0.02, a + 0.02, -1, 1, 0, H, DARK);
-      box(-1, 1, -1, 1, H - m(0.08), H, DARK);
-      return;
-    case 'screen': case 'blackboard':
-      box(-1, 1, -1, 1, f.kind === 'screen' ? m(1.5) : m(0.9), m(f.kind === 'screen' ? 1.5 : 0.9) + H, f.kind === 'screen' ? SCREEN : DARK);
-      return;
-    case 'stage': case 'pallet':
-      box(-1, 1, -1, 1, 0, H, f.kind === 'stage' ? DARK : WOOD);
-      return;
-  }
-}
-
 /** How much light a window reveal keeps: it sits in the wall's own shadow. */
 const REVEAL_SHADE = 0.68;
 
@@ -2171,6 +2089,8 @@ export interface BuildingChunk {
   /** The shell, one fragment per finish it uses. */
   readonly shells: Readonly<Partial<Record<Finish, ShellChunk>>>;
   readonly parts: Readonly<Record<PartKind, PartBatch>>;
+  /** Furniture of a cut-open interior, by kind; absent when none is drawn. */
+  readonly furniture?: Readonly<Partial<Record<FurnitureKind, PartBatch>>>;
 }
 
 /** Column-major T * Ry * S, written straight into `out` at `offset`. */
@@ -2194,7 +2114,8 @@ export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): B
   // building; a building that is only lots (a park) has its parts on them.
   const lots = resolved.volumes.filter((v) => v.open);
   const closed = resolved.volumes.filter((v) => !v.open);
-  if (closed.length > 0) emitBuilding({ ...resolved, volumes: closed }, groundAt, shell, parts, pavedAt);
+  const furnished: Partial<Record<FurnitureKind, Placement[]>> = {};
+  if (closed.length > 0) emitBuilding({ ...resolved, volumes: closed }, groundAt, shell, parts, pavedAt, furnished);
   emitLots(resolved, lots, closed.length === 0, groundAt, shell, parts);
   const batches = {} as Record<PartKind, PartBatch>;
   for (const kind of PART_KINDS) {
@@ -2223,7 +2144,15 @@ export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): B
       index: new Uint32Array(part.index),
     };
   }
-  return { shells, parts: batches };
+  let furniture: Partial<Record<FurnitureKind, PartBatch>> | undefined;
+  for (const kind of FURNITURE_KINDS) {
+    const list = furnished[kind];
+    if (!list || list.length === 0) continue;
+    const matrices = new Float32Array(list.length * 16);
+    list.forEach((p, i) => writeMatrix(matrices, i * 16, p));
+    (furniture ??= {})[kind] = { matrices, colours: null, count: list.length };
+  }
+  return furniture ? { shells, parts: batches, furniture } : { shells, parts: batches };
 }
 
 /**
@@ -2311,6 +2240,32 @@ export function assembleBuildingMeshes(
     meshes.push(mesh);
     const g = kit.geometry[kind];
     triangles += ((g.index ? g.index.count : g.getAttribute('position').count) / 3) * count;
+  }
+  // Furniture, only where an interior is drawn: one batch per kind.
+  if (!ghost && chunks.some((c) => c.furniture)) {
+    const furniture = kit.furniture();
+    for (const kind of FURNITURE_KINDS) {
+      let count = 0;
+      for (const chunk of chunks) count += chunk.furniture?.[kind]?.count ?? 0;
+      if (count === 0) continue;
+      const mesh = new InstancedMesh(furniture.geometry[kind], dim ? kit.dimParts : furniture.material, count);
+      mesh.name = `building-furniture-${kind}`;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      const matrices = mesh.instanceMatrix.array as Float32Array;
+      let at = 0;
+      for (const chunk of chunks) {
+        const batch = chunk.furniture?.[kind];
+        if (!batch) continue;
+        matrices.set(batch.matrices, at * 16);
+        at += batch.count;
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      meshes.push(mesh);
+      const g = furniture.geometry[kind];
+      triangles += ((g.index ? g.index.count : g.getAttribute('position').count) / 3) * count;
+    }
   }
   for (const mesh of meshes) group.add(mesh);
 

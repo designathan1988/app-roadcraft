@@ -13,6 +13,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import type { Finish } from '@world/buildings/materials';
 import { createFinishMaterials } from './finishes';
+import { createFurnitureGeometries, createFurnitureMaterial } from './furnitureKit';
+import type { FurnitureKind } from '@world/buildings/interior';
 
 /**
  * Everything the buildings layer draws with, built ONCE per renderer.
@@ -63,6 +65,8 @@ export interface BuildingKit {
   readonly dimParts: MeshStandardMaterial;
   /** Parts that cast shadows; the small ones do not, to spare the shadow pass. */
   readonly castsShadow: ReadonlySet<PartKind>;
+  /** The furniture models, built the first time an interior is drawn. */
+  furniture(): { readonly geometry: Readonly<Record<FurnitureKind, BufferGeometry>>; readonly material: MeshStandardMaterial };
   setGhostValid(valid: boolean): void;
   dispose(): void;
 }
@@ -215,6 +219,7 @@ export function createBuildingKit(): BuildingKit {
 
   const unique = new Set<Material>([...Object.values(material), ...Object.values(shell), ...Object.values(dimShell), ghostShell, ghostParts, dimParts]);
   const geometries = new Set<BufferGeometry>(Object.values(geometry));
+  let furniture: { geometry: Record<FurnitureKind, BufferGeometry>; material: MeshStandardMaterial } | null = null;
 
   return {
     geometry,
@@ -227,6 +232,14 @@ export function createBuildingKit(): BuildingKit {
     // Glass, doors and shutters close the openings for the sun: without them
     // the shadow of every building is a lattice of lit windows.
     castsShadow: new Set<PartKind>(['glass', 'glassDark', 'frame', 'door', 'shutter', 'concrete', 'railing', 'awning', 'column', 'roofRailing']),
+    furniture() {
+      if (!furniture) {
+        furniture = { geometry: createFurnitureGeometries(), material: createFurnitureMaterial() };
+        for (const g of Object.values(furniture.geometry)) geometries.add(g);
+        unique.add(furniture.material);
+      }
+      return furniture;
+    },
     setGhostValid(valid) {
       for (const m of [ghostShell, ghostParts]) {
         m.color.setHex(valid ? 0x65e5c3 : 0xff6f63);
