@@ -238,6 +238,7 @@ function furnish(p: Plan, fn: BuildingFunction, level: number, b: Building): voi
     case 'house': case 'townhouse': case 'apartments': case 'residentialTower': case 'hotel':
       // A block of flats is laid out as flats; a house, a hotel as before.
       if ((fn === 'apartments' || fn === 'residentialTower') && level > 0 && flatFloor(p, b)) break;
+      if (fn === 'hotel' && level > 0 && roomsFloor(p, b, 1, hotelRoom)) break;
       if (fn === 'hotel' || level > 0 || fn === 'house' || fn === 'townhouse') homeUnits(p, b, fn === 'hotel');
       else lobby(p);
       return;
@@ -247,7 +248,7 @@ function furnish(p: Plan, fn: BuildingFunction, level: number, b: Building): voi
         p.put(fn === 'postOffice' ? 'counter' : 'desk', cx, p.y0 + m(4), Math.PI);
         if (fn === 'police') { p.wallAcross(p.y1 - m(3), p.x0, p.x1, cx); p.grid('bars', p.x0, p.y1 - m(3), p.x1, p.y1 - m(2.9), m(3.2), m(0.2)); }
         if (fn === 'courthouse') { p.put('altar', cx, p.y1 - m(2), Math.PI); p.grid('pew', p.x0 + m(1), yStart + m(3), p.x1 - m(1), p.y1 - m(5), m(3.6), m(1.4)); }
-      } else {
+      } else if (!roomsFloor(p, b, 2, officeRoom)) {
         p.grid('desk', p.x0 + m(0.5), yStart + m(0.5), p.x1 - m(0.5), p.y1 - m(0.5), m(2.4), m(2.6));
         for (const it of [...p.items]) if (it.kind === 'desk') p.put('officeChair', it.x, it.y - m(0.75), Math.PI);
         p.alongBack('plant', p.x0 + m(1), p.x1 - m(1), m(6));
@@ -263,10 +264,10 @@ function furnish(p: Plan, fn: BuildingFunction, level: number, b: Building): voi
         p.put('counter', cx, p.y0 + m(4), Math.PI);
         p.grid('seat', p.x0 + m(1), p.y0 + m(6), p.x1 - m(1), p.y0 + m(9), m(0.8), m(1.2), Math.PI);
       }
-      wards(p, level === 0 ? p.y0 + m(10) : p.y0);
+      if (level === 0 || !roomsFloor(p, b, 2, wardRoom)) wards(p, level === 0 ? p.y0 + m(10) : p.y0);
       return;
     case 'school': case 'university':
-      classrooms(p, yStart);
+      if (!roomsFloor(p, b, 3, classRoom)) classrooms(p, yStart);
       return;
     case 'library':
       p.put('counter', cx, p.y0 + m(4), Math.PI);
@@ -424,6 +425,134 @@ function flatFloor(p: Plan, b: Building): boolean {
     put('bath', living + m(0.5), D - m(1.0), facing(0, -1));
   }
   return true;
+}
+
+/** One room off a corridor, as `roomsFloor` hands it to be furnished. */
+interface RoomCell {
+  readonly index: number;
+  readonly count: number;
+  readonly width: number;
+  readonly depth: number;
+  readonly bay: number;
+  readonly corridor: boolean;
+  /** Puts a piece at (u along the facade, s in from it), facing (du, ds) in those axes. */
+  put(kind: FurnitureKind, u: number, s: number, du: number, ds: number): void;
+  /** A wall from (u0, s0) to (u1, s1). */
+  wall(u0: number, s0: number, u1: number, s1: number): void;
+}
+
+/**
+ * A floor as rooms off a corridor, like the flats (`spaces.flatPlan`): rooms
+ * `groupBays` window bays wide, walls between them on the bay boundaries, a
+ * door from each to the corridor; `fill` furnishes each room for what it is.
+ */
+function roomsFloor(p: Plan, b: Building, groupBays: number, fill: (room: RoomCell) => void): boolean {
+  const plan = flatPlan(b, p.v, groupBays);
+  if (!plan.corridor && plan.flats.length < 2) return false;
+  const DOOR = m(0.5);
+  plan.flats.forEach((f, index) => {
+    const P = (u: number, s: number): { x: number; y: number } => ({ x: f.ox + f.tx * u + f.nx * s, y: f.oy + f.ty * u + f.ny * s });
+    const wall = (u0: number, s0: number, u1: number, s1: number): void => {
+      const a = P(u0, s0), c = P(u1, s1);
+      p.wall(a.x, a.y, c.x, c.y);
+    };
+    const W = f.width, D = f.depth;
+    const door = Math.max(m(0.9), W - m(1.2));
+    if (plan.corridor) {
+      if (door - DOOR > 0) wall(0, D, door - DOOR, D);
+      if (door + DOOR < W) wall(door + DOOR, D, W, D);
+    }
+    wall(0, 0, 0, D);
+    fill({
+      index, count: plan.flats.length, width: W, depth: D, bay: f.bay, corridor: !!plan.corridor,
+      put(kind, u, s, du, ds) {
+        const at = P(u, s);
+        const fx = f.tx * du + f.nx * ds, fy = f.ty * du + f.ny * ds;
+        p.put(kind, at.x, at.y, Math.atan2(fx, -fy));
+      },
+      wall,
+    });
+  });
+  return true;
+}
+
+/**
+ * An office room: rows of desks from the windows back, chairs behind them, a
+ * shelf on the side wall; the first room a meeting room, the last the toilets
+ * (cubicles along the corridor end, basins by the door).
+ */
+function officeRoom(r: RoomCell): void {
+  if (r.index === 0) {
+    const s = Math.min(r.depth / 2, m(4));
+    r.put('table', r.width / 2, s, 0, -1);
+    for (const side of [-1, 1]) for (const k of [-1, 0, 1]) r.put('chair', r.width / 2 + k * m(0.9), s + side * m(0.8), 0, -side);
+    r.put('shelf', m(0.35), s, 1, 0);
+    r.put('plant', m(0.4), m(0.4), 0, -1);
+    deskRows(r, s + m(3));
+    return;
+  }
+  if (r.index === r.count - 1) {
+    const back = r.depth - m(1.6);
+    r.wall(0, back, r.width - m(1.4), back);
+    for (let u = m(0.6); u < r.width - m(1.6); u += m(1.1)) r.put('toilet', u, r.depth - m(0.5), 0, -1);
+    r.put('sink', m(0.5), back - m(0.4), 0, -1);
+    r.put('sink', m(1.8), back - m(0.4), 0, -1);
+    deskRows(r, m(1.2), back - m(2.2));
+    return;
+  }
+  deskRows(r, m(1.2));
+  r.put('shelf', r.width - m(0.35), r.depth - m(1.2), -1, 0);
+  r.put('plant', m(0.4), r.depth - m(0.6), 0, -1);
+}
+
+/** Rows of desks facing the windows, from `s0` in to `s1` (the corridor side by default). */
+function deskRows(r: RoomCell, s0: number, s1 = r.depth - m(1.6)): void {
+  for (let s = s0; s + m(0.8) <= s1; s += m(2.6)) {
+    for (let u = m(1); u + m(0.8) <= r.width; u += m(1.8)) {
+      r.put('desk', u, s, 0, -1);
+      r.put('officeChair', u, s + m(0.9), 0, -1);
+    }
+  }
+}
+
+/** A classroom: the board on the side wall, desks and chairs facing it, the teacher's desk. */
+function classRoom(r: RoomCell): void {
+  r.put('blackboard', m(0.2), r.depth / 2, 1, 0);
+  r.put('desk', m(1.6), r.depth / 2, 1, 0);
+  for (let u = m(3.2); u + m(1.2) <= r.width; u += m(1.8)) {
+    for (let s = m(1.2); s + m(0.6) <= r.depth - m(0.6); s += m(1.8)) {
+      r.put('desk', u, s, -1, 0);
+      r.put('chair', u + m(0.85), s, -1, 0);
+    }
+  }
+}
+
+/** A ward: beds along the side walls, heads to the wall, a chair by each. */
+function wardRoom(r: RoomCell): void {
+  for (let s = m(1.4); s + m(1) <= r.depth; s += m(2.4)) {
+    r.put('wardBed', m(1.25), s, 1, 0);
+    r.put('chair', m(2.55), s + m(1), -1, 0);
+    if (r.width > m(5)) {
+      r.put('wardBed', r.width - m(1.25), s, -1, 0);
+      r.put('chair', r.width - m(2.55), s + m(1), 1, 0);
+    }
+  }
+  r.put('plant', r.width / 2, m(0.4), 0, 1);
+}
+
+/** A hotel room: the bed, a desk by the window, a wardrobe, a bathroom by the corridor. */
+function hotelRoom(r: RoomCell): void {
+  // The bed's head to the side wall, the TV on the wall facing it.
+  const bed = Math.min(m(3), r.depth / 2 - m(0.5));
+  r.put('bed', m(1.1), bed, 1, 0);
+  r.put('tv', r.width - m(0.3), bed, -1, 0);
+  r.put('desk', r.width - m(0.8), m(0.6), 0, -1);
+  r.put('wardrobe', r.width - m(0.35), r.depth - m(3), -1, 0);
+  if (r.corridor) {
+    r.wall(0, r.depth - m(2.2), r.width - m(1.6), r.depth - m(2.2));
+    r.put('toilet', m(0.5), r.depth - m(0.5), 1, 0);
+    r.put('bath', m(1.6), r.depth - m(1), 0, -1);
+  }
 }
 
 function homeUnits(p: Plan, b: Building, hotel: boolean): void {

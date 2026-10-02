@@ -648,6 +648,8 @@ function emitBuilding(
   for (const el of b.elements ?? []) {
     // Whatever stands on the building's open lot is laid with the lot.
     if (onLot?.(el)) continue;
+    // Cut open, what hangs above the cut floor (a clock, a canopy) goes with the floors above.
+    if (b.cutaway !== undefined && el.z >= levelElevation(b, b.cutaway + 1) - 1e-6) continue;
     const look = el.material ? paint(el.material) : elementPaint(b, el.kind);
     emitElement(e, el, floor, f.bottom, look);
   }

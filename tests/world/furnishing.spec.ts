@@ -16,6 +16,23 @@ describe('furnishing', () => {
     expect(floor.filter((f) => LAMP_KINDS.has(f.kind)).length).toBeGreaterThan(0);
   });
 
+  it('lays upper floors out as rooms between the windows, every desk with its chair', () => {
+    const cases: [string, string, string][] = [['office', 'desk', 'officeChair'], ['school', 'desk', 'chair'], ['hotel', 'bed', 'tv'], ['hospital', 'wardBed', 'chair']];
+    for (const [fn, piece, partner] of cases) {
+      const model = cityBuilding(fn)!;
+      const body = { ...instantiate(model.body, { x: 0, y: 0 }, 0, fn), id: asBuildingId(5), function: fn } as Building;
+      const floor = interiorAt(body, 1);
+      expect(floor.partitions.length, fn).toBeGreaterThan(2);
+      const a = floor.furniture.filter((f) => f.kind === piece).length;
+      const b2 = floor.furniture.filter((f) => f.kind === partner).length;
+      expect(a, fn).toBeGreaterThan(1);
+      // A desk without its chair (or a bed without its TV) means the room was laid out too tight.
+      // (A classroom's teacher has a desk and no chair: one per board.)
+      const teachers = floor.furniture.filter((f) => f.kind === 'blackboard').length;
+      expect(b2, fn).toBeGreaterThanOrEqual(a - teachers);
+    }
+  });
+
   it('uses the arrangement the player made, and keeps it when saved', () => {
     const mine = furnishingOf(b, 2).filter((f) => f.kind !== 'tv');
     mine.push({ kind: 'floorLamp', x: 10, y: 10, angle: 0 });

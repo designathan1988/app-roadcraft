@@ -107,7 +107,7 @@ const DOUBLE_LOADED = m(11);
  * bays wide, so every wall between homes stands between two windows, never
  * across one.
  */
-export function flatPlan(b: Building, v: Volume): FlatPlan {
+export function flatPlan(b: Building, v: Volume, groupBays = 2): FlatPlan {
   const alongX = v.w >= v.d;
   const L = alongX ? v.w : v.d;
   const D = alongX ? v.d : v.w;
@@ -117,7 +117,9 @@ export function flatPlan(b: Building, v: Volume): FlatPlan {
   const groups: number[] = [];
   let left = bays;
   while (left > 0) {
-    const take = left === 3 || left === 1 ? left : 2;
+    // Rooms of `groupBays` bays; what is left over too narrow for one more
+    // goes to the last.
+    const take = left < groupBays * 2 ? left : groupBays;
     groups.push(take);
     left -= take;
   }
