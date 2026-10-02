@@ -258,7 +258,7 @@ const BARK_PALE = rgb(0x7a6a58);
 const LEAF = rgb(0x5c8c33);
 const LEAF_DEEP = rgb(0x416c29);
 const LEAF_YOUNG = rgb(0x93b545);
-const NEEDLE = rgb(0x335a33);
+const NEEDLE = rgb(0x4f7f45);
 
 function scatterBlobs(rng: Rng, count: number, cx: number, cy: number, spreadX: number, spreadY: number, r0: number, r1: number): Blob[] {
   const blobs: Blob[] = [{ x: cx, y: cy, z: 0, r: r1 }];
@@ -324,7 +324,7 @@ export function treeGeometry(species: TreeSpecies, detail: Detail = 1): BufferGe
         parts.push(
           part(cone, (q, n) => {
             const t = (q.y - y0) / height + 0.5;
-            const ao = 0.55 + 0.45 * Math.max(0, Math.min(1, t)) * (0.7 + 0.3 * n.y);
+            const ao = 0.72 + 0.28 * Math.max(0, Math.min(1, t)) * (0.7 + 0.3 * n.y);
             // Per vertex and smooth: a per-face tone speckled the tiers dark.
             const tone = 0.88 + (0.5 + 0.5 * wobble(q.x * 11, q.y * 11, q.z * 11, i)) * 0.22;
             return [NEEDLE[0] * ao * tone, NEEDLE[1] * ao * tone, NEEDLE[2] * ao * tone];

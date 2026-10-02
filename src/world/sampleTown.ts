@@ -4,7 +4,7 @@ import { cityBuilding } from './buildings/cityBuildings';
 import { footprintRects } from './buildings/geometry';
 import type { Building, BuildingFunction } from './buildings/types';
 import type { RoadDoc } from './doc';
-import { ROAD_TYPES, casingHalf } from './roadTypes';
+import { Level, ROAD_TYPES, halfWidth } from './roadTypes';
 import { m } from './units';
 
 /**
@@ -26,8 +26,8 @@ const YS = [-180, 0, 180];
 const LOCAL = ROAD_TYPES.findIndex((t) => t.id === 'local');
 const URBAN = ROAD_TYPES.findIndex((t) => t.id === 'urban');
 /** Between the pavement's edge and a facade; between two neighbours. */
-const FRONT_GAP = m(0.1);
-const PARTY_GAP = m(0.4);
+const FRONT_GAP = 0.05;
+const PARTY_GAP = 0;
 
 /** What stands on each block, in order round it from its first corner. */
 const BLOCKS: readonly (readonly BuildingFunction[])[] = [
@@ -90,7 +90,8 @@ export function buildSampleTown(doc: RoadDoc): number {
   for (const y of YS) for (let i = 0; i + 1 < XS.length; i++) doc.addSegment(node(XS[i]!, y), node(XS[i + 1]!, y), typeAt(y));
   for (const x of XS) for (let j = 0; j + 1 < YS.length; j++) doc.addSegment(node(x, YS[j]!), node(x, YS[j + 1]!), LOCAL);
 
-  const half = (type: number): number => casingHalf(ROAD_TYPES[type]!);
+  // Fronts on the back of the footway: no verge between pavement and wall.
+  const half = (type: number): number => halfWidth(ROAD_TYPES[type]!, Level.Sidewalk);
   const placed: Box[] = [];
   let count = 0;
   const put = (body: Omit<Building, 'id'>, box: Box): void => {
@@ -127,7 +128,7 @@ export function buildSampleTown(doc: RoadDoc): number {
               const f = facing(fn, edge, t);
               if (!f) continue;
               if (t + f.width > edge.length + 0.5) continue;
-              if (!inside(f.box, lot) || placed.some((o) => overlaps(f.box, o, PARTY_GAP / 2))) continue;
+              if (!inside(f.box, lot) || placed.some((o) => overlaps(f.box, o, -0.05))) continue;
               put(f.body, f.box);
               if (pass) pass.shift();
               t += f.width + PARTY_GAP;

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { SURFACE_LEVELS } from '@world/roadTypes';
-import { levelPolygons } from '@world/surfaces';
+import { cornerSquares, levelPolygons } from '@world/surfaces';
 import { area, union, type MultiPoly } from '@core/clipper';
 import type { Vec2 } from '@core/vec2';
 
@@ -97,6 +97,9 @@ function inputRings(net: Network, level: number): { label: string; ring: Vec2[] 
     if (!junction) continue;
     junction.rings.forEach((ring, i) => {
       if (!ring.isEmpty) out.push({ label: `junction ${String(node)} r${i}`, ring: ring.flatten() });
+    });
+    cornerSquares(net, node, level as never).forEach((poly, i) => {
+      out.push({ label: `corner ${String(node)} c${i}`, ring: poly[0]!.map(([x, y]) => ({ x: x!, y: y! })) });
     });
   }
   return out;

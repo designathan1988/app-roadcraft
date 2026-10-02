@@ -81,7 +81,8 @@ function snapToRoad(net: Network, size: FootprintSize, cursor: Vec2): PlacementS
   for (const ribbon of net.ribbons.values()) {
     const segment = net.doc.segment(ribbon.id);
     if (!segment || segment.structure === 'tunnel') continue;
-    const half = halfWidth(ribbon.road, Level.Sidewalk) + ROAD_CLEARANCE + 0.2;
+    // The front on the back of the footway itself (see `ROAD_CLEARANCE`).
+    const half = halfWidth(ribbon.road, Level.Sidewalk) + ROAD_CLEARANCE + 0.02;
     const hit = ribbon.full.closestPoint(cursor);
     if (hit.distance > half + size.depth + ROAD_REACH) continue;
     if (best && hit.distance >= best.distance) continue;

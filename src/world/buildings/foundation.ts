@@ -137,11 +137,14 @@ export const flightRun = (steps: number): number => (steps > 0 ? (steps + 1) * S
  * is a deck passing by, not the street a door opens onto (a house beside a
  * raised road stood on a plinth as tall as the road).
  */
-function atLevel(pavedAt: PavedAt, land: number): PavedAt {
+function atLevel(pavedAt: PavedAt, land: number, low = land): PavedAt {
   if (pavedAt === NO_PAVING) return pavedAt;
+  // Within the plinth's reach of the land under the building, from its lowest
+  // point to its highest: a street at the foot of a hillside site is the
+  // street it opens onto, however high the hill behind rises.
   return (x, y) => {
     const h = pavedAt(x, y);
-    return Math.abs(h - land) <= MAX_PLINTH ? h : NaN;
+    return h >= low - MAX_PLINTH && h <= land + MAX_PLINTH ? h : NaN;
   };
 }
 
@@ -197,8 +200,8 @@ export function foundationOf(
 ): Foundation {
   const all = bays ?? facadeBays(b);
   const { lowest, highest } = sampleFootprint(b, groundAt);
-  const pavedAt = atLevel(anyPaving, highest);
-  const floor = Math.max(highest, entrancePaving(all, pavedAt)) + PLINTH_MIN;
+  const pavedAt = atLevel(anyPaving, highest, lowest);
+  const floor = floorOver(highest, all, pavedAt, lotFront(b, pavedAt));
   const volumes = new Map(b.volumes.map((v) => [v.id, v]));
   const entrances: Entrance[] = [];
   for (const bay of all) {
@@ -327,9 +330,67 @@ export class FloorCache {
 
 /** The absolute ground-floor height of a building, uncached. Same rule as `foundationOf`. */
 export function floorHeight(b: Building, groundAt: GroundAt, pavedAt: PavedAt = NO_PAVING): number {
-  const highest = sampleFootprint(b, groundAt).highest;
-  const paving = pavedAt === NO_PAVING ? -Infinity : entrancePaving(facadeBays(b), atLevel(pavedAt, highest));
-  return Math.max(highest, paving) + PLINTH_MIN;
+  const { lowest, highest } = sampleFootprint(b, groundAt);
+  const paved = atLevel(pavedAt, highest, lowest);
+  return floorOver(highest, facadeBays(b), paved, lotFront(b, paved));
+}
+
+/**
+ * The highest pavement along the open edges of a building's lots - the car
+ * park or the garden between its door and the street - or -Infinity. A car
+ * park is entered from the street at the street's level.
+ */
+function lotFront(b: Building, pavedAt: PavedAt): number {
+  if (pavedAt === NO_PAVING) return -Infinity;
+  let best = -Infinity;
+  for (const v of b.volumes) {
+    if (!v.open) continue;
+    const ring = localFootprint(v);
+    for (let i = 0; i < ring.length; i++) {
+      const p = ring[i]!, q = ring[(i + 1) % ring.length]!;
+      const len = Math.hypot(q.x - p.x, q.y - p.y);
+      if (len < 1e-6) continue;
+      // Either side of the edge: only the outside can be a street.
+      const nx = (q.y - p.y) / len, ny = -(q.x - p.x) / len;
+      for (const t of [0.25, 0.5, 0.75]) for (const side of [1, -1]) {
+        const a = localToWorld(b, p.x + (q.x - p.x) * t + side * nx * m(0.6), p.y + (q.y - p.y) * t + side * ny * m(0.6));
+        const h = pavedAt(a.x, a.y);
+        if (Number.isFinite(h)) best = Math.max(best, h);
+      }
+    }
+  }
+  return best;
+}
+
+/** Height of a ground floor's threshold over the pavement it opens onto. */
+export const THRESHOLD = m(0.04);
+
+/**
+ * The ground floor's height.
+ *
+ * On a street the ground floor is at the pavement's level - at its door, or
+ * along its front if no door opens onto the street - with no more than a
+ * threshold: that is how a town stands on a slope, its ground floors stepping
+ * down the street with it and the land behind cut away to them (the site is
+ * graded, `pads.ts`). Set by the highest ground under it instead, every
+ * building on a slope stood on a stone plinth with a flight of steps up to
+ * its door, and its car park on a retaining wall.
+ *
+ * A building with no pavement before it stands on its highest ground, a
+ * plinth above it.
+ */
+function floorOver(highest: number, bays: readonly FacadeBay[], pavedAt: PavedAt, lot = -Infinity): number {
+  if (pavedAt === NO_PAVING) return highest + PLINTH_MIN;
+  const door = entrancePaving(bays, pavedAt);
+  if (Number.isFinite(door)) return door + THRESHOLD;
+  if (Number.isFinite(lot)) return lot + THRESHOLD;
+  let front = -Infinity;
+  for (const bay of bays) {
+    if (bay.level !== 0) continue;
+    const h = pavedAt(bay.x + bay.nx * m(0.5), bay.y + bay.ny * m(0.5));
+    if (Number.isFinite(h)) front = Math.max(front, h);
+  }
+  return Number.isFinite(front) ? front + THRESHOLD : highest + PLINTH_MIN;
 }
 
 /** Steps needed to climb `rise`; a threshold under two risers needs none. */

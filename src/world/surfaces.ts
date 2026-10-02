@@ -133,8 +133,31 @@ export function levelRings(net: Network, level: SurfaceLevel, include?: SurfaceS
     for (const ring of junction.rings) {
       if (!ring.isEmpty) out.push([ring.flatten().map((p) => [p.x, p.y])]);
     }
+    out.push(...cornerSquares(net, nodeId, level));
   }
 
+  return out;
+}
+
+/**
+ * The back of the footway turns a square corner, as a block's frontage does:
+ * rounded like the kerb, it left a wedge of verge between the pavement and
+ * the buildings on every corner of every block. The verge (casing) is squared
+ * with it, so the pavement stays inside the road. One kite per rounded corner,
+ * from the two tangent points out to where the straight edges meet.
+ */
+export function cornerSquares(net: Network, nodeId: NodeId, level: SurfaceLevel): MultiPoly {
+  const out: MultiPoly = [];
+  if (level !== Level.Sidewalk && level !== Level.Casing) return out;
+  const junction = net.junctions.get(nodeId)?.get(level);
+  if (!junction) return out;
+  for (const corner of junction.corners) {
+    const x = corner.x, f = corner.fillet;
+    if (!x || !f || corner.mode !== 'fillet') continue;
+    if (corner.psi < Math.PI / 6 || corner.psi > (5 * Math.PI) / 6) continue;
+    if (Math.hypot(x.x - f.ta.x, x.y - f.ta.y) > 40) continue;
+    out.push([[[f.ta.x, f.ta.y], [x.x, x.y], [f.tb.x, f.tb.y], [f.c.x, f.c.y]]]);
+  }
   return out;
 }
 

@@ -1,6 +1,10 @@
 import {
+  AdditiveBlending,
+  CanvasTexture,
+  CircleGeometry,
   Color,
   DoubleSide,
+  SRGBColorSpace,
   DynamicDrawUsage,
   Frustum,
   InstancedMesh,
@@ -39,6 +43,7 @@ import {
   hydrantGeometry,
   lampGeometry,
   lampLensGeometry,
+  LAMP_OUTREACH,
   postboxGeometry,
   treeGeometry,
   treePitGeometry,
@@ -120,6 +125,11 @@ export interface SceneryKit {
   readonly flowers: MeshStandardMaterial;
   readonly props: MeshStandardMaterial;
   readonly glow: MeshBasicMaterial;
+  /** The warm pool of light under a street lamp, seen only after dark. */
+  readonly pool: BufferGeometry;
+  readonly poolGlow: MeshBasicMaterial;
+  /** Lamps lit as night falls: 0 by day, 1 at night. */
+  setNight(dark: number): void;
   dispose(): void;
 }
 
@@ -153,6 +163,12 @@ export function createSceneryKit(): SceneryKit {
   applyWind(flowers, GRASS_WIND, 'flower');
   const props = new MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.28 });
   const glow = new MeshBasicMaterial({ color: 0xffeec0, toneMapped: false });
+  const pool = new CircleGeometry(1, 28);
+  pool.rotateX(-Math.PI / 2);
+  const poolGlow = new MeshBasicMaterial({
+    map: lightPoolTexture(), color: 0xffc98a, transparent: true, opacity: 0, blending: AdditiveBlending,
+    depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  });
   const foliageDepth = windDepthMaterial(TREE_WIND, 'tree');
   const shrubsDepth = windDepthMaterial(BUSH_WIND, 'bush');
 
@@ -166,8 +182,9 @@ export function createSceneryKit(): SceneryKit {
     treePit,
     tuft,
     flower,
+    pool,
   ];
-  const materials: Material[] = [foliage, shrubs, grass, flowers, props, glow, foliageDepth, shrubsDepth];
+  const materials: Material[] = [foliage, shrubs, grass, flowers, props, glow, foliageDepth, shrubsDepth, poolGlow];
   return {
     trees,
     bushes,
@@ -186,6 +203,14 @@ export function createSceneryKit(): SceneryKit {
     flowers,
     props,
     glow,
+    pool,
+    poolGlow,
+    setNight(dark) {
+      // The lens burns brighter than white at night, so it blooms.
+      glow.color.setHex(0xffeec0).multiplyScalar(1 + 2.6 * dark);
+      poolGlow.opacity = 0.5 * dark;
+      poolGlow.visible = dark > 0.02;
+    },
     dispose() {
       for (const geometry of geometries) geometry.dispose();
       for (const material of materials) material.dispose();
@@ -384,9 +409,14 @@ export function buildScenery(
     const facing = angleOf({ x: item.outward.y, y: -item.outward.x });
     const at = { x: item.x, y: item.y, z: base, sx: 1, sy: 1, sz: 1 };
     switch (item.kind) {
-      case 'lamp':
+      case 'lamp': {
         put('lamp', { ...at, yaw: inward });
+        // The light falls under the head, over the kerb and the road.
+        const reach = LAMP_OUTREACH * 0.85;
+        put('pool', { x: item.x - item.outward.x * reach, y: item.y - item.outward.y * reach, z: base + 0.03,
+          yaw: 0, sx: m(4.6), sy: 1, sz: m(4.6) });
         break;
+      }
       case 'bin':
         put('bin', { ...at, yaw: item.seed * Math.PI * 2 });
         break;
@@ -547,6 +577,7 @@ export function buildScenery(
   const meshes = [
     build('street-lights', kit.furniture.lamp, kit.props, furniture.get('lamp') ?? []),
     build('street-light-lamps', kit.lampLens, kit.glow, furniture.get('lamp') ?? []),
+    build('street-light-pools', kit.pool, kit.poolGlow, furniture.get('pool') ?? []),
     build('street-bins', kit.furniture.bin, kit.props, furniture.get('bin') ?? []),
     build('benches', kit.furniture.bench, kit.props, furniture.get('bench') ?? []),
     build('hydrants', kit.furniture.hydrant, kit.props, furniture.get('hydrant') ?? []),
@@ -579,7 +610,8 @@ export function buildScenery(
   }
   // The lens is lit from inside; it neither casts nor takes a shadow.
   for (const mesh of meshes) {
-    if (mesh.name === 'street-light-lamps' || mesh.name === 'tree-pits') mesh.castShadow = false;
+    if (mesh.name === 'street-light-lamps' || mesh.name === 'tree-pits' || mesh.name === 'street-light-pools') mesh.castShadow = false;
+    if (mesh.name === 'street-light-pools') { mesh.receiveShadow = false; mesh.renderOrder = 3; }
   }
 
   const grass: GrassField = buildGrass(net, elevation, terrainAt, wetAt, settings.grass, kit);
@@ -679,4 +711,22 @@ function networkBounds(net: Network): { cx: number; cy: number; w: number; h: nu
     w: maxX - minX,
     h: maxY - minY,
   };
+}
+
+/** A soft round falloff, white in the middle, for a pool of lamplight. */
+function lightPoolTexture(): CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const g = canvas.getContext('2d')!;
+  const r = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  r.addColorStop(0, 'rgba(255,255,255,1)');
+  r.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  r.addColorStop(0.7, 'rgba(255,255,255,0.15)');
+  r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, size, size);
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
 }

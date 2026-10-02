@@ -1,6 +1,7 @@
 import earcut from 'earcut';
 import clipping from 'polygon-clipping';
 import { resolveBlocks } from '@world/buildings/blocks';
+import { lotSurfaces } from '@world/buildings/lots';
 import { FURNITURE_KINDS, FURNITURE_SIZE, type Furniture, type FurnitureKind, interiorAt } from '@world/buildings/interior';
 import { asPolygon, edgeFrame, localFootprint, volumeSides } from '@world/buildings/footprints';
 import {
@@ -176,6 +177,39 @@ function openingOf(component: BayComponent, W: number, H: number, geometry?: Fac
       h0 = 0;
       h1 = Math.min(H - m(0.6), m(4.5));
       depth = m(0.25);
+      break;
+    // These had no opening at all: every double door, French window, bay
+    // window, ribbon and garage door in the city was drawn as plain wall -
+    // the bank and the city hall with no way in.
+    case 'doubleDoor':
+      w = Math.min(W - m(0.7), m(2.4));
+      h0 = 0;
+      // A tall ground floor gets a fanlight over the door, up to 3.6 m.
+      h1 = Math.min(H - m(0.45), m(3.6));
+      depth = m(0.3);
+      break;
+    case 'frenchWindow':
+      w = Math.min(W - m(0.9), m(1.6));
+      h0 = m(0.05);
+      h1 = H - m(0.5);
+      break;
+    case 'bayWindow':
+      w = Math.min(W - m(0.8), m(2));
+      h0 = m(0.75);
+      h1 = H - m(0.5);
+      depth = m(0.12);
+      break;
+    case 'ribbon':
+      w = W - m(0.15);
+      h0 = m(0.9);
+      h1 = H - m(0.6);
+      depth = m(0.1);
+      break;
+    case 'garageDoor':
+      w = Math.min(W - m(0.8), m(3));
+      h0 = 0;
+      h1 = Math.min(H - m(0.5), m(2.6));
+      depth = m(0.2);
       break;
     default:
       return null;
@@ -411,7 +445,8 @@ function emitBuilding(
   parts: Record<PartKind, Placement[]>,
   pavedAt?: PavedAt,
   furniture: Partial<Record<FurnitureKind, Placement[]>> = {},
-): void {
+  onLot?: (el: BuildingElement) => boolean,
+): number {
   const e = new Emitter(b, shell, parts, furniture);
   const bays = facadeBays(b);
   const f: Foundation = foundationOf(b, groundAt, bays, pavedAt);
@@ -583,6 +618,8 @@ function emitBuilding(
 
   // ---- free elements: stairs, ramps, pillars, canopies, walls, slabs
   for (const el of b.elements ?? []) {
+    // Whatever stands on the building's open lot is laid with the lot.
+    if (onLot?.(el)) continue;
     const look = el.material ? paint(el.material) : elementPaint(b, el.kind);
     emitElement(e, el, floor, f.bottom, look);
   }
@@ -602,6 +639,7 @@ function emitBuilding(
     const z = floor + volumeHeight(b, best);
     e.box(core.x, core.y, core.x + u, core.y + u, z, z + m(3), trim, ROOF_PLANT);
   }
+  return floor;
 }
 
 const FLOOR_FINISH = paint({ finish: 'stone', colour: 0xb9b2a5 });
@@ -811,8 +849,41 @@ function emitBay(
       e.put('awning', f, W / 2, o.h1 + m(0.45), 0, W - m(0.2), m(0.75), m(1.3), awning);
       break;
     case 'loadingDoor':
+    case 'garageDoor':
       e.put('shutter', f, am, hm, o.depth, w, h, m(0.1));
       break;
+    case 'doubleDoor': {
+      // Two leaves up to door height, and a fanlight over them in a tall
+      // opening; a canopy over the whole on the ground floor.
+      const leafTop = Math.min(h, m(2.5));
+      const leafMid = o.h0 + leafTop / 2;
+      for (const side of [-1, 1]) {
+        const cx = am + side * (w / 4);
+        e.put('door', f, cx, leafMid, o.depth + m(0.03), w / 2 - m(0.04), leafTop, m(0.06));
+        e.put('glassDark', f, cx, leafMid + leafTop * 0.12, o.depth - m(0.01), w / 2 - m(0.5), leafTop * 0.5, m(0.02));
+      }
+      if (h > leafTop + m(0.4)) {
+        const fan = h - leafTop - m(0.12);
+        e.put('glass', f, am, o.h0 + leafTop + m(0.12) + fan / 2, o.depth, w, fan, 1);
+        e.put('frame', f, am, o.h0 + leafTop + m(0.12) + fan / 2, o.depth - m(0.03), w, fan, m(0.05));
+        e.put('frame', f, am, o.h0 + leafTop + m(0.06), o.depth - m(0.03), w, m(0.12), m(0.08));
+      }
+      if (bay.level === 0) {
+        e.put('concrete', f, am, o.h1 + m(0.3), -m(0.55), w + m(1), m(0.14), m(1.1));
+        e.put('concrete', f, am, o.h1 + m(0.25), -m(1.08), w + m(1), m(0.24), m(0.05));
+      }
+      break;
+    }
+    case 'frenchWindow':
+    case 'bayWindow':
+    case 'ribbon': {
+      e.put(bayHash(bay) % 5 === 0 ? 'glassDark' : 'glass', f, am, hm, o.depth, w, h, 1);
+      e.put('frame', f, am, hm, o.depth - m(0.03), w, h, m(0.06));
+      // A transom across a tall pane, and a sill under the raised ones.
+      if (h > m(2.2)) e.put('frame', f, am, o.h0 + h * 0.72, o.depth - m(0.03), w, m(0.08), m(0.07));
+      if (o.h0 > m(0.3)) e.put('concrete', f, am, o.h0 - m(0.03), (o.depth - m(0.07)) / 2, w + m(0.14), m(0.06), o.depth + m(0.07));
+      break;
+    }
     default:
       break;
   }
@@ -1032,7 +1103,8 @@ const LOT_KERB = paint({ finish: 'stone', colour: 0xb3ada0 });
  * fences) stand on them here.
  */
 function emitLots(b: Building, lots: readonly Volume[], withParts: boolean, groundAt: GroundAt, shell: Shell,
-  parts: Record<PartKind, Placement[]>): void {
+  parts: Record<PartKind, Placement[]>, buildingFloor?: number, pavedAt?: PavedAt,
+  onLot?: (el: BuildingElement) => boolean): void {
   if (lots.length === 0) return;
   const e = new Emitter(b, shell, parts);
   const at = (lx: number, ly: number): number => {
@@ -1044,35 +1116,73 @@ function emitLots(b: Building, lots: readonly Volume[], withParts: boolean, grou
     for (const p of localFootprint(v)) floor = Math.max(floor, at(p.x, p.y));
     floor = Math.max(floor, at(v.x + v.w / 2, v.y + v.d / 2));
   }
-  const top = floor + m(0.12);
+  // A building's own yard - its car park, its garden - meets its ground floor
+  // at the back and the street at the front (`lots.ts`); a park on its own is
+  // laid on its ground.
+  const level = buildingFloor !== undefined ? buildingFloor : floor + m(0.12);
+  const surfaces = lotSurfaces(b, level, pavedAt);
   let low = Infinity;
   for (const v of lots) for (const p of localFootprint(v)) low = Math.min(low, at(p.x, p.y));
+  const heightOf = new Map<Volume, (lx: number, ly: number) => number>();
+  for (const s of surfaces) {
+    heightOf.set(s.volume, (lx, ly) => {
+      const w = e.L(lx, ly, 0);
+      return s.heightAt(w[0], w[1]);
+    });
+  }
   for (const v of lots) {
-    const ring = localFootprint(v);
-    const flat = ring.flatMap((p) => [p.x, p.y]);
-    const triangles = earcut(flat);
+    const height = heightOf.get(v) ?? (() => level);
     const look = LOT_PAINT[v.open ?? 'grass'] ?? LOT_KERB;
-    // Water sits a little lower, inside its kerb.
-    const z = v.open === 'water' ? top - m(0.25) : top;
-    for (let i = 0; i < triangles.length; i += 3) {
-      const p = [triangles[i]!, triangles[i + 1]!, triangles[i + 2]!].map((k) => e.L(flat[2 * k]!, flat[2 * k + 1]!, z));
-      shell.face(p as [V3, V3, V3], [0, 0, 1], look);
+    const sink = v.open === 'water' ? m(0.25) : 0;
+    if (v.outline) {
+      // A shaped lot is laid level, at the height of its middle.
+      const z = height(v.x + v.w / 2, v.y + v.d / 2) - sink;
+      const ring = localFootprint(v);
+      const flat = ring.flatMap((p) => [p.x, p.y]);
+      const triangles = earcut(flat);
+      for (let i = 0; i < triangles.length; i += 3) {
+        const p = [triangles[i]!, triangles[i + 1]!, triangles[i + 2]!].map((k) => e.L(flat[2 * k]!, flat[2 * k + 1]!, z));
+        shell.face(p as [V3, V3, V3], [0, 0, 1], look);
+      }
+    } else {
+      // A grid fine enough to follow the street's fall.
+      const nx = Math.max(1, Math.ceil(v.w / m(3))), ny = Math.max(1, Math.ceil(v.d / m(3)));
+      const P = (i: number, j: number): V3 => {
+        const lx = v.x + (v.w * i) / nx, ly = v.y + (v.d * j) / ny;
+        return e.L(lx, ly, height(lx, ly) - sink);
+      };
+      for (let i = 0; i < nx; i++) {
+        for (let j = 0; j < ny; j++) {
+          shell.face([P(i, j), P(i + 1, j), P(i + 1, j + 1)], [0, 0, 1], look);
+          shell.face([P(i, j), P(i + 1, j + 1), P(i, j + 1)], [0, 0, 1], look);
+        }
+      }
     }
-    // The kerb round it, down to the lowest ground.
+    // The kerb round it, down to the ground, so no edge stands in the air.
+    const ring = localFootprint(v);
     for (let i = 0; i < ring.length; i++) {
       const p = ring[i]!;
       const q = ring[(i + 1) % ring.length]!;
       const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
       const nx = (q.y - p.y) / len;
       const ny = -(q.x - p.x) / len;
-      shell.face([e.L(p.x, p.y, top - m(0.3)), e.L(q.x, q.y, top - m(0.3)), e.L(q.x, q.y, top), e.L(p.x, p.y, top)], e.N(nx, ny), LOT_KERB);
+      const steps = Math.max(1, Math.ceil(len / m(3)));
+      for (let k = 0; k < steps; k++) {
+        const ax = p.x + ((q.x - p.x) * k) / steps, ay = p.y + ((q.y - p.y) * k) / steps;
+        const bx = p.x + ((q.x - p.x) * (k + 1)) / steps, by = p.y + ((q.y - p.y) * (k + 1)) / steps;
+        const za = height(ax, ay), zb = height(bx, by);
+        const foot = Math.min(Math.min(za, zb) - m(0.3), Math.min(at(ax, ay), at(bx, by)) - m(0.15));
+        shell.face([e.L(ax, ay, foot), e.L(bx, by, foot), e.L(bx, by, zb), e.L(ax, ay, za)], e.N(nx, ny), LOT_KERB);
+      }
     }
   }
-  if (withParts) {
-    for (const el of b.elements ?? []) {
-      const look = el.material ? paint(el.material) : elementPaint(b, el.kind);
-      emitElement(e, el, top, low - m(0.3), look);
-    }
+  for (const el of b.elements ?? []) {
+    if (!withParts && !onLot?.(el)) continue;
+    const look = el.material ? paint(el.material) : elementPaint(b, el.kind);
+    const host = lots.find((v) => el.x >= v.x && el.x <= v.x + v.w && el.y >= v.y && el.y <= v.y + v.d);
+    const height = host ? heightOf.get(host) : undefined;
+    const z = height ? height(el.x, el.y) : level;
+    emitElement(e, el, z, low - m(0.3), look, height);
   }
 }
 
@@ -1138,7 +1248,8 @@ function emitClock(e: Emitter, el: BuildingElement, x0: number, y0: number, x1: 
  * ramp a slope with its cheeks; the rest are boxes. Whatever stands on the
  * ground reaches down to the plinth's bottom, so it meets sloping land.
  */
-function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: number, c: Paint): void {
+function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: number, c: Paint,
+  surface?: (lx: number, ly: number) => number): void {
   const [x0, y0, x1, y1] = elementRect(el);
   const zb = onGround(el) ? bottom : floor + el.z;
   const z0 = floor + el.z;
@@ -1220,7 +1331,7 @@ function emitElement(e: Emitter, el: BuildingElement, floor: number, bottom: num
     return;
   }
   if (el.kind === 'parking') {
-    emitParking(e, el, z0);
+    emitParking(e, el, z0, surface);
     return;
   }
   if (el.kind === 'awning') {
@@ -1653,17 +1764,27 @@ function emitRocks(e: Emitter, el: BuildingElement, z0: number, bottom: number, 
 }
 
 /** A parking apron: asphalt and the stall lines painted on it. */
-function emitParking(e: Emitter, el: BuildingElement, z0: number): void {
-  e.box(el.x - el.w / 2, el.y - el.d / 2, el.x + el.w / 2, el.y + el.d / 2, z0 - m(0.02), z0 + el.h, PARKING_ASPHALT);
+function emitParking(e: Emitter, el: BuildingElement, z0: number, surface?: (lx: number, ly: number) => number): void {
+  // Laid on the lot, following its fall: the asphalt and the stall lines are
+  // drawn on the surface itself, not as a slab standing over it.
+  const lift = (lx: number, ly: number, dz: number): V3 => e.L(lx, ly, (surface ? surface(lx, ly) : z0) + dz);
+  const quad = (x0: number, y0: number, x1: number, y1: number, dz: number, look: Paint): void => {
+    e.shell.face([lift(x0, y0, dz), lift(x1, y0, dz), lift(x1, y1, dz), lift(x0, y1, dz)], [0, 0, 1], look);
+  };
+  const ax = el.x - el.w / 2, ay = el.y - el.d / 2;
+  const n = Math.max(1, Math.ceil(Math.max(el.w, el.d) / m(3)));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      quad(ax + (el.w * i) / n, ay + (el.d * j) / n, ax + (el.w * (i + 1)) / n, ay + (el.d * (j + 1)) / n, m(0.03), PARKING_ASPHALT);
+    }
+  }
   const stalls = Math.max(1, Math.floor(el.w / m(2.5)));
   const line = m(0.1);
   const along = el.facing === 0 || el.facing === 2;
   for (let k = 0; k <= stalls; k++) {
     const u = -el.w / 2 + (el.w * k) / stalls;
-    const half = m(0.42);
-    if (along) e.box(el.x + u - line / 2, el.y - el.d / 2, el.x + u + line / 2, el.y - el.d / 2 + el.d * 0.72, z0 + el.h, z0 + el.h + m(0.02), PARKING_LINE);
-    else e.box(el.x - el.w / 2, el.y + u - line / 2, el.x - el.w / 2 + el.w * 0.72, el.y + u + line / 2, z0 + el.h, z0 + el.h + m(0.02), PARKING_LINE);
-    void half;
+    if (along) quad(el.x + u - line / 2, ay, el.x + u + line / 2, ay + el.d * 0.72, m(0.05), PARKING_LINE);
+    else quad(ax, el.y + u - line / 2, ax + el.w * 0.72, el.y + u + line / 2, m(0.05), PARKING_LINE);
   }
 }
 
@@ -2115,8 +2236,12 @@ export function emitChunk(b: Building, groundAt: GroundAt, pavedAt?: PavedAt): B
   const lots = resolved.volumes.filter((v) => v.open);
   const closed = resolved.volumes.filter((v) => !v.open);
   const furnished: Partial<Record<FurnitureKind, Placement[]>> = {};
-  if (closed.length > 0) emitBuilding({ ...resolved, volumes: closed }, groundAt, shell, parts, pavedAt, furnished);
-  emitLots(resolved, lots, closed.length === 0, groundAt, shell, parts);
+  const inLot = (el: BuildingElement): boolean =>
+    lots.some((v) => el.x >= v.x && el.x <= v.x + v.w && el.y >= v.y && el.y <= v.y + v.d);
+  const floor = closed.length > 0
+    ? emitBuilding({ ...resolved, volumes: closed }, groundAt, shell, parts, pavedAt, furnished, inLot)
+    : undefined;
+  emitLots(resolved, lots, closed.length === 0, groundAt, shell, parts, floor, pavedAt, inLot);
   const batches = {} as Record<PartKind, PartBatch>;
   for (const kind of PART_KINDS) {
     const list = parts[kind];

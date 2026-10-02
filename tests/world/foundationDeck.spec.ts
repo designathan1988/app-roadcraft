@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MAX_PLINTH, PLINTH_MIN, floorHeight, foundationOf } from '@world/buildings/foundation';
+import { MAX_PLINTH, PLINTH_MIN, THRESHOLD, floorHeight, foundationOf } from '@world/buildings/foundation';
 import { blueprintByKey } from '@world/buildings/blueprints';
 import { type Building, type BuildingId, cloneBuilding } from '@world/buildings/types';
 import { m } from '@world/units';
@@ -33,6 +33,6 @@ describe('foundation beside a deck', () => {
     const footway = m(0.3);
     expect(footway).toBeLessThan(MAX_PLINTH);
     const b = house();
-    expect(foundationOf(b, flat, undefined, () => footway).floor).toBeCloseTo(footway + PLINTH_MIN, 6);
+    expect(foundationOf(b, flat, undefined, () => footway).floor).toBeCloseTo(footway + THRESHOLD, 6);
   });
 });

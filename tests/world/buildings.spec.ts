@@ -6,7 +6,7 @@ import { DEFAULT_MODULE } from '@world/buildings/types';
 import { RoadDoc } from '@world/doc';
 import { Network } from '@world/network';
 import { BLUEPRINTS, blueprintByKey, generateBody } from '@world/buildings/blueprints';
-import { MAX_PLINTH, PLINTH_MIN, floorHeight, flightRun, foundationOf } from '@world/buildings/foundation';
+import { MAX_PLINTH, PLINTH_MIN, THRESHOLD, floorHeight, foundationOf } from '@world/buildings/foundation';
 import {
   buildingHeight,
   facadeBays,
@@ -137,33 +137,24 @@ describe('foundations', () => {
   /** Paving at height `h` from `edge` units in front of the facade outwards. */
   const pavingFrom = (edge: number, h = 0) => (_x: number, y: number): number => (y < 100 - edge ? h : NaN);
 
-  it('never runs a flight of steps across the paving in front of it', () => {
+  it('stands a ground floor on the pavement it opens onto, with no steps up', () => {
     const b = building();
-    // The land under the building a little higher than in front of it.
+    // The land under the building higher than the pavement in front: the
+    // site is cut down to the street, as a town on a slope stands.
     const land = (_x: number, y: number): number => (y >= 100 ? 0.5 : 0);
-    const roomy = doorOf(foundationOf(b, land, undefined, pavingFrom(5)));
-    expect(roomy.steps).toBeGreaterThan(0);
-    expect(roomy.recess).toBe(0);
-    expect(flightRun(roomy.steps)).toBeLessThanOrEqual(5);
-    // On the back of a footway there is no room at all: the flight is set
-    // into the building, starting on the ground at the facade.
-    const tight = doorOf(foundationOf(b, land, undefined, pavingFrom(0.3)));
-    expect(tight.steps).toBeGreaterThan(0);
-    expect(tight.recess).toBeCloseTo(flightRun(tight.steps), 9);
-    expect(tight.recess).toBeLessThan(3 * b.module);
-    expect(tight.ground).toBe(0);
+    for (const edge of [0.3, 1]) {
+      const f = foundationOf(b, land, undefined, pavingFrom(edge));
+      expect(f.floor).toBeCloseTo(THRESHOLD, 9);
+      expect(doorOf(f).steps).toBe(0);
+    }
   });
 
-  it('starts a recessed flight on the footway, not in the verge beside it', () => {
+  it('sets a ground floor by the pavement, not by a verge or a road below it', () => {
     const b = building();
-    // Half a unit of verge between the facade and the footway, shaped down
-    // with the road well below the paving.
     const land = (_x: number, y: number): number => (y >= 100 ? 1 : -2);
-    const door = doorOf(foundationOf(b, land, undefined, pavingFrom(0.5)));
-    expect(door.recess).toBeGreaterThan(0);
-    expect(door.ground).toBe(0);
-    expect(door.threshold).toBeGreaterThan(0.4);
-    expect(door.threshold).toBeLessThanOrEqual(0.5);
+    const f = foundationOf(b, land, undefined, pavingFrom(0.5));
+    expect(f.floor).toBeCloseTo(THRESHOLD, 9);
+    expect(doorOf(f).steps).toBe(0);
   });
 
   it('reads the footway an entrance opens onto, not the land shaped under it', () => {
@@ -180,7 +171,7 @@ describe('foundations', () => {
     const b = building();
     const raised = pavingFrom(0.3, 2);
     const f = foundationOf(b, flat, undefined, raised);
-    expect(f.floor).toBeCloseTo(2 + PLINTH_MIN, 9);
+    expect(f.floor).toBeCloseTo(2 + THRESHOLD, 9);
     expect(floorHeight(b, flat, raised)).toBeCloseTo(f.floor, 9);
     expect(doorOf(f).steps).toBe(0);
   });

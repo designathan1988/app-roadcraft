@@ -4,7 +4,7 @@ import { pointInPolygon } from '@core/polygon';
 import type { Vec2 } from '@core/vec2';
 import type { RoadDoc } from '@world/doc';
 import type { GroundAt, PavedAt } from '@world/buildings/foundation';
-import { buildingBounds, footprintRects } from '@world/buildings/geometry';
+import { buildingBounds, footprintRects, solidFootprints } from '@world/buildings/geometry';
 import type { Building, BuildingId } from '@world/buildings/types';
 import { m } from '@world/units';
 import { cutOpen } from '@world/buildings/interior';
@@ -67,7 +67,7 @@ export interface CutawaySpec {
 }
 
 /** How far past a wall a plant is still considered under the building. */
-const PLANT_MARGIN = m(2.5);
+const PLANT_MARGIN = m(1);
 const CELL = 64;
 
 export function createBuildingLayer(): BuildingLayer {
@@ -127,7 +127,10 @@ export function createBuildingLayer(): BuildingLayer {
   const index = (buildings: Iterable<Building>): void => {
     buckets = new Map();
     for (const b of buildings) {
-      for (const rect of footprintRects(b, PLANT_MARGIN)) {
+      // The built parts with a margin for the crowns, and the open lots as
+      // they are: grown round the lots too, every street tree on a pavement a
+      // facade stands on was taken away and left its pit empty.
+      for (const rect of [...solidFootprints(b, PLANT_MARGIN), ...footprintRects(b)]) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const p of rect) {
           minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);

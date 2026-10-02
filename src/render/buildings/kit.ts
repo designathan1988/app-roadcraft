@@ -193,6 +193,30 @@ export function createBuildingKit(): BuildingKit {
     curtain: new MeshStandardMaterial({ color: 0xe9e1d2, roughness: 0.95, metalness: 0 }),
   };
   for (const [kind, m] of Object.entries(material)) m.name = `building-part-${kind}`;
+  // At night not every window is lit, nor all alike: each pane draws its own
+  // lot from where it stands - a third dark, the rest from dim to bright,
+  // some cooler (a television) - so a block reads as rooms, not a lamp.
+  for (const kind of ['glass', 'glassDark'] as const) {
+    const glassy = material[kind] as MeshStandardMaterial;
+    glassy.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying float vRoomLot;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+#ifdef USE_INSTANCING
+  vec3 roomAt = instanceMatrix[3].xyz;
+#else
+  vec3 roomAt = vec3(0.0);
+#endif
+  vRoomLot = fract(sin(dot(floor(roomAt * 0.37), vec3(12.9898, 78.233, 37.719))) * 43758.5453);`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vRoomLot;')
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  float roomLit = step(0.34, vRoomLot) * (0.45 + 0.9 * fract(vRoomLot * 7.13));
+  vec3 roomTint = mix(vec3(1.0), vec3(0.62, 0.78, 1.15), step(0.9, fract(vRoomLot * 3.71)));
+  totalEmissiveRadiance *= roomLit * roomTint;`);
+    };
+    glassy.customProgramCacheKey = () => `room-lights-${kind}`;
+  }
   const shell = createFinishMaterials();
   const ghostShell = new MeshStandardMaterial({
     color: 0x65e5c3,

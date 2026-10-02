@@ -4,6 +4,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 
 import type { QualityLevel, QualitySettings } from './quality';
 
@@ -115,22 +117,76 @@ export function createPostChain(
     composer.addPass(gtao);
   }
 
+  // Light that is brighter than white spills a little round itself: the sun
+  // on glass, lit windows and lamps at night. Only what is really bright
+  // blooms; the day scene keeps its edges.
+  const bloom = new UnrealBloomPass(new Vector2(size.x, size.y), level === 'ultra' ? 0.42 : 0.32, 0.55, 0.92);
+  composer.addPass(bloom);
   if (quality.smaa) composer.addPass(new SMAAPass());
   composer.addPass(new OutputPass());
+  // The grade, on the finished image: a film's contrast and colour.
+  const grade = new ShaderPass(GRADE);
+  composer.addPass(grade);
 
   return {
     enabled: true,
     render(delta) {
+      (grade.uniforms['uTime'] as { value: number }).value += delta;
       composer.render(delta);
     },
     setSize(width, height, pixelRatio) {
       composer.setPixelRatio(pixelRatio);
       composer.setSize(width, height);
       gtao?.setSize(width, height);
+      bloom.setSize(width, height);
     },
     dispose() {
       composer.dispose();
       gtao?.dispose();
+      bloom.dispose();
     },
   };
 }
+
+/**
+ * A film grade on the display image: a gentle S-curve of contrast, colour
+ * kept rich without neon (vibrance lifts the dull colours more than the
+ * strong), warm light and cool shade (split toning), a vignette that holds
+ * the eye in the frame, and a grain too fine to see as noise, which keeps
+ * large flat areas of road and roof from looking like plastic.
+ */
+const GRADE = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main() {
+      vec4 src = texture2D(tDiffuse, vUv);
+      vec3 c = src.rgb;
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      // Contrast, an S round the middle grey.
+      c = mix(c, smoothstep(0.0, 1.0, c), 0.28);
+      // Vibrance: the dull colours gain more than the vivid.
+      float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+      float sat = mx - mn;
+      c = mix(vec3(l), c, 1.0 + 0.32 * (1.0 - sat));
+      // Split toning: warm highlights, cool shadows.
+      c += mix(vec3(-0.012, 0.0, 0.03), vec3(0.03, 0.012, -0.022), smoothstep(0.15, 0.85, l));
+      // Vignette.
+      vec2 d = vUv - 0.5;
+      c *= mix(1.0, 0.78, smoothstep(0.3, 0.85, dot(d, d) * 2.4));
+      // Film grain.
+      c += (hash(vUv * 1024.0 + fract(uTime) * 61.0) - 0.5) * 0.018;
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), src.a);
+    }
+  `,
+};

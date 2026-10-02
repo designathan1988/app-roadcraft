@@ -220,11 +220,11 @@ export const CITY_BUILDINGS: readonly CityBuilding[] = [
     .lot(-6, -14, 48, 14, 'paving').row('tree', -3, -10, 39, -10, 7).el('clock', 18, 5.7, 0, { z: 18 })
     .core('stairLift', 16, 12, 5)),
   make('council', 'public', new Model('council', 'commercial', 6).heights(5, 4.5).look(WHITE, mat('metal', 0x6d8a8a))
-    .block({ x: 0, y: 0, w: 30, d: 22, storeys: 2, ground: 'pillar', fill: 'window', door: 'middle', doorKind: 'doubleDoor' })
+    .block({ x: 0, y: 0, w: 30, d: 22, storeys: 2, ground: 'frenchWindow', fill: 'window', door: 'middle', doorKind: 'doubleDoor' })
     .block({ x: 10, y: 6, w: 10, d: 10, base: 2, storeys: 1, roof: 'hip', pitch: 40, shape: OCTAGON, fill: 'wideWindow' })
     .lot(-4, -10, 38, 10, 'paving').row('planter', 0, -6, 30, -6, 6)),
   make('courthouse', 'public', new Model('courthouse', 'commercial', 6).heights(5.5, 4.5).look(STONE)
-    .block({ x: 0, y: 0, w: 30, d: 24, storeys: 3, ground: 'pillar', pattern: 'gallery', door: 'middle', doorKind: 'doubleDoor' })),
+    .block({ x: 0, y: 0, w: 30, d: 24, storeys: 3, ground: 'frenchWindow', pattern: 'gallery', door: 'middle', doorKind: 'doubleDoor' })),
   make('postOffice', 'public', new Model('postOffice', 'commercial', 3).look(mat('plaster', 0xf2d36b))
     .block({ x: 0, y: 0, w: 15, d: 12, storeys: 2, ground: 'shopfront', door: 'middle', doorKind: 'doubleDoor' })
     .el('awning', 7.5, -0.6, 0, { w: 9, z: 3 })),
@@ -251,10 +251,10 @@ export const CITY_BUILDINGS: readonly CityBuilding[] = [
     .lot(14, 16, 20, 30, 'grass').row('tree', 16, 22, 32, 22, 4).row('bench', 17, 30, 31, 30, 3)
     .core('stairLift', 22, 8, 3)),
   make('library', 'public', new Model('library', 'commercial', 6).heights(6, 4.5).look(STONE)
-    .block({ x: 0, y: 0, w: 24, d: 18, storeys: 2, ground: 'pillar', fill: 'wideWindow', door: 'middle', doorKind: 'doubleDoor' })
+    .block({ x: 0, y: 0, w: 24, d: 18, storeys: 2, ground: 'frenchWindow', fill: 'wideWindow', door: 'middle', doorKind: 'doubleDoor' })
     .lot(-2, -8, 28, 8, 'paving').row('bench', 2, -4, 22, -4, 3)),
   make('museum', 'public', new Model('museum', 'commercial', 6).heights(7, 5).look(WHITE)
-    .block({ x: 0, y: 0, w: 32, d: 22, storeys: 2, fill: 'wall', ground: 'pillar', door: 'middle', doorKind: 'doubleDoor' })),
+    .block({ x: 0, y: 0, w: 32, d: 22, storeys: 2, fill: 'wall', ground: 'frenchWindow', door: 'middle', doorKind: 'doubleDoor' })),
   make('prison', 'public', new Model('prison', 'industrial', 7).look(CONCRETE)
     .block({ x: 0, y: 0, w: 30, d: 14, storeys: 3, fill: 'ribbon', door: 'middle' })
     .block({ x: 0, y: 14, w: 10, d: 20, storeys: 3, fill: 'ribbon' })
@@ -283,7 +283,7 @@ export const CITY_BUILDINGS: readonly CityBuilding[] = [
     .block({ x: 24, y: -4, w: 12, d: 6, storeys: 3, fill: 'wideWindow' })
     .core('stairLift', 28, 18, 2).core('lift', 32, 18, 2)),
   make('bank', 'commerce', new Model('bank', 'commercial', 6).heights(5.5, 4).look(STONE)
-    .block({ x: 0, y: 0, w: 18, d: 16, storeys: 3, ground: 'pillar', pattern: 'artDeco', door: 'middle', doorKind: 'doubleDoor' })),
+    .block({ x: 0, y: 0, w: 18, d: 16, storeys: 3, ground: 'frenchWindow', pattern: 'artDeco', door: 'middle', doorKind: 'doubleDoor' })),
   make('pharmacy', 'commerce', new Model('pharmacy', 'commercial', 3).look(WHITE)
     .block({ x: 0, y: 0, w: 10, d: 12, storeys: 1, ground: 'shopfront', door: 'middle' }).el('awning', 5, -0.6, 0, { w: 9, z: 3 })),
   make('bakery', 'commerce', new Model('bakery', 'commercial', 0).look(CREAM, TILE)

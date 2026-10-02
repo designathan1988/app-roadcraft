@@ -2,7 +2,8 @@ import type { Aabb } from '@core/aabb';
 import type { Vec2 } from '@core/vec2';
 import { m } from '../units';
 import { type GroundAt, type PavedAt, PLINTH_MIN, floorHeight } from './foundation';
-import { footprintRects } from './geometry';
+import { solidFootprints } from './geometry';
+import { lotSurfaces } from './lots';
 import type { Building } from './types';
 
 /**
@@ -29,7 +30,8 @@ const PAD_REACH = m(40);
 
 interface Pad {
   readonly rings: readonly (readonly Vec2[])[];
-  readonly level: number;
+  /** The platform's height under each ring, at a point (a car park falls with its street). */
+  readonly levels: readonly ((x: number, y: number) => number)[];
   readonly box: Aabb;
 }
 
@@ -70,9 +72,15 @@ export function buildingPads(
 ): BuildingPads {
   const pads: Pad[] = [];
   for (const b of buildings) {
-    const rings = footprintRects(b);
+    const built = solidFootprints(b);
+    const floor = floorHeight(b, naturalGround, pavedAt);
+    // Under the building, level at the floor less the plinth; under its open
+    // lots, the lot's own surface (`lots.ts`), which falls with the street.
+    const lots = lotSurfaces(b, floor, pavedAt);
+    const rings: (readonly Vec2[])[] = [...built, ...lots.map((l) => l.ring)];
     if (rings.length === 0) continue;
-    const level = floorHeight(b, naturalGround, pavedAt) - PLINTH_MIN;
+    const flat = floor - PLINTH_MIN;
+    const levels = [...built.map(() => () => flat), ...lots.map((l) => (x: number, y: number) => l.heightAt(x, y) - PLINTH_MIN)];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const ring of rings) {
       for (const p of ring) {
@@ -81,7 +89,7 @@ export function buildingPads(
       }
     }
     const grow = apron + PAD_REACH;
-    pads.push({ rings, level, box: { minX: minX - grow, minY: minY - grow, maxX: maxX + grow, maxY: maxY + grow } });
+    pads.push({ rings, levels, box: { minX: minX - grow, minY: minY - grow, maxX: maxX + grow, maxY: maxY + grow } });
   }
   return {
     count: pads.length,
@@ -93,10 +101,10 @@ export function buildingPads(
       let level = 0;
       for (const pad of pads) {
         if (x < pad.box.minX || x > pad.box.maxX || y < pad.box.minY || y > pad.box.maxY) continue;
-        for (const ring of pad.rings) {
+        pad.rings.forEach((ring, i) => {
           const d = ringDistance(ring, x, y);
-          if (d < nearest) { nearest = d; level = pad.level; }
-        }
+          if (d < nearest) { nearest = d; level = pad.levels[i]!(x, y); }
+        });
       }
       if (nearest === Infinity) return { height: ground, weight: 0 };
       const out = Math.max(0, nearest - apron) / PAD_BATTER;

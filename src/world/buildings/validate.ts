@@ -59,8 +59,13 @@ export interface SiteContext {
 
 /** Nothing the player builds may come closer than this to the map's rim. */
 export const BUILDING_MAP_MARGIN = 8;
-/** Gap kept between a footprint and the back of a footway. */
-export const ROAD_CLEARANCE = 0.3;
+/**
+ * Gap kept between a footprint and the back of a footway: next to nothing.
+ * A town's facades stand ON the back of the pavement; at 0.3 (and the snap's
+ * own 0.2 on top) every building stood behind a strip of grass, the road's
+ * verge, which read as a gap between the pavement and the wall.
+ */
+export const ROAD_CLEARANCE = 0.02;
 /** Overlap two footprints may have and still count as touching (terraces). */
 const TOUCH = 0.05;
 

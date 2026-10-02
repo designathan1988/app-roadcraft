@@ -5,7 +5,7 @@ import { DEFAULT_MODULE } from '@world/buildings/types';
 
 import { RoadDoc } from '@world/doc';
 import { BLUEPRINTS, generateBody } from '@world/buildings/blueprints';
-import { flightRun, foundationOf } from '@world/buildings/foundation';
+import { foundationOf } from '@world/buildings/foundation';
 import { type Building, asBuildingId } from '@world/buildings/types';
 import { type BuildingChunk, assembleBuildingMeshes, emitChunk } from '@render/buildings/buildingMesh';
 import { PART_KINDS, createBuildingKit } from '@render/buildings/kit';
@@ -131,16 +131,17 @@ describe('building shell', () => {
     }
   });
 
-  it('sets a flight into the building rather than across the footway it backs onto', () => {
+  it('stands a house on the back of a footway at the footway, nothing out on it', () => {
     // A house whose front (y = 100, facing -y) is on the back of a footway,
     // on land a little higher than the footway.
     const b = { ...generateBody('residential', bays(4), bays(3), 2), id: asBuildingId(1), x: 100, y: 100, rotation: 0 } as Building;
     const land = (_x: number, y: number): number => (y >= 100 ? 0.8 : 0);
     const footway = (_x: number, y: number): number => (y < 99.7 ? 0 : NaN);
     const f = foundationOf(b, land, undefined, footway);
+    // The ground floor at the footway's level: no flight up to the door.
     const door = f.entrances.find((e) => e.component === 'door')!;
-    expect(door.steps).toBeGreaterThan(0);
-    expect(door.recess).toBeCloseTo(flightRun(door.steps), 9);
+    expect(door.steps).toBe(0);
+    expect(f.floor).toBeLessThan(0.2);
     for (const rotation of [0, 0.7]) {
       const chunk = emitChunk({ ...b, rotation }, land, footway);
       expect(wrongWinding(chunk), `rotation ${rotation}`).toBe(0);

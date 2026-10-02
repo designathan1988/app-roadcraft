@@ -323,8 +323,8 @@ export function createEnvironment(
       // Low sun is warm and weaker; the moon is blue.
       const warm = Math.max(0, 1 - height * 2.2);
       sun.color.setRGB(1, 0.94 - warm * 0.2, 0.81 - warm * 0.38).lerp(MOON, dark);
-      sun.intensity = 3.6 * (0.25 + 0.75 * Math.min(1, height * 2.5 + 0.2)) * light + 0.5 * dark;
-      hemisphere.intensity = 0.32 * light + 0.12 * dark;
+      sun.intensity = 3.6 * (0.25 + 0.75 * Math.min(1, height * 2.5 + 0.2)) * light + 0.85 * dark;
+      hemisphere.intensity = 0.32 * light + 0.2 * dark;
       ambient.intensity = 0.07 * light + 0.05 * dark;
       zenith.copy(DAY_ZENITH).lerp(NIGHT_ZENITH, dark);
       horizon.copy(DAY_HORIZON).lerp(DUSK_HORIZON, warm * light * 0.7).lerp(NIGHT_HORIZON, dark);
