@@ -1,0 +1,490 @@
+{
+  "base": "http://127.0.0.1:4190",
+  "width": 1600,
+  "height": 900,
+  "spots": {
+    "overview": {
+      "gpuMs": 10.39,
+      "cpuDrawMs": 7.34,
+      "frameMedianMs": 20.8,
+      "calls": 474,
+      "mtris": 12.18,
+      "passes": [
+        {
+          "label": "1600x900|scene",
+          "ms": 8.91,
+          "perFrame": 1,
+          "calls": 452,
+          "ktris": 12177
+        },
+        {
+          "label": "800x450|Mesh",
+          "ms": 0.89,
+          "perFrame": 6,
+          "calls": 6,
+          "ktris": 0
+        },
+        {
+          "label": "1600x900|Mesh",
+          "ms": 0.47,
+          "perFrame": 7,
+          "calls": 7,
+          "ktris": 0
+        },
+        {
+          "label": "screen|Mesh",
+          "ms": 0.07,
+          "perFrame": 1,
+          "calls": 1,
+          "ktris": 0
+        },
+        {
+          "label": "400x225|Mesh",
+          "ms": 0.02,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "200x113|Mesh",
+          "ms": 0.01,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "100x57|Mesh",
+          "ms": 0.01,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "50x29|Mesh",
+          "ms": 0.01,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        }
+      ]
+    },
+    "street": {
+      "gpuMs": 7.74,
+      "cpuDrawMs": 3.52,
+      "frameMedianMs": 16.7,
+      "calls": 258,
+      "mtris": 5.72,
+      "passes": [
+        {
+          "label": "1600x900|scene",
+          "ms": 6.18,
+          "perFrame": 1,
+          "calls": 236,
+          "ktris": 5719
+        },
+        {
+          "label": "800x450|Mesh",
+          "ms": 0.88,
+          "perFrame": 6,
+          "calls": 6,
+          "ktris": 0
+        },
+        {
+          "label": "1600x900|Mesh",
+          "ms": 0.54,
+          "perFrame": 7,
+          "calls": 7,
+          "ktris": 0
+        },
+        {
+          "label": "screen|Mesh",
+          "ms": 0.08,
+          "perFrame": 1,
+          "calls": 1,
+          "ktris": 0
+        },
+        {
+          "label": "400x225|Mesh",
+          "ms": 0.02,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "200x113|Mesh",
+          "ms": 0.01,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "100x57|Mesh",
+          "ms": 0.01,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "50x29|Mesh",
+          "ms": 0.01,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        }
+      ]
+    },
+    "close": {
+      "gpuMs": 6.59,
+      "cpuDrawMs": 2.68,
+      "frameMedianMs": 16,
+      "calls": 128,
+      "mtris": 1.52,
+      "passes": [
+        {
+          "label": "1600x900|scene",
+          "ms": 4.11,
+          "perFrame": 1,
+          "calls": 106,
+          "ktris": 1516
+        },
+        {
+          "label": "800x450|Mesh",
+          "ms": 1.43,
+          "perFrame": 6,
+          "calls": 6,
+          "ktris": 0
+        },
+        {
+          "label": "1600x900|Mesh",
+          "ms": 0.87,
+          "perFrame": 7,
+          "calls": 7,
+          "ktris": 0
+        },
+        {
+          "label": "screen|Mesh",
+          "ms": 0.09,
+          "perFrame": 1,
+          "calls": 1,
+          "ktris": 0
+        },
+        {
+          "label": "400x225|Mesh",
+          "ms": 0.03,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "200x113|Mesh",
+          "ms": 0.02,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "50x29|Mesh",
+          "ms": 0.02,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        },
+        {
+          "label": "100x57|Mesh",
+          "ms": 0.01,
+          "perFrame": 2,
+          "calls": 2,
+          "ktris": 0
+        }
+      ]
+    }
+  },
+  "overviewShadowFrozen": {
+    "gpuMs": 9.17,
+    "cpuDrawMs": 4.55,
+    "frameMedianMs": 17.7,
+    "calls": 301,
+    "mtris": 7.46,
+    "passes": [
+      {
+        "label": "1600x900|scene",
+        "ms": 7.99,
+        "perFrame": 1,
+        "calls": 279,
+        "ktris": 7464
+      },
+      {
+        "label": "800x450|Mesh",
+        "ms": 0.66,
+        "perFrame": 6,
+        "calls": 6,
+        "ktris": 0
+      },
+      {
+        "label": "1600x900|Mesh",
+        "ms": 0.42,
+        "perFrame": 7,
+        "calls": 7,
+        "ktris": 0
+      },
+      {
+        "label": "screen|Mesh",
+        "ms": 0.07,
+        "perFrame": 1,
+        "calls": 1,
+        "ktris": 0
+      },
+      {
+        "label": "400x225|Mesh",
+        "ms": 0.02,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      },
+      {
+        "label": "200x113|Mesh",
+        "ms": 0.01,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      },
+      {
+        "label": "100x57|Mesh",
+        "ms": 0.01,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      },
+      {
+        "label": "50x29|Mesh",
+        "ms": 0.01,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      }
+    ]
+  },
+  "inventoryOverview": [
+    "50 main citizen-mh_#-person",
+    "22 main ?",
+    "8 shadow building-shell-plaster",
+    "8 shadow building-shell-stucco",
+    "8 shadow building-shell-ceramic",
+    "8 shadow building-shell-brick",
+    "8 shadow building-shell-stone",
+    "8 shadow building-shell-concrete",
+    "8 shadow building-shell-wood",
+    "8 shadow building-shell-metal",
+    "8 shadow building-shell-glass",
+    "8 shadow building-shell-tile",
+    "8 shadow building-shell-slate",
+    "8 shadow building-shell-roofing",
+    "8 shadow building-glass",
+    "8 shadow building-frame",
+    "8 shadow building-concrete",
+    "8 shadow building-door",
+    "8 shadow building-shutter",
+    "8 shadow building-glassDark",
+    "8 main building-concrete",
+    "8 main building-glass",
+    "8 main building-frame",
+    "8 main building-door",
+    "8 main building-shutter",
+    "8 main building-glassDark",
+    "8 main building-curtain",
+    "8 main building-shell-plaster",
+    "8 main building-shell-stucco",
+    "8 main building-shell-ceramic"
+  ],
+  "profileOverview1x": {
+    "idle": "31.9",
+    "inclusive": [
+      "33.1% bakeFrames @riggedCitizens.ts:347",
+      "28.8% frame @main.ts:2552",
+      "21.3% draw @renderer.ts:444",
+      "19.4% (anon) @riggedCitizens.ts:423",
+      "18.8% updateMatrixWorld @three.module-De7KpXNY.js:10046",
+      "13.1% pose @citizenWalk.ts:262",
+      "11.9% pose @riggedCitizens.ts:682",
+      "11.3% (anon) @three.module-De7KpXNY.js:51996",
+      "11.3% render @three_examples_jsm_postprocessing_EffectComposer__js.js:307",
+      "11.3% render @postprocess.ts:86",
+      "10.6% render @three_examples_jsm_postprocessing_RenderPass__js.js:105",
+      "10.0% apply @riderPoses.ts:664",
+      "10.0% pose @riderPoses.ts:615",
+      "8.1% (anon) @three.module-De7KpXNY.js:51786",
+      "8.1% clearLimbs @riggedCitizens.ts:573",
+      "7.5% step @pipeline.ts:37",
+      "7.5% (anon) @main.ts:2574",
+      "7.5% advance @clock.ts:40",
+      "6.9% renderScene @three.module-De7KpXNY.js:52125",
+      "6.3% renderObject @three.module-De7KpXNY.js:52210",
+      "6.3% renderObjects @three.module-De7KpXNY.js:52200",
+      "5.6% setProgram @three.module-De7KpXNY.js:52328",
+      "5.6% step @people.ts:739",
+      "5.6% step @people.ts:277",
+      "5.0% uploadTexture @three.module-De7KpXNY.js:48548",
+      "5.0% setTexture2D @three.module-De7KpXNY.js:48387",
+      "5.0% rotateWorld @riderPoses.ts:734",
+      "4.4% multiplyQuaternions @three.module-De7KpXNY.js:3859",
+      "4.4% personAsset @riggedCitizens.ts:738",
+      "4.4% texSubImage2D @three.module-De7KpXNY.js:47930"
+    ],
+    "self": [
+      "12.5% updateMatrixWorld @three.module-De7KpXNY.js:10046",
+      "4.4% texSubImage2D @three.module-De7KpXNY.js:47930",
+      "3.8% multiplyMatrices @three.module-De7KpXNY.js:8252",
+      "3.1% setFromRotationMatrix @three.module-De7KpXNY.js:8932",
+      "3.1% worldRotation @citizenWalk.ts:237",
+      "3.1% compose @three.module-De7KpXNY.js:8562",
+      "1.9% applyMatrix4 @three.module-De7KpXNY.js:4356",
+      "1.9% multiplyQuaternions @three.module-De7KpXNY.js:3859",
+      "1.9% step @people.ts:739",
+      "1.9% updateMatrix @three.module-De7KpXNY.js:10023",
+      "1.3% getBindingState @three.module-De7KpXNY.js:42912",
+      "1.3% slerp @three.module-De7KpXNY.js:3876",
+      "1.3% proxySkin @proxy.ts:34",
+      "1.3% updateWorldMatrix @three.module-De7KpXNY.js:10068",
+      "0.6% upload @three.module-De7KpXNY.js:45414",
+      "0.6% applyMatrix4 @three.module-De7KpXNY.js:6681",
+      "0.6% sortLane @world.ts:546",
+      "0.6% funnel @path.ts:96",
+      "0.6% getWorldPosition @three.module-De7KpXNY.js:9922",
+      "0.6% update @three.module-De7KpXNY.js:42100",
+      "0.6% naturalPace @citizenGait.ts:326",
+      "0.6% decompose @three.module-De7KpXNY.js:8601",
+      "0.6% pose @citizenWalk.ts:262",
+      "0.6% draw @renderer.ts:444",
+      "0.6% get length @polyline.ts:88"
+    ]
+  },
+  "fast": {
+    "gpuMs": 9.65,
+    "cpuDrawMs": 5.43,
+    "frameMedianMs": 22.2,
+    "calls": 506,
+    "mtris": 12.92,
+    "passes": [
+      {
+        "label": "1600x900|scene",
+        "ms": 8.47,
+        "perFrame": 1,
+        "calls": 484,
+        "ktris": 12923
+      },
+      {
+        "label": "800x450|Mesh",
+        "ms": 0.67,
+        "perFrame": 6,
+        "calls": 6,
+        "ktris": 0
+      },
+      {
+        "label": "1600x900|Mesh",
+        "ms": 0.4,
+        "perFrame": 7,
+        "calls": 7,
+        "ktris": 0
+      },
+      {
+        "label": "screen|Mesh",
+        "ms": 0.07,
+        "perFrame": 1,
+        "calls": 1,
+        "ktris": 0
+      },
+      {
+        "label": "400x225|Mesh",
+        "ms": 0.02,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      },
+      {
+        "label": "200x113|Mesh",
+        "ms": 0.01,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      },
+      {
+        "label": "100x57|Mesh",
+        "ms": 0.01,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      },
+      {
+        "label": "50x29|Mesh",
+        "ms": 0.01,
+        "perFrame": 2,
+        "calls": 2,
+        "ktris": 0
+      }
+    ]
+  },
+  "profileOverview4x": {
+    "idle": "38.3",
+    "inclusive": [
+      "44.6% frame @main.ts:2552",
+      "23.4% draw @renderer.ts:444",
+      "20.6% step @pipeline.ts:37",
+      "20.6% (anon) @main.ts:2574",
+      "20.6% advance @clock.ts:40",
+      "16.6% (anon) @three.module-De7KpXNY.js:51996",
+      "16.6% render @three_examples_jsm_postprocessing_RenderPass__js.js:105",
+      "16.6% render @three_examples_jsm_postprocessing_EffectComposer__js.js:307",
+      "16.6% render @postprocess.ts:86",
+      "11.4% (anon) @three.module-De7KpXNY.js:51786",
+      "10.9% renderObject @three.module-De7KpXNY.js:52210",
+      "10.9% renderObjects @three.module-De7KpXNY.js:52200",
+      "10.9% renderScene @three.module-De7KpXNY.js:52125",
+      "10.9% step @people.ts:277",
+      "9.7% step @people.ts:739",
+      "9.1% setProgram @three.module-De7KpXNY.js:52328",
+      "9.1% personAsset @riggedCitizens.ts:738",
+      "7.4% attachFacialMorphs @facialMorphs.ts:4",
+      "6.9% bakeFrames @riggedCitizens.ts:347",
+      "6.9% (anon) @personRig.ts:263",
+      "5.1% sync @agents.ts:1091",
+      "4.6% (anon) @riggedCitizens.ts:423",
+      "4.6% pose @citizenWalk.ts:262",
+      "4.0% draw @riggedCitizens.ts:1067",
+      "4.0% stepAdmission @admission.ts:42",
+      "4.0% upload @three.module-De7KpXNY.js:45414",
+      "4.0% poseBody @personRig.ts:149",
+      "4.0% updateMatrixWorld @three.module-De7KpXNY.js:10046",
+      "3.4% admit @admission.ts:54",
+      "3.4% pose @personRig.ts:217"
+    ],
+    "self": [
+      "4.0% poseBody @personRig.ts:149",
+      "3.4% pose @personRig.ts:217",
+      "3.4% updateMatrixWorld @three.module-De7KpXNY.js:10046",
+      "2.9% closestOnSegment @navmesh.ts:490",
+      "1.7% emit @riggedCitizens.ts:973",
+      "1.7% upload @three.module-De7KpXNY.js:45414",
+      "1.7% texSubImage2D @three.module-De7KpXNY.js:47930",
+      "1.7% step @people.ts:739",
+      "1.1% setFromRotationMatrix @three.module-De7KpXNY.js:8932",
+      "1.1% updateBuffer @three.module-De7KpXNY.js:42062",
+      "1.1% stepGait @citizenGait.ts:546",
+      "1.1% admit @admission.ts:54",
+      "1.1% step @people.ts:277",
+      "1.1% needsUpdate @three.module-De7KpXNY.js:42958",
+      "0.6% texSubImage3D @three.module-De7KpXNY.js:47937",
+      "0.6% sort @three.module-De7KpXNY.js:46579",
+      "0.6% zone @conflictPoints.ts:211",
+      "0.6% centroid @navmesh.ts:420",
+      "0.6% (anon) @riggedCitizens.ts:423",
+      "0.6% setValue @three.module-De7KpXNY.js:45406",
+      "0.6% bindVertexArrayObject @three.module-De7KpXNY.js:42906",
+      "0.6% addUpdateRange @three.module-De7KpXNY.js:12873",
+      "0.6% funnel @path.ts:96",
+      "0.6% curveSpeedCap @curvature.ts:94",
+      "0.6% copy @three.module-De7KpXNY.js:3575"
+    ]
+  },
+  "status": "☀ Dia 08:30 3195 moradores · 250 a caminho · 2 trabalhando 52 vias 32 nós 90 veículos 231 pessoas sem alertas 47% perf/l",
+  "errors": []
+}

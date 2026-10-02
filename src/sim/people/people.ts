@@ -33,6 +33,8 @@ import { keepRight, orcaLine, solveOrca, wallLine, type OrcaBody, type OrcaLine 
 
 interface Person {
   readonly id: number;
+  /** The route's corners as last pulled taut, kept a few ticks while nobody watches (`TAUT_EVERY`). */
+  taut?: { tick: number; ci: number; path: NavPath; corners: { x: number; y: number; tri: number }[] };
   /** A resident's trip (city life): walks to its goal and in, and is reported when it gets there. */
   trip?: number;
   x: number;
@@ -169,6 +171,8 @@ const ORCA_REACH = m(3);
 const ORCA_NEIGHBOURS = 10;
 const ORCA_HORIZON = 1.5;
 const PARTY_HORIZON = 0.4;
+/** Ticks the route's corners are kept for somebody nobody is watching (`SimWorld.focus`). */
+const TAUT_EVERY = 6;
 /**
  * Setting off faster than this, the body turns to face the way it goes; it
  * keeps doing so until slower than the second. Between, and standing, it
@@ -733,8 +737,17 @@ function step(w: SimWorld, s: State): void {
     // every tick, the corner walked to is always in plain sight.
     if (!follow(mesh, p) && !plan(s, p) && !pickGoal(w, s, p)) { arrived.push(p); continue; }
     const route = p.path!;
-    const eye = inside(mesh, p.tri, p.x, p.y);
-    const corners = funnel(eye.x, eye.y, p.goalX, p.goalY, route.portals, p.ci, 3);
+    // Out of sight the string is pulled again every few ticks, not every one:
+    // the corner walked to moves a few centimetres in between.
+    let corners: { x: number; y: number; tri: number }[];
+    const taut = p.taut;
+    if (!watched(p) && taut && taut.path === route && taut.ci === p.ci && w.clock.tick - taut.tick < TAUT_EVERY) {
+      corners = taut.corners;
+    } else {
+      const eye = inside(mesh, p.tri, p.x, p.y);
+      corners = funnel(eye.x, eye.y, p.goalX, p.goalY, route.portals, p.ci, 3);
+      p.taut = { tick: w.clock.tick, ci: p.ci, path: route, corners };
+    }
     let target = corners[0]!;
     // A corner is passed once the next is in plain sight. Passed on nearness
     // alone, the next corner of a turn round a wall's end could still lie
@@ -967,8 +980,10 @@ function step(w: SimWorld, s: State): void {
     // way onto the zebra.
     // Which side the body is on is told by its triangle, not its position:
     // a body exactly on such a scrap's line was on both sides at once.
+    // Out of sight the ground alone keeps a body off the walls (`slide`); the
+    // zebras' mouths below still hold it at a red light, seen or not.
     const own = mesh.centroid(p.tri);
-    mesh.wallSegmentsNear(p.x, p.y, WALL_LOOK, mesh.layer[p.tri]!, (ax, ay, bx, by, nx, ny) => {
+    if (watched(p)) mesh.wallSegmentsNear(p.x, p.y, WALL_LOOK, mesh.layer[p.tri]!, (ax, ay, bx, by, nx, ny) => {
       const ex = bx - ax, ey = by - ay, len2 = ex * ex + ey * ey;
       if (len2 < 1e-12) return;
       // Along the wall, not at its very ends: a wall's line runs on for
