@@ -243,6 +243,9 @@
 /* The help card of a tool with nothing to set: what it does, and its keys. */
 .tool-help { display: grid; gap: 12px; width: 100%; }
 .tool-help[hidden] { display: none; }
+/* What a tool draws, chosen in its own panel (the walls tool: fence, wall, hedge). */
+.tool-help-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.tool-help-kinds .pc-chip { height: 30px; padding: 0 14px; font-size: 12px; cursor: pointer; }
 .tool-help-what { margin: 0; color: var(--bw-text); font-size: 12px; line-height: 1.5; }
 .tool-help-keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; align-items: baseline; }
 .tool-help-section {

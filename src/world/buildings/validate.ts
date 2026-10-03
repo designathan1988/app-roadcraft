@@ -67,13 +67,11 @@ export const BUILDING_MAP_MARGIN = 8;
  */
 export const ROAD_CLEARANCE = 0.02;
 /**
- * Area a footprint may share with a junction's footway plate and still only
- * touch it, square units (2.5 m2). A building on the corner of a block stands
- * on the point where the backs of the two footways meet, and on the inside of
- * a bend the footway's rounded corner reaches a sliver into the block; the
- * carriageway itself is kept clear by the distance test above.
+ * Area a footprint may share with a junction's carriageway and kerb and still
+ * only touch it, square units (0.16 m2): rounding where an edge meets it. The
+ * junction's footway plate is not an obstacle any more (`touchesRoad`).
  */
-const JUNCTION_TOUCH = 16;
+const JUNCTION_TOUCH = 1;
 /** Overlap two footprints may have and still count as touching (terraces). */
 const TOUCH = 0.05;
 
@@ -180,12 +178,18 @@ export function touchesRoad(net: Network, rect: readonly Vec2[]): boolean {
     if (polylineDistance(ribbon.full.toPoints(), rect) < reach) return true;
   }
   for (const levels of net.junctions.values()) {
-    const junction = levels.get(Level.Sidewalk);
+    // The carriageway and kerb of the junction, not its footway plate. The
+    // footways along each road are kept clear by the distance test above,
+    // carried through the junction (`ribbon.full` runs to the node); what
+    // lies beyond them at a corner is the plate's square reaching into the
+    // block, and buildings were held back off it, leaving an empty corner of
+    // paving at every crossroads (player, 2026-10-03). A building may stand
+    // on it now, flush with the two footways; the people's walkable ground
+    // has the building's footprint cut out of it (`nav.ts`, solids).
+    const junction = levels.get(Level.Curb);
     if (!junction || junction.ring.isEmpty) continue;
     const jb = junction.ring.bbox;
     if (jb.minX > box.maxX || jb.maxX < box.minX || jb.minY > box.maxY || jb.maxY < box.minY) continue;
-    // A real overlap, not a corner touching: a building on the corner of a
-    // block stands on the point where the backs of the two footways meet.
     const ring = junction.ring.flatten();
     if (polygonsOverlap(ring, rect) && overlapArea(ring, rect) > JUNCTION_TOUCH) return true;
   }

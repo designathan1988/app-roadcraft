@@ -77,7 +77,7 @@ function frontAnchor(centre: Vec2, size: FootprintSize, rotation: number): Vec2 
 }
 
 function snapToRoad(net: Network, size: FootprintSize, cursor: Vec2): PlacementSnap | null {
-  let best: { distance: number; anchor: Vec2; rotation: number } | null = null;
+  let best: { distance: number; anchor: Vec2; rotation: number; ribbon: number } | null = null;
   for (const ribbon of net.ribbons.values()) {
     const segment = net.doc.segment(ribbon.id);
     if (!segment || segment.structure === 'tunnel') continue;
@@ -100,9 +100,49 @@ function snapToRoad(net: Network, size: FootprintSize, cursor: Vec2): PlacementS
       distance: hit.distance,
       anchor: { x: along.p.x + ox * half, y: along.p.y + oy * half },
       rotation,
+      ribbon: ribbon.id,
     };
   }
-  return best ? { anchor: best.anchor, rotation: normaliseAngle(best.rotation), kind: 'road' } : null;
+  if (!best) return null;
+  return { anchor: cornerFlush(net, best.anchor, best.rotation, size, best.ribbon), rotation: normaliseAngle(best.rotation), kind: 'road' };
+}
+
+/** How far a side may be from a crossing road's footway and still be slid onto it. */
+const CORNER_REACH = 6;
+
+/**
+ * At a corner, the side of the footprint next to the crossing road slid onto
+ * the back of that road's footway: a corner lot fills the corner, as a city
+ * builder's corner lot does, instead of leaving a strip between the building
+ * and the second street. Only a side facing a road that runs along it moves,
+ * and only within `CORNER_REACH` of where it would stand.
+ */
+function cornerFlush(net: Network, anchor: Vec2, rotation: number, size: FootprintSize, snapped: number): Vec2 {
+  const ux = Math.cos(rotation), uy = Math.sin(rotation);
+  const vx = -Math.sin(rotation), vy = Math.cos(rotation);
+  let shift = 0;
+  let bestNeed = CORNER_REACH;
+  for (const ribbon of net.ribbons.values()) {
+    if (ribbon.id === snapped) continue;
+    const segment = net.doc.segment(ribbon.id);
+    if (!segment || segment.structure === 'tunnel') continue;
+    const back = halfWidth(ribbon.road, Level.Sidewalk) + ROAD_CLEARANCE + 0.1;
+    for (const side of [-1, 1]) {
+      const px = anchor.x + ux * side * size.width / 2 + vx * size.depth / 2;
+      const py = anchor.y + uy * side * size.width / 2 + vy * size.depth / 2;
+      const hit = ribbon.full.closestPoint({ x: px, y: py });
+      if (hit.distance > back + CORNER_REACH + size.width) continue;
+      const frame = ribbon.full.sampleAt(hit.s);
+      // The road runs along this side (its tangent along the depth).
+      if (Math.abs(frame.t.x * vx + frame.t.y * vy) < 0.9) continue;
+      // And lies beyond it: how far the side is from that road's footway.
+      const beyond = ((frame.p.x - px) * ux + (frame.p.y - py) * uy) * side;
+      if (beyond <= 0) continue;
+      const need = beyond - back;
+      if (Math.abs(need) < Math.abs(bestNeed)) { bestNeed = need; shift = need * side; }
+    }
+  }
+  return { x: anchor.x + ux * shift, y: anchor.y + uy * shift };
 }
 
 function nearestBuilding(doc: RoadDoc, cursor: Vec2, ignore?: BuildingId): Building | null {

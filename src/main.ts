@@ -11,6 +11,8 @@ import { UNITS_PER_METER } from '@world/units';
 import { MAX_TERRAIN_STAMPS, type TerrainMode } from '@world/terrain';
 import type { NodeId, SegmentId } from '@world/ids';
 import { POLE_HEIGHT, spanSag } from '@world/utilities';
+import { BARRIER_KINDS, type BarrierKind } from '@world/barriers';
+import { barrierProblem, snapBarrierPoint } from '@editor/barriers';
 import {
   POLE_PICK_PIXELS,
   commitPoleRun,
@@ -77,6 +79,7 @@ type Tool =
   | 'control'
   | 'inspect'
   | 'pole'
+  | 'barrier'
   | 'person';
 type Alignment = 'straight' | 'curve' | 'free';
 let roundaboutRadius = 100;
@@ -310,6 +313,13 @@ let poleDraft: PoleDraft | null = null;
  * run a few units away. Escape, a different tool or an undo drops it.
  */
 let poleChain: Vec2 | null = null;
+/**
+ * The wall, fence or hedge being traced (`world/barriers.ts`): the kind in
+ * hand, the points put down so far, and where the pointer is.
+ */
+let barrierKind: BarrierKind = 'fence';
+let barrierPoints: Vec2[] | null = null;
+let barrierCursor: Vec2 | null = null;
 let hoverAnchor: Anchor | null = null;
 let selectedSegment: SegmentId | null = null;
 let selectedSegmentS: number | null = null;
@@ -719,6 +729,7 @@ function cancelGestures(): void {
   curvePending = null;
   poleDraft = null;
   poleChain = null;
+  barrierPoints = null;
   endTerrainStroke();
   cancelMove();
   panning = null;
@@ -1008,6 +1019,22 @@ canvas.addEventListener('pointerdown', (e) => {
       buildings.pointerDown({ x: e.clientX - r.left, y: e.clientY - r.top }, world, e.shiftKey);
       break;
 
+    case 'barrier': {
+      // Shift-click removes a run; a click puts a point down, a double click
+      // (or Enter) ends the run there.
+      const hit = e.shiftKey ? doc.barrierNear(world, BARRIER_PICK_PIXELS / view.zoom) : null;
+      if (hit) {
+        mutate(() => doc.removeBarrier(hit.id));
+        flashHint('hint.barrier.removed');
+        break;
+      }
+      const point = snapBarrierPoint(net, barrierKind, world);
+      barrierPoints = [...(barrierPoints ?? []), point];
+      if (e.detail >= 2) finishBarrier();
+      requestDraw();
+      break;
+    }
+
     case 'pole':
       // Shift-click removes, the way the bulldoze tool does on a road.
       //
@@ -1202,6 +1229,11 @@ canvas.addEventListener('pointermove', (e) => {
     if (draft.samples.length < 256) draft.samples.push({ at, heightOffset: draft.heightOffset });
     requestDraw();
     return;
+  }
+
+  if (tool === 'barrier') {
+    barrierCursor = world;
+    requestDraw();
   }
 
   if (poleDraft) {
@@ -1456,6 +1488,20 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  // A run being traced: Enter ends it, Backspace takes the last point back,
+  // Esc drops it.
+  if (!meta && tool === 'barrier' && barrierPoints) {
+    if (e.key === 'Enter') { e.preventDefault(); finishBarrier(); return; }
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      barrierPoints.pop();
+      if (barrierPoints.length === 0) barrierPoints = null;
+      requestDraw();
+      return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); barrierPoints = null; requestDraw(); return; }
+  }
+
   if (!meta && tool === 'road' && (e.key === 'PageUp' || e.key === 'PageDown')) {
     e.preventDefault();
     stepRoadHeight(e.key === 'PageUp' ? 1 : -1);
@@ -1574,6 +1620,7 @@ window.addEventListener('keydown', (e) => {
     t: 'terrain',
     i: 'inspect',
     p: 'pole',
+    f: 'barrier',
     h: 'building',
     k: 'person',
   };
@@ -2006,6 +2053,8 @@ const CAMERA_KEYS = [
 const TOOL_KEYS: Partial<Record<Tool, readonly (readonly [string, string])[]>> = {
   bulldoze: [['help.key.click', 'help.do.remove'], ['help.key.undo', 'help.do.undo']],
   pole: [['help.key.click', 'help.do.pole'], ['help.key.shiftClick', 'help.do.removePole'], ['help.key.esc', 'help.do.endLine']],
+  barrier: [['help.key.click', 'help.do.barrierPoint'], ['help.key.doubleClickEnter', 'help.do.barrierEnd'],
+    ['help.key.backspace', 'help.do.barrierBack'], ['help.key.shiftClick', 'help.do.barrierRemove'], ['help.key.esc', 'help.do.barrierCancel']],
   inspect: [['help.key.click', 'help.do.pick'], ['help.key.pageUpDown', 'help.do.nodeHeight'], ['help.key.esc', 'help.do.close']],
 };
 function renderToolHelp(forTool: Tool | null): void {
@@ -2035,6 +2084,22 @@ function renderToolHelp(forTool: Tool | null): void {
   };
   section('help.section.tool');
   (TOOL_KEYS[forTool] ?? []).forEach(row);
+  if (forTool === 'barrier') {
+    // What is drawn: a fence, a wall or a hedge.
+    const kinds = document.createElement('div');
+    kinds.className = 'tool-help-kinds';
+    for (const kind of BARRIER_KINDS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'pc-chip' + (kind === barrierKind ? ' active' : '');
+      b.dataset['barrier'] = kind;
+      b.textContent = t(`barrier.kind.${kind}`);
+      b.addEventListener('click', () => { barrierKind = kind; renderToolHelp('barrier'); requestDraw(); });
+      kinds.appendChild(b);
+    }
+    toolHelp.append(what, kinds, list);
+    return;
+  }
   section('help.section.camera');
   CAMERA_KEYS.forEach(row);
   toolHelp.append(what, list);
@@ -2733,6 +2798,57 @@ function frame(now: number): void {
  * now share one plan - keeping the drawing beside the rest of the hairlines
  * hid that.
  */
+/** Pick radius for a barrier under a shift-click, screen pixels. */
+const BARRIER_PICK_PIXELS = 10;
+
+/** The run being traced, with the pointer's point added: what would be built. */
+function barrierPlan(): Vec2[] {
+  const points = [...(barrierPoints ?? [])];
+  if (barrierPoints && barrierCursor) points.push(snapBarrierPoint(net, barrierKind, barrierCursor));
+  return points;
+}
+
+/** Builds the run traced so far, in one undo step, or says why it cannot be. */
+function finishBarrier(): void {
+  const points = barrierPoints ?? [];
+  barrierPoints = null;
+  // A double click lands two points on one spot: one of them is enough.
+  const path = points.filter((p, i) => i === 0 || Math.hypot(p.x - points[i - 1]!.x, p.y - points[i - 1]!.y) > 1e-3);
+  if (path.length < 2) { requestDraw(); return; }
+  const problem = barrierProblem(net, barrierKind, path);
+  if (problem) {
+    flashHint(`hint.barrier.${problem}`);
+    requestDraw();
+    return;
+  }
+  mutate(() => doc.addBarrier(barrierKind, path) !== null);
+  flashHint('hint.barrier.built');
+}
+
+/** The run being traced, as it will stand: red where it cannot be built. */
+function drawBarrierPlan(ctx: CanvasRenderingContext2D, at: (p: Vec2) => Vec2): void {
+  const points = barrierPlan();
+  const cursor = barrierCursor ? snapBarrierPoint(net, barrierKind, barrierCursor) : null;
+  ctx.save();
+  if (points.length >= 2) {
+    const bad = barrierProblem(net, barrierKind, points) === 'road';
+    ctx.strokeStyle = bad ? '#ff6f63' : SELECTION;
+    ctx.lineWidth = barrierKind === 'hedge' ? 5 : barrierKind === 'wall' ? 4 : 2.5;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    points.forEach((p, i) => { const s = at(p); if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y); });
+    ctx.stroke();
+  }
+  ctx.fillStyle = SELECTION;
+  for (const p of [...(barrierPoints ?? []), ...(cursor ? [cursor] : [])]) {
+    const s = at(p);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawPolePlan(
   plan: PoleRunPlan | null,
   ctx: CanvasRenderingContext2D,
@@ -2857,6 +2973,7 @@ function drawOverlayScreen(): void {
   // hang between them with its real sag, and a ring round any pole the run is
   // about to tie into. If it looks right here it is right when built.
   drawPolePlan(currentPolePlan(), ctx, at, w, h);
+  if (tool === 'barrier') drawBarrierPlan(ctx, at);
 
   if (tool === 'building') buildings.drawOverlay(ctx);
 
@@ -2899,7 +3016,9 @@ function drawOverlayScreen(): void {
     if (ribbon) strokeScreen(ribbon.full.toPoints(), SELECTION, 3);
   }
 
-  if (tool !== 'road' && hoverAnchor?.kind === 'segment' && hoverAnchor.segment !== undefined) {
+  // Not under the walls tool: it draws beside roads, never on one, and a
+  // road lit under the pointer read as the road being picked.
+  if (tool !== 'road' && tool !== 'barrier' && hoverAnchor?.kind === 'segment' && hoverAnchor.segment !== undefined) {
     const ribbon = net.ribbons.get(hoverAnchor.segment);
     if (ribbon) strokeScreen(ribbon.full.toPoints(), HOVER, 2);
   }

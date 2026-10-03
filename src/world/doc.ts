@@ -13,6 +13,7 @@ import {
   asSpanId,
 } from './ids';
 import type { UtilityPole, UtilitySpan } from './utilities';
+import { type Barrier, type BarrierKind, isBarrierKind } from './barriers';
 // Runtime imports, and safe: `geometry` and `legAngles` take `RoadDoc` as a
 // TYPE only, so nothing here is part of a runtime cycle.
 import { TUNNEL_HEADROOM, type RoadStructure, migrateStructure } from './structures';
@@ -114,6 +115,15 @@ export class RoadDoc {
    */
   readonly poles = new Map<PoleId, UtilityPole>();
   readonly poleSpans = new Map<SpanId, UtilitySpan>();
+
+  /**
+   * Walls, fences and hedges drawn along paths (`barriers.ts`). Like the poles
+   * they are not part of the road network and keep their own revision,
+   * `barrierRevision`: a fence drawn must not rebuild the roads.
+   */
+  readonly barriers = new Map<number, Barrier>();
+  barrierRevision = 0;
+  private barrierIds = new IdAllocator(1);
 
   private nodeIds = new IdAllocator(1);
   private segIds = new IdAllocator(1);
@@ -222,6 +232,39 @@ export class RoadDoc {
     this.poleSpans.set(id, span);
     this.utilityRevision++;
     return span;
+  }
+
+  /** Draws a barrier along `points` (two or more, on the map). */
+  addBarrier(kind: BarrierKind, points: readonly { x: number; y: number }[]): Barrier | null {
+    const path = points.map((p) => clampToMap(p));
+    if (path.length < 2) return null;
+    const barrier: Barrier = { id: this.barrierIds.take(), kind, points: path.map((p) => ({ x: p.x, y: p.y })) };
+    this.barriers.set(barrier.id, barrier);
+    this.barrierRevision++;
+    return barrier;
+  }
+
+  removeBarrier(id: number): boolean {
+    if (!this.barriers.delete(id)) return false;
+    this.barrierRevision++;
+    return true;
+  }
+
+  /** The barrier whose path passes nearest a point, within `radius`, or null. */
+  barrierNear(at: { x: number; y: number }, radius: number): Barrier | null {
+    let best: Barrier | null = null;
+    let bestD = radius;
+    for (const barrier of this.barriers.values()) {
+      for (let i = 1; i < barrier.points.length; i++) {
+        const a = barrier.points[i - 1]!, b = barrier.points[i]!;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = dx * dx + dy * dy;
+        const t = len > 0 ? Math.max(0, Math.min(1, ((at.x - a.x) * dx + (at.y - a.y) * dy) / len)) : 0;
+        const d = Math.hypot(a.x + dx * t - at.x, a.y + dy * t - at.y);
+        if (d < bestD) { bestD = d; best = barrier; }
+      }
+    }
+    return best;
   }
 
   /** Removes a pole and every wire that reached it. */
@@ -625,6 +668,8 @@ export class RoadDoc {
     copy.segIds = new IdAllocator(this.segIds.peek);
     copy.poleIds = new IdAllocator(this.poleIds.peek);
     copy.spanIds = new IdAllocator(this.spanIds.peek);
+    copy.barrierIds = new IdAllocator(this.barrierIds.peek);
+    copy.barrierRevision = this.barrierRevision;
     copy.nextTerrainId = this.nextTerrainId;
     copy.revision = this.revision;
     copy.trafficRevision = this.trafficRevision;
@@ -684,6 +729,11 @@ export class RoadDoc {
     for (const [id, pole] of source.poles) this.poles.set(id, { ...pole });
     if (utilitiesChanged) this.utilityRevision++;
     for (const [id, span] of source.poleSpans) this.poleSpans.set(id, { ...span });
+    if (!sameBarriers(this, source)) {
+      this.barriers.clear();
+      for (const [id, barrier] of source.barriers) this.barriers.set(id, { ...barrier, points: barrier.points.map((p) => ({ ...p })) });
+      this.barrierRevision++;
+    }
     // Moves `buildings.revision` only if the buildings differ.
     this.buildings.replaceWith(source.buildings);
     if (JSON.stringify(this.people) !== JSON.stringify(source.people)) {
@@ -701,6 +751,7 @@ export class RoadDoc {
     this.segIds = new IdAllocator(source.segIds.peek);
     this.poleIds = new IdAllocator(source.poleIds.peek);
     this.spanIds = new IdAllocator(source.spanIds.peek);
+    this.barrierIds = new IdAllocator(source.barrierIds.peek);
     this.nextTerrainId = source.nextTerrainId;
     this.terrainRevision = nextTerrainRevision;
     if (!roadsChanged) return;
@@ -741,6 +792,10 @@ export class RoadDoc {
       terrain: this.terrainStamps.map((stamp) => ({ ...stamp })),
       poles: [...this.poles.values()].map((p) => ({ id: p.id, x: p.x, y: p.y, lamp: p.lamp })),
       poleSpans: [...this.poleSpans.values()].map((s) => ({ id: s.id, a: s.a, b: s.b })),
+      // Only when there are any, so a map without them serialises as before.
+      ...(this.barriers.size > 0 ? {
+        barriers: [...this.barriers.values()].map((b) => ({ id: b.id, kind: b.kind, points: b.points.map((p) => ({ x: p.x, y: p.y })) })),
+      } : {}),
       // Only when there are any, so a map without buildings serialises
       // exactly as it did before buildings existed.
       ...(this.buildings.size > 0 ? { buildings: this.buildings.toJSON() } : {}),
@@ -843,6 +898,15 @@ export class RoadDoc {
       doc.poleSpans.set(id, { id, a, b });
       doc.spanIds.reserve(s.id);
     }
+    // Walls, fences and hedges, if the map has any; anything malformed is dropped.
+    for (const raw of data.barriers ?? []) {
+      if (!isBarrierKind(raw.kind) || !Array.isArray(raw.points)) continue;
+      const points = raw.points.filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y))
+        .map((p) => (repair ? clampToMap(p) : { x: p.x, y: p.y }));
+      if (points.length < 2) continue;
+      doc.barriers.set(raw.id, { id: raw.id, kind: raw.kind, points });
+      doc.barrierIds.reserve(raw.id);
+    }
     // Buildings, if the map has any; each one through `migrateBuilding`.
     if (data.buildings) doc.buildings.load(data.buildings);
     // People, each brought into range; anything that is not one is dropped.
@@ -896,6 +960,8 @@ export interface SerializedDoc {
    */
   readonly poles?: readonly { id: number; x: number; y: number; lamp?: boolean }[];
   readonly poleSpans?: readonly { id: number; a: number; b: number }[];
+  /** Walls, fences and hedges (`barriers.ts`); OPTIONAL like the poles. */
+  readonly barriers?: readonly { id: number; kind: string; points: readonly { x: number; y: number }[] }[];
   /**
    * Modular buildings (docs/buildings.md). OPTIONAL, for the same reason as
    * the poles: every map saved before buildings existed has no such key.
@@ -947,6 +1013,19 @@ function samePoles(a: RoadDoc, b: RoadDoc): boolean {
   for (const [id, p] of a.poleSpans) {
     const q = b.poleSpans.get(id);
     if (!q || p.a !== q.a || p.b !== q.b) return false;
+  }
+  return true;
+}
+
+/** Whether two documents hold the same barriers, point for point. */
+function sameBarriers(a: RoadDoc, b: RoadDoc): boolean {
+  if (a.barriers.size !== b.barriers.size) return false;
+  for (const [id, p] of a.barriers) {
+    const q = b.barriers.get(id);
+    if (!q || p.kind !== q.kind || p.points.length !== q.points.length) return false;
+    for (let i = 0; i < p.points.length; i++) {
+      if (p.points[i]!.x !== q.points[i]!.x || p.points[i]!.y !== q.points[i]!.y) return false;
+    }
   }
   return true;
 }

@@ -202,8 +202,10 @@ function make(fn: BuildingFunction, category: CityCategory, model: Model): CityB
 export const CITY_BUILDINGS: readonly CityBuilding[] = [
   // ------------------------------------------------------------ homes
   make('house', 'homes', new Model('house', 'residential', 0).look(PLASTER, TILE)
-    .block({ x: 0, y: 0, w: 9, d: 9, storeys: 2, roof: 'gable', door: 1 })
-    .lot(-3, -6, 15, 6, 'grass').el('tree', -1.5, -3).el('flowers', 7, -3).el('fence', 4.5, -5.8, 0, { w: 15 })),
+    // The house alone (player, 2026-10-03): the front garden and its fence it
+    // came with kept it six metres off the pavement. Walls and fences are
+    // drawn along a path with their own tool (`world/barriers.ts`).
+    .block({ x: 0, y: 0, w: 9, d: 9, storeys: 2, roof: 'gable', door: 1 })),
   make('townhouse', 'homes', new Model('townhouse', 'residential', 1).look(BRICK, SLATE)
     .block({ x: 0, y: 0, w: 6, d: 12, storeys: 3, roof: 'gable', door: 0 })),
   make('apartments', 'homes', new Model('apartments', 'residential', 4).look(CREAM)

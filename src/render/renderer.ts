@@ -47,6 +47,7 @@ import { advanceWind } from './wind';
 import { createSignalHeads, type SignalHeads } from './signals';
 import { buildStructureDetails, type StructureDetails } from './structures';
 import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
+import { buildBarriers, type Barriers } from './barriers';
 import { TERRAIN_CELL, createTerrainSurface, type TerrainSurface } from './terrain';
 import { buildingPads } from '@world/buildings/pads';
 import { Indoors } from './indoors';
@@ -292,6 +293,9 @@ export function createSceneRenderer(
   let details: StructureDetails | null = null;
   let scenery: Scenery | null = null;
   let utilities: Utilities | null = null;
+  /** Walls, fences and hedges (`barriers.ts`), and the state they were built for. */
+  let barriers: Barriers | null = null;
+  let barriersFor = '';
   let elevation: RoadElevation | null = null;
 
   // What each rebuild keeps for the next: the tiles of every surface an edit
@@ -679,6 +683,19 @@ export function createSceneRenderer(
       if (scenery && (excludedFor.scenery !== scenery || excludedFor.site !== siteKey)) {
         scenery.exclude(net.doc.buildings.size > 0 ? buildings.covers : null);
         excludedFor = { scenery, site: siteKey };
+      }
+      // Walls, fences and hedges: on their own revision, and on the ground they stand on.
+      const barrierKey = `${net.doc.barrierRevision}:${groundVersion}:${net.doc.terrainRevision}:${rebuilds}`;
+      if (barrierKey !== barriersFor) {
+        barriersFor = barrierKey;
+        if (barriers) {
+          builtTriangles -= barriers.triangles;
+          world.remove(barriers.group);
+          barriers.dispose();
+        }
+        barriers = buildBarriers(net.doc, terrain.renderedHeightAt);
+        world.add(barriers.group);
+        builtTriangles += barriers.triangles;
       }
       const gardenKey = `${plantSignature(net.doc)}:${groundVersion}:${net.doc.terrainRevision}:${rebuilds}`;
       if (gardenKey !== gardensFor) {
