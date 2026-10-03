@@ -1,3 +1,4 @@
+import { Digest } from '@core/digest';
 import { segSeg } from '@core/intersect';
 import type { Vec2 } from '@core/vec2';
 import type { Polyline } from '@core/polyline';
@@ -167,6 +168,19 @@ export class ConflictIndex {
    */
   private pairCache = new Map<string, CachedPair>();
 
+  /**
+   * The sampled frames of the movements, keyed by the three centrelines they
+   * are sampled along.
+   *
+   * `sweepOf` walks the joined path in `SWEEP_STEP` steps, three `sampleAt`
+   * calls each (the position, and the two either side that give the heading),
+   * and it did that for every connector of every junction on every edit —
+   * including the ones whose geometry had not moved. The frame depends on
+   * nothing but the three centrelines, so it is kept and the sweep rebuilt
+   * around it: the lanelets in the returned sweep are the CURRENT ones.
+   */
+  private sweepCache = new Map<string, Float64Array>();
+
   build(graph: LaneletGraph): void {
     this.points.length = 0;
     this.byConnector.clear();
@@ -174,6 +188,8 @@ export class ConflictIndex {
     this.queueIntrusions.length = 0;
     const previous = this.pairCache;
     const next = new Map<string, CachedPair>();
+    const previousSweeps = this.sweepCache;
+    const nextSweeps = new Map<string, Float64Array>();
 
     for (const junction of graph.junctions.values()) {
       const ids = junction.connectors.slice().sort();
@@ -182,7 +198,7 @@ export class ConflictIndex {
       for (const id of ids) {
         const c = graph.connectors.get(id);
         if (!c) continue;
-        const sweep = sweepOf(graph, c);
+        const sweep = sweepOf(graph, c, previousSweeps, nextSweeps);
         if (!sweep) continue;
         sweeps.set(id, sweep);
         shapes.set(id, shapeOf(sweep));
@@ -239,6 +255,7 @@ export class ConflictIndex {
     }
 
     this.pairCache = next;
+    this.sweepCache = nextSweeps;
     for (const list of this.byConnector.values()) list.sort((p, q) => p.s - q.s);
   }
 
@@ -329,7 +346,8 @@ interface Sweep {
   grid: Map<number, number[]> | null;
 }
 
-function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
+function sweepOf(graph: LaneletGraph, c: Connector,
+  previous: Map<string, Float64Array>, next: Map<string, Float64Array>): Sweep | null {
   const inbound = graph.lanelet(c.fromLane);
   const crossing = graph.lanelet(c.lanelet);
   const outbound = graph.lanelet(c.toLane);
@@ -341,18 +359,26 @@ function sweepOf(graph: LaneletGraph, c: Connector): Sweep | null {
   const c0 = -heavy.length / 2 - QUEUE_BACK;
   const c1 = crossing.length + heavy.length / 2;
   const count = Math.max(2, Math.ceil((c1 - c0) / SWEEP_STEP) + 1);
-  const frame = new Float64Array(count * 4);
 
-  for (let i = 0; i < count; i++) {
-    const c = c0 + i * SWEEP_STEP;
-    const f = path.sampleAt(c);
-    // Pointed along the same chord the drawn body is (`HEADING_CHORD`).
-    const t = chordHeading(path.sampleAt(c - HEADING_CHORD).p, path.sampleAt(c + HEADING_CHORD).p, f.t);
-    frame[i * 4] = f.p.x;
-    frame[i * 4 + 1] = f.p.y;
-    frame[i * 4 + 2] = t.x;
-    frame[i * 4 + 3] = t.y;
+  // The frame is a function of the three centrelines alone, so a movement
+  // whose road was not touched reads back the samples it already had.
+  const key = `${new Digest().addAll(inbound.centre.xy).addAll(crossing.centre.xy)
+    .addAll(outbound.centre.xy).add(count).value()}`;
+  let frame = previous.get(key) ?? next.get(key);
+  if (!frame) {
+    frame = new Float64Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      const at = c0 + i * SWEEP_STEP;
+      const f = path.sampleAt(at);
+      // Pointed along the same chord the drawn body is (`HEADING_CHORD`).
+      const t = chordHeading(path.sampleAt(at - HEADING_CHORD).p, path.sampleAt(at + HEADING_CHORD).p, f.t);
+      frame[i * 4] = f.p.x;
+      frame[i * 4 + 1] = f.p.y;
+      frame[i * 4 + 2] = t.x;
+      frame[i * 4 + 3] = t.y;
+    }
   }
+  next.set(key, frame);
   return { crossing, path, c0, count, frame, grid: null };
 }
 
