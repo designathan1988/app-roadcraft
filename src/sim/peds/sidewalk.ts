@@ -11,6 +11,7 @@ import { m } from '@world/units';
 import { orientedPolyline } from '@world/geometry';
 import type { LaneletGraph, LaneletId } from '@world/lanelets';
 import { makeCrossingId, type CrossingId } from '../signals/plan';
+import { Digest } from '@core/digest';
 import { COARSE_EPS, hypot2 } from '@core/scalar';
 import { WalkableSurface } from '@world/walkable';
 import { Corridor, type CorridorFrame } from './corridor';
@@ -33,6 +34,14 @@ export interface SidewalkNode {
 }
 
 export type SidewalkEdgeKind = 'walk' | 'corner' | 'crossing' | 'access';
+
+/** A corridor's walls, kept between builds (`fitCorridors`). */
+interface CachedCorridor {
+  readonly lo: Float64Array;
+  readonly hi: Float64Array;
+  /** Stations that found no footway, to keep the diagnostic exact. */
+  readonly unfitted: number;
+}
 
 
 export interface SidewalkEdge {
@@ -118,6 +127,8 @@ export class SidewalkGraph {
    * build: a corner whose junction the edit did not touch is reused as it is.
    */
   private cornerCache = new Map<string, Vec2[]>();
+  /** Corridor walls by the path and footway patch they were fitted to (`fitCorridors`). */
+  private corridorCache = new Map<string, CachedCorridor>();
   private readonly reversedPaths = new Map<SidewalkEdgeId, Polyline>();
   private readonly baseWalkEdges = new Map<SidewalkEdgeId, SidewalkEdge>();
   private readonly accessNodes = new Set<SidewalkNodeId>();
@@ -510,10 +521,27 @@ export class SidewalkGraph {
     const frame: CorridorFrame = { x: 0, y: 0, tx: 0, ty: 0, nx: 0, ny: 0 };
     const span = { lo: 0, hi: 0 };
     const margin = PED_BEHAVIOUR.lateralMargin;
+    const previous = this.corridorCache;
+    const next = new Map<string, CachedCorridor>();
     for (const edge of this.edges.values()) {
       const c = edge.corridor;
       const usable = Math.max(0, edge.halfWidth - margin);
       const fitted = new Uint8Array(c.stations);
+      // A footway edge's walls are read off the drawn footway within `reach`
+      // of its own path, so they depend on nothing but that path and that
+      // patch: where the same numbers come round, the walls are the same and
+      // the stations are not walked again. A crossing or an access line is
+      // set from the edge's own width and is not worth a key.
+      const key = edge.kind === 'crossing' || edge.kind === 'access' ? '' : this.corridorKey(edge, walkable, margin);
+      const known = key ? previous.get(key) : undefined;
+      if (known) {
+        c.lo.set(known.lo);
+        c.hi.set(known.hi);
+        this.unfitted += known.unfitted;
+        next.set(key, known);
+        continue;
+      }
+      let missed = 0;
       for (let k = 0; k < c.stations; k++) {
         c.lo[k] = -usable;
         c.hi[k] = usable;
@@ -530,7 +558,7 @@ export class SidewalkGraph {
               frame.nx, frame.ny, reach, span)) { found = true; break; }
           }
         }
-        if (!found) { this.unfitted++; continue; }
+        if (!found) { this.unfitted++; missed++; continue; }
         let lo = offset + span.lo + margin;
         let hi = offset + span.hi - margin;
         const cap = offset === 0 ? usable : edge.halfWidth + m(1);
@@ -554,7 +582,27 @@ export class SidewalkGraph {
         c.lo[k] = c.lo[near]!;
         c.hi[k] = c.hi[near]!;
       }
+      if (key) next.set(key, { lo: c.lo.slice(), hi: c.hi.slice(), unfitted: missed });
     }
+    this.corridorCache = next;
+  }
+
+  /** The key a corridor's walls are kept under: its path, its width, and the footway it reads. */
+  private corridorKey(edge: SidewalkEdge, walkable: WalkableSurface, margin: number): string {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const xy = edge.path.xy;
+    for (let i = 0; i < xy.length; i += 2) {
+      const x = xy[i]!, y = xy[i + 1]!;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    // Each station asks across `reach` and reads that far again from where it
+    // asked, and the search steps that far off the path first.
+    const pad = 3 * (edge.halfWidth + m(2.5)) + m(1);
+    return `${new Digest().addAll(xy).add(edge.halfWidth).add(margin)
+      .add(walkable.digest(minX - pad, minY - pad, maxX + pad, maxY + pad)).value()}`;
   }
 
   edgesAt(node: SidewalkNodeId): readonly SidewalkEdgeId[] {

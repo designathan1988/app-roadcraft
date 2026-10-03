@@ -34,18 +34,25 @@ function gridDoc(n = 5, spacing = 150): RoadDoc {
   return doc;
 }
 
-/** Every corner edge, with the exact points of its path. */
-function cornerPaths(sim: SimWorld): string[] {
+/**
+ * Every edge of the graph, with the exact points of its path and the exact
+ * walls of its corridor: a corner reused by path, a footway reused by walls.
+ */
+function graphShape(sim: SimWorld): string[] {
   const out: string[] = [];
   for (const [id, edge] of sim.sidewalks.edges) {
-    if (edge.kind !== 'corner') continue;
-    out.push(`${id}:${edge.path.toPoints().map((p) => `${p.x},${p.y}`).join(';')}`);
+    const points = edge.path.toPoints().map((p) => `${p.x},${p.y}`).join(';');
+    const lo = Array.from(edge.corridor.lo).join(',');
+    const hi = Array.from(edge.corridor.hi).join(',');
+    out.push(`${id}|${edge.kind}|${points}|${lo}|${hi}`);
   }
   return out.sort();
 }
 
-const clearCache = (sim: SimWorld): void => {
-  (sim.sidewalks as unknown as { cornerCache: Map<string, unknown> }).cornerCache.clear();
+const clearCaches = (sim: SimWorld): void => {
+  const s = sim.sidewalks as unknown as { cornerCache: Map<string, unknown>; corridorCache: Map<string, unknown> };
+  s.cornerCache.clear();
+  s.corridorCache.clear();
 };
 
 describe('the sidewalk corner cache', () => {
@@ -61,11 +68,11 @@ describe('the sidewalk corner cache', () => {
     net.rebuild();
     sim.rebuildVehicleTopology(); rebindVehicles(sim);
     sim.rebuildWalkTopology(); rebindPeds(sim);
-    const reused = cornerPaths(sim);
+    const reused = graphShape(sim);
 
-    clearCache(sim);
+    clearCaches(sim);
     sim.rebuildWalkTopology(); rebindPeds(sim);
-    const rebuilt = cornerPaths(sim);
+    const rebuilt = graphShape(sim);
 
     expect(reused.length).toBeGreaterThan(20);
     expect(reused).toEqual(rebuilt);
@@ -82,11 +89,11 @@ describe('the sidewalk corner cache', () => {
     net.rebuild();
     sim.rebuildVehicleTopology(); rebindVehicles(sim);
     sim.rebuildWalkTopology(); rebindPeds(sim);
-    const reused = cornerPaths(sim);
+    const reused = graphShape(sim);
 
-    clearCache(sim);
+    clearCaches(sim);
     sim.rebuildWalkTopology(); rebindPeds(sim);
-    const rebuilt = cornerPaths(sim);
+    const rebuilt = graphShape(sim);
 
     expect(reused.length).toBeGreaterThan(20);
     expect(reused).toEqual(rebuilt);
