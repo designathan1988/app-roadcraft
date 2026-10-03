@@ -324,21 +324,46 @@ function terrainMaterial(
            vec4 near = texture2D(tex, uv, terrainDetailW * 2.2);
            vec4 far = texture2D(tex, uv * 0.125);
            return mix(near, far, 0.42);
+         }
+
+         // A WALL is not a floor. The ground's textures are read in a plan
+         // view, which smears a 45-degree cliff into vertical stripes: the
+         // steeper the land the more of the map's area it covers, and once the
+         // brush could raise mountains, whole hillsides were stripes.
+         //
+         // A cliff is read by the projection that faces it instead - the rock
+         // map sampled in the z-y plane for a face across z, in x-y for one
+         // across x - blended by how much of the normal points each way. Only
+         // the rock needs it: grass and soil live on ground gentle enough for
+         // the plan view, and rockMix is zero there anyway.
+         vec3 terrainWallAxis() {
+           vec3 n = abs(normalize(vTerrainNormal));
+           return vec3(n.x / max(0.0001, n.x + n.z), 0.0, 0.0);
+         }
+         vec2 terrainWallUv(vec3 world, float scale, float wXl) {
+           // u runs across the face, v up it.
+           vec2 acrossX = world.zy * scale;
+           vec2 acrossZ = world.xy * scale;
+           return mix(acrossZ, acrossX, wXl);
          }`,
       )
       .replace(
         '#include <map_fragment>',
         `terrainDetailW = detailWeight(vTerrainWorld.xz);
          vec2 tGrass = vTerrainWorld.xz * uGrassScale;
-         vec2 tRock = vTerrainWorld.xz * uRockScale;
          vec2 tDirt = vTerrainWorld.xz * uDirtScale;
+         float wallX = terrainWallAxis().x;
+         vec2 tRock = terrainWallUv(vTerrainWorld, uRockScale, wallX);
          // In DEGREES, not in one-minus-cosine. The cosine of a small angle is
          // almost one, so thresholds written against it are unreadable and were
          // simply wrong: a 10-degree hillside came out at 0.015, under a
          // threshold meant to start at a gentle slope, and the whole map stayed
          // one flat green however steep it got.
          float slopeDeg = degrees(acos(clamp(vTerrainNormal.y, 0.0, 1.0)));
-         float rockMix = smoothstep(26.0, 42.0, slopeDeg);
+         // High ground is bare whatever its slope: the quickest way to say
+         // "mountain" is that nothing grows on the top of it.
+         float altitude = smoothstep(210.0, 400.0, vTerrainWorld.y);
+         float rockMix = max(smoothstep(26.0, 42.0, slopeDeg), altitude * 0.92);
          float dirtMix = smoothstep(9.0, 26.0, slopeDeg) * (1.0 - rockMix) * 0.8;
          vec4 grassColor = dualScale(map, tGrass);
          vec4 rockColor = dualScale(uRockMap, tRock);
@@ -347,7 +372,7 @@ function terrainMaterial(
          blended = mix(blended, rockColor, rockMix);
          if (terrainDetailW > 0.001) {
            vec3 bladeDetail = detailSample(uGrassDetail, vTerrainWorld.xz * uGrassDetailScale);
-           vec3 soilDetail = detailSample(uSoilDetail, vTerrainWorld.xz * uSoilDetailScale);
+           vec3 soilDetail = detailSample(uSoilDetail, terrainWallUv(vTerrainWorld, uSoilDetailScale, wallX));
            float soilMix = clamp(dirtMix + rockMix, 0.0, 1.0);
            vec3 fine = mix(bladeDetail, soilDetail, soilMix);
            blended.rgb *= mix(vec3(1.0), fine, terrainDetailW);
@@ -363,19 +388,28 @@ function terrainMaterial(
          // into a relief map.
          float relief = clamp(dot(normalize(vTerrainNormal), normalize(vec3(0.24, 0.62, -0.75))), -1.0, 1.0);
          blended.rgb *= 1.0 + relief * 0.34 * smoothstep(1.0, 10.0, slopeDeg);
-         // Higher ground dries out, low ground stays lush.
-         float dryness = smoothstep(4.0, 26.0, vTerrainWorld.y);
+         // Higher ground dries out, low ground stays lush. Measured in the
+         // units the land can actually reach now (a 560-unit mountain), so a
+         // valley town stays green instead of the whole map turning tan the
+         // moment the ground passes ten metres.
+         float dryness = smoothstep(10.0, 240.0, vTerrainWorld.y);
          blended.rgb = mix(blended.rgb, blended.rgb * vec3(1.16, 1.07, 0.8), dryness * 0.6);
          // Hollows hold moisture and read darker, which is the cue that tells a
          // dip from a rise when the sun is behind the slope.
-         float damp = smoothstep(2.0, -9.0, vTerrainWorld.y);
+         float damp = smoothstep(2.0, -40.0, vTerrainWorld.y);
          blended.rgb *= mix(1.0, 0.78, damp * 0.7);
          diffuseColor *= blended;`,
       )
       .replace(
         '#include <normal_fragment_maps>',
         `vec3 grassN = dualScale(normalMap, vTerrainWorld.xz * uGrassScale).xyz * 2.0 - 1.0;
-         vec3 rockN = dualScale(uRockNormal, vTerrainWorld.xz * uRockScale).xyz * 2.0 - 1.0;
+         vec3 rockN = dualScale(uRockNormal, tRock).xyz * 2.0 - 1.0;
+         // The rock's bumps belong to the WALL's frame, not the ground's: read
+         // through the same projection its colour came from, then brought back
+         // into the geometry's tangent frame so the two can be mixed.
+         vec3 rockTangent = normalize(mix(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), wallX));
+         vec3 rockWorldN = normalize(rockTangent * rockN.x + vec3(0.0, 1.0, 0.0) * rockN.y + vTerrainNormal * rockN.z);
+         rockN = vec3(dot(rockWorldN, tbn[0]), dot(rockWorldN, tbn[1]), dot(rockWorldN, tbn[2]));
          vec3 mapN = normalize(mix(grassN, rockN, rockMix));
          mapN.xy *= normalScale;
          if (terrainDetailW > 0.001) {
@@ -423,8 +457,13 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
   // the plane then draws straight over the terrain, the roads and everything on
   // them — which is exactly how a full plane hid most of the road network behind
   // a grey sheet. A frame occupies only the ground the plate does not.
+  //
+  // Its INNER ring is stitched to the plate's own rim (see `rebuildFrame`): a
+  // constant-height frame was fine while the land could only move ten metres
+  // either way, and became a straight slice through mountains and pits the
+  // moment the brush could make them.
   const backdrop = new Mesh(
-    frameGeometry(TERRAIN_HALF, 13_000, TERRAIN_BASE - 3.5),
+    new BufferGeometry(),
     new MeshStandardMaterial({ color: new Color(0x53694a), roughness: 1, metalness: 0 }),
   );
   backdrop.name = 'terrain-backdrop';
@@ -484,6 +523,87 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
 
   const renderedHeightAt = (x: number, y: number): number => sampleGrid(grid, x, y);
   const naturalRenderedHeightAt = (x: number, y: number): number => sampleGrid(natural, x, y);
+
+  /**
+   * Stitches the land outside the plate to the plate's own rim.
+   *
+   * The inner ring IS the rim: one vertex per plate cell, at the height the
+   * triangles are drawn at (`grid`), so the seam is watertight whatever the
+   * player sculpts — a mountain cut off by the map's edge, a pit at the
+   * corner. From there the ground steps down to the distant level over two
+   * wide rings, so a hillside at the edge reads as land falling away.
+   *
+   * It used to be one flat sheet at a fixed height, which was honest while
+   * the brush could only move the ground ten metres; the moment it could
+   * build a mountain, the sheet sliced through it.
+   *
+   * Rebuilt whenever the rim moves — a terrain edit or a road shaping the
+   * ground near the edge — and it is 2 400 vertices, so that is a fraction of
+   * a frame, not a budget.
+   */
+  const FRAME_STEP_OUT = 700;
+  const FRAME_FAR = 13_000;
+  const DISTANT_LEVEL = TERRAIN_BASE - 3.5;
+  const rebuildFrame = (): void => {
+    const half = TERRAIN_HALF;
+    const perSide = TERRAIN_SEGMENTS;
+    const count = perSide * 4;
+    /** Ring vertices, one per cell per side, anticlockwise in local x/z. */
+    const ring = (h: number): { x: number; z: number }[] => {
+      const out: { x: number; z: number }[] = [];
+      for (let s = 0; s < 4; s++) {
+        for (let k = 0; k < perSide; k++) {
+          const t = -h + (2 * h * k) / perSide;
+          if (s === 0) out.push({ x: t, z: -h });
+          else if (s === 1) out.push({ x: h, z: t });
+          else if (s === 2) out.push({ x: -t, z: h });
+          else out.push({ x: -h, z: -t });
+        }
+      }
+      return out;
+    };
+    const inner = ring(half);
+    // The rim's own heights, and the level the land outside continues at.
+    let sum = 0;
+    const rimHeight = inner.map((p) => {
+      const value = sampleGrid(grid, p.x, -p.z);
+      sum += value;
+      return value;
+    });
+    const mean = sum / count;
+    const levels = [null, FRAME_STEP_OUT, FRAME_STEP_OUT * 2, FRAME_FAR];
+    const rings = [inner, ring(half + levels[1]!), ring(half + levels[2]!), ring(half + levels[3]!)];
+    const heightOf = (r: number, k: number): number => {
+      if (r === 0) return rimHeight[k] as number;
+      if (r === 1) return mean;
+      if (r === 2) return (mean + DISTANT_LEVEL) / 2;
+      return DISTANT_LEVEL;
+    };
+    const positions: number[] = [];
+    /** Wound so the face points UP, measured rather than assumed. */
+    const pushQuad = (a: readonly number[], b: readonly number[], c: readonly number[], d: readonly number[]): void => {
+      const area = (p: readonly number[], q: readonly number[], r: readonly number[]): number =>
+        (q[0]! - p[0]!) * (r[2]! - p[2]!) - (r[0]! - p[0]!) * (q[2]! - p[2]!);
+      const forward = area(a, b, c) < 0;
+      if (forward) positions.push(...a, ...b, ...c, ...a, ...c, ...d);
+      else positions.push(...a, ...d, ...c, ...a, ...c, ...b);
+    };
+    const at = (r: number, k: number): number[] => {
+      const point = rings[r]![k % count] as { x: number; z: number };
+      return [point.x, heightOf(r, k % count), point.z];
+    };
+    for (let r = 0; r + 1 < rings.length; r++) {
+      for (let k = 0; k < count; k++) pushQuad(at(r, k), at(r, k + 1), at(r + 1, k + 1), at(r + 1, k));
+    }
+    const next = new BufferGeometry();
+    next.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    next.computeVertexNormals();
+    next.computeBoundingSphere();
+    const previous = backdrop.geometry;
+    backdrop.geometry = next;
+    previous.dispose();
+  };
+  rebuildFrame();
 
   const position = geometry.getAttribute('position');
 
@@ -571,7 +691,15 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
     position.needsUpdate = true;
     refreshNormals(changed);
     geometry.computeBoundingSphere();
+    for (const i of changed) if (onRim(i)) { rebuildFrame(); break; }
     return true;
+  };
+
+  /** Whether a grid corner is on the plate's rim, which the backdrop is sewn to. */
+  const onRim = (i: number): boolean => {
+    const ix = i % GRID;
+    const iy = (i - ix) / GRID;
+    return ix === 0 || iy === 0 || ix === GRID - 1 || iy === GRID - 1;
   };
 
   const normal = geometry.getAttribute('normal');
@@ -731,6 +859,7 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
       }
 
       position.needsUpdate = true;
+      let rimMoved = !box;
       if (box) {
         // Only the corners the dab rewrote can have tilted, with their ring of
         // neighbours; the whole plate's normals were a third of a dab.
@@ -739,9 +868,13 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
           for (let ix = box[0]; ix <= box[1]; ix++) moved.push(iy * GRID + ix);
         }
         refreshNormals(moved);
+        rimMoved = moved.some(onRim);
       } else {
         geometry.computeVertexNormals();
       }
+      // The backdrop is sewn to the rim (see `rebuildFrame`): a dab that moved
+      // an edge corner re-sews it, and one in the middle of the plate does not.
+      if (rimMoved) rebuildFrame();
       geometry.computeBoundingSphere();
       lastStamps = doc.terrainStamps;
       rebuildWater(lastStamps);
@@ -756,29 +889,6 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
       waterSurface.dispose();
     },
   };
-}
-
-/**
- * A square annulus: flat ground from `inner` out to `outer`, with a hole in the
- * middle exactly the size of the terrain plate.
- */
-function frameGeometry(inner: number, outer: number, y: number): BufferGeometry {
-  const geometry = new BufferGeometry();
-  const positions: number[] = [];
-  const quad = (
-    ax: number, az: number, bx: number, bz: number,
-    cx: number, cz: number, dx: number, dz: number,
-  ): void => {
-    positions.push(ax, y, az, bx, y, bz, cx, y, cz, ax, y, az, cx, y, cz, dx, y, dz);
-  };
-  quad(-outer, -outer, outer, -outer, outer, -inner, -outer, -inner);
-  quad(-outer, inner, outer, inner, outer, outer, -outer, outer);
-  quad(-outer, -inner, -inner, -inner, -inner, inner, -outer, inner);
-  quad(inner, -inner, outer, -inner, outer, inner, inner, inner);
-  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
-  geometry.computeVertexNormals();
-  geometry.computeBoundingSphere();
-  return geometry;
 }
 
 export interface WaterStamp {

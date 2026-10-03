@@ -33,8 +33,28 @@ export interface TerrainStamp {
  * rather than on this number, so the cap can be generous.
  */
 export const MAX_TERRAIN_STAMPS = 4_096;
-export const TERRAIN_MIN_HEIGHT = -26;
-export const TERRAIN_MAX_HEIGHT = 34;
+/**
+ * The vertical extent of the land, in world units: how deep a pit and how high
+ * a mountain the brush may ever make.
+ *
+ * They were -26 and +34 — ten metres down, fourteen up — which is a garden
+ * terrace: a sustained stroke stopped moving the ground and the terrain simply
+ * planed off into a plateau at the ceiling. A map wanted mountains, valleys and
+ * cuttings, and none of them fit.
+ *
+ * The map is 4 800 units (1 920 m) across, so the range is set against it: a
+ * 560-unit mountain is 224 m over a plate two kilometres wide — a real
+ * landform — and a 360-unit pit is 144 m, deeper than anything a player is
+ * likely to dig on purpose. Deliberately NOT symmetric, because a town sits on
+ * the land at 0 and the interesting relief (ridges, hillsides, lookouts) is
+ * almost all above it.
+ *
+ * These are absolute bounds of the height FIELD, not a brush strength: a dab
+ * still moves the ground by its own `strength`, and only the accumulated
+ * result is clamped.
+ */
+export const TERRAIN_MIN_HEIGHT = -360;
+export const TERRAIN_MAX_HEIGHT = 560;
 export const TERRAIN_WATER_HEIGHT = 0.12;
 /** The extra factor a river stamp carves with, over a raise of the same strength. */
 export const RIVER_CARVE = 1.45;

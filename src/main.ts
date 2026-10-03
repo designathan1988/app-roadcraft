@@ -3064,8 +3064,11 @@ function drawOverlayScreen(): void {
     ctx.stroke();
 
     // Inner ring: the half-strength contour, scaled by the strength setting so
-    // a heavier brush visibly bites deeper.
-    const bite = 0.3 + 0.35 * (terrainStrength / 10);
+    // a heavier brush visibly bites deeper. Scaled against the slider's own
+    // range, not against a hard-coded 10: a ring drawn past the outer one is
+    // not a heavier bite, it is a second radius the brush does not have.
+    const strengthMax = Number(terrainStrengthInput.max) || 40;
+    const bite = 0.3 + 0.35 * (terrainStrength / strengthMax);
     ctx.setLineDash([]);
     ctx.globalAlpha = 0.65;
     ctx.lineWidth = 1;

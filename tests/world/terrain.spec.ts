@@ -79,10 +79,25 @@ describe('terrain stamps', () => {
   });
 
   it('clamps to the height range', () => {
-    const tall = Array.from({ length: 40 }, (_, i) => stamp({ id: i, strength: 10 }));
+    // Enough dabs at the brush's own ceiling to overshoot it, so the test
+    // measures the clamp and not the strength of the pile.
+    const tall = Array.from({ length: 60 }, (_, i) => stamp({ id: i, radius: 300, strength: 40 }));
     expect(sampleTerrainHeight(tall, 0, 0)).toBeLessThanOrEqual(TERRAIN_MAX_HEIGHT);
-    const deep = Array.from({ length: 40 }, (_, i) => stamp({ id: i, strength: 10, mode: 'lower' }));
+    expect(sampleTerrainHeight(tall, 0, 0)).toBeGreaterThan(TERRAIN_MAX_HEIGHT - 1);
+    const deep = Array.from({ length: 60 }, (_, i) => stamp({ id: i, radius: 300, strength: 40, mode: 'lower' }));
     expect(sampleTerrainHeight(deep, 0, 0)).toBeGreaterThanOrEqual(TERRAIN_MIN_HEIGHT);
+    expect(sampleTerrainHeight(deep, 0, 0)).toBeLessThan(TERRAIN_MIN_HEIGHT + 1);
+  });
+
+  it('allows mountains and pits a town can be planned around', () => {
+    // The whole point of the wide range: a real landform, not a garden
+    // terrace. A painter stacks passes over the same ground (a stroke adds one
+    // dab per 60 units of travel), so four passes is an ordinary minute with
+    // the brush; 250 units is a hundred metres of relief.
+    const hill = Array.from({ length: 36 }, (_, i) => stamp({ id: i, radius: 300, strength: 40, x: (i % 9) * 150 - 600 }));
+    expect(sampleTerrainHeight(hill, 0, 0) - baseRelief(0, 0)).toBeGreaterThan(250);
+    const pit = Array.from({ length: 36 }, (_, i) => stamp({ id: i, radius: 300, strength: 40, mode: 'lower' }));
+    expect(baseRelief(0, 0) - sampleTerrainHeight(pit, 0, 0)).toBeGreaterThan(250);
   });
 
   it('influence is monotone from rim to centre', () => {
