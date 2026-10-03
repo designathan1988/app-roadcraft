@@ -388,6 +388,8 @@ interface Instances {
   /** Per instance: centre x, y, z and radius, in the scene's frame. */
   readonly spheres: Float32Array;
   readonly count: number;
+  /** One sphere round every instance, so a mesh wholly out of view is skipped at once. */
+  readonly bounds: { x: number; y: number; z: number; r: number };
 }
 
 /** Zoom at and above which plants are drawn with their close-up models. */
@@ -468,12 +470,27 @@ function build(
     colours: tinted && mesh.instanceColor ? Float32Array.from(mesh.instanceColor.array as Float32Array) : null,
     spheres,
     count: placements.length,
+    bounds: boundsOf(spheres, placements.length),
   });
   return mesh;
 }
 
 const instances = new WeakMap<InstancedMesh, Instances>();
 const probe = new Sphere();
+
+/** One sphere round every instance's own sphere: the centre of them, and the reach to the farthest. */
+function boundsOf(spheres: Float32Array, count: number): { x: number; y: number; z: number; r: number } {
+  if (count === 0) return { x: 0, y: 0, z: 0, r: 0 };
+  let x = 0, y = 0, z = 0;
+  for (let i = 0; i < count; i++) { x += spheres[i * 4]!; y += spheres[i * 4 + 1]!; z += spheres[i * 4 + 2]!; }
+  x /= count; y /= count; z /= count;
+  let r = 0;
+  for (let i = 0; i < count; i++) {
+    const dx = spheres[i * 4]! - x, dy = spheres[i * 4 + 1]! - y, dz = spheres[i * 4 + 2]! - z;
+    r = Math.max(r, Math.hypot(dx, dy, dz) + spheres[i * 4 + 3]!);
+  }
+  return { x, y, z, r };
+}
 
 /** A near-white multiplier, so no two plants of one species are identical. */
 function foliageTint(rng: Rng): Color {
@@ -932,6 +949,27 @@ function cullInstances(meshes: readonly InstancedMesh[], excluded: Map<Instanced
     if (!all) continue;
     const matrices = mesh.instanceMatrix.array as Float32Array;
     const colours = all.colours && mesh.instanceColor ? mesh.instanceColor.array as Float32Array : null;
+    // The whole mesh, before its instances one by one: a mesh entirely out of
+    // view - most of them, most frames - used to have every instance tested
+    // and its buffers rewritten to hold nothing. The sphere is the one built
+    // over every instance (`build`), grown by the shadow reach the per-instance
+    // test allows, so a miss here cannot hide an instance that test would keep.
+    if (all.bounds) {
+      probe.center.set(all.bounds.x, all.bounds.y, all.bounds.z);
+      probe.radius = all.bounds.r + SHADOW_REACH;
+      if (!frustum.intersectsSphere(probe)) {
+        if (mesh.count !== 0) {
+          mesh.count = 0;
+          mesh.instanceMatrix.clearUpdateRanges();
+          mesh.instanceMatrix.needsUpdate = true;
+          if (colours && mesh.instanceColor) {
+            mesh.instanceColor.clearUpdateRanges();
+            mesh.instanceColor.needsUpdate = true;
+          }
+        }
+        continue;
+      }
+    }
     let n = 0;
     const hidden = excluded?.get(mesh);
     for (let i = 0; i < all.count; i++) {

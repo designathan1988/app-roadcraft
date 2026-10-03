@@ -126,6 +126,9 @@ export class Indoors {
   private readonly floors = new Map<string, number>();
   private readonly views = new Map<number, PedView>();
   private revision = -1;
+  /** The cutaway's buildings, nearest first, and the spec they were picked for. */
+  private nearKey = '';
+  private near: Building[] = [];
 
   /**
    * Where the room lights go on the floors cut open: one over each group of
@@ -171,11 +174,19 @@ lamps(world: SimWorld, spec: CutawaySpec | null, groundAt: GroundAt, pavedAt: Pa
     const out: IndoorFigure[] = [];
     // Nearest the middle of the view first: the crowd has a ceiling, and the
     // buildings in id order filled it with people nobody was looking at.
-    const near = [...world.doc.buildings.all()]
-      .map((b) => ({ b, d: Math.hypot(b.x - spec.x, b.y - spec.y) }))
-      .filter((e) => (spec.only !== undefined ? e.b.id === spec.only : e.d <= spec.radius))
-      .sort((a, c) => a.d - c.d);
-    for (const { b } of near) {
+    // Picked once per spec: walking every building, measuring and sorting it
+    // ran every frame the cutaway was open, on ground that had not moved.
+    const nearKey = `${world.doc.buildings.revision}:${spec.level}:${spec.only ?? ''}:${spec.radius}:${spec.x},${spec.y}`;
+    if (nearKey !== this.nearKey) {
+      this.nearKey = nearKey;
+      this.near = [...world.doc.buildings.all()]
+        .map((b) => ({ b, d: Math.hypot(b.x - spec.x, b.y - spec.y) }))
+        .filter((e) => (spec.only !== undefined ? e.b.id === spec.only : e.d <= spec.radius))
+        .sort((a, c) => a.d - c.d)
+        .map((e) => e.b);
+    }
+    const near = this.near;
+    for (const b of near) {
       if (out.length >= MAX_INDOOR) break;
       const inside = world.city.inside(b.id);
       if (inside.length === 0) continue;
