@@ -669,11 +669,18 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
       const Wm = (box.x1 - box.x0) / m(1);
       const Dm = (box.y1 - box.y0) / m(1);
       const short = Math.min(Wm, Dm);
-      const body = kind === 'works' ? parkingBody(Wm, Dm, 'gravel')
-        : kind === 'shops' && short >= 14 ? parkingBody(Wm, Dm, 'paving')
-          : short >= 22 ? courtyard(rng, Wm, Dm)
-            : garden(rng, Wm, Dm);
-      if (!putOpen(body, 'square', box)) refused.push(gap);
+      // In the works a gap big enough for a shed is a shed and its apron (a
+      // yard of nothing but parking bays read as a grey wasteland); behind
+      // shops, a car park or a court in turn, so the backs of the blocks are
+      // not one car park after another.
+      const shed = kind === 'works' && Wm >= 52 && Dm >= 46;
+      const park = kind === 'shops' && short >= 14 && (short < 22 || k % 2 === 0);
+      const body = shed ? yard(rng, Wm, Dm, 'warehouse')
+        : kind === 'works' ? garden(rng, Wm, Dm)
+          : park ? parkingBody(Wm, Dm, 'paving')
+            : short >= 22 ? courtyard(rng, Wm, Dm)
+              : garden(rng, Wm, Dm);
+      if (!putOpen(body, shed ? 'warehouse' : 'square', box)) refused.push(gap);
     }
   };
   /** The biggest room left in a block's middle, for a court or a garden. */

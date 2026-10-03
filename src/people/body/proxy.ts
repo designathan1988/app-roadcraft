@@ -178,11 +178,22 @@ export function loadProxyItem(name: string): Promise<ProxyItem> {
       let texture: ProxyTexture | null = null;
       if (meta.texture && typeof createImageBitmap === 'function' && typeof OffscreenCanvas === 'function') {
         try {
-          const bitmap = await createImageBitmap(await (await fetch(proxyUrl(meta.texture))).blob());
-          const scale = Math.min(1, SAMPLE_SIZE / Math.max(bitmap.width, bitmap.height));
-          const width = Math.max(1, Math.round(bitmap.width * scale)), height = Math.max(1, Math.round(bitmap.height * scale));
-          const ctx = new OffscreenCanvas(width, height).getContext('2d')!;
-          ctx.drawImage(bitmap, 0, 0, width, height);
+          // Read back on the CPU, never from the GPU. A plain 2D canvas is
+          // GPU-backed, and getImageData on it waits for the GPU to hand the
+          // pixels back: with the whole wardrobe loading as the crowd arrives,
+          // that readback was 4.8 s of every 8.8 s on the main thread - the
+          // game at 6 fps for its first minute. `willReadFrequently` makes the
+          // canvas a software one (MDN, getContext), and the downscale is done
+          // by createImageBitmap's own resize, off the main thread.
+          const full = await createImageBitmap(await (await fetch(proxyUrl(meta.texture))).blob());
+          const scale = Math.min(1, SAMPLE_SIZE / Math.max(full.width, full.height));
+          const width = Math.max(1, Math.round(full.width * scale)), height = Math.max(1, Math.round(full.height * scale));
+          const bitmap = scale < 1
+            ? await createImageBitmap(full, { resizeWidth: width, resizeHeight: height, resizeQuality: 'medium' })
+            : full;
+          if (bitmap !== full) full.close();
+          const ctx = new OffscreenCanvas(width, height).getContext('2d', { willReadFrequently: true })!;
+          ctx.drawImage(bitmap, 0, 0);
           texture = { width, height, data: ctx.getImageData(0, 0, width, height).data };
           bitmap.close();
         } catch { texture = null; }
