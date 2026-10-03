@@ -143,6 +143,31 @@ describe('the lanelet graph cache', () => {
     expect(reused).toEqual(fresh);
   });
 
+  it('cannot be made to fail on the type alone, and says why', () => {
+    // Why `type` cannot be caught by a case of its own: the pairs of types
+    // that would be needed do not exist. Without a section a type change
+    // always moves the numbers `roadProfile` returns - no two types of the
+    // table share width, lanes, paving, median and speed. With a section the
+    // numbers come from the section, and then `carriedPair` ranks by the
+    // section's priority, which is the same either way. This case pins that
+    // finding down: between two types of the same lane count, under a section,
+    // the graph genuinely does not move, so a test asserting otherwise would
+    // be asserting something untrue.
+    const { doc, a } = fanDoc(1);
+    const section = { laneWidth: 11, sidewalk: 5, median: 0, speedKmh: 50, priority: 2 };
+    doc.setSegmentSection(a, section);
+    const net = new Network(doc);
+    net.rebuild();
+    const sim = new SimWorld(doc, net, 0x51ce);
+    sim.rebuildTopology();
+    const before = graphShape(sim);
+
+    doc.setSegmentType(a, 0);
+    net.rebuild();
+    rebuild(sim);
+    expect(graphShape(sim)).toEqual(before);
+  });
+
   it('rebuilds a junction whose road changed type', () => {
     // No two types of the table share a profile, so a type change moves the
     // numbers too - and this holds the RESULT right either way. `type` is in

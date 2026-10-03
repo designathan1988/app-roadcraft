@@ -116,15 +116,19 @@ describe('the sidewalk corner cache', () => {
   });
 
   it('keys a corner so that a repeated edge cannot cancel another out', () => {
-    // Two identical edges cancelling is what an XOR of hashes does: the box
-    // would digest the same as one holding neither.
+    // The case an XOR cannot tell apart, isolated: two boxes each holding a
+    // ring drawn twice, of the same number of edges, neither ring round the
+    // centre. Every edge cancels its twin under an XOR, so both digests would
+    // be zero and equal; the counts match, the winding at the middle is zero
+    // for both, and only the sums carry the difference. A box holding {A,A}
+    // must never digest like a box holding {B,B}.
     const box = { minX: -10, minY: -10, maxX: 10, maxY: 10 };
-    const square = (r: number): { x: number; y: number }[] =>
-      [{ x: -r, y: -r }, { x: r, y: -r }, { x: r, y: r }, { x: -r, y: r }];
-    const once = RegionIndex.fromRings([square(5)], 'nonzero');
-    const twice = RegionIndex.fromRings([square(5), square(5)], 'nonzero');
+    const at = (cx: number, cy: number, r: number): { x: number; y: number }[] =>
+      [{ x: cx - r, y: cy - r }, { x: cx + r, y: cy - r }, { x: cx + r, y: cy + r }, { x: cx - r, y: cy + r }];
+    const left = RegionIndex.fromRings([at(-5, 5, 1), at(-5, 5, 1)], 'nonzero');
+    const right = RegionIndex.fromRings([at(5, 5, 1.5), at(5, 5, 1.5)], 'nonzero');
     const inBox = (index: RegionIndex): number => index.digest(box.minX, box.minY, box.maxX, box.maxY);
-    expect(inBox(twice)).not.toEqual(inBox(once));
+    expect(inBox(left)).not.toEqual(inBox(right));
   });
 
   it('rebuilds a corner when the junction node moves under its own kerbs', () => {
