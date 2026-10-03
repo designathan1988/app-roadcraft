@@ -668,7 +668,11 @@ export class SidewalkGraph {
     const reach = Math.max(hypot2(from.at.x - centre.x, from.at.y - centre.y),
       hypot2(to.at.x - centre.x, to.at.y - centre.y)) * 1.6 + 12 + m(4) + 8;
     const digest = walkable.digest(centre.x - reach, centre.y - reach, centre.x + reach, centre.y + reach);
-    const key = `${nodeId}|${from.id}|${to.id}|${from.at.x},${from.at.y}|${to.at.x},${to.at.y}|${digest}`;
+    // The centre is in the key as well as in the box it sets: the path is
+    // swept about it, so a node moved while its kerbs stay put (the two kerb
+    // points are in the key, the centre was not) has to miss.
+    const key = `${nodeId}|${from.id}|${to.id}|${centre.x},${centre.y}`
+      + `|${from.at.x},${from.at.y}|${to.at.x},${to.at.y}|${digest}`;
     let points = previous.get(key) ?? next.get(key);
     if (!points) points = cornerPath(walkable, from.at, to.at, centre);
     next.set(key, points);

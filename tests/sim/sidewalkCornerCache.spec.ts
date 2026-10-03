@@ -5,6 +5,7 @@ import { Network } from '@world/network';
 import type { NodeId } from '@world/ids';
 import { SimWorld } from '@sim/world';
 import { rebindPeds, rebindVehicles } from '@sim/pipeline';
+import { RegionIndex } from '@core/regionIndex';
 import { commitDraft } from '@editor/commit';
 
 /**
@@ -97,5 +98,53 @@ describe('the sidewalk corner cache', () => {
 
     expect(reused.length).toBeGreaterThan(20);
     expect(reused).toEqual(rebuilt);
+  });
+
+  it('keys a corner by the footway that goes ROUND it, not only through it', () => {
+    // A ring that encircles the box leaves every segment inside the box where
+    // it was, and changes what is under the box's middle: the ground a corner
+    // can walk on. The digest has to see it.
+    const box = { minX: -10, minY: -10, maxX: 10, maxY: 10 };
+    const square = (r: number): { x: number; y: number }[] =>
+      [{ x: -r, y: -r }, { x: r, y: -r }, { x: r, y: r }, { x: -r, y: r }];
+    const inner = square(5);
+    const around = square(400);
+    const alone = RegionIndex.fromRings([inner], 'nonzero');
+    const enclosed = RegionIndex.fromRings([inner, around], 'nonzero');
+    const inBox = (index: RegionIndex): number => index.digest(box.minX, box.minY, box.maxX, box.maxY);
+    expect(inBox(enclosed)).not.toEqual(inBox(alone));
+  });
+
+  it('keys a corner so that a repeated edge cannot cancel another out', () => {
+    // Two identical edges cancelling is what an XOR of hashes does: the box
+    // would digest the same as one holding neither.
+    const box = { minX: -10, minY: -10, maxX: 10, maxY: 10 };
+    const square = (r: number): { x: number; y: number }[] =>
+      [{ x: -r, y: -r }, { x: r, y: -r }, { x: r, y: r }, { x: -r, y: r }];
+    const once = RegionIndex.fromRings([square(5)], 'nonzero');
+    const twice = RegionIndex.fromRings([square(5), square(5)], 'nonzero');
+    const inBox = (index: RegionIndex): number => index.digest(box.minX, box.minY, box.maxX, box.maxY);
+    expect(inBox(twice)).not.toEqual(inBox(once));
+  });
+
+  it('rebuilds a corner when the junction node moves under its own kerbs', () => {
+    const doc = gridDoc();
+    const net = new Network(doc);
+    net.rebuild();
+    const sim = new SimWorld(doc, net, 0x51ce);
+    sim.rebuildTopology();
+    sim.rebuildWalkTopology(); rebindPeds(sim);
+
+    const node = [...doc.nodes.values()].find((n) => n.incident.length === 4)!;
+    const moved = { x: node.x + 3, y: node.y - 2 };
+    doc.moveNode(node.id, { x: moved.x, y: moved.y });
+    net.rebuild();
+    sim.rebuildVehicleTopology(); rebindVehicles(sim);
+    sim.rebuildWalkTopology(); rebindPeds(sim);
+    const reused = graphShape(sim);
+
+    clearCaches(sim);
+    sim.rebuildWalkTopology(); rebindPeds(sim);
+    expect(reused).toEqual(graphShape(sim));
   });
 });

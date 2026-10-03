@@ -241,7 +241,13 @@ export class RegionIndex {
     const i1 = Math.min(this.nx - 1, Math.floor((maxX - this.x0) / c));
     const j0 = Math.max(0, Math.floor((minY - this.y0) / c));
     const j1 = Math.min(this.ny - 1, Math.floor((maxY - this.y0) / c));
-    let x = 0;
+    // Two running sums and a count, not an XOR: XOR cancels two identical
+    // segments, so a box holding two of the same edge would digest the same as
+    // an empty one. A sum does not cancel its own terms, and the count says
+    // how many were added without depending on the order they came in.
+    let count = 0;
+    let sum = 0;
+    let cross = 0;
     this.stamp++;
     const s = this.segs;
     for (let j = j0; j <= j1; j++) {
@@ -251,11 +257,25 @@ export class RegionIndex {
           const k = this.list[q]!;
           if (this.stamps[k] === this.stamp) continue;
           this.stamps[k] = this.stamp;
-          x ^= segmentHash(s[k * 4]!, s[k * 4 + 1]!, s[k * 4 + 2]!, s[k * 4 + 3]!);
+          const h = segmentHash(s[k * 4]!, s[k * 4 + 1]!, s[k * 4 + 2]!, s[k * 4 + 3]!);
+          count++;
+          sum = (sum + h) >>> 0;
+          cross = (cross + Math.imul(h, 0x9e3779b1)) >>> 0;
         }
       }
     }
-    return new Digest().add(x).value();
+    // And how many times the box's own middle is wound round. The segments a
+    // box touches say nothing about a ring that goes AROUND it: a band added
+    // round a corner leaves every segment in the box where it was, and only
+    // moves what the box's middle is - which is exactly the change a corner
+    // path must not sleep through. The NUMBER of turns, not inside-or-out:
+    // a ring added round one already there leaves the middle inside twice.
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+    return new Digest()
+      .add(count).add(sum).add(cross)
+      .add(this.winding(midX, midY))
+      .value();
   }
 
   /** Distance from a point to the nearest boundary segment within `reach`, or Infinity. */
