@@ -1,3 +1,4 @@
+import { Digest } from '@core/digest';
 import { RegionIndex } from '@core/regionIndex';
 import type { Vec2 } from '@core/vec2';
 import type { Network } from './network';
@@ -37,6 +38,20 @@ export class WalkableSurface {
   /** On the carriageway. */
   carriageway(x: number, y: number): boolean {
     return this.road.contains(x, y);
+  }
+
+  /**
+   * A digest of the footway geometry the box touches, both regions together.
+   *
+   * `footwaySpan` answers from the footway region and the carriageway region
+   * within reach of the line it is given, so an answer keyed by this digest
+   * over a box that contains that line's whole reach is reusable exactly.
+   */
+  digest(minX: number, minY: number, maxX: number, maxY: number): number {
+    return new Digest()
+      .add(this.outer.digest(minX, minY, maxX, maxY))
+      .add(this.road.digest(minX, minY, maxX, maxY))
+      .value();
   }
 
   /**

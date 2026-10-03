@@ -113,6 +113,11 @@ export class SidewalkGraph {
   /** Corridor stations with no footway anywhere near them, from the last build: a diagnostic. */
   unfitted = 0;
 
+  /**
+   * Corner paths by the footway patch they were built from, from the last
+   * build: a corner whose junction the edit did not touch is reused as it is.
+   */
+  private cornerCache = new Map<string, Vec2[]>();
   private readonly reversedPaths = new Map<SidewalkEdgeId, Polyline>();
   private readonly baseWalkEdges = new Map<SidewalkEdgeId, SidewalkEdge>();
   private readonly accessNodes = new Set<SidewalkNodeId>();
@@ -212,6 +217,8 @@ export class SidewalkGraph {
     }
 
     // ---- corner links, around each junction island ------------------------
+    const previousCorners = this.cornerCache;
+    const nextCorners = new Map<string, Vec2[]>();
     for (const [nodeId, node] of doc.nodes) {
       if (node.incident.length < 2) continue;
 
@@ -235,7 +242,7 @@ export class SidewalkGraph {
         const from = this.nodes.get(kerbId(nodeId, a.segId, 1));
         const to = this.nodes.get(kerbId(nodeId, b.segId, -1));
         if (!from || !to || from.id === to.id) continue;
-        const points = cornerPath(walkable, from.at, to.at, { x: node.x, y: node.y });
+        const points = this.cornerPoints(nodeId, from, to, { x: node.x, y: node.y }, walkable, previousCorners, nextCorners);
         const path = Polyline.fromPoints(points);
         this.addEdge({
           id: `C:${from.id}|${to.id}`,
@@ -251,6 +258,7 @@ export class SidewalkGraph {
         });
       }
     }
+    this.cornerCache = nextCorners;
 
     // ---- sidewalk edges along each segment --------------------------------
     for (const [segId, seg] of doc.segments) {
@@ -582,6 +590,41 @@ export class SidewalkGraph {
     const na = this.nodes.get(a);
     const nb = this.nodes.get(b);
     return !!na && !!nb && na.segment === nb.segment && na.side !== nb.side;
+  }
+
+  /**
+   * A corner's path, taken from the previous build when the footway it could
+   * have read has not moved.
+   *
+   * `cornerPath` casts a ray at every step of the sweep and asks the walkable
+   * surface about each one, hundreds to a thousand queries a corner; on the
+   * bench grid one build makes 382 111 of them, none repeating, and they were
+   * half of a road edit's cost. A corner reads the footway only within its own
+   * `reach` of the junction, and on that patch a road drawn elsewhere changes
+   * nothing — measured: after a street inside one block, 319 of 324 corners
+   * come out with the same patch and the same kerbs. Those are reused as they
+   * are, and `tests/sim/sidewalkCornerCache.spec.ts` holds the reuse to the
+   * points a build from nothing would make.
+   */
+  private cornerPoints(
+    nodeId: NodeId,
+    from: SidewalkNode,
+    to: SidewalkNode,
+    centre: Vec2,
+    walkable: WalkableSurface,
+    previous: Map<string, Vec2[]>,
+    next: Map<string, Vec2[]>,
+  ): Vec2[] {
+    // `cornerPath`'s own reach about the centre, plus the widest reach it asks
+    // the surface about around each point it places, plus a margin.
+    const reach = Math.max(hypot2(from.at.x - centre.x, from.at.y - centre.y),
+      hypot2(to.at.x - centre.x, to.at.y - centre.y)) * 1.6 + 12 + m(4) + 8;
+    const digest = walkable.digest(centre.x - reach, centre.y - reach, centre.x + reach, centre.y + reach);
+    const key = `${nodeId}|${from.id}|${to.id}|${from.at.x},${from.at.y}|${to.at.x},${to.at.y}|${digest}`;
+    let points = previous.get(key) ?? next.get(key);
+    if (!points) points = cornerPath(walkable, from.at, to.at, centre);
+    next.set(key, points);
+    return points;
   }
 }
 

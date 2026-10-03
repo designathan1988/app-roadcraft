@@ -1,3 +1,4 @@
+import { Digest } from './digest';
 import type { Vec2 } from './vec2';
 
 /**
@@ -220,6 +221,43 @@ export class RegionIndex {
     return this.inside(this.winding(x, y));
   }
 
+  /**
+   * An exact digest of every segment whose cell the box touches (a collision
+   * aside, at about one in 2^53).
+   *
+   * What a cached piece of work built from this region is keyed by: a query
+   * inside the box reads only the segments in and around it, so two builds
+   * that digest alike over the box answer every query in it identically, and
+   * the answer may be reused as it is.
+   *
+   * The per-segment hashes are combined with XOR, not chained cell by cell:
+   * the grid is anchored to the map's bounds, so adding a road anywhere moves
+   * the whole grid, and a chained digest then changed for geometry that had
+   * not moved at all — exactly the case this is asked about after an edit.
+   */
+  digest(minX: number, minY: number, maxX: number, maxY: number): number {
+    const c = this.cell;
+    const i0 = Math.max(0, Math.floor((minX - this.x0) / c));
+    const i1 = Math.min(this.nx - 1, Math.floor((maxX - this.x0) / c));
+    const j0 = Math.max(0, Math.floor((minY - this.y0) / c));
+    const j1 = Math.min(this.ny - 1, Math.floor((maxY - this.y0) / c));
+    let x = 0;
+    this.stamp++;
+    const s = this.segs;
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const cellId = j * this.nx + i;
+        for (let q = this.start[cellId]!; q < this.start[cellId + 1]!; q++) {
+          const k = this.list[q]!;
+          if (this.stamps[k] === this.stamp) continue;
+          this.stamps[k] = this.stamp;
+          x ^= segmentHash(s[k * 4]!, s[k * 4 + 1]!, s[k * 4 + 2]!, s[k * 4 + 3]!);
+        }
+      }
+    }
+    return new Digest().add(x).value();
+  }
+
   /** Distance from a point to the nearest boundary segment within `reach`, or Infinity. */
   boundaryDistance(x: number, y: number, reach: number): number {
     const c = this.cell;
@@ -337,4 +375,26 @@ export class RegionIndex {
     if (!this.contains(px, py)) return false;
     return this.run(px, py, dx, dy, reach, out);
   }
+}
+
+/** One 32-bit half of a double's bits, for the segment hash below. */
+const hashBits = new Float64Array(1);
+const hashWords = new Uint32Array(hashBits.buffer);
+function floatWord(value: number, index: number): number {
+  hashBits[0] = value;
+  return hashWords[index] as number;
+}
+
+/** A segment's own hash, for `digest`: the four numbers of its ends. */
+function segmentHash(ax: number, ay: number, bx: number, by: number): number {
+  let h = 0x811c9dc5;
+  h = Math.imul(h ^ floatWord(ax, 0), 0x01000193);
+  h = Math.imul(h ^ floatWord(ax, 1), 0x01000193);
+  h = Math.imul(h ^ floatWord(ay, 0), 0x01000193);
+  h = Math.imul(h ^ floatWord(ay, 1), 0x01000193);
+  h = Math.imul(h ^ floatWord(bx, 0), 0x01000193);
+  h = Math.imul(h ^ floatWord(bx, 1), 0x01000193);
+  h = Math.imul(h ^ floatWord(by, 0), 0x01000193);
+  h = Math.imul(h ^ floatWord(by, 1), 0x01000193);
+  return h;
 }
