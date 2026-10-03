@@ -248,13 +248,30 @@ export class LaneletGraph {
         const s1 = Math.max(s0 + MIN_RIBBON, total - endTrim * k);
         const centreTrimmed = full.sub(s0, Math.min(s1, total));
 
-        // Everything a link lanelet is made of: the segment's own polyline, the
-        // two stop-line trims, the profile's numbers and the node's degree.
-        // Equal keys mean equal lanelets, so the ones the last build made are
-        // used again — the same objects, so the ids the simulation routes and
-        // claims on keep pointing at the same geometry.
-        const key = `${segId}|${forward ? 1 : 0}|${lpd}|${laneWidth(rt)}|${rt.median}|${rt.speedLimit}`
-          + `|${seg.direction === 'both' ? 1 : 0}|${doc.degree(to)}|${s0}|${s1}|${new Digest().addAll(full.xy).value()}`;
+        // EVERYTHING of the document this lanelet — and any junction it runs
+        // into — is made of. Read in full from `buildJunctions` and the calls
+        // under it, so a field left out here is a field a junction cannot see
+        // move:
+        //
+        //   the segment's own points (the lanelet's shape, `carriedPair`'s
+        //   bend, `computeApproachGroups`' legs), its `type` and
+        //   `section.priority` (`carriedPair` ranks by `priority ?? type`),
+        //   `lanes` and `direction` and the whole `section`
+        //   (`laneWidth`, `sidewalk`, `median`, `speedKmh`, `priority`, through
+        //   `roadProfile`: `laneIsPlausible`'s lane counts, the signal rule),
+        //   `structure`, the two stop-line trims and the degree of the node it
+        //   runs into.
+        //
+        // The junction key is built out of these lanelet keys, so this list is
+        // what makes that one complete: `TUNNELS_DRAWN` is true and every
+        // direction is allowed somewhere, so every segment of a node has at
+        // least one lanelet here to speak for it.
+        const section = seg.section;
+        const key = `${segId}|${forward ? 1 : 0}|${seg.type}|${seg.lanes ?? '-'}|${seg.direction}`
+          + `|${seg.structure ?? '-'}`
+          + `|${section ? `${section.laneWidth},${section.sidewalk},${section.median},${section.speedKmh},${section.priority}` : '-'}`
+          + `|${lpd}|${laneWidth(rt)}|${rt.median}|${rt.speedLimit}|${rt.sidewalk}`
+          + `|${doc.degree(to)}|${s0}|${s1}|${new Digest().addAll(full.xy).value()}`;
         let lanes = previous.get(key);
         if (!lanes) {
           const pts = centreTrimmed.toPoints();
@@ -302,11 +319,23 @@ export class LaneletGraph {
       const outbound = (this.outbound.get(nodeId) ?? []).slice().sort();
       if (!inbound.length || !outbound.length) continue;
 
-      // What a junction's connectors are made of: the surface the turns are
-      // shaped across, the node's own control and blocked movements, and the
-      // lanelets that meet there. `turnPath` needs the surface anyway, so
-      // asking for its own key costs nothing - and a junction an edit did not
-      // reach hands back the connectors it had, objects and all.
+      // What a junction's connectors are made of, read in full from this loop
+      // and the calls under it: the surface the turns are shaped across, the
+      // node's own `control`, `incident` and `blockedMovements`, and every
+      // lanelet that meets there — whose own keys carry each segment's type,
+      // section, direction and geometry (`buildLinks`). All of it is here, so
+      // moving any one of them moves the key:
+      //
+      //   `node.control` -> `shouldSignalise`
+      //   `node.incident` -> the leg list, `computeApproachGroups`
+      //   `node.blockedMovements` -> which movements are dropped
+      //   the lanelet keys -> `surface.centre`, the turn geometry, lane counts,
+      //   `carriedPair`'s ranking by `section.priority ?? type`
+      //   `surface.key` -> the junction's own rings and the incident ribbons'
+      //
+      // `turnPath` needs the surface anyway, so asking for its key costs
+      // nothing extra — and a junction an edit did not reach hands back the
+      // connectors it had, objects and all.
       const surfaceKey = surfaceOf()?.key ?? '';
       const key = `${nodeId}|${new Digest().addText(String(surfaceKey)).addText(node.control)
         .addText(node.incident.join(',')).addText(node.blockedMovements.join(','))
