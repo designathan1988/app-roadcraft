@@ -97,6 +97,15 @@ export interface JunctionTopology {
   readonly control?: JunctionControl;
 }
 
+/** What one junction built, kept between builds (`buildJunctions`). */
+interface JunctionCache {
+  readonly groups: readonly ApproachGroup[];
+  readonly signalised: boolean;
+  /** The connector lanelets and the connectors, in creation order. */
+  readonly lanelets: readonly Lanelet[];
+  readonly connectors: readonly Connector[];
+}
+
 export const laneletId = (
   segment: SegmentId,
   from: NodeId,
@@ -169,6 +178,8 @@ export class LaneletGraph {
   private linkCache = new Map<string, Lanelet[]>();
   /** The key each lanelet of this build was made under (`buildLinks`). */
   private readonly laneletKeys = new Map<LaneletId, string>();
+  /** What each junction built, by the surface and lanelets it was built from. */
+  private junctionCache = new Map<string, JunctionCache>();
 
   build(doc: RoadDoc, net: Network): void {
     this.lanelets.clear();
@@ -183,7 +194,10 @@ export class LaneletGraph {
     this.laneletKeys.clear();
     this.buildLinks(doc, net, previousLinks, nextLinks);
     this.linkCache = nextLinks;
-    this.buildJunctions(doc, net);
+    const previousJunctions = this.junctionCache;
+    const nextJunctions = new Map<string, JunctionCache>();
+    this.buildJunctions(doc, net, previousJunctions, nextJunctions);
+    this.junctionCache = nextJunctions;
     this.revision = net.revision;
   }
 
@@ -275,7 +289,8 @@ export class LaneletGraph {
     }
   }
 
-  private buildJunctions(doc: RoadDoc, net: Network): void {
+  private buildJunctions(doc: RoadDoc, net: Network,
+    previous: Map<string, JunctionCache>, next: Map<string, JunctionCache>): void {
     for (const [nodeId, node] of doc.nodes) {
       if (node.incident.length < 2) continue;
       // The surface a turn has to stay on, built once per node and only when
@@ -286,6 +301,35 @@ export class LaneletGraph {
       const inbound = (this.inbound.get(nodeId) ?? []).slice().sort();
       const outbound = (this.outbound.get(nodeId) ?? []).slice().sort();
       if (!inbound.length || !outbound.length) continue;
+
+      // What a junction's connectors are made of: the surface the turns are
+      // shaped across, the node's own control and blocked movements, and the
+      // lanelets that meet there. `turnPath` needs the surface anyway, so
+      // asking for its own key costs nothing - and a junction an edit did not
+      // reach hands back the connectors it had, objects and all.
+      const surfaceKey = surfaceOf()?.key ?? '';
+      const key = `${nodeId}|${new Digest().addText(String(surfaceKey)).addText(node.control)
+        .addText(node.incident.join(',')).addText(node.blockedMovements.join(','))
+        .addText(inbound.map((id) => this.laneletKeys.get(id) ?? id).join('|'))
+        .addText(outbound.map((id) => this.laneletKeys.get(id) ?? id).join('|')).value()}`;
+      const known = key ? previous.get(key) : undefined;
+      if (known) {
+        for (const lanelet of known.lanelets) this.lanelets.set(lanelet.id, lanelet);
+        for (const connector of known.connectors) {
+          this.connectors.set(connector.id, connector);
+          push(this.exits, connector.fromLane, connector.id);
+        }
+        this.junctions.set(nodeId, {
+          node: nodeId,
+          groups: known.groups,
+          connectors: known.connectors.map((connector) => connector.id),
+          inbound,
+          signalised: known.signalised,
+          control: node.control,
+        });
+        next.set(key, known);
+        continue;
+      }
 
       // Only a leg that brings traffic INTO the node is an approach. A one-way
       // road leaving the junction used to get a signal group of its own: a head
@@ -421,14 +465,21 @@ export class LaneletGraph {
         }
       }
 
+      // Signalise anything with three or more legs that carries real traffic.
+      const signalised = shouldSignalise(node.control, node.incident, doc);
       this.junctions.set(nodeId, {
         node: nodeId,
         groups,
         connectors: connectorIds,
         inbound,
-        // Signalise anything with three or more legs that carries real traffic.
-        signalised: shouldSignalise(node.control, node.incident, doc),
+        signalised,
         control: node.control,
+      });
+      next.set(key, {
+        groups,
+        signalised,
+        connectors: connectorIds.map((id) => this.connectors.get(id)!),
+        lanelets: connectorIds.map((id) => this.lanelets.get(id)!),
       });
     }
   }
