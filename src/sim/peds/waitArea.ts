@@ -1,4 +1,5 @@
 import { m } from '@world/units';
+import { hypot2 } from '@core/scalar';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { signalPosts } from '@world/signalPosts';
 import type { SimWorld } from '../world';
@@ -88,7 +89,7 @@ export function waitArea(w: SimWorld, crossing: SidewalkEdge, kerb: SidewalkNode
   if (known) return known;
   const here = w.sidewalks.nodes.get(kerb)!.at;
   const far = w.sidewalks.nodes.get(kerb === crossing.from ? crossing.to : crossing.from)!.at;
-  const len = Math.hypot(far.x - here.x, far.y - here.y) || 1;
+  const len = hypot2(far.x - here.x, far.y - here.y) || 1;
   const ux = (far.x - here.x) / len, uy = (far.y - here.y) / len;
   const vx = -uy, vy = ux;
   const face = Math.atan2(uy, ux);
@@ -119,7 +120,7 @@ export function waitArea(w: SimWorld, crossing: SidewalkEdge, kerb: SidewalkNode
       const x = here.x - ux * back + vx * offset;
       const y = here.y - uy * back + vy * offset;
       if (w.sidewalks.walkable && !w.sidewalks.walkable.footway(x, y)) continue;
-      if (scenery.some((s) => Math.hypot(s.x - x, s.y - y) < s.r + FURNITURE_CLEAR)) continue;
+      if (scenery.some((s) => hypot2(s.x - x, s.y - y) < s.r + FURNITURE_CLEAR)) continue;
       slots.push({ x, y, row, face, taken: 0 });
     }
   }
@@ -145,16 +146,16 @@ export function waitArea(w: SimWorld, crossing: SidewalkEdge, kerb: SidewalkNode
         const across = (x - here.x) * vx + (y - here.y) * vy;
         const back = -((x - here.x) * ux + (y - here.y) * uy);
         if (Math.abs(across) < AISLE && back < m(3)) continue;
-        if (slots.some((o) => Math.hypot(o.x - x, o.y - y) < SPACING * 0.9)) continue;
+        if (slots.some((o) => hypot2(o.x - x, o.y - y) < SPACING * 0.9)) continue;
         if (w.sidewalks.walkable && !w.sidewalks.walkable.footway(x, y)) continue;
-        if (scenery.some((q) => Math.hypot(q.x - x, q.y - y) < q.r + FURNITURE_CLEAR)) continue;
+        if (scenery.some((q) => hypot2(q.x - x, q.y - y) < q.r + FURNITURE_CLEAR)) continue;
         slots.push({ x, y, row: ROWS + k, face, taken: 0 });
       }
     }
   }
   slots.sort((a, b) => a.row - b.row ||
-    Math.hypot(a.x - here.x + ux * (FIRST_ROW + a.row * ROW_SPACING), a.y - here.y + uy * (FIRST_ROW + a.row * ROW_SPACING)) -
-    Math.hypot(b.x - here.x + ux * (FIRST_ROW + b.row * ROW_SPACING), b.y - here.y + uy * (FIRST_ROW + b.row * ROW_SPACING)));
+    hypot2(a.x - here.x + ux * (FIRST_ROW + a.row * ROW_SPACING), a.y - here.y + uy * (FIRST_ROW + a.row * ROW_SPACING)) -
+    hypot2(b.x - here.x + ux * (FIRST_ROW + b.row * ROW_SPACING), b.y - here.y + uy * (FIRST_ROW + b.row * ROW_SPACING)));
   const area = { crossing: crossing.id, kerb, slots };
   areas.byKey.set(key, area);
   return area;

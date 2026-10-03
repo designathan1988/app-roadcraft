@@ -4,6 +4,7 @@ import {
   type PathD, type PathsD,
 } from 'clipper2-ts';
 import type { MultiPoly } from '@core/clipper';
+import { hypot2 } from '@core/scalar';
 
 /**
  * WHERE PEOPLE CAN STAND, as one mesh of triangles.
@@ -148,7 +149,7 @@ export class NavMesh {
         const ax = this.tri[o + e * 2]!, ay = this.tri[o + e * 2 + 1]!;
         const bx = this.tri[o + ((e + 1) % 3) * 2]!, by = this.tri[o + ((e + 1) % 3) * 2 + 1]!;
         // Open where a portal covers it; what is left of the edge is wall.
-        const len = Math.hypot(bx - ax, by - ay);
+        const len = hypot2(bx - ax, by - ay);
         if (len < 1e-9) continue;
         const ux = (bx - ax) / len, uy = (by - ay) / len;
         const open: [number, number][] = [];
@@ -271,7 +272,7 @@ export class NavMesh {
     // point on a vertex or an edge belongs to every triangle round it, and
     // the one it was filed under may face the other way (measured: a body
     // standing on a mesh corner saw no way out of it).
-    const len = Math.hypot(x1 - x0, y1 - y0);
+    const len = hypot2(x1 - x0, y1 - y0);
     if (len < 1e-9) return { tri: from, share: 1 };
     const lead = Math.min(1e-3, len / 2) / len;
     const probe = this.step(from, x0 + (x1 - x0) * lead, y0 + (y1 - y0) * lead);
@@ -322,7 +323,7 @@ export class NavMesh {
           if (seen.has(i)) continue;
           seen.add(i);
           const q = closestOnSegment(this.walls[i * 4]!, this.walls[i * 4 + 1]!, this.walls[i * 4 + 2]!, this.walls[i * 4 + 3]!, x, y);
-          const d = Math.hypot(q.x - x, q.y - y);
+          const d = hypot2(q.x - x, q.y - y);
           if (d < reach) visit(q.x, q.y, d);
         }
       }
@@ -344,7 +345,7 @@ export class NavMesh {
         const z = this.region[p.to]!;
         if (!isZebra(z)) continue;
         const ex = p.rx - p.lx, ey = p.ry - p.ly;
-        const len = Math.hypot(ex, ey) || 1;
+        const len = hypot2(ex, ey) || 1;
         let nx = -ey / len, ny = ex / len;
         if ((c.x - p.lx) * nx + (c.y - p.ly) * ny < 0) { nx = -nx; ny = -ny; }
         const i = m.length / 6;
@@ -497,7 +498,7 @@ function segmentHit(x0: number, y0: number, x1: number, y1: number, ax: number, 
 
 function onSegment(ax: number, ay: number, bx: number, by: number, x: number, y: number, eps: number): boolean {
   const q = closestOnSegment(ax, ay, bx, by, x, y);
-  return Math.hypot(q.x - x, q.y - y) <= eps;
+  return hypot2(q.x - x, q.y - y) <= eps;
 }
 
 /** Distance from (x, y) to the segment a-b: `closestOnSegment`'s arithmetic, without the object. */
@@ -505,7 +506,7 @@ function segmentDistance(ax: number, ay: number, bx: number, by: number, x: numb
   const dx = bx - ax, dy = by - ay;
   const len = dx * dx + dy * dy;
   const t = len > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len)) : 0;
-  return Math.hypot(ax + dx * t - x, ay + dy * t - y);
+  return hypot2(ax + dx * t - x, ay + dy * t - y);
 }
 
 export function closestOnSegment(ax: number, ay: number, bx: number, by: number, x: number, y: number): { x: number; y: number; t: number } {
@@ -547,7 +548,7 @@ const ccw = (path: PathD): PathD => {
 /** The zebra's band, run on `extend` past each kerb end. */
 const rect = (c: NavCrossingInput, extend = 0): PathD => {
   const dx = c.bx - c.ax, dy = c.by - c.ay;
-  const len = Math.hypot(dx, dy) || 1;
+  const len = hypot2(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
   const nx = -uy * c.halfWidth, ny = ux * c.halfWidth;
   const ax = c.ax - ux * extend, ay = c.ay - uy * extend, bx = c.bx + ux * extend, by = c.by + uy * extend;
@@ -639,7 +640,7 @@ function triangulate(poly: PathD[], region: number, layer: number, id: number, o
     for (let i = 0; i < ring.length; i++) {
       const p = ring[i]!, q = ring[(i + 1) % ring.length]!;
       flat.push(p.x, p.y);
-      const pieces = Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / MAX_EDGE);
+      const pieces = Math.ceil(hypot2(q.x - p.x, q.y - p.y) / MAX_EDGE);
       for (let j = 1; j < pieces; j++) flat.push(p.x + ((q.x - p.x) * j) / pieces, p.y + ((q.y - p.y) * j) / pieces);
     }
   }
@@ -761,7 +762,7 @@ function link(tris: Tri[]): NavPortal[][] {
   const MIN_OVERLAP = 0.05;
   for (const [t, e] of boundary) {
     const [ax, ay, bx, by] = edge(t, e);
-    const len = Math.hypot(bx - ax, by - ay);
+    const len = hypot2(bx - ax, by - ay);
     if (len < MIN_OVERLAP) continue;
     const ux = (bx - ax) / len, uy = (by - ay) / len;
     const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), y0 = Math.min(ay, by), y1 = Math.max(ay, by);

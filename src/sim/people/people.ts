@@ -1,4 +1,5 @@
 import { m } from '@world/units';
+import { hypot2 } from '@core/scalar';
 import { FOOTWAY, KERB, NAV_RADIUS, OPEN, closestOnSegment, isZebra } from '@world/nav/navmesh';
 import { findPath, funnel, type NavPath } from '@world/nav/path';
 import type { NavMesh } from '@world/nav/navmesh';
@@ -192,7 +193,7 @@ function waitArea(mesh: WorldNav['mesh'], crossing: number, fromA: boolean, kerb
   const c = mesh.crossings[crossing]!;
   // Across the zebra from this kerb, and the right-hand side facing it: the
   // other half of the mouth is left to people coming off it.
-  const len = Math.hypot(c.bx - c.ax, c.by - c.ay) || 1;
+  const len = hypot2(c.bx - c.ax, c.by - c.ay) || 1;
   const ux = (fromA ? c.bx - c.ax : c.ax - c.bx) / len, uy = (fromA ? c.by - c.ay : c.ay - c.by) / len;
   const rx = uy, ry = -ux;
   const slots: WaitSlot[] = [];
@@ -201,7 +202,7 @@ function waitArea(mesh: WorldNav['mesh'], crossing: number, fromA: boolean, kerb
     for (let lat = NAV_RADIUS; lat <= c.halfWidth + WAIT_SPREAD; lat += WAIT_GAP) {
       const x = kerbX - ux * back + rx * lat, y = kerbY - uy * back + ry * lat;
       const spot = mesh.nearest(x, y, m(0.25));
-      if (!spot || isZebra(mesh.region[spot.t]!) || Math.hypot(spot.x - x, spot.y - y) > m(0.15)) continue;
+      if (!spot || isZebra(mesh.region[spot.t]!) || hypot2(spot.x - x, spot.y - y) > m(0.15)) continue;
       slots.push({ key, x: spot.x, y: spot.y, row, owner: -1 });
     }
   }
@@ -233,7 +234,7 @@ function waitSlot(s: State, mesh: WorldNav['mesh'], p: Person,
       if (holder && holder.slot === slot && holder.mode === 'wait') continue;
       slot.owner = -1;
     }
-    const score = Math.hypot(slot.x - p.x, slot.y - p.y) + slot.row * m(0.5);
+    const score = hypot2(slot.x - p.x, slot.y - p.y) + slot.row * m(0.5);
     if (score < bestScore) { bestScore = score; best = slot; }
   }
   if (best) { best.owner = p.id; p.slot = best; }
@@ -471,7 +472,7 @@ export function createPeopleEngine(): PedestrianEngine {
       board(w, id, door, reach) {
         const s = stateOf(w);
         const p = s.byId.get(id);
-        if (!p || p.mode !== 'walk' || p.party.size > 1 || Math.hypot(p.x - door.x, p.y - door.y) > reach) return null;
+        if (!p || p.mode !== 'walk' || p.party.size > 1 || hypot2(p.x - door.x, p.y - door.y) > reach) return null;
         remove(s, p);
         return { seed: p.id, gender: p.gender, ageClass: p.ageClass, footX: p.x, footY: p.y, footHeading: p.heading };
       },
@@ -484,7 +485,7 @@ export function createPeopleEngine(): PedestrianEngine {
         pickGoal(w, s, p);
       },
       anyoneWithin(w, x, y, radius, except) {
-        for (const p of stateOf(w).people) if (p.id !== except && Math.hypot(p.x - x, p.y - y) < radius) return true;
+        for (const p of stateOf(w).people) if (p.id !== except && hypot2(p.x - x, p.y - y) < radius) return true;
         return false;
       },
     },
@@ -566,7 +567,7 @@ function randomSpot(w: SimWorld, s: State): { x: number; y: number; t: number } 
 }
 
 function clearOfPeople(s: State, x: number, y: number, gap: number): boolean {
-  for (const p of s.people) if (Math.hypot(p.x - x, p.y - y) < gap) return false;
+  for (const p of s.people) if (hypot2(p.x - x, p.y - y) < gap) return false;
   return true;
 }
 
@@ -621,7 +622,7 @@ function pickGoal(w: SimWorld, s: State, p: Person): boolean {
   for (let attempt = 0; attempt < 6; attempt++) {
     const leave = sources.length > 0 && w.rng.people.float() < LEAVE_SHARE;
     const at = leave ? sources[Math.floor(w.rng.people.float() * sources.length)]! : randomSpot(w, s);
-    if (!at || Math.hypot(at.x - p.x, at.y - p.y) < (leave ? MIN_LEAVE : MIN_TRIP)) continue;
+    if (!at || hypot2(at.x - p.x, at.y - p.y) < (leave ? MIN_LEAVE : MIN_TRIP)) continue;
     p.goalX = at.x; p.goalY = at.y; p.goalTri = at.t;
     p.leaving = leave;
     if (plan(s, p)) return true;
@@ -669,13 +670,13 @@ function easeCorners(mesh: NavMesh, path: NavPath): void {
     let px = 0, py = 0;
     mesh.wallSegmentsNear(c.x, c.y, CORNER_ROOM, layer, (ax, ay, bx, by, nx, ny) => {
       const q = closestOnSegment(ax, ay, bx, by, c.x, c.y);
-      if (Math.hypot(c.x - q.x, c.y - q.y) > CORNER_ROOM) return;
+      if (hypot2(c.x - q.x, c.y - q.y) > CORNER_ROOM) return;
       const off = Math.max(0, (c.x - ax) * nx + (c.y - ay) * ny);
       if (off >= CORNER_ROOM) return;
       px += nx * (CORNER_ROOM - off);
       py += ny * (CORNER_ROOM - off);
     });
-    const push = Math.hypot(px, py);
+    const push = hypot2(px, py);
     if (push < 1e-6) continue;
     // Two walls meeting at the corner both push: never further than the room.
     if (push > CORNER_ROOM * 1.4) { px *= (CORNER_ROOM * 1.4) / push; py *= (CORNER_ROOM * 1.4) / push; }
@@ -753,7 +754,7 @@ function neighbours(g: Map<number, Person[]>, p: Person, reach: number, out: Per
   for (let dx = -r; dx <= r; dx++) {
     for (let dy = -r; dy <= r; dy++) {
       for (const q of g.get(cellKey(cx + dx, cy + dy)) ?? []) {
-        if (q !== p && Math.hypot(q.x - p.x, q.y - p.y) < reach) out.push(q);
+        if (q !== p && hypot2(q.x - p.x, q.y - p.y) < reach) out.push(q);
       }
     }
   }
@@ -788,7 +789,7 @@ function step(w: SimWorld, s: State): void {
   // Avoidance between people only where it can be seen (`SimWorld.focus`).
   const focus = w.focus;
   const watched = (p: Person): boolean =>
-    !focus || (focus.detail && Math.hypot(p.x - focus.x, p.y - focus.y) <= focus.r);
+    !focus || (focus.detail && hypot2(p.x - focus.x, p.y - focus.y) <= focus.r);
 
   // How many wait at each zebra: what a route about to cross it can expect.
   s.waiting.clear();
@@ -870,14 +871,14 @@ function step(w: SimWorld, s: State): void {
     // once the corner is rounded. A corner within a hair is reached. Passed
     // by any other rule - on nearness, on sight - a body was sent on past
     // corners the route had not rounded, and pressed into walls.
-    if (corners[1] && Math.hypot(target.x - p.x, target.y - p.y) < CORNER_ON) target = corners[1];
+    if (corners[1] && hypot2(target.x - p.x, target.y - p.y) < CORNER_ON) target = corners[1];
     const next = target === corners[0] ? corners[1] : corners[2];
-    const toGoal = Math.hypot(p.goalX - p.x, p.goalY - p.y);
+    const toGoal = hypot2(p.goalX - p.x, p.goalY - p.y);
     // The last leg: the corner walked to is the goal - within a hair, for a
     // goal on the mesh's edge (a bench's approach) is also a corner of it, and
     // the corner a fraction off it never compared equal: the walker never
     // slowed, never arrived, and stood pressed against the spot for good.
-    const lastLeg = Math.hypot(target.x - p.goalX, target.y - p.goalY) < m(0.02);
+    const lastLeg = hypot2(target.x - p.goalX, target.y - p.goalY) < m(0.02);
     if (!lead && ((lastLeg && toGoal < m(0.4)) || toGoal < ARRIVED)) {
       if (p.sit?.phase === 'approach') { p.sit.phase = 'step'; p.sit.gesture.t = 0; p.vx = 0; p.vy = 0; continue; }
       arrived.push(p);
@@ -903,7 +904,7 @@ function step(w: SimWorld, s: State): void {
       if (!stillOn) { p.mode = 'walk'; p.crossing = -1; p.granted = []; }
     }
     if (p.mode !== 'cross' && gate) {
-      const d = Math.hypot(gate.x - p.x, gate.y - p.y);
+      const d = hypot2(gate.x - p.x, gate.y - p.y);
       if (d < ASK_AT) {
         // Let off the kerb only if it may cross every zebra up to the next
         // pavement: two zebras touching (the corner of a junction, two
@@ -927,15 +928,15 @@ function step(w: SimWorld, s: State): void {
         const slot = waitSlot(s, mesh, p, gate);
         if (slot) { gate.wx = slot.x; gate.wy = slot.y; }
         target = { x: gate.wx, y: gate.wy, tri: target.tri };
-        limit = Math.sqrt(2 * DECEL * Math.max(0, Math.hypot(gate.wx - p.x, gate.wy - p.y) - m(0.05)));
+        limit = Math.sqrt(2 * DECEL * Math.max(0, hypot2(gate.wx - p.x, gate.wy - p.y) - m(0.05)));
       } else if (p.mode !== 'cross') limit = Math.sqrt(2 * DECEL * Math.max(0, d - KERB_STOP));
     }
 
     // --- the velocity it would like: towards the corner, at its pace
     let dx = target.x - p.x, dy = target.y - p.y;
     if (next && p.mode !== 'wait') {
-      const d0 = Math.hypot(dx, dy);
-      const ex = next.x - p.x, ey = next.y - p.y, d1 = Math.hypot(ex, ey) || 1;
+      const d0 = hypot2(dx, dy);
+      const ex = next.x - p.x, ey = next.y - p.y, d1 = hypot2(ex, ey) || 1;
       dx -= (ex / d1) * d0 * 0.5;
       dy -= (ey / d1) * d0 * 0.5;
     }
@@ -948,7 +949,7 @@ function step(w: SimWorld, s: State): void {
       const way = Math.atan2(dy, dx);
       const reverses = Math.abs(wrap(way - p.commitDir)) > Math.PI / 2;
       if (p.commitLeft > 0 && reverses) {
-        const l = Math.hypot(dx, dy);
+        const l = hypot2(dx, dy);
         dx = Math.cos(p.commitDir) * l; dy = Math.sin(p.commitDir) * l;
       } else {
         if (reverses && !Number.isNaN(p.commitDir)) p.commitLeft = COMMIT;
@@ -956,7 +957,7 @@ function step(w: SimWorld, s: State): void {
       }
       p.commitLeft = Math.max(0, p.commitLeft - DT);
     }
-    const dist = Math.hypot(dx, dy) || 1;
+    const dist = hypot2(dx, dy) || 1;
     const slow = lastLeg ? Math.sqrt(2 * DECEL * toGoal) : Infinity;
     // A follower keeps its leader's pace, a little quicker when behind its
     // place; a leader waits for anybody dropping back.
@@ -964,12 +965,12 @@ function step(w: SimWorld, s: State): void {
     if (lead) pace = Math.min(p.pace * 1.25, lead.v + toGoal * FOLLOW_GAIN);
     else if (p.party.size > 1) {
       let lag = 0;
-      for (const q of s.people) if (q.leader === p) lag = Math.max(lag, Math.hypot(q.x - p.x, q.y - p.y));
+      for (const q of s.people) if (q.leader === p) lag = Math.max(lag, hypot2(q.x - p.x, q.y - p.y));
       p.waitingForParty = lag > PARTY_WAIT ? p.waitingForParty + DT : 0;
       if (p.waitingForParty > PARTY_PATIENCE) {
         // Held up too long: whoever is behind goes the rest of the way alone.
         for (const q of s.people) {
-          if (q.leader !== p || Math.hypot(q.x - p.x, q.y - p.y) <= PARTY_WAIT) continue;
+          if (q.leader !== p || hypot2(q.x - p.x, q.y - p.y) <= PARTY_WAIT) continue;
           q.leader = null;
           q.goalX = p.goalX; q.goalY = p.goalY; q.goalTri = p.goalTri; q.leaving = p.leaving;
           if (!plan(s, q)) q.path = null;
@@ -984,8 +985,8 @@ function step(w: SimWorld, s: State): void {
     // overshot a corner on a sliver of kerb and hovered round it.
     let turnLimit = Infinity;
     if (next && p.mode !== 'wait') {
-      const ax = target.x - p.x, ay = target.y - p.y, al = Math.hypot(ax, ay);
-      const bx = next.x - target.x, by = next.y - target.y, bl = Math.hypot(bx, by);
+      const ax = target.x - p.x, ay = target.y - p.y, al = hypot2(ax, ay);
+      const bx = next.x - target.x, by = next.y - target.y, bl = hypot2(bx, by);
       if (al > 1e-9 && bl > 1e-9) {
         const cos = (ax * bx + ay * by) / (al * bl);
         const atCorner = TURN_PACE + (p.pace - TURN_PACE) * Math.max(0, cos);
@@ -999,7 +1000,7 @@ function step(w: SimWorld, s: State): void {
     // passing is not a reason to walk back - until pushed well off it.
     const settle = (): void => { p.atKerb = true; p.standX = p.x; p.standY = p.y; };
     if (p.mode !== 'wait') { p.atKerb = false; p.waitHeld = 0; releaseSlot(p); }
-    else if (gate && p.v < m(0.1) && Math.hypot(gate.wx - p.x, gate.wy - p.y) < m(0.3)) settle();
+    else if (gate && p.v < m(0.1) && hypot2(gate.wx - p.x, gate.wy - p.y) < m(0.3)) settle();
     // A queue: whoever comes up behind somebody already waiting for the same
     // zebra stops there and waits too. Everybody making for the one place to
     // wait pushed at each other for as long as the lamp stayed red.
@@ -1009,10 +1010,10 @@ function step(w: SimWorld, s: State): void {
     // the crowd counted as held up, and once "held" pushed into the others.
     else if (gate && !p.atKerb && p.waitHeld > WAIT_SETTLE) settle();
     // Pushed well off where it settled, it goes back to the kerb.
-    else if (gate && p.atKerb && Math.hypot(p.standX - p.x, p.standY - p.y) > KERB_DRIFT && !waiterAhead(g, p, gate.crossing, gate.wx, gate.wy)) p.atKerb = false;
+    else if (gate && p.atKerb && hypot2(p.standX - p.x, p.standY - p.y) > KERB_DRIFT && !waiterAhead(g, p, gate.crossing, gate.wx, gate.wy)) p.atKerb = false;
     const besideStoppedLead = !!lead && toGoal < m(0.3) && lead.v < m(0.1);
     // Standing in the queue behind somebody waiting at the kerb is waiting too.
-    if (p.mode !== 'wait' && gate && p.v < m(0.1) && Math.hypot(gate.x - p.x, gate.y - p.y) < QUEUE_REACH) {
+    if (p.mode !== 'wait' && gate && p.v < m(0.1) && hypot2(gate.x - p.x, gate.y - p.y) < QUEUE_REACH) {
       p.queued += DT; p.queuedFor = gate.crossing;
     } else { p.queued = 0; p.queuedFor = -1; }
     if (p.atKerb && gate) { face = gate.across; speed = 0; }
@@ -1034,10 +1035,10 @@ function step(w: SimWorld, s: State): void {
       const gain = Math.min(toGoal * FOLLOW_GAIN, p.pace);
       prefX = lead.vx + (dx / dist) * gain;
       prefY = lead.vy + (dy / dist) * gain;
-      const lv = Math.hypot(lead.vx, lead.vy);
+      const lv = hypot2(lead.vx, lead.vy);
       const along = (prefX * lead.vx + prefY * lead.vy) / lv;
       if (along < lv * 0.3) { prefX += (lead.vx / lv) * (lv * 0.3 - along); prefY += (lead.vy / lv) * (lv * 0.3 - along); }
-      const pm = Math.hypot(prefX, prefY), cap = p.pace * 1.25;
+      const pm = hypot2(prefX, prefY), cap = p.pace * 1.25;
       if (pm > cap) { prefX *= cap / pm; prefY *= cap / pm; }
     }
     // Standing on purpose (at a kerb, in a queue, by its party), it steps
@@ -1050,7 +1051,7 @@ function step(w: SimWorld, s: State): void {
       for (const q of neighbours(g, p, ROOM_REACH, near)) {
         const qi = q.intent;
         if (!qi || qi.prefX === undefined || qi.prefY === undefined) continue;
-        const qs = Math.hypot(qi.prefX, qi.prefY);
+        const qs = hypot2(qi.prefX, qi.prefY);
         if (qs < m(0.3)) continue;
         const ux = qi.prefX / qs, uy = qi.prefY / qs;
         const ox = p.x - q.x, oy = p.y - q.y;
@@ -1131,7 +1132,7 @@ function step(w: SimWorld, s: State): void {
     // Out of sight a body heeds its nearest few (Detour's `maxNeighbours`).
     if (p.ghost <= 0 && p.urgent <= 0) {
       const around = neighbours(g, p, ORCA_REACH, near)
-        .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
+        .sort((a, b) => hypot2(a.x - p.x, a.y - p.y) - hypot2(b.x - p.x, b.y - p.y));
       const heeded = watched(p) ? ORCA_NEIGHBOURS : ORCA_NEIGHBOURS_UNSEEN;
       for (let k = 0; k < around.length && k < heeded; k++) {
         const q = around[k]!;
@@ -1153,7 +1154,7 @@ function step(w: SimWorld, s: State): void {
   // ---- 3. the bodies move
   for (const d of decided) {
     const p = d.p;
-    const nv = Math.hypot(p.nvx, p.nvy);
+    const nv = hypot2(p.nvx, p.nvy);
     // The body faces where it walks; slower than a walk - a shuffle aside, a
     // step back for somebody - it keeps facing the way it did. Turning to
     // every small push is what swung standing people's heads to and fro.
@@ -1165,7 +1166,7 @@ function step(w: SimWorld, s: State): void {
     // waver.
     const k = Math.min(1, DT / FACE_SMOOTH);
     p.faceX += (p.nvx - p.faceX) * k; p.faceY += (p.nvy - p.faceY) * k;
-    if (face === null && p.facingWalk && Math.hypot(p.faceX, p.faceY) > 1e-6) face = Math.atan2(p.faceY, p.faceX);
+    if (face === null && p.facingWalk && hypot2(p.faceX, p.faceY) > 1e-6) face = Math.atan2(p.faceY, p.faceX);
     turn(p, face);
     // What a body can do: walk forward, shuffle aside, step back - slowly.
     const hx = Math.cos(p.heading), hy = Math.sin(p.heading);
@@ -1196,14 +1197,14 @@ function step(w: SimWorld, s: State): void {
     slide(mesh, p, p.vx * DT, p.vy * DT);
     // Its velocity is what it did: along a wall it slid by, nothing into it.
     p.vx = (p.x - fromX) / DT; p.vy = (p.y - fromY) / DT;
-    p.v = Math.hypot(p.vx, p.vy);
+    p.v = hypot2(p.vx, p.vy);
     if (p.v < m(0.02)) { p.vx = 0; p.vy = 0; p.v = 0; }
 
     // --- getting on: progress towards where it wants to go. Somebody kept
     // from it by people is given way to by everybody (`urgent`), and if that
     // is not enough, walks through (`ghost`) - on a zebra soon, for the cars
     // wait while anybody stands on one. Nobody stays stuck anywhere.
-    const want = Math.hypot(d.prefX, d.prefY);
+    const want = hypot2(d.prefX, d.prefY);
     // Waiting for a zebra, not getting closer to the kerb is waiting, not
     // being held up: it settles where it is (above) instead.
     if (p.mode === 'wait') {
@@ -1273,13 +1274,13 @@ function bodyOf(p: Person, out: OrcaBody): OrcaBody {
  */
 function waiterAhead(g: Map<number, Person[]>, p: Person, crossing: number, wx: number, wy: number): boolean {
   const dx = wx - p.x, dy = wy - p.y;
-  const dist = Math.hypot(dx, dy);
+  const dist = hypot2(dx, dy);
   if (dist < 1e-6) return false;
   for (const q of neighbours(g, p, QUEUE_GAP, [])) {
     if (q.mode !== 'wait' || q.crossing !== crossing || !q.atKerb) continue;
     const ox = q.x - p.x, oy = q.y - p.y;
     const ahead = (ox * dx + oy * dy) / dist;
-    if (ahead > 0 && ahead < dist + m(0.3) && Math.hypot(ox, oy) < QUEUE_GAP) return true;
+    if (ahead > 0 && ahead < dist + m(0.3) && hypot2(ox, oy) < QUEUE_GAP) return true;
   }
   return false;
 }
@@ -1385,7 +1386,7 @@ function pickSeat(w: SimWorld, s: State, p: Person, decided = false): boolean {
   let bestD = decided ? BENCH_PASS_REACH : BENCH_REACH;
   for (const seat of s.nav.seats) {
     if (s.taken.has(seat.key)) continue;
-    const d = Math.hypot(seat.x - p.x, seat.y - p.y);
+    const d = hypot2(seat.x - p.x, seat.y - p.y);
     if (d < bestD) { bestD = d; best = seat; }
   }
   if (!best) return false;
@@ -1404,7 +1405,7 @@ function pickSeat(w: SimWorld, s: State, p: Person, decided = false): boolean {
 /** Whether a free seat is within a glance. */
 function benchNearby(s: State, p: Person): boolean {
   for (const seat of s.nav?.seats ?? []) {
-    if (!s.taken.has(seat.key) && Math.hypot(seat.mx - p.x, seat.my - p.y) < BENCH_PASS_REACH) return true;
+    if (!s.taken.has(seat.key) && hypot2(seat.mx - p.x, seat.my - p.y) < BENCH_PASS_REACH) return true;
   }
   return false;
 }
@@ -1430,7 +1431,7 @@ function sitStep(w: SimWorld, s: State, p: Person): boolean {
       // The few steps between the footway and the seat: turned to first,
       // then walked, forward, at an unhurried pace.
       const tx = sit.phase === 'step' ? sit.x : sit.mx, ty = sit.phase === 'step' ? sit.y : sit.my;
-      const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
+      const dx = tx - p.x, dy = ty - p.y, d = hypot2(dx, dy);
       if (d < m(0.03)) {
         p.v = 0;
         if (sit.phase === 'step') { sit.phase = 'turn'; g.t = 0; break; }
@@ -1538,9 +1539,9 @@ function slide(mesh: WorldNav['mesh'], p: Person, dx: number, dy: number): void 
   // step slid along the edge. A body standing on the edge (a bench's
   // approach is on it) refused every step that leaned out by a hair, and
   // stood wedged there for good.
-  const len = Math.hypot(dx, dy);
+  const len = hypot2(dx, dy);
   const near = mesh.nearest(x, y, len * 1.5 + ON_MESH);
-  if (near && mesh.layer[near.t] === mesh.layer[p.tri] && Math.hypot(near.x - p.x, near.y - p.y) > 1e-7 && may(near.x, near.y)) return;
+  if (near && mesh.layer[near.t] === mesh.layer[p.tri] && hypot2(near.x - p.x, near.y - p.y) > 1e-7 && may(near.x, near.y)) return;
   for (const a of SLIDE_TURNS) {
     const c = Math.cos(a), s = Math.sin(a);
     if (may(p.x + (dx * c - dy * s) * c, p.y + (dx * s + dy * c) * c)) return;
@@ -1572,11 +1573,11 @@ function inside(mesh: WorldNav['mesh'], t: number, x: number, y: number): { x: n
     const ax = tri[o + e * 2]!, ay = tri[o + e * 2 + 1]!;
     const bx = tri[o + ((e + 1) % 3) * 2]!, by = tri[o + ((e + 1) % 3) * 2 + 1]!;
     const c = closestOnSegment(ax, ay, bx, by, q.x, q.y);
-    edge = Math.min(edge, Math.hypot(c.x - q.x, c.y - q.y));
+    edge = Math.min(edge, hypot2(c.x - q.x, c.y - q.y));
   }
   if (edge >= INSET) return q;
   const c = mesh.centroid(t);
-  const d = Math.hypot(c.x - q.x, c.y - q.y);
+  const d = hypot2(c.x - q.x, c.y - q.y);
   if (d < 1e-9) return q;
   const k = Math.min(0.5, (INSET - edge) * 2 / d);
   return { x: q.x + (c.x - q.x) * k, y: q.y + (c.y - q.y) * k };
@@ -1594,7 +1595,7 @@ function nextGate(mesh: WorldNav['mesh'], p: Person, path: NavPath):
       const portal = path.portals[i]!;
       const q = closestOnSegment(portal.lx, portal.ly, portal.rx, portal.ry, p.x, p.y);
       const c = mesh.crossings[mesh.region[b]!]!;
-      const toA = Math.hypot(q.x - c.ax, q.y - c.ay), toB = Math.hypot(q.x - c.bx, q.y - c.by);
+      const toA = hypot2(q.x - c.ax, q.y - c.ay), toB = hypot2(q.x - c.bx, q.y - c.by);
       const across = toA < toB ? Math.atan2(c.by - c.ay, c.bx - c.ax) : Math.atan2(c.ay - c.by, c.ax - c.bx);
       // Where to wait: at the kerb, on the right-hand side of the zebra's
       // mouth as one faces across it, so people coming off it the other way
@@ -1658,7 +1659,7 @@ function publishCrossings(w: SimWorld, s: State): void {
     const z = p.mode === 'cross' && isZebra(under) ? under : p.crossing;
     const c = nav.mesh.crossings[z]!;
     const id = nav.crossingIds[z]!;
-    const length = Math.hypot(c.bx - c.ax, c.by - c.ay);
+    const length = hypot2(c.bx - c.ax, c.by - c.ay);
     let state = w.crossingStates.get(id);
     if (!state) { state = emptyCrossingState(length); w.crossingStates.set(id, state); }
     const ux = (c.bx - c.ax) / length, uy = (c.by - c.ay) / length;
@@ -1702,7 +1703,7 @@ function publishViews(w: SimWorld, s: State): void {
     // talking read, to a player, as people frozen in place.
     const kerbParty = p.mode === 'wait' || p.leader?.mode === 'wait';
     const together = p.party.size > 1 && p.v < m(0.1) && kerbParty &&
-      (p.leader ? p.leader.v < m(0.1) && Math.hypot(p.leader.x - p.x, p.leader.y - p.y) < m(2) : true);
+      (p.leader ? p.leader.v < m(0.1) && hypot2(p.leader.x - p.x, p.leader.y - p.y) < m(2) : true);
     if (together) {
       p.stoodTogether += DT;
       if (p.stoodTogether > TALK_AFTER) {
@@ -1737,7 +1738,7 @@ function publishViews(w: SimWorld, s: State): void {
     if (!lead || p.party.size !== 2 || p.party.archetype !== 'couple' || p.ageClass === 'child' || lead.ageClass === 'child') continue;
     if (p.v < m(0.3) || lead.v < m(0.3) || p.pause || lead.pause) continue;
     const dx = lead.x - p.x, dy = lead.y - p.y;
-    const d = Math.hypot(dx, dy);
+    const d = hypot2(dx, dy);
     if (d > m(1.2)) continue;
     const ahead = { x: Math.cos(p.heading), y: Math.sin(p.heading) };
     // Abreast, not one behind the other.

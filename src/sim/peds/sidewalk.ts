@@ -11,7 +11,7 @@ import { m } from '@world/units';
 import { orientedPolyline } from '@world/geometry';
 import type { LaneletGraph, LaneletId } from '@world/lanelets';
 import { makeCrossingId, type CrossingId } from '../signals/plan';
-import { COARSE_EPS } from '@core/scalar';
+import { COARSE_EPS, hypot2 } from '@core/scalar';
 import { WalkableSurface } from '@world/walkable';
 import { Corridor, type CorridorFrame } from './corridor';
 import { PED_BEHAVIOUR } from './behaviour';
@@ -600,7 +600,7 @@ function accessLineClear(a: Vec2, b: Vec2, walkable: WalkableSurface,
     const t = i / steps;
     const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
     if (walkable.carriageway(x, y) || footprints.some((ring) => pointInPolygon({ x, y }, ring)) ||
-      near.some((item) => Math.hypot(x - item.x, y - item.y) < item.radius + margin)) return false;
+      near.some((item) => hypot2(x - item.x, y - item.y) < item.radius + margin)) return false;
   }
   return true;
 }
@@ -864,7 +864,7 @@ function cornerPath(walkable: WalkableSurface, a: Vec2, b: Vec2, centre: Vec2): 
     if (k === 0 || k === points.length - 1) return p;
     const before = points[Math.max(0, k - 2)]!, after = points[Math.min(points.length - 1, k + 2)]!;
     const tx = after.x - before.x, ty = after.y - before.y;
-    const l = Math.hypot(tx, ty);
+    const l = hypot2(tx, ty);
     if (l < 1e-9) return p;
     const nx = -ty / l, ny = tx / l;
     for (let step = 0; step <= 10; step++) {
@@ -911,13 +911,13 @@ function simplifyCorner(points: readonly Vec2[], walkable: WalkableSurface): Vec
     if (to - from <= 1) continue;
     const a = points[from]!, b = points[to]!;
     const dx = b.x - a.x, dy = b.y - a.y;
-    const length = Math.hypot(dx, dy);
+    const length = hypot2(dx, dy);
     let split = -1, deviation = 0;
     for (let i = from + 1; i < to; i++) {
       const p = points[i]!;
       const t = length > 1e-9 ? Math.max(0, Math.min(1,
         ((p.x - a.x) * dx + (p.y - a.y) * dy) / (length * length))) : 0;
-      const away = Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t);
+      const away = hypot2(p.x - a.x - dx * t, p.y - a.y - dy * t);
       if (away > deviation) { deviation = away; split = i; }
     }
     if (length > maxChord || deviation > tolerance || !chordOnFootway(a, b, walkable)) {
@@ -935,7 +935,7 @@ function simplifyCorner(points: readonly Vec2[], walkable: WalkableSurface): Vec
     const a = out[i - 1]!, b = out[i]!, c = out[i + 1]!;
     const ax = b.x - a.x, ay = b.y - a.y;
     const bx = c.x - b.x, by = c.y - b.y;
-    const first = Math.hypot(ax, ay), second = Math.hypot(bx, by);
+    const first = hypot2(ax, ay), second = hypot2(bx, by);
     if (first < 1e-9 || second < 1e-9 ||
       (ax * bx + ay * by) / (first * second) >= -0.5 ||
       !chordOnFootway(a, c, walkable)) continue;
@@ -977,7 +977,7 @@ function dedupeClose(points: readonly Vec2[]): Vec2[] {
     const a = out[i - 1]!, b = out[i]!, c = out[i + 1]!;
     const ax = b.x - a.x, ay = b.y - a.y;
     const bx = c.x - b.x, by = c.y - b.y;
-    const first = Math.hypot(ax, ay), second = Math.hypot(bx, by);
+    const first = hypot2(ax, ay), second = hypot2(bx, by);
     if (Math.min(first, second) > m(0.5) || ax * bx + ay * by >= -0.5 * first * second) continue;
     out.splice(i, 1);
     i = Math.max(0, i - 2);

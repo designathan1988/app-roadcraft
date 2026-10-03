@@ -1,5 +1,6 @@
 import { Crowd, init as initRecast, type CrowdAgent } from '@recast-navigation/core';
 import type { Vec2 } from '@core/vec2';
+import { hypot2 } from '@core/scalar';
 import { m } from '@world/units';
 import type { SegmentId } from '@world/ids';
 import { DT, PED, PED_CEILING, PED_DENSITY } from '../params';
@@ -315,7 +316,7 @@ export function createCrowdEngine(): PedestrianEngine {
       board(w, id, door, reach) {
         const s = stateOf(w);
         const p = s.byId.get(id);
-        if (!p || p.mode !== 'walk' || p.party.size > 1 || Math.hypot(p.x - door.x, p.y - door.y) > reach) return null;
+        if (!p || p.mode !== 'walk' || p.party.size > 1 || hypot2(p.x - door.x, p.y - door.y) > reach) return null;
         remove(s, p);
         return { seed: p.id, gender: p.gender, ageClass: p.ageClass, footX: p.x, footY: p.y, footHeading: p.heading };
       },
@@ -329,7 +330,7 @@ export function createCrowdEngine(): PedestrianEngine {
         if (p && !pickGoal(w, s, p)) remove(s, p);
       },
       anyoneWithin(w, x, y, radius, except) {
-        for (const p of stateOf(w).walkers) if (p.id !== except && Math.hypot(p.x - x, p.y - y) < radius) return true;
+        for (const p of stateOf(w).walkers) if (p.id !== except && hypot2(p.x - x, p.y - y) < radius) return true;
         return false;
       },
     },
@@ -491,7 +492,7 @@ function randomSpot(w: SimWorld, s: State): Vec2 | null {
 }
 
 function clearOfPeople(s: State, at: Vec2, gap: number): boolean {
-  for (const p of s.walkers) if (Math.hypot(p.x - at.x, p.y - at.y) < gap) return false;
+  for (const p of s.walkers) if (hypot2(p.x - at.x, p.y - at.y) < gap) return false;
   return true;
 }
 
@@ -501,21 +502,21 @@ function clearOfPeople(s: State, at: Vec2, gap: number): boolean {
  */
 function companionBirth(s: State, lead: Walker, preferred: Vec2): Vec2 | null {
   const projected = onMesh(s, preferred);
-  if (projected && !s.walkers.some(p => Math.abs(p.h - projected.h) < AGENT_HEIGHT && Math.hypot(p.x - projected.x, p.y - projected.y) < 2 * AGENT_RADIUS)) return preferred;
+  if (projected && !s.walkers.some(p => Math.abs(p.h - projected.h) < AGENT_HEIGHT && hypot2(p.x - projected.x, p.y - projected.y) < 2 * AGENT_RADIUS)) return preferred;
   const query = s.nav!.query, filter = s.crowd!.getFilter(1);
   const start = query.findClosestPoint({ x: lead.x, y: lead.h, z: lead.y }, { filter });
   if (!start.success || !start.polyRef) return null;
   const diameter = 2 * AGENT_RADIUS;
   const reach = BEHIND + 4 * diameter;
-  const nearby = s.walkers.filter(p => Math.abs(p.h - lead.h) < AGENT_HEIGHT && Math.hypot(p.x - lead.x, p.y - lead.y) < reach + diameter);
+  const nearby = s.walkers.filter(p => Math.abs(p.h - lead.h) < AGENT_HEIGHT && hypot2(p.x - lead.x, p.y - lead.y) < reach + diameter);
   const candidate = (at: Vec2): Vec2 | null => {
     const on = query.findClosestPoint({ x: at.x, y: lead.h, z: at.y }, {
       filter, halfExtents: { x: AGENT_RADIUS, y: AGENT_HEIGHT, z: AGENT_RADIUS },
     });
     if (!on.success || !on.polyRef || Math.abs(on.point.y - lead.h) >= AGENT_HEIGHT) return null;
     const p = { x: on.point.x, y: on.point.z };
-    if (Math.hypot(p.x - lead.x, p.y - lead.y) > reach) return null;
-    if (nearby.some(q => Math.hypot(q.x - p.x, q.y - p.y) < BEHIND)) return null;
+    if (hypot2(p.x - lead.x, p.y - lead.y) > reach) return null;
+    if (nearby.some(q => hypot2(q.x - p.x, q.y - p.y) < BEHIND)) return null;
     const hit = query.raycast(start.polyRef, start.point, on.point, { filter });
     return hit.success && hit.t >= 1 ? p : null;
   };
@@ -577,12 +578,12 @@ function pickGoal(w: SimWorld, s: State, p: Walker): boolean {
   for (let attempt = 0; attempt < 6; attempt++) {
     const leave = nav.sources.length > 0 && rng.float() < LEAVE_SHARE;
     const spot = leave ? nav.sources[Math.floor(rng.float() * nav.sources.length)]! : randomSpot(w, s);
-    if (!spot || Math.hypot(spot.x - p.x, spot.y - p.y) < MIN_TRIP) continue;
+    if (!spot || hypot2(spot.x - p.x, spot.y - p.y) < MIN_TRIP) continue;
     const goal = onMesh(s, spot);
     if (!goal) continue;
     const route = nav.query.computePath({ x: p.x, y: p.h, z: p.y }, { x: goal.x, y: goal.h, z: goal.y });
     const last = route.path[route.path.length - 1];
-    if (!route.success || !last || Math.hypot(last.x - goal.x, last.z - goal.y) > ARRIVED) continue;
+    if (!route.success || !last || hypot2(last.x - goal.x, last.z - goal.y) > ARRIVED) continue;
     p.goal = goal;
     p.leaving = leave;
     p.zebra = null; p.waitAt = null; p.mode = 'walk';
@@ -630,7 +631,7 @@ function askPlace(s: State, p: Walker, place: Vec2 & { readonly h?: number }): v
   // submitting an unchanged path and resetting the rest timer every tick.
   const at = onMesh(s, { ...place, h: place.h ?? p.h });
   if (!at) return;
-  const near = (q: Vec2 | null): boolean => q !== null && Math.hypot(q.x - at.x, q.y - at.y) < RETARGET;
+  const near = (q: Vec2 | null): boolean => q !== null && hypot2(q.x - at.x, q.y - at.y) < RETARGET;
   if (near(p.holding) || near(p.asked)) return;
   ask(s, p, at);
 }
@@ -662,7 +663,7 @@ function decide(w: SimWorld, s: State, p: Walker): void {
     if (s.clock < p.aside.until) { askPlace(s, p, p.aside.at); return; }
     const at = p.aside.at;
     p.aside = null;
-    if (p.mode !== 'wait' && p.scripted && !p.leader && Math.hypot(at.x - p.goal.x, at.y - p.goal.y) < ARRIVED) {
+    if (p.mode !== 'wait' && p.scripted && !p.leader && hypot2(at.x - p.goal.x, at.y - p.goal.y) < ARRIVED) {
       p.settle = { for: { x: p.goal.x, y: p.goal.y }, at: { x: at.x, y: at.y } };
       return;
     }
@@ -677,10 +678,10 @@ function decide(w: SimWorld, s: State, p: Walker): void {
   const path = route.success ? route.path : [];
   // Keep the trip's frame within its arrival radius, so the final approach
   // to a stopping place does not turn the whole party around that place.
-  if (Math.hypot(p.goal.x - p.x, p.goal.y - p.y) > ARRIVED) {
+  if (hypot2(p.goal.x - p.x, p.goal.y - p.y) > ARRIVED) {
     for (let i = 1; i < path.length; i++) {
       const dx = path[i]!.x - path[0]!.x, dy = path[i]!.z - path[0]!.z;
-      const length = Math.hypot(dx, dy);
+      const length = hypot2(dx, dy);
       if (length < 1e-6) continue;
       p.routeDirection = { x: dx / length, y: dy / length };
       break;
@@ -688,7 +689,7 @@ function decide(w: SimWorld, s: State, p: Walker): void {
   }
   // A zebra ahead not yet let onto: let on, or wait at the kerb.
   const zebra = zebraAhead(s, p, path);
-  if (zebra && Math.hypot(zebra.entry.x - p.x, zebra.entry.y - p.y) < ASK_AT) {
+  if (zebra && hypot2(zebra.entry.x - p.x, zebra.entry.y - p.y) < ASK_AT) {
     if (mayEnterCrossing(w, zebra.zebra.edge, p.waited)) {
       // Let on: the zebra is this walker's until it has left it.
       p.granted.set(zebra.zebra.id, false);
@@ -716,7 +717,7 @@ function decide(w: SimWorld, s: State, p: Walker): void {
   p.mode = p.onZebra ? 'cross' : 'walk';
   // A scenario's walker at its destination (or come to rest just past it) stays.
   const stand = standFor(p, p.goal);
-  if (p.scripted && (p.holding || stand !== p.goal) && Math.hypot(stand.x - p.x, stand.y - p.y) < STAND_AT) return;
+  if (p.scripted && (p.holding || stand !== p.goal) && hypot2(stand.x - p.x, stand.y - p.y) < STAND_AT) return;
   const lane = path.length ? laneTarget(s, p, path) : p.goal;
   // The point steered for is renewed once half of the way to it is walked,
   // or when the corridor no longer leads past it; once the end of the way is
@@ -724,8 +725,8 @@ function decide(w: SimWorld, s: State, p: Walker): void {
   // as the target to the end was reached short of the destination, and
   // Detour circled it at a few cm/s for good.)
   const stale = !p.asked || (lane === p.goal
-    ? Math.hypot(p.asked.x - p.goal.x, p.asked.y - p.goal.y) > RETARGET
-    : Math.hypot(p.asked.x - p.x, p.asked.y - p.y) < AHEAD / 2 || Math.hypot(p.asked.x - lane.x, p.asked.y - lane.y) > AHEAD);
+    ? hypot2(p.asked.x - p.goal.x, p.asked.y - p.goal.y) > RETARGET
+    : hypot2(p.asked.x - p.x, p.asked.y - p.y) < AHEAD / 2 || hypot2(p.asked.x - lane.x, p.asked.y - lane.y) > AHEAD);
   if (stale) ask(s, p, lane);
 }
 
@@ -759,23 +760,23 @@ function follow(s: State, p: Walker, lead: Walker): void {
   // leader came up behind it at pace and carried it on past its place
   // (traced: 2.7 m), and their place moved with it.
   const stop = placeOf(lead);
-  const at = stop && Math.hypot(stop.x - lead.x, stop.y - lead.y) < m(4) ? stop : lead;
+  const at = stop && hypot2(stop.x - lead.x, stop.y - lead.y) < m(4) ? stop : lead;
   const ground = (q: Vec2): Vec2 | null => {
     const on = onMesh(s, { ...q, h: lead.h }, m(1));
-    return on && Math.hypot(on.x - q.x, on.y - q.y) < m(0.25)
-      && Math.hypot(on.x - at.x, on.y - at.y) >= 2 * AGENT_RADIUS ? on : null;
+    return on && hypot2(on.x - q.x, on.y - q.y) < m(0.25)
+      && hypot2(on.x - at.x, on.y - at.y) >= 2 * AGENT_RADIUS ? on : null;
   };
   // A projected slot must still fit beside the leader. If neither slot
   // fits, pause here until one opens instead of targeting the leader's body.
   const place = (lined ? null : ground(beside(false))) ?? ground(beside(true)) ?? { x: p.x, y: p.y, h: p.h };
   // The leader standing: so does the companion, at its place by the leader.
   if (lead.holding) {
-    if (!p.waitAt || Math.hypot(p.waitAt.x - place.x, p.waitAt.y - place.y) > RETARGET) waitThere(s, p, place);
+    if (!p.waitAt || hypot2(p.waitAt.x - place.x, p.waitAt.y - place.y) > RETARGET) waitThere(s, p, place);
     return;
   }
   if (p.mode === 'wait' && p.zebra) p.granted.set(p.zebra.id, false);
   stopWaiting(s, p);
-  if (!p.asked || Math.hypot(p.asked.x - place.x, p.asked.y - place.y) > RETARGET) ask(s, p, place);
+  if (!p.asked || hypot2(p.asked.x - place.x, p.asked.y - place.y) > RETARGET) ask(s, p, place);
 }
 
 /**
@@ -789,7 +790,7 @@ function laneTarget(s: State, p: Walker, path: readonly { x: number; y: number; 
   let left = AHEAD;
   for (let i = 0; i + 1 < path.length; i++) {
     const a = path[i]!, b = path[i + 1]!;
-    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const len = hypot2(b.x - a.x, b.z - a.z);
     if (len < left) { left -= len; continue; }
     const ux = (b.x - a.x) / len, uy = (b.z - a.z) / len;
     const at = { x: a.x + ux * left, y: a.z + uy * left, h: a.y + (b.y - a.y) * left / len };
@@ -807,7 +808,7 @@ function* along(path: readonly { x: number; z: number }[], reach: number, step =
   let walked = 0;
   for (let i = 0; i + 1 < path.length && walked < reach; i++) {
     const a = path[i]!, b = path[i + 1]!;
-    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const len = hypot2(b.x - a.x, b.z - a.z);
     if (len < 1e-6) continue;
     const ux = (b.x - a.x) / len, uy = (b.z - a.z) / len;
     for (let t = 0; t < len && walked + t < reach; t += step) yield { x: a.x + ux * t, y: a.z + uy * t, d: walked + t, ux, uy };
@@ -819,7 +820,7 @@ function* along(path: readonly { x: number; z: number }[], reach: number, step =
 
 /** Whether a point lies on a zebra's band, and how far along it from `a`. */
 function onBand(z: Zebra, x: number, y: number, margin = 0): number | null {
-  const lx = z.b.x - z.a.x, ly = z.b.y - z.a.y, len = Math.hypot(lx, ly) || 1;
+  const lx = z.b.x - z.a.x, ly = z.b.y - z.a.y, len = hypot2(lx, ly) || 1;
   const ux = lx / len, uy = ly / len;
   const along = (x - z.a.x) * ux + (y - z.a.y) * uy;
   const across = -(x - z.a.x) * uy + (y - z.a.y) * ux;
@@ -829,7 +830,7 @@ function onBand(z: Zebra, x: number, y: number, margin = 0): number | null {
 /** Whether a point lies on the part of a zebra's band that is road (from kerb to kerb), or within `margin` of it. */
 function onRoad(z: Zebra, x: number, y: number, margin = 0): boolean {
   const at = onBand(z, x, y, margin);
-  const len = Math.hypot(z.b.x - z.a.x, z.b.y - z.a.y);
+  const len = hypot2(z.b.x - z.a.x, z.b.y - z.a.y);
   return at !== null && at >= z.kerb - margin && at <= len - z.kerb + margin;
 }
 
@@ -846,7 +847,7 @@ function zebraAhead(s: State, p: Walker, path: readonly { x: number; z: number }
 
 /** A place to wait for a zebra: along the kerb's edge on this side, then in rows behind. */
 function waitSlot(s: State, p: Walker, z: Zebra, entry: Vec2): Vec2 {
-  const lx = z.b.x - z.a.x, ly = z.b.y - z.a.y, len = Math.hypot(lx, ly) || 1;
+  const lx = z.b.x - z.a.x, ly = z.b.y - z.a.y, len = hypot2(lx, ly) || 1;
   // A companion inherits a lateral waiting place, which may lie outside
   // the painted band. Its longitudinal side must not change with its offset.
   const at0 = ((entry.x - z.a.x) * lx + (entry.y - z.a.y) * ly) / len;
@@ -908,7 +909,7 @@ function waitSlot(s: State, p: Walker, z: Zebra, entry: Vec2): Vec2 {
     // The mesh is already eroded by the body radius. Outside cells are
     // unavailable capacity, never extra rows projected onto the same edge.
     if (!hit.success || !hit.nearestRef || !hit.isOverPoly ||
-      Math.hypot(hit.nearestPoint.x - candidate.x, hit.nearestPoint.z - candidate.y) > 1e-4) return null;
+      hypot2(hit.nearestPoint.x - candidate.x, hit.nearestPoint.z - candidate.y) > 1e-4) return null;
     const at = { x: hit.nearestPoint.x, y: hit.nearestPoint.z, h: hit.nearestPoint.y };
     for (const [id, place] of s.waitingPlaces) {
       if (id !== p.id && waitingFootprintsOverlap(at, place.at)) return null;
@@ -985,7 +986,7 @@ export function waitingApproachIsLocal(path: readonly Vec2[], kerb: readonly Vec
 export function waitingApproachHasPermission(path: readonly WaitingFootprint[], crossings: readonly WaitingCrossing[], granted: Pick<ReadonlySet<string>, 'has'>): boolean {
   for (const z of crossings) {
     if (granted.has(z.id)) continue;
-    const length = Math.hypot(z.b.x - z.a.x, z.b.y - z.a.y) || 1;
+    const length = hypot2(z.b.x - z.a.x, z.b.y - z.a.y) || 1;
     const ux = (z.b.x - z.a.x) / length, uy = (z.b.y - z.a.y) / length;
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1]!, b = path[i]!;
@@ -1031,7 +1032,7 @@ export function waitingApproachHasPermission(path: readonly WaitingFootprint[], 
 
 /** The two body centres whose standing footprints may not share queue space. */
 export function waitingFootprintsOverlap(a: WaitingFootprint, b: WaitingFootprint): boolean {
-  return Math.abs(a.h - b.h) < AGENT_HEIGHT && Math.hypot(a.x - b.x, a.y - b.y) < 2 * AGENT_RADIUS;
+  return Math.abs(a.h - b.h) < AGENT_HEIGHT && hypot2(a.x - b.x, a.y - b.y) < 2 * AGENT_RADIUS;
 }
 
 /** The segment interval over which two standing body heights overlap. */
@@ -1080,7 +1081,7 @@ function freeSlot(s: State, p: Walker): void {
 
 /** Whether a point is in a narrow passage: within its reach of the axis, between its ends (and a body's width past them). */
 function inNarrow(n: Narrow, x: number, y: number): boolean {
-  const len = Math.hypot(n.b.x - n.a.x, n.b.y - n.a.y);
+  const len = hypot2(n.b.x - n.a.x, n.b.y - n.a.y);
   const along = (x - n.a.x) * n.dir.x + (y - n.a.y) * n.dir.y;
   const across = -(x - n.a.x) * n.dir.y + (y - n.a.y) * n.dir.x;
   return along >= -2 * AGENT_RADIUS && along <= len + 2 * AGENT_RADIUS && Math.abs(across) <= n.reach;
@@ -1089,7 +1090,7 @@ function inNarrow(n: Narrow, x: number, y: number): boolean {
 /** The first narrow passage the way ahead goes through, the way through it, and how far along the way it begins. */
 function narrowAhead(s: State, p: Walker, path: readonly { x: number; z: number }[]): { n: Narrow; d: Way; distance: number } | null {
   const near = s.nav!.spatial.narrowCentres.around(p.x, p.y, NARROW_ASK * 2 + m(4))
-    .filter((n) => Math.hypot((n.a.x + n.b.x) / 2 - p.x, (n.a.y + n.b.y) / 2 - p.y) < NARROW_ASK * 2 + m(4));
+    .filter((n) => hypot2((n.a.x + n.b.x) / 2 - p.x, (n.a.y + n.b.y) / 2 - p.y) < NARROW_ASK * 2 + m(4));
   if (!near.length) return null;
   for (const q of along(path, NARROW_ASK * 2)) {
     for (const n of near) {
@@ -1136,7 +1137,7 @@ function admit(s: State, p: Walker, n: Narrow, d: Way, path: readonly { x: numbe
   let left = distance;
   for (let i = 1; i < path.length && left > 0; i++) {
     const a = path[i - 1]!, b = path[i]!;
-    const length = Math.hypot(b.x - a.x, b.z - a.z);
+    const length = hypot2(b.x - a.x, b.z - a.z);
     if (length < 1e-6) continue;
     const t = Math.min(1, left / length);
     approach.push({ x: a.x + (b.x - a.x) * t, y: a.z + (b.z - a.z) * t, h: a.y + (b.y - a.y) * t });
@@ -1227,7 +1228,7 @@ function trackPassages(s: State): void {
       else if (p.passage.entered) leavePassage(s, p);
       else {
         const n = p.passage.n;
-        if (Math.hypot((n.a.x + n.b.x) / 2 - p.x, (n.a.y + n.b.y) / 2 - p.y) > NARROW_ASK * 2 + m(4)) leavePassage(s, p);
+        if (hypot2((n.a.x + n.b.x) / 2 - p.x, (n.a.y + n.b.y) / 2 - p.y) > NARROW_ASK * 2 + m(4)) leavePassage(s, p);
       }
       continue;
     }
@@ -1261,13 +1262,13 @@ function makeWay(s: State): void {
   for (const p of s.walkers) {
     if (p.holding) continue;
     const dv = p.agent.desiredVelocity();
-    const dl = Math.hypot(dv.x, dv.z);
+    const dl = hypot2(dv.x, dv.z);
     if (dl < m(0.05)) continue;
     const ux = dv.x / dl, uy = dv.z / dl;
     for (const q of s.walkers) {
       if (q === p || !q.holding || q.aside || q.party.id === p.party.id) continue;
       const rx = q.x - p.x, ry = q.y - p.y;
-      const d = Math.hypot(rx, ry);
+      const d = hypot2(rx, ry);
       if (d > MAKE_WAY_REACH || rx * ux + ry * uy <= 0) continue;
       // Stuck behind it a moment, or already against it - pressing on, the
       // walker shoved it along (traced: a person at its place pushed at 0.9 m/s).
@@ -1305,7 +1306,7 @@ function unlock(s: State): void {
     for (const q of s.walkers) {
       if (q === p || q.aside || q.holding || q.blocked < DEADLOCK_AFTER) continue;
       const rx = q.x - p.x, ry = q.y - p.y;
-      if (Math.hypot(rx, ry) > MAKE_WAY_REACH || rx * pd.x + ry * pd.y <= 0) continue;
+      if (hypot2(rx, ry) > MAKE_WAY_REACH || rx * pd.x + ry * pd.y <= 0) continue;
       const qd = wantOf(q);
       if (!qd || qd.x * pd.x + qd.y * pd.y > -0.3) continue;
       const fp = flowBehind(s, p, pd), fq = flowBehind(s, q, qd);
@@ -1328,7 +1329,7 @@ function unlock(s: State): void {
 /** The way a walker means to go (Detour's desired velocity), unit; null when it means to go nowhere. */
 function wantOf(p: Walker): Vec2 | null {
   const dv = p.agent.desiredVelocity();
-  const l = Math.hypot(dv.x, dv.z);
+  const l = hypot2(dv.x, dv.z);
   return l > MEANS ? { x: dv.x / l, y: dv.z / l } : null;
 }
 
@@ -1360,10 +1361,10 @@ function standingPlace(s: State, q: Walker, passer: Walker, way: readonly Vec2[]
   const a = way[0]!;
   const end = way[way.length - 1]!;
   const target = passer.asked;
-  const b = target && Math.hypot(target.x - a.x, target.y - a.y) < Math.hypot(end.x - a.x, end.y - a.y) ? target : end;
+  const b = target && hypot2(target.x - a.x, target.y - a.y) < hypot2(end.x - a.x, end.y - a.y) ? target : end;
   const passStart = query.findClosestPoint({ x: a.x, y: passer.h, z: a.y }, { halfExtents: extents, filter: passFilter });
   if (!passStart.success || !passStart.polyRef) return null;
-  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  const length = hypot2(b.x - a.x, b.y - a.y);
   if (length < 1e-6) return null;
   const nx = -(b.y - a.y) / length, ny = (b.x - a.x) / length;
   const clearance = 2 * AGENT_RADIUS + m(0.1);
@@ -1382,11 +1383,11 @@ function standingPlace(s: State, q: Walker, passer: Walker, way: readonly Vec2[]
       const line = [a, via, b];
       if (distToLine(c, line) < 2 * AGENT_RADIUS || !avoidsClosedRoad(passer, line)) continue;
       const on = query.findClosestPoint({ x: via.x, y: passer.h, z: via.y }, { halfExtents: extents, filter: passFilter });
-      if (!on.success || !on.polyRef || Math.hypot(on.point.x - via.x, on.point.z - via.y) > 1e-4) continue;
+      if (!on.success || !on.polyRef || hypot2(on.point.x - via.x, on.point.z - via.y) > 1e-4) continue;
       const first = query.raycast(passStart.polyRef, passStart.point, on.point, { filter: passFilter });
       const second = query.raycast(on.polyRef, on.point, { x: b.x, y: on.point.y, z: b.y }, { filter: passFilter });
       if (first.success && first.t >= 1 && second.success && second.t >= 1) {
-        best = Math.min(best, Math.hypot(via.x - a.x, via.y - a.y) + Math.hypot(b.x - via.x, b.y - via.y));
+        best = Math.min(best, hypot2(via.x - a.x, via.y - a.y) + hypot2(b.x - via.x, b.y - via.y));
       }
     }
     return best;
@@ -1410,10 +1411,10 @@ function standingPlace(s: State, q: Walker, passer: Walker, way: readonly Vec2[]
       let occupied = false;
       for (const body of bodies.around((q.x + c.x) / 2, (q.y + c.y) / 2, r / 2 + 2 * AGENT_RADIUS)) {
         if (body === q || Math.abs(body.h - q.h) >= AGENT_HEIGHT) continue;
-        const initial = Math.hypot(q.x - body.x, q.y - body.y);
+        const initial = hypot2(q.x - body.x, q.y - body.y);
         const escaping = initial < 2 * AGENT_RADIUS && (q.x - body.x) * (c.x - q.x) + (q.y - body.y) * (c.y - q.y) >= 0;
         if (!escaping && distToLine(body, [q, c]) < 2 * AGENT_RADIUS) { occupied = true; break; }
-        if (body.aside && Math.hypot(body.aside.at.x - c.x, body.aside.at.y - c.y) < 2 * AGENT_RADIUS) { occupied = true; break; }
+        if (body.aside && hypot2(body.aside.at.x - c.x, body.aside.at.y - c.y) < 2 * AGENT_RADIUS) { occupied = true; break; }
       }
       if (occupied) continue;
       const detour = passes(c);
@@ -1461,7 +1462,7 @@ function distToLine(c: Vec2, line: readonly Vec2[]): number {
     const a = line[i]!, b = line[i + 1]!;
     const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
     const t = l2 > 0 ? Math.max(0, Math.min(1, ((c.x - a.x) * dx + (c.y - a.y) * dy) / l2)) : 0;
-    best = Math.min(best, Math.hypot(c.x - a.x - dx * t, c.y - a.y - dy * t));
+    best = Math.min(best, hypot2(c.x - a.x - dx * t, c.y - a.y - dy * t));
   }
   return best;
 }
@@ -1478,7 +1479,7 @@ function placeOf(p: Walker): Vec2 | null {
 
 /** Where a walker stands for a place it means to stand at: there, or where it came to rest having passed it. */
 function standFor(p: Walker, place: Vec2): Vec2 {
-  return p.settle && Math.hypot(p.settle.for.x - place.x, p.settle.for.y - place.y) < RETARGET ? p.settle.at : place;
+  return p.settle && hypot2(p.settle.for.x - place.x, p.settle.for.y - place.y) < RETARGET ? p.settle.at : place;
 }
 
 /**
@@ -1501,7 +1502,7 @@ function approach(s: State, p: Walker, place: Vec2 | null): void {
   else if (p.eased !== null && s.clock - p.eased > EASE_HOLD && p.going > EASE_GOING) p.eased = null;
   if (p.eased !== null) top = Math.min(top, SHUFFLE);
   if (place && !p.holding) {
-    const d = Math.hypot(place.x - p.x, place.y - p.y);
+    const d = hypot2(place.x - p.x, place.y - p.y);
     top = Math.min(top, Math.max(m(0.2), Math.sqrt(2 * BRAKE * Math.max(0, d - REACHED / 2))));
   }
   if (Math.abs(top - p.topSpeed) < p.pace * 0.03 && top !== p.pace) return;
@@ -1524,7 +1525,7 @@ function overshoot(s: State, p: Walker): void {
   // Carried past where it was to come to rest, too: on again, as long as it is carried.
   const place = standFor(p, base);
   const dx = place.x - p.x, dy = place.y - p.y;
-  if (Math.hypot(dx, dy) > STAND_AT) return;
+  if (hypot2(dx, dy) > STAND_AT) return;
   const v = p.agent.velocity();
   if (v.x * dx + v.z * dy >= 0) return;
   const stop = (p.speed * p.speed) / (2 * ACCEL);
@@ -1539,8 +1540,8 @@ function waitFacing(p: Walker): number | null {
   if (p.mode !== 'wait') return null;
   if (p.zebra) {
     const z = p.zebra;
-    const len = Math.hypot(z.b.x - z.a.x, z.b.y - z.a.y) || 1;
-    const fromA = Math.hypot(p.x - z.a.x, p.y - z.a.y) < Math.hypot(p.x - z.b.x, p.y - z.b.y);
+    const len = hypot2(z.b.x - z.a.x, z.b.y - z.a.y) || 1;
+    const fromA = hypot2(p.x - z.a.x, p.y - z.a.y) < hypot2(p.x - z.b.x, p.y - z.b.y);
     return Math.atan2((z.b.y - z.a.y) / len * (fromA ? 1 : -1), (z.b.x - z.a.x) / len * (fromA ? 1 : -1));
   }
   if (p.narrow) return Math.atan2(p.narrow.n.dir.y * p.narrow.d, p.narrow.n.dir.x * p.narrow.d);
@@ -1570,7 +1571,7 @@ function step(w: SimWorld, s: State): void {
     approach(s, p, placeOf(p));
     const place = placeOf(p);
     if (!place || p.holding || p.speed > STILL) continue;
-    const d = Math.hypot(place.x - p.x, place.y - p.y);
+    const d = hypot2(place.x - p.x, place.y - p.y);
     if (d > REACHED && (d > STAND_AT || p.rest < SETTLE)) continue;
     p.agent.resetMoveTarget();
     p.holding = { x: place.x, y: place.y };
@@ -1584,7 +1585,7 @@ function step(w: SimWorld, s: State): void {
     const pos = p.agent.position();
     const vel = p.agent.velocity();
     p.x = pos.x; p.y = pos.z; p.h = pos.y;
-    p.speed = Math.hypot(vel.x, vel.z);
+    p.speed = hypot2(vel.x, vel.z);
     // A new body has no previously drawn facing to turn from. Initialize its
     // first visible pose from Detour, retaining every physical state/RNG draw.
     const firstPose = !p.published && p.speed > 0;
@@ -1596,7 +1597,7 @@ function step(w: SimWorld, s: State): void {
     // shuffling, the way it means to go; standing, the way it waits to go.
     const want = p.agent.desiredVelocity();
     const face = p.speed >= WALKING ? Math.atan2(vel.z, vel.x)
-      : Math.hypot(want.x, want.z) > MEANS ? Math.atan2(want.z, want.x)
+      : hypot2(want.x, want.z) > MEANS ? Math.atan2(want.z, want.x)
         : p.holding ? waitFacing(p) : null;
     if (face !== null && !firstPose) {
       const delta = Math.atan2(Math.sin(face - p.heading), Math.cos(face - p.heading));
@@ -1607,7 +1608,7 @@ function step(w: SimWorld, s: State): void {
       p.heading = Math.atan2(Math.sin(p.heading + turn), Math.cos(p.heading + turn));
     } else p.turnV = 0;
     // Getting nowhere while wanting to move (diagnosis).
-    const wanted = Math.hypot(want.x, want.z);
+    const wanted = hypot2(want.x, want.z);
     p.blocked = wanted > MEANS && (vel.x * want.x + vel.z * want.z) / wanted < PROGRESS_SHARE * p.topSpeed ? p.blocked + DT : 0;
     p.going = p.speed > 0.5 * p.topSpeed ? p.going + DT : 0;
     // Zebras: which it stands on, and those it has left behind.
@@ -1624,7 +1625,7 @@ function step(w: SimWorld, s: State): void {
       if (onBand(z, p.x, p.y, been ? m(2) : ASK_AT * 2) === null) p.granted.delete(id);
     }
     if (p.age % 0.5 < DT) p.segment = roadUnder(s, p);
-    if (!p.leader && Math.hypot(p.goal.x - p.x, p.goal.y - p.y) < ARRIVED) arrived.push(p);
+    if (!p.leader && hypot2(p.goal.x - p.x, p.goal.y - p.y) < ARRIVED) arrived.push(p);
   }
   trackPassages(s);
   makeWay(s);
@@ -1684,7 +1685,7 @@ function publish(w: SimWorld, s: State): void {
     const z = p.onZebra ?? (p.mode === 'wait' ? p.zebra : null);
     if (!z) continue;
     const a = z.edge.path.point(0), b = z.edge.path.point(z.edge.path.n - 1);
-    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    const length = hypot2(b.x - a.x, b.y - a.y);
     let state = w.crossingStates.get(z.id as never);
     if (!state) { state = emptyCrossingState(length); w.crossingStates.set(z.id as never, state); }
     const ux = (b.x - a.x) / length, uy = (b.y - a.y) / length;

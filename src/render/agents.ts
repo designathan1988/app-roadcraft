@@ -30,6 +30,7 @@ import type { SimWorld } from '@sim/world';
 import type { Vehicle as SimVehicle } from '@sim/vehicles/state';
 import type { SegmentId } from '@world/ids';
 import { m } from '@world/units';
+import { hypot2 } from '@core/scalar';
 import { DT, FLEET_CEILING, PED_CEILING } from '@sim/params';
 import { buildCarModel, carStyleOf, carStylesFor } from './carBody';
 import { CROWD_IDS, createRiggedCitizens, type CitizenClipKey, type ClipIdentity } from './riggedCitizens';
@@ -1119,7 +1120,7 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
     const walkTo = (fromX: number, fromY: number, toX: number, toY: number, t: number, height: number): void => {
       const x = fromX + (toX - fromX) * t;
       const y = fromY + (toY - fromY) * t;
-      const distance = Math.hypot(toX - fromX, toY - fromY);
+      const distance = hypot2(toX - fromX, toY - fromY);
       const heading = Math.atan2(toY - fromY, toX - fromX);
       pedestrians.drawClip(identity, x, y, height, heading,
         [{ key: 'walk', phase: 0, distance: distance * t, weight: 1 }], 0, Infinity, true);

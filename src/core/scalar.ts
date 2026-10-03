@@ -81,6 +81,19 @@ export const TAU = Math.PI * 2;
 export const clamp = (v: number, lo: number, hi: number): number =>
   v < lo ? lo : v > hi ? hi : v;
 
+/**
+ * Two-argument hypotenuse, for inner loops.
+ *
+ * `Math.hypot` is variadic: it scaled every argument by the largest, for
+ * overflow safety, which costs about 3.4x `sqrt(x*x + y*y)` (measured, V8,
+ * 5M calls). In the per-person and per-vehicle loops that runs per tick that
+ * difference is a real share of the frame, and every caller here passes two
+ * arguments of ordinary magnitude. `Math.hypot` stays the right call where the
+ * arguments are not nearby (a wire in metres against a world coordinate in
+ * thousands) or where the extra accuracy is the point.
+ */
+export const hypot2 = (x: number, y: number): number => Math.sqrt(x * x + y * y);
+
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
 /** Wraps an angle into (-PI, PI]. */

@@ -1,4 +1,5 @@
 import type { Vec2 } from '@core/vec2';
+import { hypot2 } from '@core/scalar';
 import { m } from '@world/units';
 import { blocksPedestrians, streetFurniture } from '@world/streetFurniture';
 import { SIGNAL_POST_RADIUS, signalPosts } from '@world/signalPosts';
@@ -208,7 +209,7 @@ export class PedestrianClearance {
       if (!pose) continue;
       const archetype = vehicle.archetype;
       const halfLength = archetype.length / 2, halfWidth = archetype.width / 2;
-      const radius = Math.hypot(halfLength, halfWidth);
+      const radius = hypot2(halfLength, halfWidth);
       this.insert({ id: -vehicle.id, x: pose.p.x, y: pose.p.y, radius, cell: '',
         forward: { x: Math.cos(pose.angle), y: Math.sin(pose.angle) }, halfLength, halfWidth });
     }
@@ -371,7 +372,7 @@ export class PedestrianClearance {
       const frame = edge.corridor.frame(p.s, p.entry !== edge.from, TUBE_FRAME);
       const vx = frame.tx * p.v + frame.nx * p.latV;
       const vy = frame.ty * p.v + frame.ny * p.latV;
-      const speed = Math.hypot(vx, vy);
+      const speed = hypot2(vx, vy);
       if (speed < TUBE_MIN_SPEED) continue;
       // Priority: how much of this walker's way lies ALONG the street it is on
       // rather than across it. Somebody walking down the pavement owns the
@@ -453,7 +454,7 @@ export class PedestrianClearance {
       // they have to get out of the road, and a queue at a busy zebra's mouth
       // otherwise holds them on it while it waits to step on itself.
       if (!q || q.state === 'WaitAtKerb' || (q.state !== 'Crossing' && q.stuck < JAMMED)) return;
-      const d = Math.hypot(other.x - here.x, other.y - here.y);
+      const d = hypot2(other.x - here.x, other.y - here.y);
       if (d < nearest) { nearest = d; best = { x: other.x, y: other.y }; }
     });
     return best;
@@ -626,11 +627,11 @@ export class PedestrianClearance {
   private distance(other: Footprint, x: number, y: number): number {
     const dx = x - other.x, dy = y - other.y;
     if (!other.forward || other.halfLength === undefined || other.halfWidth === undefined) {
-      return Math.hypot(dx, dy);
+      return hypot2(dx, dy);
     }
     const along = Math.abs(dx * other.forward.x + dy * other.forward.y) - other.halfLength;
     const across = Math.abs(dx * -other.forward.y + dy * other.forward.x) - other.halfWidth;
-    return Math.hypot(Math.max(0, along), Math.max(0, across));
+    return hypot2(Math.max(0, along), Math.max(0, across));
   }
 
   /** Everything within `range` of a point: people, vehicles, street furniture. */

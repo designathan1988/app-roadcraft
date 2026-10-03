@@ -1,4 +1,4 @@
-import { DIV_EPS, clamp, lerp } from '@core/scalar';
+import { DIV_EPS, clamp, hypot2, lerp } from '@core/scalar';
 import { dist } from '@core/vec2';
 import { DT, PED, PED_AGENT } from '../params';
 import { PLAN_CAP, insideFurniture, plannedLine, stepAgent } from './agent';
@@ -758,7 +758,7 @@ function nextGoal(w: SimWorld, p: Ped, here: SidewalkNode | undefined,
     if (!here) return node;
     const dx = node.at.x - here.at.x;
     const dy = node.at.y - here.at.y;
-    const d = Math.hypot(dx, dy);
+    const d = hypot2(dx, dy);
     if (d < GOAL_MIN_TRIP) continue;
     farEnough ??= node;
     if (dx * hx + dy * hy > d * GOAL_AHEAD) return node;
@@ -1377,11 +1377,11 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   // than anybody can step.
   const settledX = pathX + p.offX * closing(p.offX, p.offY);
   const settledY = pathY + p.offY * closing(p.offX, p.offY);
-  const step = Math.hypot(settledX - p.x, settledY - p.y);
+  const step = hypot2(settledX - p.x, settledY - p.y);
   if (!first && (p.prev.edge !== p.edge || step > p.v * DT * 1.5 + PATH_JUMP)) {
     p.offX = p.x - pathX;
     p.offY = p.y - pathY;
-    if (Math.hypot(p.offX, p.offY) > OFFSET_LIMIT) { p.offX = 0; p.offY = 0; }
+    if (hypot2(p.offX, p.offY) > OFFSET_LIMIT) { p.offX = 0; p.offY = 0; }
   }
   const keep = closing(p.offX, p.offY);
   p.offX *= keep;
@@ -1490,7 +1490,7 @@ function settlePose(w: SimWorld, p: Ped, first: boolean, space: PedestrianCleara
   // above — the footway's edge, an offset being caught up, the firewall that
   // refuses a step against the body's own chest — can cancel the path motion
   // outright. The legs it is drawn with have not moved, whatever `p.v` says.
-  const drawn = first ? 0 : Math.hypot(x - p.x, y - p.y) / DT;
+  const drawn = first ? 0 : hypot2(x - p.x, y - p.y) / DT;
   p.x = x;
   p.y = y;
   if (first) {
@@ -1734,7 +1734,7 @@ const OFFSET_CLOSE = m(0.8);
 
 /** Share of a drawn-body offset left after one tick of closing it. */
 function closing(offX: number, offY: number): number {
-  const size = Math.hypot(offX, offY);
+  const size = hypot2(offX, offY);
   if (size < 1e-9) return 0;
   return Math.max(Math.exp(-DT / OFFSET_SETTLE), 1 - OFFSET_CLOSE * DT / size);
 }

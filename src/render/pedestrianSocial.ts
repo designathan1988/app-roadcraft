@@ -1,5 +1,6 @@
 import { personHash, type PedView } from '@sim/people/view';
 import { m } from '@world/units';
+import { hypot2 } from '@core/scalar';
 
 export interface SocialCue {
   readonly gazeYaw: number;
@@ -23,7 +24,7 @@ export function socialCue(ped: PedView, members: ReadonlyMap<number, PedView>, t
     if (rank === ped.rank) continue;
     const other = members.get(ped.party.id + rank);
     if (!other || other.party.id !== ped.party.id || other.stretch !== ped.stretch) continue;
-    const distance = Math.hypot(other.x - ped.x, other.y - ped.y);
+    const distance = hypot2(other.x - ped.x, other.y - ped.y);
     if (distance < partnerDistance && distance < m(2)) {
       partner = other;
       partnerDistance = distance;

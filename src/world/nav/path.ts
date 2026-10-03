@@ -1,3 +1,4 @@
+import { hypot2 } from '@core/scalar';
 import { closestOnSegment, type NavMesh, type NavPortal } from './navmesh';
 
 /**
@@ -91,7 +92,7 @@ export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: 
   g[st] = 0;
   px[st] = sx;
   py[st] = sy;
-  open.push(st, Math.hypot(gx - sx, gy - sy));
+  open.push(st, hypot2(gx - sx, gy - sy));
   let found = false;
   let expanded = 0;
   while (open.size) {
@@ -111,7 +112,7 @@ export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: 
         const near = closestOnSegment(portal.lx, portal.ly, portal.rx, portal.ry, tx, ty);
         mx = near.x; my = near.y;
       }
-      const step = Math.hypot(mx - tx, my - ty);
+      const step = hypot2(mx - tx, my - ty);
       const ng = tg + step + cost(t, u, step);
       if (seen[u] !== stamp || ng < g[u]!) {
         seen[u] = stamp;
@@ -120,7 +121,7 @@ export function findPath(mesh: NavMesh, sx: number, sy: number, st: number, gx: 
         py[u] = my;
         cameFrom[u] = t;
         camePortal[u] = k;
-        open.push(u, ng + Math.hypot(gx - mx, gy - my));
+        open.push(u, ng + hypot2(gx - mx, gy - my));
       }
     }
   }
@@ -170,7 +171,7 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
     const p = all[start + i];
     if (!p) return { x, y };
     const ox = fromRight ? p.lx : p.rx, oy = fromRight ? p.ly : p.ry;
-    const len = Math.hypot(ox - x, oy - y);
+    const len = hypot2(ox - x, oy - y);
     if (len < 1e-9) return { x, y };
     const pull = Math.min(CORNER_PULL, len / 2) / len;
     return { x: x + (ox - x) * pull, y: y + (oy - y) * pull };
@@ -221,7 +222,7 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
   }
   out.push({ x: gx, y: gy, tri: start + n });
   // Drop corners that coincide.
-  return out.filter((c, i) => i === 0 || Math.hypot(c.x - out[i - 1]!.x, c.y - out[i - 1]!.y) > 1e-6);
+  return out.filter((c, i) => i === 0 || hypot2(c.x - out[i - 1]!.x, c.y - out[i - 1]!.y) > 1e-6);
 }
 
 /** A binary min-heap of (item, priority), ties broken by insertion order. */
