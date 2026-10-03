@@ -362,9 +362,14 @@ function terrainMaterial(
          float slopeDeg = degrees(acos(clamp(vTerrainNormal.y, 0.0, 1.0)));
          // High ground is bare whatever its slope: the quickest way to say
          // "mountain" is that nothing grows on the top of it.
-         float altitude = smoothstep(210.0, 400.0, vTerrainWorld.y);
-         float rockMix = max(smoothstep(26.0, 42.0, slopeDeg), altitude * 0.92);
-         float dirtMix = smoothstep(9.0, 26.0, slopeDeg) * (1.0 - rockMix) * 0.8;
+         float altitude = smoothstep(260.0, 460.0, vTerrainWorld.y);
+         // The bands are in degrees of slope, and they were set for land that
+         // could not rise more than ten metres: soil from 9 degrees, rock from
+         // 26. On a map with real hills that painted every hillside tan, and
+         // the whole country read as savanna. Soil now starts where a slope
+         // stops holding turf (18 degrees), rock where it stops holding soil.
+         float rockMix = max(smoothstep(38.0, 58.0, slopeDeg), altitude * 0.92);
+         float dirtMix = smoothstep(18.0, 38.0, slopeDeg) * (1.0 - rockMix) * 0.8;
          vec4 grassColor = dualScale(map, tGrass);
          vec4 rockColor = dualScale(uRockMap, tRock);
          vec4 dirtColor = dualScale(uDirtMap, tDirt);
@@ -387,7 +392,7 @@ function terrainMaterial(
          // ground untouched, so the hills are legible without the scene turning
          // into a relief map.
          float relief = clamp(dot(normalize(vTerrainNormal), normalize(vec3(0.24, 0.62, -0.75))), -1.0, 1.0);
-         blended.rgb *= 1.0 + relief * 0.34 * smoothstep(1.0, 10.0, slopeDeg);
+         blended.rgb *= 1.0 + relief * 0.46 * smoothstep(1.5, 13.0, slopeDeg);
          // Higher ground dries out, low ground stays lush. Measured in the
          // units the land can actually reach now (a 560-unit mountain), so a
          // valley town stays green instead of the whole map turning tan the
