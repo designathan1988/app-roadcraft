@@ -1,0 +1,27 @@
+{
+  "msPerEdit": 833.4,
+  "top": [
+    "40.6% run @regionIndex.ts:254",
+    "11.4% overlap @conflictPoints.ts:408",
+    "10.4% winding @regionIndex.ts:187",
+    "5.6% pairZones @conflictPoints.ts:432",
+    "2.5% sampleAt @polyline.ts:109",
+    "2.2% (garbage collector) @:0",
+    "2.2% cornerPath @sidewalk.ts:789",
+    "1.9% rebuildVehicleTopology @world.ts:316",
+    "1.3% segSeg @intersect.ts:33",
+    "1.2% build @sidewalk.ts:87",
+    "1.2% (program) @:0",
+    "1.1% sweep @turnPaths.ts:189",
+    "1.0% overlap @turnPaths.ts:156",
+    "1.0% firstCrossing @conflictPoints.ts:535",
+    "0.8% (anon) @streetFurniture.ts:193",
+    "0.7% add @conflictPoints.ts:199",
+    "0.6% build @conflictPoints.ts:115",
+    "0.5% build @crossingSpans.ts:51",
+    "0.4% get length @polyline.ts:93",
+    "0.4% sweepOf @conflictPoints.ts:251",
+    "0.4% fitCorridors @sidewalk.ts:502",
+    "0.4% nearestSegment @polyline.ts:247"
+  ]
+}
