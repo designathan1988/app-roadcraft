@@ -1,0 +1,28 @@
+{
+  "ratio": 0.02883,
+  "skateMean": 0.0294,
+  "movingSpeedMean": 1.0211,
+  "movingSeconds": 9276,
+  "rows": [
+    "73.18 S:walkSlow|mid",
+    "31.00 S:walkFast|fast",
+    "22.46 S:walkSlow|fast",
+    "15.97 S:walkShuffle|mid",
+    "14.36 S:walkCool|mid",
+    "11.33 S:walkShuffle|slow",
+    "11.21 S:walkRight|mid",
+    "10.90 S:walkLeft|mid",
+    "6.36 S:walkCool|fast",
+    "6.15 S:walkRight|fast",
+    "6.13 S:walkN1|fast",
+    "5.48 S:walkLeft|fast",
+    "4.94 S:walkFast|mid",
+    "4.52 S:walkRight|slow",
+    "4.35 S:turnLeft|slow",
+    "4.07 S:walkN2|fast",
+    "3.78 S:walkElder|fast",
+    "3.74 S:turnRight|slow",
+    "3.67 S:walkN3|mid",
+    "3.57 S:walkLeft|slow"
+  ]
+}
