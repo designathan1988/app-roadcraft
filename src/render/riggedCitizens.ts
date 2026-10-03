@@ -42,6 +42,8 @@ interface CitizenBatch {
   texture: DataTexture; pixels: Float32Array; width: number; count: number;
   rows: number; uniform: { value: DataTexture };
   lods: BufferGeometry[][];
+  /** Each mesh's per-instance morph texture, kept aside while its level has no face (lod > 0). */
+  parkedMorph: (DataTexture | null)[];
   /** This body's helmet in its head bone's frame (`riderPoses.helmetShape`), or null. */
   helmet: Matrix4 | null;
   /** Clips still to bake, on first use (`Deferred`), one at a time. */
@@ -197,6 +199,23 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
   let morpher: Morpher | null = null;
   let detail = 2;
   let lod = 0;
+  /**
+   * Puts mesh `i` of a batch on the current level of detail. A level without
+   * a face must not carry the instances' morph weights either: three's
+   * instancing morph code needs the geometry's morph count
+   * (USE_INSTANCING_MORPH, MORPHTARGETS_COUNT).
+   */
+  const applyLevel = (batch: CitizenBatch, i: number): void => {
+    const variants = batch.lods[i]!;
+    const mesh = batch.meshes[i]!;
+    mesh.geometry = variants[Math.min(lod, variants.length - 1)]!;
+    if (mesh.geometry.morphAttributes.position) {
+      if (!mesh.morphTexture && batch.parkedMorph[i]) { mesh.morphTexture = batch.parkedMorph[i]!; batch.parkedMorph[i] = null; }
+    } else if (mesh.morphTexture) {
+      batch.parkedMorph[i] = mesh.morphTexture;
+      mesh.morphTexture = null;
+    }
+  };
   group.userData.availableModels = models.length;
   group.userData.models = models;
   group.userData.licenses = CITIZEN_LICENSES;
@@ -300,7 +319,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       resources.add(texture);
       const uniform = { value: texture };
       const batch: CitizenBatch = { meshes: [], sources: [], local: [], clips, gait: gaitClips(clips), texture, pixels, width, rows,
-        uniform, count: 0, lods: [], helmet,
+        uniform, count: 0, lods: [], parkedMorph: [], helmet,
         deferred, baking: Promise.resolve() };
       const parts: SkinnedMesh[] = [];
       asset.scene.traverse(o => { if (o instanceof SkinnedMesh) parts.push(o); });
@@ -318,8 +337,12 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
           geometry.setIndex(indices);
           // A dressed body's garments are material groups: each level has its own ranges.
           for (const g of readyGroups?.[level] ?? []) geometry.addGroup(g.start, g.count, g.materialIndex);
-          geometry.morphAttributes = o.geometry.morphAttributes;
-          geometry.morphTargetsRelative = o.geometry.morphTargetsRelative;
+          // No face on the coarser levels: a face is drawn only at the
+          // nearest (`setFacialExpression`, lod 0). three.js builds a float
+          // texture of every morph target for each GEOMETRY that carries
+          // them (WebGLMorphtargets), so four levels sharing one set of
+          // morphs held four copies: 1.5 GB across the 84 bodies, warmed or
+          // drawn, for faces nobody could see.
           geometry.boundingBox = o.geometry.boundingBox;
           geometry.boundingSphere = o.geometry.boundingSphere;
           variants.push(geometry);
@@ -356,6 +379,11 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
         if (o.morphTargetInfluences) mesh.morphTargetInfluences = [...o.morphTargetInfluences];
         mesh.name = `citizen-${models[index]}-${o.name}`;
         mesh.count = 0;
+        // Hidden until it has somebody to draw (`finish` shows it then). Shown
+        // and empty from the moment it was made, it was drawn with no instance
+        // every frame while its shaders compiled - on its nearest level, face
+        // and all, which built its morph texture whatever the zoom.
+        mesh.visible = false;
         mesh.frustumCulled = false;
         mesh.instanceMatrix.setUsage(DynamicDrawUsage);
         mesh.castShadow = true;
@@ -380,8 +408,14 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       await Promise.all(batch.meshes.map((mesh) => compileAhead(mesh)));
       if (disposed) return;
       // And its geometry on the GPU, every level of it (`uploads.ts`).
-      await Promise.all(batch.meshes.map((mesh, i) => warmAhead(mesh, batch.lods[i]!)));
+      // The coarser levels only: the nearest one's face is built when it is
+      // first seen close (a body's morph texture is megabytes).
+      await Promise.all(batch.meshes.map((mesh, i) => warmAhead(mesh, batch.lods[i]!.slice(1))));
       if (disposed) return;
+      // On the level in use NOW: a body arriving between two frames was drawn
+      // once on its nearest level, face and all, whatever the zoom - and
+      // that one draw built its morph texture, megabytes a body, for good.
+      for (let i = 0; i < batch.meshes.length; i++) applyLevel(batch, i);
       batches.set(index, batch);
       group.userData.animationBytes = (group.userData.animationBytes ?? 0) + [...new Set(clips)].reduce((sum, clip) => sum + clip.data.byteLength, 0);
       group.userData.clipFrames ??= clips.map((clip) => clip?.frames ?? 0);
@@ -552,8 +586,7 @@ export function createRiggedCitizens(models: readonly string[] = CROWD_IDS,
       for (const batch of batches.values()) {
         batch.count = 0;
         for (let i = 0; i < batch.meshes.length; i++) {
-          const variants = batch.lods[i]!;
-          batch.meshes[i]!.geometry = variants[Math.min(lod, variants.length - 1)]!;
+          applyLevel(batch, i);
           const material = batch.meshes[i]!.material;
           for (const m of Array.isArray(material) ? material : [material]) {
             const detail = m.userData['appearanceDetail'] as { value: number } | undefined;

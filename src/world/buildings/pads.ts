@@ -102,6 +102,21 @@ export function buildingPads(
     const grow = apron + PAD_REACH;
     pads.push({ rings, levels, box: { minX: minX - grow, minY: minY - grow, maxX: maxX + grow, maxY: maxY + grow } });
   }
+  // The platforms filed under every grid cell their box reaches: a corner of
+  // the ground asks only the ones over it. Every corner asked every platform
+  // in the town, which on a town of six hundred buildings was seconds a pass.
+  const CELL = 64;
+  const cells = new Map<number, Pad[]>();
+  const cellKey = (cx: number, cy: number): number => cx * 100_003 + cy;
+  for (const pad of pads) {
+    for (let cx = Math.floor(pad.box.minX / CELL); cx <= Math.floor(pad.box.maxX / CELL); cx++) {
+      for (let cy = Math.floor(pad.box.minY / CELL); cy <= Math.floor(pad.box.maxY / CELL); cy++) {
+        const key = cellKey(cx, cy);
+        const list = cells.get(key);
+        if (list) list.push(pad); else cells.set(key, [pad]);
+      }
+    }
+  }
   return {
     count: pads.length,
     shapeBounds: () => pads.map((p) => p.box),
@@ -110,7 +125,7 @@ export function buildingPads(
       // strip between them as each one's own apron, split down the middle.
       let nearest = Infinity;
       let level = 0;
-      for (const pad of pads) {
+      for (const pad of cells.get(cellKey(Math.floor(x / CELL), Math.floor(y / CELL))) ?? []) {
         if (x < pad.box.minX || x > pad.box.maxX || y < pad.box.minY || y > pad.box.maxY) continue;
         pad.rings.forEach((ring, i) => {
           const d = ringDistance(ring, x, y);

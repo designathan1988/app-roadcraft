@@ -118,7 +118,17 @@ export interface TerrainSurface {
    * because a road has to be laid on the natural ground before the ground can
    * be asked to come and meet it.
    */
-  update(doc: RoadDoc): boolean;
+  update(doc: RoadDoc, stroking?: boolean): boolean;
+  /**
+   * The grid cells (x0, x1, y0, y1) the last `update` rewrote, or null when it
+   * rewrote the whole plate: where a stroke's dab changed the ground.
+   */
+  readonly lastRegion: TerrainRegion | null;
+  /**
+   * After a stroke: what was deferred while it was held (the water) is
+   * brought up to date. Cheap when nothing was deferred.
+   */
+  settle(): void;
   /**
    * Cuts and fills the ground so it meets the roads.
    *
@@ -127,9 +137,12 @@ export interface TerrainSurface {
    * carried back to the natural ground over a wide batter. Returns true when
    * anything moved, so the caller knows whether the water needs rebuilding.
    */
-  shapeToRoads(shape: TerrainShaper | null): boolean;
+  shapeToRoads(shape: TerrainShaper | null, region?: TerrainRegion | null): boolean;
   dispose(): void;
 }
+
+/** A box of grid corners, inclusive: x0..x1 across, y0..y1 down. */
+export type TerrainRegion = readonly [number, number, number, number];
 
 /** What `shapeToRoads` needs to know about the road network. */
 export interface TerrainShaper {
@@ -501,6 +514,10 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
   const natural = new Float64Array(GRID * GRID);
   /** Corners a road has moved, so an unshaped one can be restored cheaply. */
   let shapedCorners: number[] = [];
+  /** The cells the last `update` rewrote (see `lastRegion`). */
+  let lastRegion: TerrainRegion | null = null;
+  /** The water waits for the end of a stroke (see `settle`). */
+  let waterStale = false;
   let lastStamps: readonly TerrainStamp[] = [];
 
   const heightAt = naturalHeightAt;
@@ -645,27 +662,43 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
   const visited = new Int32Array(GRID * GRID);
   let pass = 0;
 
-  const shapeToRoads = (shape: TerrainShaper | null): boolean => {
+  const shapeToRoads = (shape: TerrainShaper | null, region: TerrainRegion | null = null): boolean => {
     // The corners whose height this pass changes, whichever way.
     const changed: number[] = [];
     // Restore whatever the last shaping moved, so this is a pure function of
-    // the current network rather than an accumulation over every edit.
+    // the current network rather than an accumulation over every edit. With a
+    // region (a brush dab while the stroke is held) only the corners in it
+    // are shaped again: every other one keeps its cut and fill. The whole
+    // plate was re-shaped on every dab - every road and every building pad of
+    // the town, sixty-odd times a stroke.
+    const inRegion = (i: number): boolean => {
+      if (!region) return true;
+      const ix = i % GRID, iy = (i - ix) / GRID;
+      return ix >= region[0] && ix <= region[1] && iy >= region[2] && iy <= region[3];
+    };
     const before = new Map<number, number>();
+    const kept: number[] = [];
     for (const i of shapedCorners) {
+      if (!inRegion(i)) { kept.push(i); continue; }
       before.set(i, grid[i] as number);
       grid[i] = natural[i] as number;
     }
-    shapedCorners = [];
+    shapedCorners = kept;
+    const fresh: number[] = [];
 
     if (shape) {
       // Only the corners some road could shape: everywhere else `shapeAt`
       // answers weight 0, and asking all 90 601 of them was most of the pass.
       pass++;
       for (const box of shape.shapeBounds()) {
-        const x0 = Math.max(0, Math.floor((box.minX + TERRAIN_HALF) / TERRAIN_CELL));
-        const x1 = Math.min(GRID - 1, Math.ceil((box.maxX + TERRAIN_HALF) / TERRAIN_CELL));
-        const y0 = Math.max(0, Math.floor((TERRAIN_HALF - box.maxY) / TERRAIN_CELL));
-        const y1 = Math.min(GRID - 1, Math.ceil((TERRAIN_HALF - box.minY) / TERRAIN_CELL));
+        let x0 = Math.max(0, Math.floor((box.minX + TERRAIN_HALF) / TERRAIN_CELL));
+        let x1 = Math.min(GRID - 1, Math.ceil((box.maxX + TERRAIN_HALF) / TERRAIN_CELL));
+        let y0 = Math.max(0, Math.floor((TERRAIN_HALF - box.maxY) / TERRAIN_CELL));
+        let y1 = Math.min(GRID - 1, Math.ceil((TERRAIN_HALF - box.minY) / TERRAIN_CELL));
+        if (region) {
+          x0 = Math.max(x0, region[0]); x1 = Math.min(x1, region[1]);
+          y0 = Math.max(y0, region[2]); y1 = Math.min(y1, region[3]);
+        }
         for (let iy = y0; iy <= y1; iy++) {
           for (let ix = x0; ix <= x1; ix++) {
             const i = ix + iy * GRID;
@@ -680,12 +713,13 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
             if (Math.abs(blended - ground) < 0.002) continue;
             grid[i] = blended;
             shapedCorners.push(i);
+            fresh.push(i);
           }
         }
       }
     }
 
-    for (const i of shapedCorners) {
+    for (const i of fresh) {
       const was = before.get(i) ?? (natural[i] as number);
       if (grid[i] !== was) changed.push(i);
       before.delete(i);
@@ -823,13 +857,23 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
       }
       return digest.value();
     },
-    shapeToRoads(shape) {
-      const moved = shapeToRoads(shape);
-      // A road that cut through a valley changes where the water's shore is.
-      if (moved) rebuildWater(lastStamps);
+    get lastRegion() { return lastRegion; },
+    settle() {
+      if (!waterStale) return;
+      waterStale = false;
+      rebuildWater(lastStamps);
+    },
+    shapeToRoads(shape, region = null) {
+      const moved = shapeToRoads(shape, region);
+      // A road that cut through a valley changes where the water's shore is:
+      // at once, or once the stroke is over when one is held (`settle`).
+      if (moved) {
+        if (region) waterStale = true;
+        else { waterStale = false; rebuildWater(lastStamps); }
+      }
       return moved;
     },
-    update(doc) {
+    update(doc, stroking = false) {
       if (revision === doc.terrainRevision) return false;
       const firstBuild = revision < 0;
       const previous = index;
@@ -850,6 +894,7 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
       let box: readonly [number, number, number, number] | null = null;
       if (firstBuild || !added || !sameHistory) {
         rewrite(0, GRID - 1, 0, GRID - 1);
+        lastRegion = null;
       } else {
         const reach = added.radius + TERRAIN_CELL;
         const cx0 = Math.max(0, Math.floor((added.x - reach + TERRAIN_HALF) / TERRAIN_CELL));
@@ -861,6 +906,7 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
         // above is still the only place its influence is non-zero.
         rewrite(cx0, cx1, cy0, cy1);
         box = [cx0, cx1, cy0, cy1];
+        lastRegion = box;
       }
 
       position.needsUpdate = true;
@@ -882,7 +928,11 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
       if (rimMoved) rebuildFrame();
       geometry.computeBoundingSphere();
       lastStamps = doc.terrainStamps;
-      rebuildWater(lastStamps);
+      // The water - every pool and river on the map - is the deferred part of
+      // a stroke (Unity's SetHeightsDelayLOD then SyncHeightmap on release):
+      // rebuilt on every dab, it was the largest single cost of painting.
+      if (stroking) waterStale = true;
+      else { waterStale = false; rebuildWater(lastStamps); }
       return true;
     },
     dispose() {

@@ -48,7 +48,7 @@ import { createSignalHeads, type SignalHeads } from './signals';
 import { buildStructureDetails, type StructureDetails } from './structures';
 import { buildUtilities, poleGroundAt, type Utilities } from './utilities';
 import { buildBarriers, type Barriers } from './barriers';
-import { TERRAIN_CELL, createTerrainSurface, type TerrainSurface } from './terrain';
+import { TERRAIN_CELL, createTerrainSurface, type TerrainRegion, type TerrainSurface } from './terrain';
 import { buildingPads } from '@world/buildings/pads';
 import { Indoors } from './indoors';
 import { setLit, slotOf, slotsOnFloor } from './buildings/lightSlots';
@@ -409,6 +409,8 @@ export function createSceneRenderer(
    * is graded again only when a site changed.
    */
   let siteKey = '';
+  /** The ground the buildings were last graded on (frozen while a stroke is held). */
+  let buildingGround = '';
   /** Bumped each time the ground is graded: what stands on it is set again. */
   let groundVersion = 0;
   const siteSignature = (doc: RoadDoc): string => {
@@ -438,16 +440,26 @@ export function createSceneRenderer(
    * platform under each building and a grassed bank round it. A road keeps the
    * ground it has claimed; a platform takes the rest.
    */
-  const shapeGround = (net: Network): void => {
-    gradedFor = net.doc.buildings.revision;
-    siteKey = siteSignature(net.doc);
-    groundVersion++;
+  /** The buildings' platforms as last worked out, reused while a stroke is held. */
+  let padsCache: ReturnType<typeof buildingPads> | null = null;
+  /**
+   * `region`: a brush dab while the stroke is held - only the ground under it
+   * is cut and filled again, against the platforms as they stood when the
+   * stroke began; the rest waits for the stroke to end (`settle`).
+   */
+  const shapeGround = (net: Network, region: TerrainRegion | null = null): void => {
     const roads = net.doc.segments.size > 0 ? elevation : null;
-    const pads = net.doc.buildings.size > 0
-      ? buildingPads(net.doc.buildings.all(), terrain.naturalRenderedHeightAt, pavedHeightAt, TERRAIN_CELL * 1.5)
-      : null;
+    if (!region || !padsCache) {
+      gradedFor = net.doc.buildings.revision;
+      siteKey = siteSignature(net.doc);
+      groundVersion++;
+      padsCache = net.doc.buildings.size > 0
+        ? buildingPads(net.doc.buildings.all(), terrain.naturalRenderedHeightAt, pavedHeightAt, TERRAIN_CELL * 1.5)
+        : null;
+    }
+    const pads = net.doc.buildings.size > 0 ? padsCache : null;
     if (!pads) {
-      terrain.shapeToRoads(roads);
+      terrain.shapeToRoads(roads, region);
       return;
     }
     terrain.shapeToRoads({
@@ -459,7 +471,7 @@ export function createSceneRenderer(
         if (road.weight <= 0) return pad;
         return { height: pad.height + (road.height - pad.height) * road.weight, weight: 1 };
       },
-    });
+    }, region);
   };
 
   /** `doc.utilityRevision` the pole layer was last built at. */
@@ -659,26 +671,31 @@ export function createSceneRenderer(
         resize();
       }
       const terrainStarted = performance.now();
-      const groundMoved = terrain.update(net.doc);
+      const stroking = !!options?.holdRoads && !!elevation && networkRevision === net.revision;
+      const groundMoved = terrain.update(net.doc, stroking);
       // A brush stroke in progress: every dab used to re-solve the whole road
       // network and re-mesh every road, tree and tuft of grass near it - 450 ms
       // a dab on the player map, so painting was a slideshow. While the stroke
       // is held only the ground follows the brush, cut and filled to the roads
       // as they already stand; the roads catch up once, when it ends.
-      if (options?.holdRoads && elevation && networkRevision === net.revision) {
+      if (stroking) {
         if (groundMoved) {
-          shapeGround(net);
+          shapeGround(net, terrain.lastRegion);
           terrainMs = performance.now() - terrainStarted;
         }
       } else {
         rebuildWorld(net);
+        terrain.settle();
       }
       // A building placed, moved or reshaped grades its own site.
       if (gradedFor !== net.doc.buildings.revision) {
         gradedFor = net.doc.buildings.revision;
         if (siteSignature(net.doc) !== siteKey) shapeGround(net);
       }
-      buildings.update(net.doc, terrain.renderedHeightAt, `${net.doc.terrainRevision}:${rebuilds}`, pavedHeightAt);
+      // The buildings follow the ground once a stroke is over, not on every
+      // dab of it: re-grading 600 buildings per dab took seconds a dab.
+      if (!stroking) buildingGround = `${net.doc.terrainRevision}:${rebuilds}`;
+      buildings.update(net.doc, terrain.renderedHeightAt, buildingGround, pavedHeightAt);
       // The plants under a building's footprints: only a changed site moves them.
       if (scenery && (excludedFor.scenery !== scenery || excludedFor.site !== siteKey)) {
         scenery.exclude(net.doc.buildings.size > 0 ? buildings.covers : null);
