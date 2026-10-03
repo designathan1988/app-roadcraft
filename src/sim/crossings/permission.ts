@@ -69,6 +69,12 @@ export function mayEnterCrossing(w: SimWorld, crossing: SidewalkEdge, waited: nu
  * about are examined now, by exactly the same rules.
  */
 const RESERVATIONS = new WeakMap<SimWorld, Map<string, { v: Vehicle; connector: string }[]>>();
+/** The connectors one vehicle reserves, this tick: cleared and refilled, never reallocated. */
+const reservedIds: string[] = [];
+const alreadyReserved = (id: string): boolean => {
+  for (const s of reservedIds) if (s === id) return true;
+  return false;
+};
 
 export function indexReservations(w: SimWorld): void {
   const index = RESERVATIONS.get(w) ?? new Map<string, { v: Vehicle; connector: string }[]>();
@@ -76,10 +82,15 @@ export function indexReservations(w: SimWorld): void {
   RESERVATIONS.set(w, index);
   for (const v of w.vehicles.values()) {
     const lane = w.lanelet(v.lanelet);
-    const connectorIds = new Set(v.clearingConnectors.map((token) => token.connector));
-    if (v.admittedConnector) connectorIds.add(v.admittedConnector);
-    if (lane?.kind === 'connector') connectorIds.add(lane.id);
-    for (const connectorId of connectorIds) {
+    // A vehicle mid-lane, clearing nothing and admitted nowhere, holds no
+    // reservation: skipping it before building its key list is most of the
+    // fleet on most ticks, and it used to build a `Set` for every one of them.
+    if (v.clearingConnectors.length === 0 && !v.admittedConnector && lane?.kind !== 'connector') continue;
+    reservedIds.length = 0;
+    for (const token of v.clearingConnectors) if (!alreadyReserved(token.connector)) reservedIds.push(token.connector);
+    if (v.admittedConnector && !alreadyReserved(v.admittedConnector)) reservedIds.push(v.admittedConnector);
+    if (lane?.kind === 'connector' && !alreadyReserved(lane.id)) reservedIds.push(lane.id);
+    for (const connectorId of reservedIds) {
       const connector = w.connector(connectorId);
       if (!connector) continue;
       for (const segment of w.doc.node(connector.node)?.incident ?? []) {

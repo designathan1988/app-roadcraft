@@ -734,16 +734,35 @@ function rebind(w: SimWorld, s: State): void {
 
 // ---------------------------------------------------------------------- step
 
-/** Where each person stood at the start of the tick, bucketed, for neighbour queries. */
+/**
+ * Where each person stood at the start of the tick, bucketed, for neighbour
+ * queries.
+ *
+ * The map and its bucket arrays are kept between ticks and refilled: this runs
+ * every tick over the whole crowd, and allocating a `Map` and a small array per
+ * occupied cell each time was a steady drip of garbage from the busiest loop in
+ * the simulation. `nextBucket` hands out pooled arrays; the used ones are
+ * emptied at the top of the next build, so nothing is allocated once the grid
+ * has seen the map's cells.
+ */
+const gridBuckets = new Map<number, Person[]>();
+const bucketPool: Person[][] = [];
+let bucketsUsed = 0;
 function grid(people: readonly Person[]): Map<number, Person[]> {
-  const g = new Map<number, Person[]>();
+  for (let i = 0; i < bucketsUsed; i++) bucketPool[i]!.length = 0;
+  gridBuckets.clear();
+  bucketsUsed = 0;
   for (const p of people) {
     const key = cellKey(Math.floor(p.x / CELL), Math.floor(p.y / CELL));
-    const list = g.get(key);
-    if (list) list.push(p);
-    else g.set(key, [p]);
+    let list = gridBuckets.get(key);
+    if (!list) {
+      list = bucketPool[bucketsUsed] ?? (bucketPool[bucketsUsed] = []);
+      bucketsUsed++;
+      gridBuckets.set(key, list);
+    }
+    list.push(p);
   }
-  return g;
+  return gridBuckets;
 }
 const cellKey = (cx: number, cy: number): number => (cx + 32768) * 65536 + (cy + 32768);
 
@@ -751,10 +770,14 @@ function neighbours(g: Map<number, Person[]>, p: Person, reach: number, out: Per
   out.length = 0;
   const r = Math.ceil(reach / CELL);
   const cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL);
+  // Compared squared: this runs for every candidate in every cell of the
+  // window, for every agent, every tick, and the square root was never read.
+  const reachSq = reach * reach;
   for (let dx = -r; dx <= r; dx++) {
     for (let dy = -r; dy <= r; dy++) {
       for (const q of g.get(cellKey(cx + dx, cy + dy)) ?? []) {
-        if (q !== p && hypot2(q.x - p.x, q.y - p.y) < reach) out.push(q);
+        const qx = q.x - p.x, qy = q.y - p.y;
+        if (q !== p && qx * qx + qy * qy < reachSq) out.push(q);
       }
     }
   }
@@ -777,15 +800,24 @@ interface Decision {
   readonly makingRoom: boolean;
 }
 
+/** The three lists one tick fills, kept between ticks (`step`). */
+const stepNear: Person[] = [];
+const stepArrived: Person[] = [];
+const stepDecided: Decision[] = [];
+/** Squared distances and their order, for the ORCA neighbour sort (`step`). */
+const nearDistSq: number[] = [];
+const nearOrder: number[] = [];
+
 function step(w: SimWorld, s: State): void {
   const nav = s.nav;
   if (!nav) return;
   const mesh = nav.mesh;
   indexReservations(w);
   const g = grid(s.people);
-  const near: Person[] = [];
-  const arrived: Person[] = [];
-  const decided: Decision[] = [];
+  // Reused across ticks, not reallocated: these three grow to the crowd's size
+  // and are emptied at the top of the tick that uses them.
+  const near = stepNear; const arrived = stepArrived; const decided = stepDecided;
+  near.length = 0; arrived.length = 0; decided.length = 0;
   // Avoidance between people only where it can be seen (`SimWorld.focus`).
   const focus = w.focus;
   const watched = (p: Person): boolean =>
@@ -1131,11 +1163,23 @@ function step(w: SimWorld, s: State): void {
     // each other out of sight stood inside each other when the camera came.
     // Out of sight a body heeds its nearest few (Detour's `maxNeighbours`).
     if (p.ghost <= 0 && p.urgent <= 0) {
-      const around = neighbours(g, p, ORCA_REACH, near)
-        .sort((a, b) => hypot2(a.x - p.x, a.y - p.y) - hypot2(b.x - p.x, b.y - p.y));
+      const around = neighbours(g, p, ORCA_REACH, near);
+      // Sorted by squared distance, worked out once: the comparator used to
+      // run two hypots per comparison, O(n log n) of them for a list only its
+      // nearest few of which are ever read.
+      const count = around.length;
+      nearDistSq.length = count;
+      nearOrder.length = count;
+      for (let i = 0; i < count; i++) {
+        const q = around[i]!;
+        const dx = q.x - p.x, dy = q.y - p.y;
+        nearDistSq[i] = dx * dx + dy * dy;
+        nearOrder[i] = i;
+      }
+      nearOrder.sort((a, b) => nearDistSq[a]! - nearDistSq[b]!);
       const heeded = watched(p) ? ORCA_NEIGHBOURS : ORCA_NEIGHBOURS_UNSEEN;
-      for (let k = 0; k < around.length && k < heeded; k++) {
-        const q = around[k]!;
+      for (let k = 0; k < count && k < heeded; k++) {
+        const q = around[nearOrder[k]!]!;
         const line = LINE_POOL[lines.length] ??= { px: 0, py: 0, dx: 0, dy: 0 };
         // People walking together keep close: between companions avoidance
         // looks only a moment ahead, or their places side by side read as a
@@ -1585,41 +1629,69 @@ function inside(mesh: WorldNav['mesh'], t: number, x: number, y: number): { x: n
 
 const SLIDE_TURNS = [0.45, -0.45, 0.9, -0.9, 1.3, -1.3];
 
+/**
+ * Where a route steps from footway onto a zebra: the portal indices, worked
+ * out once per path.
+ *
+ * `nextGate` ran this scan for every person every tick - up to sixty portals
+ * checked, and almost always none of them a gate - which cost about two
+ * microseconds a person and was the largest single item in the decision loop.
+ * A route's gates depend only on the route and the mesh, so they are found
+ * once and the per-tick search becomes a walk over a list that is usually
+ * empty. The mesh is kept with the list because a path can outlive the mesh
+ * it was built on.
+ */
+const zebraEntries = new WeakMap<NavPath, { mesh: WorldNav['mesh']; list: number[] }>();
+function entriesOf(mesh: WorldNav['mesh'], path: NavPath): number[] {
+  const cached = zebraEntries.get(path);
+  if (cached && cached.mesh === mesh) return cached.list;
+  const list: number[] = [];
+  for (let i = 0; i + 1 < path.tris.length; i++) {
+    if (!isZebra(mesh.region[path.tris[i]!]!) && isZebra(mesh.region[path.tris[i + 1]!]!)) list.push(i);
+  }
+  zebraEntries.set(path, { mesh, list });
+  return list;
+}
+
 /** The next place on the route where it steps from footway onto a zebra. */
 function nextGate(mesh: WorldNav['mesh'], p: Person, path: NavPath):
   { crossing: number; chain: number[]; x: number; y: number; across: number; index: number; wx: number; wy: number; fromA: boolean } | null {
   const from = path.tris[p.ci] === p.tri ? p.ci : Math.max(0, path.tris.indexOf(p.tri));
-  for (let i = from; i < path.portals.length && i < from + 60; i++) {
-    const a = path.tris[i]!, b = path.tris[i + 1]!;
-    if (!isZebra(mesh.region[a]!) && isZebra(mesh.region[b]!)) {
-      const portal = path.portals[i]!;
-      const q = closestOnSegment(portal.lx, portal.ly, portal.rx, portal.ry, p.x, p.y);
-      const c = mesh.crossings[mesh.region[b]!]!;
-      const toA = hypot2(q.x - c.ax, q.y - c.ay), toB = hypot2(q.x - c.bx, q.y - c.by);
-      const across = toA < toB ? Math.atan2(c.by - c.ay, c.bx - c.ax) : Math.atan2(c.ay - c.by, c.ax - c.bx);
-      // Where to wait: at the kerb, on the right-hand side of the zebra's
-      // mouth as one faces across it, so people coming off it the other way
-      // pass on the other side instead of meeting somebody standing in the
-      // middle of the way out.
-      const ux = Math.cos(across), uy = Math.sin(across);
-      const nx = toA < toB ? c.ax : c.bx, ny = toA < toB ? c.ay : c.by;
-      const along = (q.x - nx) * ux + (q.y - ny) * uy - KERB_STOP;
-      const aside = Math.max(0, c.halfWidth - NAV_RADIUS) * WAIT_ASIDE;
-      const wantX = nx + ux * along + uy * aside, wantY = ny + uy * along - ux * aside;
-      const spot = mesh.nearest(wantX, wantY, m(0.4));
-      const ok = spot && !isZebra(mesh.region[spot.t]!);
-      const chain: number[] = [];
-      for (let k = i + 1; k < path.tris.length && isZebra(mesh.region[path.tris[k]!]!); k++) {
-        const z = mesh.region[path.tris[k]!]!;
-        if (!chain.includes(z)) chain.push(z);
-      }
-      return {
-        crossing: mesh.region[b]!, chain, x: q.x, y: q.y, across, index: i + 1,
-        wx: ok ? spot.x : q.x - ux * KERB_STOP, wy: ok ? spot.y : q.y - uy * KERB_STOP, fromA: toA < toB,
-      };
-    }
+  const entries = entriesOf(mesh, path);
+  let at = -1;
+  for (const i of entries) {
+    if (i < from) continue;
+    if (i >= from + 60) break;
+    at = i;
+    break;
   }
-  return null;
+  if (at < 0) return null;
+  const b = path.tris[at + 1]!;
+  const portal = path.portals[at]!;
+  const q = closestOnSegment(portal.lx, portal.ly, portal.rx, portal.ry, p.x, p.y);
+  const c = mesh.crossings[mesh.region[b]!]!;
+  const toA = hypot2(q.x - c.ax, q.y - c.ay), toB = hypot2(q.x - c.bx, q.y - c.by);
+  const across = toA < toB ? Math.atan2(c.by - c.ay, c.bx - c.ax) : Math.atan2(c.ay - c.by, c.ax - c.bx);
+  // Where to wait: at the kerb, on the right-hand side of the zebra's
+  // mouth as one faces across it, so people coming off it the other way
+  // pass on the other side instead of meeting somebody standing in the
+  // middle of the way out.
+  const ux = Math.cos(across), uy = Math.sin(across);
+  const nx = toA < toB ? c.ax : c.bx, ny = toA < toB ? c.ay : c.by;
+  const along = (q.x - nx) * ux + (q.y - ny) * uy - KERB_STOP;
+  const aside = Math.max(0, c.halfWidth - NAV_RADIUS) * WAIT_ASIDE;
+  const wantX = nx + ux * along + uy * aside, wantY = ny + uy * along - ux * aside;
+  const spot = mesh.nearest(wantX, wantY, m(0.4));
+  const ok = spot && !isZebra(mesh.region[spot.t]!);
+  const chain: number[] = [];
+  for (let k = at + 1; k < path.tris.length && isZebra(mesh.region[path.tris[k]!]!); k++) {
+    const z = mesh.region[path.tris[k]!]!;
+    if (!chain.includes(z)) chain.push(z);
+  }
+  return {
+    crossing: mesh.region[b]!, chain, x: q.x, y: q.y, across, index: at + 1,
+    wx: ok ? spot.x : q.x - ux * KERB_STOP, wy: ok ? spot.y : q.y - uy * KERB_STOP, fromA: toA < toB,
+  };
 }
 
 /** Whether every zebra of `chain` may be stepped onto now. */

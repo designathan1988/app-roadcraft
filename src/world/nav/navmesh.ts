@@ -393,12 +393,15 @@ export class NavMesh {
 
   private wallSeen: Uint32Array | null = null;
   private mouthSeen: Uint32Array | null = null;
+  /** Per triangle, the last query that saw it (`nearest`, per agent per tick). */
+  private triSeen: Uint32Array | null = null;
   private stamp = 0;
   private nextStamp(): number {
     if (++this.stamp === 0xffffffff) {
       this.stamp = 1;
       this.wallSeen?.fill(0);
       this.mouthSeen?.fill(0);
+      this.triSeen?.fill(0);
     }
     return this.stamp;
   }
@@ -425,17 +428,20 @@ export class NavMesh {
 
   /** The nearest point on the mesh within `reach`, and its triangle; null if none. */
   nearest(x: number, y: number, reach: number): { x: number; y: number; t: number } | null {
+    // Visited-once by stamp, not by a `Set`: this runs for every agent against
+    // every triangle its window touches, and a fresh Set per call was most of
+    // its cost (the same reason `wallsNear` and `mouthSegmentsNear` stamp).
+    const seen = this.triSeen ??= new Uint32Array(this.count);
+    const stamp = this.nextStamp();
     let best: { x: number; y: number; t: number } | null = null;
     let bestD = reach * reach;
-    const seen = new Set<number>();
     for (let cx = cell(x - reach); cx <= cell(x + reach); cx++) {
       for (let cy = cell(y - reach); cy <= cell(y + reach); cy++) {
         for (const t of this.grid.get(cellKey(cx, cy)) ?? []) {
-          if (seen.has(t)) continue;
-          seen.add(t);
-          const q = closestOnTriangle(this.tri, t, x, y);
-          const d = (q.x - x) ** 2 + (q.y - y) ** 2;
-          if (d < bestD) { bestD = d; best = { x: q.x, y: q.y, t }; }
+          if (seen[t] === stamp) continue;
+          seen[t] = stamp;
+          const d = closestOnTriangleSq(this.tri, t, x, y);
+          if (d < bestD) { bestD = d; best = { x: closestX, y: closestY, t }; }
         }
       }
     }
@@ -465,24 +471,56 @@ const WALL_CELL = 2;
 const wcell = (v: number): number => Math.floor(v / WALL_CELL);
 const cellKey = (cx: number, cy: number): number => (cx + 32768) * 65536 + (cy + 32768);
 
+/** The point of triangle `t` nearest (x, y), written to `closestX`/`closestY`. */
 function closestOnTriangle(tri: Float64Array, t: number, x: number, y: number): { x: number; y: number } {
+  closestOnTriangleSq(tri, t, x, y);
+  return { x: closestX, y: closestY };
+}
+
+/**
+ * The squared distance from (x, y) to triangle `t`, its nearest point left in
+ * `closestX`/`closestY`.
+ *
+ * Allocation-free on purpose: `nearest` calls this once per triangle in an
+ * agent's window, every agent every tick, and the array-of-arrays the old
+ * version built per call (four allocations) plus a segment object per edge was
+ * a large share of the pedestrian tick. The arithmetic is the arithmetic of
+ * `closestOnSegment`, so the point and the distance are unchanged.
+ */
+function closestOnTriangleSq(tri: Float64Array, t: number, x: number, y: number): number {
   const o = t * 6;
-  const pts = [[tri[o]!, tri[o + 1]!], [tri[o + 2]!, tri[o + 3]!], [tri[o + 4]!, tri[o + 5]!]] as const;
+  const ax = tri[o]!, ay = tri[o + 1]!;
+  const bx = tri[o + 2]!, by = tri[o + 3]!;
+  const cx = tri[o + 4]!, cy = tri[o + 5]!;
   // Inside: the point itself.
-  const [a, b, c] = pts;
-  const d1 = (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]);
-  const d2 = (c[0] - b[0]) * (y - b[1]) - (c[1] - b[1]) * (x - b[0]);
-  const d3 = (a[0] - c[0]) * (y - c[1]) - (a[1] - c[1]) * (x - c[0]);
-  if ((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0)) return { x, y };
-  let best = { x: a[0], y: a[1] };
-  let bestD = Infinity;
-  for (let i = 0; i < 3; i++) {
-    const p = pts[i]!, q = pts[(i + 1) % 3]!;
-    const q2 = closestOnSegment(p[0], p[1], q[0], q[1], x, y);
-    const d = (q2.x - x) ** 2 + (q2.y - y) ** 2;
-    if (d < bestD) { bestD = d; best = q2; }
+  const d1 = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
+  const d2 = (cx - bx) * (y - by) - (cy - by) * (x - bx);
+  const d3 = (ax - cx) * (y - cy) - (ay - cy) * (x - cx);
+  if ((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0)) {
+    closestX = x; closestY = y;
+    return 0;
   }
-  return best;
+  // Three edges in the order the loop used, strict `<` so the first wins a tie.
+  closestX = ax; closestY = ay;
+  let bestD = Infinity;
+  bestD = closestOnEdge(ax, ay, bx, by, x, y, bestD);
+  bestD = closestOnEdge(bx, by, cx, cy, x, y, bestD);
+  return closestOnEdge(cx, cy, ax, ay, x, y, bestD);
+}
+
+/** Scratch for the last `closestOnTriangleSq`: the point it found. */
+let closestX = 0;
+let closestY = 0;
+
+/** `closestOnSegment`'s arithmetic without its object; the nearest point so far wins. */
+function closestOnEdge(ax: number, ay: number, bx: number, by: number, x: number, y: number, bestD: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const len = dx * dx + dy * dy;
+  const t = len > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len)) : 0;
+  const px = ax + dx * t, py = ay + dy * t;
+  const d = (px - x) * (px - x) + (py - y) * (py - y);
+  if (d < bestD) { closestX = px; closestY = py; return d; }
+  return bestD;
 }
 
 /** Where along p0->p1 (0..1) it crosses segment a-b, or null. */

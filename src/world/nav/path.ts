@@ -159,23 +159,34 @@ const cross = (ax: number, ay: number, bx: number, by: number, cx: number, cy: n
  * goal through the portals. Each corner records the portal index it was
  * pulled round, so the walker knows which triangle it leads into.
  */
+/** Scratch for `inward`: the corner pulled a little way in off its portal. */
+let inwardX = 0;
+let inwardY = 0;
+/**
+ * A corner is a portal's end, which is a corner of a wall: walking to it
+ * exactly is walking into the wall. It is taken a little way in along its
+ * portal, into open ground ("corner offset"), so the body rounds it clear.
+ *
+ * Writes `inwardX`/`inwardY` instead of returning an object, and lives at
+ * module scope instead of being a closure rebuilt per call: every walker pulls
+ * its string every tick.
+ */
+function inward(all: readonly NavPortal[], start: number, x: number, y: number, i: number, fromRight: boolean): void {
+  const p = all[start + i];
+  if (!p) { inwardX = x; inwardY = y; return; }
+  const ox = fromRight ? p.lx : p.rx, oy = fromRight ? p.ly : p.ry;
+  const len = hypot2(ox - x, oy - y);
+  if (len < 1e-9) { inwardX = x; inwardY = y; return; }
+  const pull = Math.min(CORNER_PULL, len / 2) / len;
+  inwardX = x + (ox - x) * pull;
+  inwardY = y + (oy - y) * pull;
+}
+
 export function funnel(sx: number, sy: number, gx: number, gy: number, all: readonly NavPortal[],
   start = 0, max = Infinity): { x: number; y: number; tri: number }[] {
   const out: { x: number; y: number; tri: number }[] = [];
   // The portals from `start` on; corners report indices into `all`.
   const n = all.length - start;
-  // A corner is a portal's end, which is a corner of a wall: walking to it
-  // exactly is walking into the wall. It is taken a little way in along its
-  // portal, into open ground ("corner offset"), so the body rounds it clear.
-  const inward = (x: number, y: number, i: number, fromRight: boolean): { x: number; y: number } => {
-    const p = all[start + i];
-    if (!p) return { x, y };
-    const ox = fromRight ? p.lx : p.rx, oy = fromRight ? p.ly : p.ry;
-    const len = hypot2(ox - x, oy - y);
-    if (len < 1e-9) return { x, y };
-    const pull = Math.min(CORNER_PULL, len / 2) / len;
-    return { x: x + (ox - x) * pull, y: y + (oy - y) * pull };
-  };
   // Portal i as (left, right); the goal as a degenerate last portal. Read in
   // place: every walker pulls its string every tick, and a pair of fresh
   // arrays per portal was most of the funnel's time.
@@ -192,7 +203,8 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
         rx = nrx; ry = nry; ri = i;
       } else {
         // Right crossed over left: the left point is a corner.
-        out.push({ ...inward(lx, ly, li, false), tri: start + li + 1 });
+        inward(all, start, lx, ly, li, false);
+        out.push({ x: inwardX, y: inwardY, tri: start + li + 1 });
         if (out.length >= max) return out;
         ax = lx; ay = ly;
         const restart = li;
@@ -208,7 +220,8 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
       if (same(ax, ay, lx, ly) || cross(ax, ay, rx, ry, nlx, nly) > 0) {
         lx = nlx; ly = nly; li = i;
       } else {
-        out.push({ ...inward(rx, ry, ri, true), tri: start + ri + 1 });
+        inward(all, start, rx, ry, ri, true);
+        out.push({ x: inwardX, y: inwardY, tri: start + ri + 1 });
         if (out.length >= max) return out;
         ax = rx; ay = ry;
         const restart = ri;
@@ -221,8 +234,18 @@ export function funnel(sx: number, sy: number, gx: number, gy: number, all: read
     }
   }
   out.push({ x: gx, y: gy, tri: start + n });
-  // Drop corners that coincide.
-  return out.filter((c, i) => i === 0 || hypot2(c.x - out[i - 1]!.x, c.y - out[i - 1]!.y) > 1e-6);
+  // Drop corners that coincide, compacting in place: `filter` built a second
+  // array every call for a list that is walked once.
+  let w = 0;
+  let prevX = 0, prevY = 0;
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i]!;
+    const keep = i === 0 || hypot2(c.x - prevX, c.y - prevY) > 1e-6;
+    prevX = c.x; prevY = c.y;
+    if (keep) out[w++] = c;
+  }
+  out.length = w;
+  return out;
 }
 
 /** A binary min-heap of (item, priority), ties broken by insertion order. */
