@@ -1,12 +1,12 @@
 {
-  "shortRoad.commit": 29.6,
-  "shortRoad.network": 14.9,
-  "shortRoad.vehicleFrame": 79.2,
-  "shortRoad.walkFrame": 43.5,
-  "shortRoad.editTotal": 161.7,
-  "acrossMap.commit": 24.7,
-  "acrossMap.network": 13.3,
-  "acrossMap.vehicleFrame": 88.3,
-  "acrossMap.walkFrame": 65.6,
-  "acrossMap.editTotal": 190.5
+  "shortRoad.commit": 27.6,
+  "shortRoad.network": 14.5,
+  "shortRoad.vehicleFrame": 71.7,
+  "shortRoad.walkFrame": 43,
+  "shortRoad.editTotal": 164.5,
+  "acrossMap.commit": 26,
+  "acrossMap.network": 12,
+  "acrossMap.vehicleFrame": 81.5,
+  "acrossMap.walkFrame": 60.2,
+  "acrossMap.editTotal": 186
 }
