@@ -1,0 +1,12 @@
+{
+  "shortRoad": {
+    "withCache": 224.1,
+    "withoutCache": 291.6,
+    "hitRate": 0.943
+  },
+  "acrossMap": {
+    "withCache": 217.9,
+    "withoutCache": 388.9,
+    "hitRate": 0.952
+  }
+}
