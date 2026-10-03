@@ -2,10 +2,11 @@ import { Polyline } from '@core/polyline';
 import { offsetPolyline } from '@core/offset';
 import { type Vec2, angleOf, normalize, sub } from '@core/vec2';
 import { MIN_RIBBON, normalizeAngle } from '@core/scalar';
+import { Digest } from '@core/digest';
 import type { NodeId, SegmentId } from './ids';
 import { movementKey, type JunctionControl, type RoadDoc } from './doc';
 import type { Network } from './network';
-import { laneOffset, roadProfile, travelLanes } from './roadTypes';
+import { laneOffset, laneWidth, roadProfile, travelLanes } from './roadTypes';
 import { orientedPolyline } from './geometry';
 import { type ApproachGroup, computeApproachGroups } from './approachGroups';
 import { TUNNELS_DRAWN } from './structures';
@@ -160,6 +161,15 @@ export class LaneletGraph {
 
   revision = -1;
 
+  /**
+   * The link lanelets of each (segment, direction), by the geometry and trims
+   * they were built from: a road an edit did not touch keeps the lanelets it
+   * had, objects and all.
+   */
+  private linkCache = new Map<string, Lanelet[]>();
+  /** The key each lanelet of this build was made under (`buildLinks`). */
+  private readonly laneletKeys = new Map<LaneletId, string>();
+
   build(doc: RoadDoc, net: Network): void {
     this.lanelets.clear();
     this.connectors.clear();
@@ -168,12 +178,16 @@ export class LaneletGraph {
     this.inbound.clear();
     this.outbound.clear();
 
-    this.buildLinks(doc, net);
+    const previousLinks = this.linkCache;
+    const nextLinks = new Map<string, Lanelet[]>();
+    this.laneletKeys.clear();
+    this.buildLinks(doc, net, previousLinks, nextLinks);
+    this.linkCache = nextLinks;
     this.buildJunctions(doc, net);
     this.revision = net.revision;
   }
 
-  private buildLinks(doc: RoadDoc, net: Network): void {
+  private buildLinks(doc: RoadDoc, net: Network, previous: Map<string, Lanelet[]>, next: Map<string, Lanelet[]>): void {
     const ids = [...doc.segments.keys()].sort((a, b) => a - b);
 
     for (const segId of ids) {
@@ -219,28 +233,43 @@ export class LaneletGraph {
         const s0 = startTrim * k;
         const s1 = Math.max(s0 + MIN_RIBBON, total - endTrim * k);
         const centreTrimmed = full.sub(s0, Math.min(s1, total));
-        const pts = centreTrimmed.toPoints();
 
-        for (let lane = 0; lane < lpd; lane++) {
-          // Lane 0 is innermost; negative `perp` offset is the right of travel.
-          const laneCentre = Polyline.fromPoints(
-            offsetPolyline(pts, laneOffset(rt, lane, seg.direction)),
-          );
-          const id = laneletId(segId, from, to, lane);
-          this.lanelets.set(id, {
-            id,
-            kind: 'link',
-            centre: laneCentre,
-            length: laneCentre.length,
-            speedLimit: rt.speedLimit,
-            segment: segId,
-            from,
-            to,
-            laneIndex: lane,
-            controlled: doc.degree(to) >= 3,
-          });
-          push(this.inbound, to, id);
-          push(this.outbound, from, id);
+        // Everything a link lanelet is made of: the segment's own polyline, the
+        // two stop-line trims, the profile's numbers and the node's degree.
+        // Equal keys mean equal lanelets, so the ones the last build made are
+        // used again — the same objects, so the ids the simulation routes and
+        // claims on keep pointing at the same geometry.
+        const key = `${segId}|${forward ? 1 : 0}|${lpd}|${laneWidth(rt)}|${rt.median}|${rt.speedLimit}`
+          + `|${seg.direction === 'both' ? 1 : 0}|${doc.degree(to)}|${s0}|${s1}|${new Digest().addAll(full.xy).value()}`;
+        let lanes = previous.get(key);
+        if (!lanes) {
+          const pts = centreTrimmed.toPoints();
+          lanes = [];
+          for (let lane = 0; lane < lpd; lane++) {
+            // Lane 0 is innermost; negative `perp` offset is the right of travel.
+            const laneCentre = Polyline.fromPoints(
+              offsetPolyline(pts, laneOffset(rt, lane, seg.direction)),
+            );
+            lanes.push({
+              id: laneletId(segId, from, to, lane),
+              kind: 'link',
+              centre: laneCentre,
+              length: laneCentre.length,
+              speedLimit: rt.speedLimit,
+              segment: segId,
+              from,
+              to,
+              laneIndex: lane,
+              controlled: doc.degree(to) >= 3,
+            });
+          }
+        }
+        next.set(key, lanes);
+        for (const lanelet of lanes) {
+          this.lanelets.set(lanelet.id, lanelet);
+          this.laneletKeys.set(lanelet.id, key);
+          push(this.inbound, to, lanelet.id);
+          push(this.outbound, from, lanelet.id);
         }
       }
     }
