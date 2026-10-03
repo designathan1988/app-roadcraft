@@ -51,7 +51,8 @@ await page.goto(base, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => Boolean(window.__roadcraft), null, { timeout: 120_000 });
 await page.waitForTimeout(1200);
 
-const built = await page.evaluate(async () => {
+const BOOT_ONLY = process.argv.includes('--boot');
+const built = BOOT_ONLY ? await page.evaluate(() => ({ buildMs: 0, buildings: window.__roadcraft.doc.buildings.size })) : await page.evaluate(async () => {
   const R = window.__roadcraft;
   const { buildDefaultTown } = await import('/src/world/defaultTown.ts');
   const { RoadDoc } = await import('/src/world/doc.ts');

@@ -47,7 +47,7 @@ import { History, restoreInto, restoreSnapshot, serialize } from '@editor/histor
 import { type ImportResult, Persistence, exportToFile, importFromFile, type SavedSettings } from '@editor/persistence';
 import { drawMinimap, minimapToWorld } from '@ui/minimap';
 import { openInspector, closeInspector, refreshInspector } from '@ui/inspector';
-import { buildSampleTown } from '@world/sampleTown';
+import { buildDefaultTown } from '@world/defaultTown';
 import { buildTown } from '@world/town';
 import { focusCameFromKeyboard, initChrome } from '@ui/chrome';
 import { roadSwatch } from '@ui/roadSwatch';
@@ -138,14 +138,16 @@ surface.observe();
 
 // ------------------------------------------------------------------ boot
 const savedSession = persistence.loadSession();
-// The game opens on an empty map. An autosave that is still an earlier build's
-// untouched starter scenario is dropped too; anything the player built stays.
+// The game opens on THE TOWN - the map that ships with it (`world/defaultTown`)
+// - unless the player has a map of their own: an autosave that is still an
+// earlier build's untouched starter scenario is dropped too, and anything the
+// player built stays.
 const saved = savedSession?.document && !isUntouchedStarter(savedSession.document)
   ? savedSession.document
   : null;
 // A saved map that validates and still fails to load must not take the game
 // down with it - on every reload. It is set aside (never deleted) and the game
-// opens empty, saying so.
+// opens on the town instead, saying so.
 let bootFailed = false;
 if (saved) {
   try {
@@ -154,10 +156,12 @@ if (saved) {
     console.error('The saved map could not be loaded; it was set aside.', error);
     persistence.quarantineStored();
     doc.replaceWith(new RoadDoc());
+    buildDefaultTown(doc);
     net.rebuild();
     bootFailed = true;
   }
 } else {
+  buildDefaultTown(doc);
   net.rebuild();
 }
 
@@ -2266,9 +2270,10 @@ mountAbout();
 (document.getElementById('sampleTown') as HTMLButtonElement).onclick = () => {
   if (!window.confirm(t('confirm.sampleTown'))) return;
   history.record(doc);
-  // A town built on a fresh map: streets, blocks of buildings, its people.
+  // The town the game ships with, on a fresh map: streets, blocks of
+  // buildings, its people.
   const town = new RoadDoc();
-  buildSampleTown(town);
+  buildDefaultTown(town);
   applySnapshot(town.toJSON(), 'import');
   roadHeightOffset = 0;
   roadHeightEdited = false;
