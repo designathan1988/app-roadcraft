@@ -81,9 +81,14 @@ log.push(['mountain', await page.evaluate(() => window.__roadcraft.scene().terra
 
 // ------------------------------------------------------- a pit beside it
 await page.click('[data-terrain-mode="lower"]');
+log.push(['lower-selected', await page.evaluate(() => document.querySelector('[data-terrain-mode="lower"]').className)]);
 await look(900, 300, 1.1);
 await stroke(circle(55), 8);
-log.push(['pit', await page.evaluate(() => window.__roadcraft.scene().terrainHeightAt(900, 300))]);
+log.push(['pit', await page.evaluate(() => {
+  const stamps = window.__roadcraft.doc.terrainStamps;
+  const last = stamps.slice(-4).map((s) => ({ mode: s.mode, x: Math.round(s.x), y: Math.round(s.y) }));
+  return { height: window.__roadcraft.scene().terrainHeightAt(900, 300), last, rivers: stamps.filter((s) => s.mode === 'river').length };
+})]);
 
 // ------------------------------------------------------- a channel out of the mountain
 await page.click('[data-terrain-mode="river"]');
