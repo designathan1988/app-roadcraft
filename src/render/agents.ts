@@ -1221,6 +1221,18 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
   /** Refreshed for every vehicle, read by whichever body builder runs. */
   const lamp: LampState = { tail: TAILLAMP, indicate: 0, steer: 0, spin: 0, crank: 0 };
   const odometer = new WheelOdometer();
+  // One elevation callback for every vehicle and pedestrian drawn this frame.
+  // A closure per entity - `elevationAt(world, x, y, seg)` with the segment
+  // captured - was an allocation per entity per frame, thousands a second in
+  // a busy town. `roadFrame` and `groundGradient` call it synchronously, so a
+  // mutable pair read at call time is the same answer without the garbage.
+  let currentWorld: SimWorld | undefined;
+  let currentSegment: SegmentId | undefined;
+  const elevationOnCurrent = (x: number, y: number): number => elevationAt(currentWorld!, x, y, currentSegment);
+  // `vehicleLook` by id: it is a pure function of the id and the seat count,
+  // and it was rebuilding the same ten-field object for every vehicle every
+  // frame. Pruned like the suspension, on the frame counter.
+  const looks = new Map<number, { seats: number; look: VehicleLook; seen: number }>();
 
   return {
     meshes,
@@ -1229,12 +1241,14 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
       lampMaterial.color.setScalar(1 + 2.4 * dark);
     },
     sync(world, alpha, detailed, zoom = Number.POSITIVE_INFINITY, options = {}) {
+      currentWorld = world;
       const now = typeof performance !== 'undefined' ? performance.now() : suspensionClock + 16;
       suspensionDt = Math.min(0.1, Math.max(0, (now - suspensionClock) / 1000));
       suspensionClock = now;
       suspensionFrame++;
       if (suspensionFrame % 600 === 0) {
         for (const [id, ride] of suspension) if (suspensionFrame - ride.seen > 120) suspension.delete(id);
+        for (const [id, entry] of looks) if (suspensionFrame - entry.seen > 120) looks.delete(id);
       }
       pedestrians.begin(options.pedestrianDetail ?? 2, zoom);
       for (const part of allParts) part.n = 0;
@@ -1269,8 +1283,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
         const front = plan.axleAlong[0] ?? plan.length * 0.35;
         const rear = plan.axleAlong[plan.axleAlong.length - 1] ?? -plan.length * 0.35;
         const seg = lane?.segment ?? (lane ? world.connector(lane.id)?.inSegment : undefined);
-        const onRoad = (x: number, y: number): number => elevationAt(world, x, y, seg);
-        const want = roadFrame(onRoad, pose.p.x, pose.p.y, pose.angle, front, rear,
+        currentSegment = seg;
+        const want = roadFrame(elevationOnCurrent, pose.p.x, pose.p.y, pose.angle, front, rear,
           twoWheeled ? 0 : plan.axleSide, deck);
         const wantDeck = want.deck;
         const wantPitch = want.pitch;
@@ -1296,7 +1310,12 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
           twoWheeled ? leanOf(world, vehicle) + (fit ? fit.stopTilt * (1 - riderMoving(vehicle)) : 0) : 0,
           ride.pitch, ride.roll);
         const paintHex = hexOf(vehicle.color);
-        const look = vehicleLook(vehicle.id, plan.seats);
+        let lookEntry = looks.get(vehicle.id);
+        if (!lookEntry || lookEntry.seats !== plan.seats) {
+          lookEntry = { seats: plan.seats, look: vehicleLook(vehicle.id, plan.seats), seen: suspensionFrame };
+          looks.set(vehicle.id, lookEntry);
+        } else lookEntry.seen = suspensionFrame;
+        const look = lookEntry.look;
         occupantBand = vehicleBand;
         frameClock = vehicle.age;
 
@@ -1343,7 +1362,8 @@ export function createAgentMeshes(elevationAt: ElevationAt, onAssetsReady: () =>
           const pose = pedPose(ped, alpha);
           const open = ped.ground === 'open';
           const segment = ped.segment;
-          const land = open && groundAt ? groundAt : (gx: number, gy: number) => elevationAt(world, gx, gy, segment);
+          currentSegment = segment;
+          const land = open && groundAt ? groundAt : elevationOnCurrent;
           const deck = open ? land(pose.p.x, pose.p.y) + m(0.04)
             : elevationAt(world, pose.p.x, pose.p.y, segment) +
               (ped.ground === 'crossing' ? 0 : FOOTWAY_RISE);

@@ -193,7 +193,7 @@ const hashOf = (n: number): number => {
   return (h ^ (h >>> 15)) >>> 0;
 };
 
-interface Entry { index: number; size: number; x: number; y: number; seen: number; group: string; code: DressCode }
+interface Entry { index: number; size: number; x: number; y: number; seen: number; group: string; code: DressCode; company: Company; companyId: number }
 
 /**
  * The casting registry: who wears which body, chosen once and kept while the
@@ -263,8 +263,11 @@ export class CastingRegistry {
   pickCitizenModel(ctx: CastingContext, helmetFits: (id: string) => boolean = () => true): Casting | null {
     const known = this.cast.get(ctx.seed);
     if (known) {
-      const group = `${ctx.company}:${ctx.companyId}`;
-      if (known.group !== group) {
+      // The two fields, not the string built from them: this is the path every
+      // drawn figure takes every frame, and it was building a template string
+      // per figure per frame only to compare it with the one it already had.
+      if (known.company !== ctx.company || known.companyId !== ctx.companyId) {
+        const group = `${ctx.company}:${ctx.companyId}`;
         // A walker boarding a car keeps their body. That known wardrobe must
         // settle the car's code before its generated occupants are cast.
         const wardrobe = this.roster[known.index]!.wardrobe;
@@ -280,6 +283,8 @@ export class CastingRegistry {
         }
         known.group = group;
         known.code = code;
+        known.company = ctx.company;
+        known.companyId = ctx.companyId;
       }
       known.x = ctx.x;
       known.y = ctx.y;
@@ -335,7 +340,7 @@ export class CastingRegistry {
       if (!fromSpare && nearest > farthest) { farthest = nearest; fallback = candidate; }
     }
     if (index < 0) index = fallback;
-    const entry: Entry = { index, size, x: ctx.x, y: ctx.y, seen: this.frame, group, code };
+    const entry: Entry = { index, size, x: ctx.x, y: ctx.y, seen: this.frame, group, code, company: ctx.company, companyId: ctx.companyId };
     this.cast.set(ctx.seed, entry);
     const list = this.wearers.get(index);
     if (list) list.add(ctx.seed);

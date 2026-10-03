@@ -116,7 +116,11 @@ const PED_STOP_MARGIN = 0.5;
  * can be expressed here.
  */
 export function longitudinalConstraints(w: SimWorld, v: Vehicle): ConstraintSet {
-  const constraints: ConstraintSet = { obstacles: [] };
+  // The set the vehicle already carries, emptied: every reader of it works
+  // inside the tick that fills it, and a fresh object and array per vehicle
+  // per tick was the fleet's own steady drip of garbage.
+  const constraints: ConstraintSet = v.constraints ??= { obstacles: [] };
+  constraints.obstacles.length = 0;
 
   const leader = findLeader(w, v);
   if (leader) constraints.obstacles.push(leader);
