@@ -1,0 +1,65 @@
+{
+  "map": {
+    "segments": 182,
+    "nodes": 119
+  },
+  "population": {
+    "vehicles": 680,
+    "pedestrians": 162
+  },
+  "msPerTick": {
+    "total": 18.223,
+    "0 topology": 0.002,
+    "1 signals": 1.132,
+    "2 dispatch+routes": 0.485,
+    "2b lane change": 0.224,
+    "2c kerb stops": 0.033,
+    "3 pedestrians": 10.751,
+    "4 constraints": 1.93,
+    "5 admission": 1.799,
+    "6 integrate": 1.363,
+    "7 cleanup": 0.42,
+    "8 audit": 0.001
+  },
+  "helpers": {
+    "pedestrianDemandOn": {
+      "callsPerTick": 50.9,
+      "msPerTick": 0.014
+    },
+    "vehiclesInIdOrder": {
+      "callsPerTick": 8,
+      "msPerTick": 0.008
+    },
+    "pedsInIdOrder": {
+      "callsPerTick": 3,
+      "msPerTick": 0.003
+    },
+    "pedestrianWait": {
+      "callsPerTick": 0.3,
+      "msPerTick": 0
+    }
+  },
+  "msPerEdit": {
+    "road": {
+      "commitDraft": 36.65,
+      "networkRebuild": 12.72,
+      "vehicleTopology": 301.1,
+      "walkTopology": 225.44,
+      "simTopology": 526.54
+    },
+    "pole": {
+      "addPole": 0.1,
+      "networkRebuild": 13.27,
+      "simTopology": 0
+    },
+    "building": {
+      "addBuilding": 0.25,
+      "accessTopology": 20.76,
+      "networkRebuildNeeded": 0
+    },
+    "terrain": {
+      "addStamp": 0.06,
+      "roadElevation": 19.77
+    }
+  }
+}

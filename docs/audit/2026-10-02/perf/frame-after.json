@@ -1,0 +1,203 @@
+{
+  "quality": "high",
+  "size": [
+    1600,
+    900
+  ],
+  "peopleReady": "84/84",
+  "personBuilds": [
+    68,
+    46,
+    44,
+    37,
+    27,
+    56,
+    29,
+    45,
+    31,
+    24,
+    33,
+    29,
+    25,
+    39,
+    37,
+    26,
+    27,
+    25,
+    26,
+    29,
+    41,
+    37,
+    26,
+    27,
+    27,
+    31,
+    35,
+    24,
+    34,
+    30,
+    35,
+    28,
+    22,
+    34,
+    24,
+    24,
+    24,
+    27,
+    29,
+    26,
+    27,
+    37,
+    27,
+    24,
+    24,
+    21,
+    24,
+    47,
+    35,
+    42,
+    34,
+    41,
+    63,
+    48,
+    39,
+    46,
+    47,
+    50,
+    64,
+    57,
+    57,
+    51,
+    92,
+    68,
+    47,
+    47,
+    51,
+    53,
+    67,
+    69,
+    45,
+    40,
+    47,
+    49,
+    50,
+    71,
+    43,
+    44,
+    42,
+    46,
+    39,
+    48,
+    66,
+    39
+  ],
+  "newPrograms": [],
+  "keyDiff": [],
+  "newProgramUsers": [],
+  "firstDrawnDuringWalk": [],
+  "still": {
+    "median": 16.6,
+    "p90": 17.4,
+    "worst": 22.1,
+    "over50": 0,
+    "frames": 119
+  },
+  "gpuStill": {
+    "total": 8.2,
+    "passes": [
+      [
+        "EffectComposer.rt2",
+        6.63
+      ],
+      [
+        "target",
+        1.22
+      ],
+      [
+        "SMAAPass.weights",
+        0.2
+      ],
+      [
+        "screen",
+        0.08
+      ],
+      [
+        "SMAAPass.edges",
+        0.06
+      ]
+    ]
+  },
+  "moving": {
+    "median": 16.7,
+    "p90": 17.6,
+    "worst": 22.8,
+    "over50": 0,
+    "frames": 239
+  },
+  "back": {
+    "median": 16.6,
+    "p90": 17.5,
+    "worst": 23.1,
+    "over50": 0,
+    "frames": 239
+  },
+  "hot": {
+    "worst": [
+      {
+        "ms": 23,
+        "leaf": [
+          "1 nearest @navmesh.ts:396"
+        ],
+        "top": [
+          "1 nearest @navmesh.ts:396",
+          "1 nextGate @people.ts:1851",
+          "1 step @people.ts:817",
+          "1 step @people.ts:324",
+          "1 step @pipeline.ts:38",
+          "1 (anon) @main.ts:2597",
+          "1 advance @clock.ts:40",
+          "1 frame @main.ts:2575"
+        ]
+      },
+      {
+        "ms": 23,
+        "leaf": [
+          "1 beginTick @people.ts:306"
+        ],
+        "top": [
+          "1 beginTick @people.ts:306",
+          "1 step @pipeline.ts:38",
+          "1 (anon) @main.ts:2597",
+          "1 advance @clock.ts:40",
+          "1 frame @main.ts:2575"
+        ]
+      },
+      {
+        "ms": 23,
+        "leaf": [],
+        "top": []
+      }
+    ],
+    "idle": 77.2,
+    "top": [
+      "22.8% frame @main.ts:2575",
+      "20.7% step @pipeline.ts:38",
+      "20.7% (anon) @main.ts:2597",
+      "20.7% advance @clock.ts:40",
+      "14.8% step @people.ts:817",
+      "14.8% step @people.ts:324",
+      "3.5% nextGate @people.ts:1851",
+      "2.3% funnel @path.ts:179",
+      "2.3% nearest @navmesh.ts:396",
+      "1.8% draw @renderer.ts:505",
+      "1.8% step @life.ts:136",
+      "1.4% closestOnTriangleSq @navmesh.ts:462",
+      "1.2% follow @people.ts:1499",
+      "0.8% start @life.ts:288",
+      "0.8% sync @agents.ts:1115",
+      "0.8% stepController @fsm.ts:94",
+      "0.6% neighbours @people.ts:792",
+      "0.6% beginTick @people.ts:306"
+    ]
+  }
+}

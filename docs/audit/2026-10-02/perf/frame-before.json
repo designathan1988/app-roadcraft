@@ -1,0 +1,117 @@
+{
+  "quality": "high",
+  "size": [
+    1600,
+    900
+  ],
+  "peopleReady": "84/84",
+  "personBuilds": [],
+  "newPrograms": [],
+  "keyDiff": [],
+  "newProgramUsers": [],
+  "firstDrawnDuringWalk": [],
+  "still": {
+    "median": 16.7,
+    "p90": 17.7,
+    "worst": 22.1,
+    "over50": 0,
+    "frames": 119
+  },
+  "gpuStill": {
+    "total": 8,
+    "passes": [
+      [
+        "EffectComposer.rt2",
+        6.25
+      ],
+      [
+        "target",
+        1.33
+      ],
+      [
+        "SMAAPass.weights",
+        0.21
+      ],
+      [
+        "screen",
+        0.11
+      ],
+      [
+        "SMAAPass.edges",
+        0.1
+      ]
+    ]
+  },
+  "moving": {
+    "median": 16.6,
+    "p90": 17.3,
+    "worst": 21.3,
+    "over50": 0,
+    "frames": 239
+  },
+  "back": {
+    "median": 16.7,
+    "p90": 17.4,
+    "worst": 27.4,
+    "over50": 0,
+    "frames": 239
+  },
+  "hot": {
+    "worst": [
+      {
+        "ms": 112,
+        "leaf": [],
+        "top": []
+      },
+      {
+        "ms": 27,
+        "leaf": [
+          "1 range @rng.ts:48",
+          "1 stepLaneChange @laneChange.ts:101",
+          "1 stepKerbStops @kerbStops.ts:135",
+          "1 indexReservations @permission.ts:60",
+          "1 step @pipeline.ts:38",
+          "1 rt @world.ts:228",
+          "1 revokeStaleGrants @admission.ts:204",
+          "1 admit @admission.ts:54"
+        ],
+        "top": [
+          "14 frame @main.ts:2575",
+          "12 step @pipeline.ts:38",
+          "12 (anon) @main.ts:2597",
+          "12 advance @clock.ts:40",
+          "2 stepAdmission @admission.ts:42",
+          "2 draw @renderer.ts:505",
+          "1 range @rng.ts:48",
+          "1 spawnCommuter @life.ts:492"
+        ]
+      },
+      {
+        "ms": 26,
+        "leaf": [],
+        "top": []
+      }
+    ],
+    "idle": 52.2,
+    "top": [
+      "47.8% frame @main.ts:2575",
+      "32.9% (anon) @main.ts:2597",
+      "32.9% advance @clock.ts:40",
+      "32.7% step @pipeline.ts:38",
+      "22.6% step @people.ts:323",
+      "22.2% step @people.ts:786",
+      "13.8% draw @renderer.ts:505",
+      "4.8% nextGate @people.ts:1776",
+      "4.2% sync @agents.ts:1102",
+      "3.8% nearest @navmesh.ts:392",
+      "3.6% closestOnTriangle @navmesh.ts:437",
+      "3.4% cullInstances @scenery.ts:888",
+      "2.9% cull @scenery.ts:693",
+      "2.9% (anon) @three.module-quXgw4aM.js:51996",
+      "2.9% render @three_examples_jsm_postprocessing_RenderPass__js.js:105",
+      "2.9% render @three_examples_jsm_postprocessing_EffectComposer__js.js:307",
+      "2.9% render @postprocess.ts:112",
+      "2.7% funnel @path.ts:148"
+    ]
+  }
+}
