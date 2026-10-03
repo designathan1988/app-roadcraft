@@ -220,6 +220,36 @@ describe('unifiedWaterGeometry', () => {
     }
   });
 
+  it('fills the hollow a river runs into, to the level of the river, and stops at its shore', () => {
+    // A channel at -5 from the river's disc to a pit 50 deep; banks at +5. The
+    // sheet used to end where the brush's reach ended, hanging over the pit.
+    const ground = (x: number, y: number): number => {
+      if (Math.hypot(x - 160, y) < 60) return -50;
+      if (Math.abs(y) < 10 && x > -40 && x < 170) return -5;
+      return Math.hypot(x, y) < 40 ? -5 : 5;
+    };
+    const flooded = new Map<string, number>();
+    const geometry = unifiedWaterGeometry([{ x: 0, y: 0, radius: 40, level: 0 }], ground, flooded);
+    const position = attribute(geometry, 'position');
+    let overPit = 0;
+    for (let i = 0; i < position.count; i++) {
+      const x = position.getX(i), y = -position.getZ(i);
+      expect(position.getY(i)).toBeGreaterThan(ground(x, y));
+      if (Math.hypot(x - 160, y) < 50) { overPit++; expect(position.getY(i)).toBeCloseTo(0, 6); }
+      // Never past the banks.
+      expect(ground(x, y)).toBeLessThan(5);
+    }
+    expect(overPit).toBeGreaterThan(100);
+    expect(flooded.size).toBeGreaterThan(0);
+  });
+
+  it('leaves water that would drain into open low country where the brush put it', () => {
+    const low = (x: number, y: number): number => (Math.hypot(x, y) < 40 ? -5 : -3);
+    const flooded = new Map<string, number>();
+    unifiedWaterGeometry([{ x: 0, y: 0, radius: 40, level: 0 }], low, flooded);
+    expect(flooded.size).toBe(0);
+  });
+
   it('runs the surface downhill when the stamps disagree about the level', () => {
     // The union's whole point: two overlapping stamps at different levels give a
     // sloping river, not two flat sheets with a step between them.

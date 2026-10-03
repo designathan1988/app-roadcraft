@@ -21,6 +21,22 @@ export interface TerrainStamp {
    * player levelling a site for a junction is actually asking for.
    */
   readonly level?: number;
+  /**
+   * The brush stroke this dab belongs to. Within one stroke the dabs of a
+   * raise, lower or river do NOT add up: the stroke moves the ground by the
+   * strongest dab over each point and no more - a brush's OPACITY, not its
+   * flow (Photoshop and Krita draw the same line: opacity caps what one
+   * stroke can do however often it passes; lift the pen and paint again to
+   * build up). Summed, a held brush stacked a hundred dabs on one spot,
+   * the ground hit the height ceiling and came out a flat-topped cylinder
+   * with vertical walls; as a union, a stroke lays a ridge, a valley or a
+   * channel of even height along its path, and a mountain is built stroke
+   * by stroke, with slopes the falloff sets.
+   *
+   * Absent (the town's own landform, maps saved before this field) means a
+   * dab of its own, added as before.
+   */
+  readonly stroke?: number;
 }
 
 /**
@@ -190,15 +206,32 @@ export function sampleTerrainHeight(
 ): number {
   const list = stamps instanceof TerrainIndex ? stamps.near(x, y) : stamps;
   let height = baseRelief(x, y);
+  // The stroke being gathered (see `TerrainStamp.stroke`): its id, its mode,
+  // and the strongest signed move any of its dabs makes here so far.
+  let stroke: number | undefined;
+  let strokeMode: TerrainMode | undefined;
+  let strokeMove = 0;
+  const settle = (): void => {
+    height += strokeMove;
+    stroke = undefined;
+    strokeMove = 0;
+  };
   for (const stamp of list) {
+    if (stroke !== undefined && (stamp.stroke !== stroke || stamp.mode !== strokeMode)) settle();
     const dx = x - stamp.x;
     const dy = y - stamp.y;
     const distanceSquared = dx * dx + dy * dy;
     if (distanceSquared >= stamp.radius * stamp.radius) continue;
     const influence = terrainInfluence(1 - Math.sqrt(distanceSquared) / stamp.radius);
-    if (stamp.mode === 'raise') height += stamp.strength * influence;
-    else if (stamp.mode === 'lower') height -= stamp.strength * influence;
-    else if (stamp.mode === 'river') height -= stamp.strength * RIVER_CARVE * influence;
+    const move = stamp.mode === 'raise' ? stamp.strength * influence
+      : stamp.mode === 'lower' ? -stamp.strength * influence
+        : stamp.mode === 'river' ? -stamp.strength * RIVER_CARVE * influence
+          : 0;
+    if (stamp.mode !== 'flatten' && stamp.stroke !== undefined) {
+      stroke = stamp.stroke;
+      strokeMode = stamp.mode;
+      if (Math.abs(move) > Math.abs(strokeMove)) strokeMove = move;
+    } else if (stamp.mode !== 'flatten') height += move;
     else {
       // Level towards the stamp's own target. With `level` absent this is
       // `height * (1 - k)` — algebraically the rule it replaced, so old maps
@@ -207,6 +240,7 @@ export function sampleTerrainHeight(
       height += (target - height) * Math.min(1, stamp.strength / 10) * influence;
     }
   }
+  settle();
   return clamp(height, TERRAIN_MIN_HEIGHT, TERRAIN_MAX_HEIGHT);
 }
 

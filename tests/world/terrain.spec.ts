@@ -204,3 +204,37 @@ describe('terrain revision', () => {
     expect(doc.terrainRevision).toBeGreaterThan(before);
   });
 });
+
+describe('a brush stroke', () => {
+  const dab = (id: number, x: number, over: Partial<TerrainStamp> = {}): TerrainStamp =>
+    ({ id, x, y: 0, radius: 100, strength: 40, mode: 'raise', ...over });
+
+  it('moves the ground by its strength however often it passes (opacity, not flow)', () => {
+    // A hundred dabs held on one spot: summed, the ground reached the ceiling
+    // and came out a flat-topped cylinder; as one stroke it rises by 40.
+    const held = Array.from({ length: 100 }, (_, i) => dab(i + 1, 0, { stroke: 1 }));
+    expect(sampleTerrainHeight(held, 0, 0) - baseRelief(0, 0)).toBeCloseTo(40, 6);
+    // The falloff keeps its shape: half way out, the single dab's height.
+    expect(sampleTerrainHeight(held, 50, 0) - baseRelief(50, 0)).toBeCloseTo(40 * terrainInfluence(0.5), 6);
+  });
+
+  it('lays a ridge of even height along its path', () => {
+    const path = Array.from({ length: 11 }, (_, i) => dab(i + 1, i * 20, { stroke: 7 }));
+    const crest = [20, 70, 130, 180].map((x) => sampleTerrainHeight(path, x, 0) - baseRelief(x, 0));
+    // Between two dabs a fifth of a radius apart the crest dips by 3% at most.
+    for (const h of crest) { expect(h).toBeGreaterThan(38.8); expect(h).toBeLessThanOrEqual(40 + 1e-9); }
+  });
+
+  it('builds up stroke by stroke, and dabs of no stroke still add as before', () => {
+    const two = [dab(1, 0, { stroke: 1 }), dab(2, 0, { stroke: 1 }), dab(3, 0, { stroke: 2 })];
+    expect(sampleTerrainHeight(two, 0, 0) - baseRelief(0, 0)).toBeCloseTo(80, 6);
+    const loose = [dab(1, 0), dab(2, 0), dab(3, 0)];
+    expect(sampleTerrainHeight(loose, 0, 0) - baseRelief(0, 0)).toBeCloseTo(120, 6);
+  });
+
+  it('reads the same through the spatial index', () => {
+    const path = Array.from({ length: 30 }, (_, i) => dab(i + 1, (i % 10) * 15, { stroke: 1 + Math.floor(i / 10) }));
+    const index = new TerrainIndex(path, 1);
+    for (const x of [-40, 0, 33, 90, 160]) expect(sampleTerrainHeight(index, x, 12)).toBeCloseTo(sampleTerrainHeight(path, x, 12), 9);
+  });
+});

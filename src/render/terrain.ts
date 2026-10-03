@@ -800,7 +800,13 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
   };
 
   let wetDiscs: readonly WaterStamp[] = [];
+  /** The cells water flooded into past the brush (`floodBasins`), with their level. */
+  let floodCells = new Map<string, number>();
   const wetAt = (x: number, y: number): boolean => {
+    if (floodCells.size) {
+      const level = floodCells.get(`${Math.round(x / WATER_CELL)}:${Math.round(y / WATER_CELL)}`);
+      if (level !== undefined && renderedHeightAt(x, y) < level + 0.6) return true;
+    }
     for (const disc of wetDiscs) {
       const reach = disc.radius * WATER_SPREAD;
       if (Math.abs(x - disc.x) > reach || Math.abs(y - disc.y) > reach) continue;
@@ -830,7 +836,8 @@ export function createTerrainSurface(anisotropy: number): TerrainSurface {
     }
     wetDiscs = discs;
     const previous = water.geometry;
-    water.geometry = unifiedWaterGeometry(discs, renderedHeightAt);
+    floodCells = new Map();
+    water.geometry = unifiedWaterGeometry(discs, renderedHeightAt, floodCells);
     previous.dispose();
   };
 
@@ -960,6 +967,74 @@ interface WaterVertex {
   weight: number;
 }
 
+/** Most cells one body of water may spread over into a basin: about 400 m square. */
+const MAX_FLOOD_CELLS = 40_000;
+
+/**
+ * Water runs into the hollow beside it and fills it to its own level.
+ *
+ * The surface used to stop where the brush's reach stopped. A river led into
+ * a pit stood at its own level out over the pit and simply ended there in the
+ * air, a sheet with a sawtooth edge hanging over the hole. Each body of water
+ * (the stamps' vertices, taken a connected group at a time) now floods out,
+ * cell by cell, into every neighbouring cell whose ground is below its level -
+ * the flood fill depression-filling algorithms are built on (Barnes, Lehman &
+ * Mulla, "Priority-Flood", 2014) - so the pit becomes a lake whose edge is its
+ * shore. A flood that runs on past `MAX_FLOOD_CELLS` is not a basin but open
+ * low country the water would drain into; it is withdrawn and that water keeps
+ * the extent the brush gave it.
+ */
+function floodBasins(
+  vertices: Map<string, WaterVertex>,
+  groundAt: (x: number, y: number) => number,
+  flooded?: Map<string, number>,
+): void {
+  const seen = new Set<string>();
+  const seeds = [...vertices.values()];
+  const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+  for (const seed of seeds) {
+    const seedKey = `${seed.ix}:${seed.iy}`;
+    if (seen.has(seedKey)) continue;
+    // The body of water this stamp vertex belongs to.
+    const body: WaterVertex[] = [];
+    const stack = [seed];
+    seen.add(seedKey);
+    while (stack.length) {
+      const v = stack.pop() as WaterVertex;
+      body.push(v);
+      for (const [dx, dy] of NEIGHBOURS) {
+        const key = `${v.ix + dx}:${v.iy + dy}`;
+        const next = vertices.get(key);
+        if (next && !seen.has(key)) { seen.add(key); stack.push(next); }
+      }
+    }
+    // Its flood, breadth first from its whole edge, each new cell at the level
+    // of the water that reached it.
+    const added: string[] = [];
+    const queue = body.slice();
+    let overflow = false;
+    for (let head = 0; head < queue.length && !overflow; head++) {
+      const v = queue[head] as WaterVertex;
+      const level = v.weightedLevel / v.weight;
+      for (const [dx, dy] of NEIGHBOURS) {
+        const ix = v.ix + dx;
+        const iy = v.iy + dy;
+        const key = `${ix}:${iy}`;
+        if (vertices.has(key)) continue;
+        if (groundAt(ix * WATER_CELL, iy * WATER_CELL) >= level - TERRAIN_WATER_HEIGHT) continue;
+        const wet: WaterVertex = { ix, iy, weightedLevel: level, weight: 1 };
+        vertices.set(key, wet);
+        seen.add(key);
+        added.push(key);
+        queue.push(wet);
+        if (added.length > MAX_FLOOD_CELLS) { overflow = true; break; }
+      }
+    }
+    if (overflow) for (const key of added) vertices.delete(key);
+    else if (flooded) for (const key of added) { const v = vertices.get(key) as WaterVertex; flooded.set(key, v.weightedLevel / v.weight); }
+  }
+}
+
 /**
  * One triangulated surface for every overlapping river stamp.
  *
@@ -978,6 +1053,8 @@ interface WaterVertex {
 export function unifiedWaterGeometry(
   stamps: readonly WaterStamp[],
   terrainHeightAt: (x: number, y: number) => number,
+  /** Filled with the cells the water flooded into, and their level. */
+  flooded?: Map<string, number>,
 ): BufferGeometry {
   const geometry = new BufferGeometry();
   if (stamps.length === 0) return geometry;
@@ -1010,6 +1087,8 @@ export function unifiedWaterGeometry(
       }
     }
   }
+
+  floodBasins(vertices, terrainHeightAt, flooded);
 
   const levelAt = (ix: number, iy: number): number | null => {
     const vertex = vertices.get(`${ix}:${iy}`);

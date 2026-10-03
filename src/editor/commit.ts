@@ -12,7 +12,9 @@ import { type RoadDoc, fitRoadCurve } from '@world/doc';
 import { Network } from '@world/network';
 import type { NodeId, SegmentId } from '@world/ids';
 import { MIN_LINK_LENGTH } from '@world/approach';
-import { MAX_AUTHORED_GRADE } from '@world/elevation';
+import { MAX_AUTHORED_GRADE, buildRoadElevation } from '@world/elevation';
+import { TerrainIndex, sampleTerrainHeight } from '@world/terrain';
+import { m } from '@world/units';
 import { sameRoadSection } from '@world/roadSection';
 import { ROAD_TYPES } from '@world/roadTypes';
 import { roadStructure, type RoadStructure } from '@world/structures';
@@ -28,6 +30,15 @@ const MERGE_EPS = 2.6;
 const HEIGHT_JOIN_EPS = 0.75;
 /** Vertical room required before two crossing carriageways can pass independently. */
 const CROSSING_CLEARANCE = roadStructure('elevated').clearance;
+/**
+ * Cover over a road at grade past which it is bored as a tunnel instead of
+ * cut: eighteen metres, the sixty feet past which railway and road builders
+ * have found a tunnel cheaper than a cutting (thirty metres is about the
+ * deepest cutting built at all). A road dragged over a mountain was held to
+ * its grade and dug a slot eighty metres deep, and from the game's camera the
+ * road simply disappeared into it.
+ */
+const AUTO_TUNNEL_COVER = m(18);
 
 export interface DraftResult {
   readonly committed: boolean;
@@ -90,9 +101,43 @@ export function commitRoadPath(
     workNet.rebuild();
   }
   if (!committed) return { committed: false, reason: 'duplicate' };
+  if (boreDeepCuts(doc, work, workNet)) workNet.rebuild();
   doc.replaceWith(work);
   net.adopt(workNet);
   return { committed: true, heightLimited, finalHeightOffset: currentHeight };
+}
+
+/**
+ * Turns the roads just laid at grade into tunnels wherever their profile would
+ * run deeper than `AUTO_TUNNEL_COVER` under the land (see there). The whole
+ * segment takes the structure: the terrain shaper still opens a cutting where
+ * the cover is shallow and closes the hill over the bore where it is deep, and
+ * the portals stand where the cover crosses the threshold
+ * (`render/structures.ts`), so the road reads as a cutting, a portal, a bore
+ * and a portal - and only the roads this gesture made are touched.
+ */
+function boreDeepCuts(before: RoadDoc, work: RoadDoc, workNet: Network): boolean {
+  const fresh = [...work.segments.values()].filter((seg) => !before.segments.has(seg.id) && seg.structure === 'ground');
+  if (!fresh.length || !work.terrainStamps.length) return false;
+  const index = new TerrainIndex(work.terrainStamps, 0);
+  const ground = (x: number, y: number): number => sampleTerrainHeight(index, x, y);
+  const elevation = buildRoadElevation(workNet, ground);
+  let changed = false;
+  for (const seg of fresh) {
+    const ribbon = workNet.ribbons.get(seg.id);
+    if (!ribbon) continue;
+    const length = ribbon.full.length;
+    const steps = Math.max(2, Math.ceil(length / 8));
+    for (let i = 0; i <= steps; i++) {
+      const p = ribbon.full.sampleAt((i / steps) * length).p;
+      if (ground(p.x, p.y) - elevation.onSegment(seg.id, p.x, p.y) > AUTO_TUNNEL_COVER) {
+        work.setSegmentStructure(seg.id, 'tunnel');
+        changed = true;
+        break;
+      }
+    }
+  }
+  return changed;
 }
 
 /**

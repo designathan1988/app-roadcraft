@@ -32,9 +32,20 @@ describe('the load boundary', () => {
     ['a span from a pole to itself', { poles: [{ id: 1, x: 0, y: 0 }], poleSpans: [{ id: 1, a: 1, b: 1 }] }],
     ['a span to a missing pole', { poles: [{ id: 1, x: 0, y: 0 }], poleSpans: [{ id: 1, a: 1, b: 2 }] }],
     ['a flatten stamp levelling to a word', { terrain: [{ id: 1, x: 0, y: 0, radius: 80, strength: 4, mode: 'flatten', level: 'high' }] }],
-    ['a stamp wider than the brush can make', { terrain: [{ id: 1, x: 0, y: 0, radius: 1e6, strength: 4, mode: 'raise' }] }],
+    ['a stamp wider than the map', { terrain: [{ id: 1, x: 0, y: 0, radius: 1e6, strength: 4, mode: 'raise' }] }],
+    ['a stamp of a stroke with no proper id', { terrain: [{ id: 1, x: 0, y: 0, radius: 80, strength: 4, mode: 'raise', stroke: 'a' }] }],
   ])('refuses %s', (_name, patch) => {
     expect(isSerializedDoc({ ...base(), ...patch })).toBe(false);
+  });
+
+  it('accepts the stamps the brush and the default town lay', () => {
+    // The town is shaped by stamps up to 1 400 units wide and the brush now
+    // reaches 300: with the old 180 ceiling every such map was refused on
+    // reload and quarantined.
+    expect(isSerializedDoc({ ...base(), terrain: [
+      { id: 1, x: 0, y: 0, radius: 1_400, strength: 34, mode: 'raise' },
+      { id: 2, x: 0, y: 0, radius: 300, strength: 160, mode: 'raise', stroke: 3 },
+    ] })).toBe(true);
   });
 
   it('refuses ids past the range an allocator can count in', () => {

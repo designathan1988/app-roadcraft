@@ -279,7 +279,7 @@ let draftShift = { x: 0, y: 0 };
 let roadHeightEdited = false;
 let terrainMode: TerrainMode = 'raise';
 let terrainRadius = 80;
-let terrainStrength = 4;
+let terrainStrength = 24;
 let traffic = !savedSession?.settings.paused;
 let congestionOverlay = savedSession?.settings.congestionOverlay ?? false;
 sim.clock.paused = !traffic;
@@ -384,8 +384,10 @@ let terrainStroke: {
   level: number;
   /** Wall time of the last dab, for the rate limit. */
   applied: number;
+  /** The id its dabs carry, so they move the ground as one stroke (`TerrainStamp.stroke`). */
+  id: number;
 } | null = null;
-/** Drives the held-still repeat, so holding the button keeps digging. */
+/** Drives the held-still repeat of a flatten, so holding the button keeps levelling. */
 let terrainRepeat: ReturnType<typeof setInterval> | null = null;
 let pinch: { d0: number; zoom0: number; world: Vec2; angle: number } | null = null;
 const pointers = new Map<number, Vec2>();
@@ -820,6 +822,7 @@ function stampTerrain(at: Vec2, level: number): void {
     strength: terrainStrength,
     mode: terrainMode,
     ...(terrainMode === 'flatten' ? { level } : {}),
+    ...(terrainStroke && terrainMode !== 'flatten' ? { stroke: terrainStroke.id } : {}),
   });
 }
 
@@ -865,10 +868,17 @@ function paintTerrain(at: Vec2, force = false): void {
 /** Starts a stroke, capturing the level target and arming the held repeat. */
 function beginTerrainStroke(pointer: number, at: Vec2): void {
   history.record(doc);
-  terrainStroke = { pointer, last: at, at, level: sceneHeightAt(at), applied: 0 };
+  let id = 1;
+  for (const stamp of doc.terrainStamps) if (stamp.stroke !== undefined && stamp.stroke >= id) id = stamp.stroke + 1;
+  terrainStroke = { pointer, last: at, at, level: sceneHeightAt(at), applied: 0, id };
   paintTerrain(at, true);
   if (terrainRepeat !== null) clearInterval(terrainRepeat);
-  terrainRepeat = setInterval(() => {
+  terrainRepeat = null;
+  // Only a flatten works on by being held: it levels a little further with
+  // every dab. A raise, a lower or a river stroke moves the ground by its
+  // strength and no more however long it is held (its dabs are one stroke),
+  // so repeating them would only spend the map's dab budget.
+  if (terrainMode === 'flatten') terrainRepeat = setInterval(() => {
     const stroke = terrainStroke;
     if (!stroke) return;
     if (performance.now() - stroke.applied < terrainPaintInterval()) return;

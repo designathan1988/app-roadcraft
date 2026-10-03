@@ -217,3 +217,26 @@ describe('free road gesture', () => {
     expect(restored.segments.size).toBe(2);
   });
 });
+
+describe('a road laid over a mountain', () => {
+  const over = (peak: number) => {
+    const { doc, net } = empty();
+    // One stroke per 40 units of height, a 300-wide brush.
+    for (let k = 0; k < peak / 40; k++) doc.addTerrainStamp({ x: 0, y: 0, radius: 300, strength: 40, mode: 'raise', stroke: k + 1 });
+    net.rebuild();
+    const start = point(-450, 0), end = point(450, 0);
+    expect(commitRoadPath(doc, net, { kind: 'free', at: start.at }, { kind: 'free', at: end.at }, 1, [{ start, end, curve: null }]).committed).toBe(true);
+    return [...doc.segments.values()].map((seg) => seg.structure);
+  };
+
+  it('is bored as a tunnel where a cutting would be deeper than eighteen metres', () => {
+    // Held to its grade, the road ran 80 m under the summit of a 240-unit
+    // mountain in a slot cut to its own width, and vanished into it.
+    expect(over(240)).toContain('tunnel');
+  });
+
+  it('stays an open road over a hill a cutting can take', () => {
+    expect(over(40)).not.toContain('tunnel');
+  });
+});
+

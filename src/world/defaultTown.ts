@@ -7,7 +7,8 @@ import { Level, ROAD_TYPES, halfWidth, type RoadType } from './roadTypes';
 import type { TerrainMode, TerrainStamp } from './terrain';
 import { type BlueprintBody } from './buildings/blueprints';
 import { Model, mat } from './buildings/cityBuildings';
-import type { BuildingFunction, LotSurface } from './buildings/types';
+import type { Building, BuildingFunction, LotSurface } from './buildings/types';
+import { buildingBounds } from './buildings/geometry';
 import { type Box, type Edge, facingBody, inside, overlaps } from './sampleTown';
 import { courtyard, houses, park, perimeter, varied, type Placer } from './town';
 import { m } from './units';
@@ -285,10 +286,14 @@ function layStreets(doc: RoadDoc): Nodes {
   // the two southern ones carry on east to the works' road, and the northern
   // pair stop at the last street of the grid, where the town gives way to the
   // hillside.
+  // These two carry on to the works' road as well: without them the ground
+  // between the grid and the works was one 300 x 420 block, too deep for any
+  // frontage to reach its middle, and it stood empty.
   for (const y of [YS[1] as number, YS[3] as number]) {
     for (let i = 0; i + 1 < XS.length; i++) {
       nodes.run(point(XS[i] as number, y), point(XS[i + 1] as number, y), LOCAL);
     }
+    nodes.run(point(XS[6] as number, y), point(WORKS.west, y), LOCAL);
   }
   for (const y of [YS[0] as number, YS[4] as number]) {
     for (let i = 0; i + 1 < XS.length; i++) {
@@ -343,6 +348,23 @@ function lotOf(i: number, j: number): Box {
   const y0 = (YS[j] as number) + side(YS[j] as number);
   const y1 = (YS[j + 1] as number) - side(YS[j + 1] as number);
   return { x0, y0, x1, y1 };
+}
+
+/**
+ * The blocks between the grid's last street and the works' road, south to
+ * north. East of the grid the avenue is a plain street, so every side of
+ * these is a street's width but the avenue's.
+ */
+const BAND_YS = [YS[0], YS[1], AVENUE, YS[3], YS[4]] as const;
+function bandLot(j: number): Box {
+  return {
+    x0: (XS[XS.length - 1] as number) + LOCAL_OFF,
+    x1: WORKS.west - LOCAL_OFF,
+    // The avenue's side as wide as the avenue: its junction with the grid's
+    // last street is the avenue's plate, and reaches that far into the block.
+    y0: (BAND_YS[j] as number) + (BAND_YS[j] === AVENUE ? AVENUE_OFF : LOCAL_OFF),
+    y1: (BAND_YS[j + 1] as number) - (BAND_YS[j + 1] === AVENUE ? AVENUE_OFF : LOCAL_OFF),
+  };
 }
 
 /** What fronts the street round each block of the avenue's north side. */
@@ -477,6 +499,85 @@ function parkingBody(Wm: number, Dm: number, surface: LotSurface): BlueprintBody
 }
 
 /**
+ * A garden on a strip too narrow for a court: lawn, a line of trees down its
+ * length, shrubs between them. The side yard between two terraces, the green
+ * behind a row of shops.
+ */
+function garden(rng: Rng, Wm: number, Dm: number): BlueprintBody {
+  const model = new Model('square', 'commercial', 1);
+  paved(model, 0, 0, Wm, Dm, 'grass', 60);
+  const long = Wm >= Dm;
+  const length = long ? Wm : Dm;
+  const trees = Math.max(1, Math.min(14, Math.floor(length / 9)));
+  for (let k = 0; k < trees; k++) {
+    const t = ((k + 0.5) * length) / trees + (rng() - 0.5) * 3;
+    // A crown never wider than the strip, so no tree hangs over the street.
+    const short = long ? Dm : Wm;
+    const h = Math.min(5 + rng() * 5, (short - 1) / 0.6);
+    // The line wanders across the strip, as planted trees do.
+    const across = short / 2 + (rng() - 0.5) * Math.max(0, short - h * 0.6 - 1);
+    model.el('tree', long ? t : across, long ? across : t, 0, { w: h * 0.6, d: h * 0.6, h });
+  }
+  const shrubs = Math.min(12, Math.floor(length / 7));
+  for (let k = 0; k < shrubs; k++) {
+    const s = 1 + rng() * 0.8;
+    const t = 2 + rng() * (length - 4);
+    const across = 1.2 + rng() * Math.max(0.1, (long ? Dm : Wm) - 2.4);
+    model.el('shrub', long ? t : across, long ? across : t, 0, { w: s, d: s, h: s * 0.8, material: mat('wood', 0x48693a) });
+  }
+  return model.build();
+}
+
+/**
+ * The biggest empty rectangle left in `lot`, clear of every box in `placed`:
+ * the lot is laid on a 2 m grid, and the classic largest-rectangle-in-a-
+ * histogram sweep runs over it row by row. Null when nothing as big as
+ * `min` on both sides is left.
+ */
+function emptiest(lot: Box, placed: readonly Box[], min: number): Box | null {
+  const cell = m(2);
+  const nx = Math.floor((lot.x1 - lot.x0) / cell);
+  const ny = Math.floor((lot.y1 - lot.y0) / cell);
+  if (nx <= 0 || ny <= 0) return null;
+  const free = new Uint8Array(nx * ny).fill(1);
+  for (const o of placed) {
+    if (o.x1 <= lot.x0 || o.x0 >= lot.x1 || o.y1 <= lot.y0 || o.y0 >= lot.y1) continue;
+    const i0 = Math.max(0, Math.floor((o.x0 - lot.x0) / cell));
+    const i1 = Math.min(nx, Math.ceil((o.x1 - lot.x0) / cell));
+    const j0 = Math.max(0, Math.floor((o.y0 - lot.y0) / cell));
+    const j1 = Math.min(ny, Math.ceil((o.y1 - lot.y0) / cell));
+    for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) free[j * nx + i] = 0;
+  }
+  const minCells = Math.ceil(min / cell);
+  const height = new Int32Array(nx);
+  let best: { area: number; i0: number; i1: number; j0: number; j1: number } | null = null;
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) height[i] = free[j * nx + i] ? (height[i] as number) + 1 : 0;
+    const stack: number[] = [];
+    for (let i = 0; i <= nx; i++) {
+      const h = i < nx ? (height[i] as number) : 0;
+      while (stack.length && (height[stack[stack.length - 1] as number] as number) >= h) {
+        const top = stack.pop() as number;
+        const hh = height[top] as number;
+        const left = stack.length ? (stack[stack.length - 1] as number) + 1 : 0;
+        const w = i - left;
+        if (w >= minCells && hh >= minCells && (!best || w * hh > best.area)) {
+          best = { area: w * hh, i0: left, i1: i, j0: j - hh + 1, j1: j + 1 };
+        }
+      }
+      stack.push(i);
+    }
+  }
+  if (!best) return null;
+  return {
+    x0: lot.x0 + best.i0 * cell,
+    x1: lot.x0 + best.i1 * cell,
+    y0: lot.y0 + best.j0 * cell,
+    y1: lot.y0 + best.j1 * cell,
+  };
+}
+
+/**
  * The works: yards, warehouses and the factory, with their aprons fenced off
  * the street. One lot of the industrial estate, in its own frame: the caller
  * says where it stands and which way it faces.
@@ -533,18 +634,47 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
     placed,
     put(body, box) {
       doc.buildings.add(body);
-      placed.push(box);
+      // The whole of what it puts on the ground - its volumes AND its parts
+      // (the trees of a front garden, an awning, a fence): a lot laid in a gap
+      // against the volumes alone came down on a neighbour's trees.
+      const all = buildingBounds(body as Building);
+      placed.push({ x0: Math.min(box.x0, all.minX), y0: Math.min(box.y0, all.minY), x1: Math.max(box.x1, all.maxX), y1: Math.max(box.y1, all.maxY) });
       count++;
     },
   };
   /** An open block (a square, a park, a yard) laid on its lot, no front gap. */
-  const putOpen = (body: BlueprintBody, fn: BuildingFunction, lot: Box, inset = 0): void => {
+  const putOpen = (body: BlueprintBody, fn: BuildingFunction, lot: Box, inset = 0): boolean => {
     const x0 = lot.x0 + inset;
     const y0 = lot.y0 + inset;
     const edge: Edge = { start: { x: x0, y: y0 }, along: { x: 1, y: 0 }, inward: { x: 0, y: 1 }, length: lot.x1 - lot.x0 - inset * 2 };
     const f = facingBody(body, fn, edge, 0, 0);
-    if (!inside(f.box, lot)) return;
+    if (!inside(f.box, lot)) return false;
     into.put({ ...f.body, function: fn }, f.box);
+    return true;
+  };
+  /**
+   * What is left of a block once its frontage is built: every empty
+   * rectangle of 10 m or more, biggest first, becomes ground of the
+   * district's own kind - a court or a garden among homes, a car park behind
+   * shops, hard standing in the works. A block of a town has no unclaimed
+   * ground in it; a gap left by the frontage reads as a demolition site.
+   */
+  const fillGaps = (lot: Box, kind: 'homes' | 'shops' | 'works'): void => {
+    const refused: Box[] = [];
+    for (let k = 0; k < 24; k++) {
+      const gap = emptiest(lot, [...placed, ...refused], m(10));
+      if (!gap) return;
+      // Half a metre clear of the neighbours, so no two lots share an edge.
+      const box: Box = { x0: gap.x0 + m(0.5), y0: gap.y0 + m(0.5), x1: gap.x1 - m(0.5), y1: gap.y1 - m(0.5) };
+      const Wm = (box.x1 - box.x0) / m(1);
+      const Dm = (box.y1 - box.y0) / m(1);
+      const short = Math.min(Wm, Dm);
+      const body = kind === 'works' ? parkingBody(Wm, Dm, 'gravel')
+        : kind === 'shops' && short >= 14 ? parkingBody(Wm, Dm, 'paving')
+          : short >= 22 ? courtyard(rng, Wm, Dm)
+            : garden(rng, Wm, Dm);
+      if (!putOpen(body, 'square', box)) refused.push(gap);
+    }
   };
   /** The biggest room left in a block's middle, for a court or a garden. */
   const middle = (lot: Box, fn: (w: number, d: number) => BlueprintBody, fnName: BuildingFunction): void => {
@@ -561,6 +691,7 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
     const lot = lotOf(i, 2);
     perimeter(rng, lot, [...(NORTH_FRONT[i] as readonly BuildingFunction[])], FILL_SHOP, into);
     middle(lot, (w, d) => courtyard(rng, w, d), 'square');
+    fillGaps(lot, 'shops');
   }
   // The north-east block is the supermarket and its car park: a big shed is
   // not something to line up with the shops.
@@ -570,9 +701,12 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
     const edge: Edge = { start: { x: lot.x0 + 8, y: lot.y0 + 2 }, along: { x: 1, y: 0 }, inward: { x: 0, y: 1 }, length: lot.x1 - lot.x0 - 16 };
     const f = facingBody(body, 'supermarket', edge, 0, m(0.4));
     into.put({ ...f.body, function: 'supermarket' }, f.box);
-    // Parking in front of it, and the way in from the avenue.
-    const park = { x0: f.box.x0 + m(2), y0: f.box.y1 + m(2), x1: f.box.x1 - m(2), y1: lot.y1 - m(2) };
+    // Its car park beside it, on the avenue: the shed is nearly the block's
+    // whole depth, so the parking is to its side, not behind it (behind, it
+    // came out with a negative depth and the block was left half empty).
+    const park = { x0: f.box.x1 + m(2), y0: lot.y0, x1: lot.x1, y1: lot.y1 };
     putOpen(parkingBody((park.x1 - park.x0) / m(1), (park.y1 - park.y0) / m(1), 'paving'), 'square', park);
+    fillGaps(lot, 'shops');
   }
 
   // ---- the avenue's south side, with the market square in the middle
@@ -580,6 +714,7 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
     const lot = lotOf(i, 1);
     perimeter(rng, lot, [...(SOUTH_FRONT[i] as readonly BuildingFunction[])], FILL_SHOP, into);
     middle(lot, (w, d) => courtyard(rng, w, d), 'square');
+    fillGaps(lot, 'shops');
   }
   {
     // The square: the block between the avenue and the street behind it, from
@@ -615,11 +750,15 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
       putOpen(plaza(rng, (east - west) / m(1), (lot.y1 - lot.y0) / m(1)), 'square',
         { x0: west, y0: lot.y0, x1: east, y1: lot.y1 });
     }
+    // The church's yard and the city hall's garden: the ground either side of
+    // them, up to the streets.
+    fillGaps(lot, 'homes');
   }
   {
     const lot = lotOf(5, 1);
     perimeter(rng, lot, ['gym', 'shop', 'townhouse', 'apartments', 'police'], FILL_SHOP, into);
     middle(lot, (w, d) => courtyard(rng, w, d), 'square');
+    fillGaps(lot, 'shops');
   }
 
   // ---- the northern band: terraces, the school, the park, the library
@@ -627,6 +766,7 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
     const lot = lotOf(i, 3);
     perimeter(rng, lot, [...(TERRACE_FRONT[(i + 1) % TERRACE_FRONT.length] as readonly BuildingFunction[])], FILL_TERRACE, into);
     middle(lot, (w, d) => courtyard(rng, w, d), 'square');
+    fillGaps(lot, 'homes');
   }
   {
     // The school: its own campus against the avenue's back street.
@@ -634,6 +774,16 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
     const edge: Edge = { start: { x: lot.x0 + 2, y: lot.y0 + 4 }, along: { x: 1, y: 0 }, inward: { x: 0, y: 1 }, length: lot.x1 - lot.x0 - 4 };
     const f = facingBody(varied(rng, 'school') as BlueprintBody, 'school', edge, 0, m(0.4));
     if (inside(f.box, lot)) into.put({ ...f.body, function: 'school' }, f.box);
+    // The rest of the block is the street's terraces round the school's
+    // playing field: a campus in a town is a building with a street round it,
+    // not a building in a field.
+    perimeter(rng, lot, ['townhouse', 'apartments', 'townhouse', 'bakery', 'townhouse'], FILL_TERRACE, into);
+    const field = emptiest(lot, placed, m(30));
+    if (field) {
+      const box: Box = { x0: field.x0 + m(1), y0: field.y0 + m(1), x1: field.x1 - m(1), y1: field.y1 - m(1) };
+      putOpen(courtyard(rng, (box.x1 - box.x0) / m(1), (box.y1 - box.y0) / m(1)), 'square', box);
+    }
+    fillGaps(lot, 'homes');
   }
   {
     // The park: on the block behind the shops, with the pond and its walks.
@@ -648,7 +798,25 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
     houses(rng, lot, into);
     // The middle of the block: a garden, a court, a playground.
     if (i % 2 === 0) middle(lot, (w, d) => courtyard(rng, w, d), 'square');
+    fillGaps(lot, 'homes');
   }
+
+  // ---- the blocks between the grid and the works, south to north: the
+  // works' offices and trade counters by the lane, shops and flats on the
+  // avenue, terraces up the hill. The edge of a town grades into its works;
+  // it does not stop at a street.
+  const BAND: readonly { front: BuildingFunction[]; fill: readonly BuildingFunction[]; kind: 'homes' | 'shops' | 'works' }[] = [
+    { front: ['warehouse', 'office', 'shop', 'warehouse'], fill: ['office', 'shop'], kind: 'works' },
+    { front: ['office', 'gym', 'shop', 'restaurant', 'apartments'], fill: FILL_SHOP, kind: 'shops' },
+    { front: ['hotel', 'shop', 'bar', 'apartments', 'shop'], fill: FILL_SHOP, kind: 'shops' },
+    { front: ['apartments', 'townhouse', 'townhouse', 'clinic', 'townhouse'], fill: FILL_TERRACE, kind: 'homes' },
+  ];
+  BAND.forEach((band, j) => {
+    const lot = bandLot(j);
+    perimeter(rng, lot, [...band.front], band.fill, into);
+    middle(lot, (w, d) => courtyard(rng, w, d), 'square');
+    fillGaps(lot, band.kind);
+  });
 
   // ---- the works, east of the last street
   //
@@ -681,6 +849,7 @@ function occupy(doc: RoadDoc, stream: RngStream): number {
       const f = facingBody(station, 'gasStation', edge, 0, 0);
       if (inside(f.box, near)) into.put({ ...f.body, function: 'gasStation' }, f.box);
     }
+    fillGaps({ x0: west, y0: south, x1: east, y1: north }, 'works');
   }
 
   return count;
@@ -745,6 +914,21 @@ function dress(doc: RoadDoc): void {
     { x: park.x0 - 2, y: park.y1 + 2 },
     { x: park.x0 - 2, y: park.y0 - 2 },
   ]);
+}
+
+/**
+ * Every block the streets enclose, named: the grid's blocks, the band between
+ * the grid and the works, and the works. What the town must leave no part of
+ * empty (`tests/world/defaultTown.spec.ts`).
+ */
+export function townBlocks(): { name: string; box: Box }[] {
+  const out: { name: string; box: Box }[] = [];
+  for (let j = 0; j + 1 < YS.length; j++) {
+    for (let i = 0; i + 1 < XS.length; i++) out.push({ name: `block ${i},${j}`, box: lotOf(i, j) });
+  }
+  for (let j = 0; j + 1 < BAND_YS.length; j++) out.push({ name: `band ${j}`, box: bandLot(j) });
+  out.push({ name: 'works', box: { x0: WORKS.west + LOCAL_OFF, y0: WORKS.south + LOCAL_OFF, x1: WORKS.east - LOCAL_OFF, y1: WORKS.north - LOCAL_OFF } });
+  return out;
 }
 
 /** Builds the town on `doc`, which should be empty. Returns how many buildings it put up. */

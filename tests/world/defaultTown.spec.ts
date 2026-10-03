@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RoadDoc } from '@world/doc';
-import { buildDefaultTown } from '@world/defaultTown';
+import { buildDefaultTown, townBlocks } from '@world/defaultTown';
 import { footprintRects } from '@world/buildings/geometry';
 import { structuralProblem, validateBuilding } from '@world/buildings/validate';
 import { Network } from '@world/network';
@@ -35,6 +35,25 @@ describe('the default town', () => {
     for (const fn of ['shop', 'bank', 'hotel', 'cityHall', 'church', 'factory', 'warehouse',
       'supermarket', 'school', 'house', 'townhouse', 'apartments', 'gasStation', 'park', 'square']) {
       expect(fns.has(fn as never), fn).toBe(true);
+    }
+  });
+
+  it('leaves no block empty: every block the streets enclose is built on or laid out', () => {
+    // A 4-unit grid over each block; what a footprint (built or open) does not
+    // cover is the walks between buildings - never a whole empty plot. The
+    // blocks between the grid and the works stood at 0% before they were
+    // given their streets, the school block at 14%.
+    for (const block of townBlocks()) {
+      const { x0, y0, x1, y1 } = block.box;
+      let inside = 0;
+      let covered = 0;
+      for (let x = x0 + 2; x < x1; x += 4) {
+        for (let y = y0 + 2; y < y1; y += 4) {
+          inside++;
+          if (boxes.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1)) covered++;
+        }
+      }
+      expect(covered / inside, block.name).toBeGreaterThan(0.75);
     }
   });
 

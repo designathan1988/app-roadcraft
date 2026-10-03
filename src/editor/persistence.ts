@@ -445,6 +445,7 @@ export function isSerializedDoc(value: unknown): value is SerializedDoc {
       if (!isFiniteNumber(stamp.x) || !isFiniteNumber(stamp.y) ||
         !isFiniteNumber(stamp.radius) || stamp.radius <= 0 || stamp.radius > MAX_STAMP_RADIUS ||
         (stamp.level !== undefined && !isFiniteNumber(stamp.level)) ||
+        (stamp.stroke !== undefined && !isId(stamp.stroke)) ||
         !isFiniteNumber(stamp.strength) || stamp.strength < 0 ||
         !isTerrainMode(stamp.mode)) return false;
       terrainIds.add(stamp.id);
@@ -507,8 +508,13 @@ function isFiniteNumber(value: unknown): value is number {
  * (2^53 + 1 === 2^53) and every new node overwrites the last one.
  */
 const MAX_ID = 2 ** 31;
-/** The terrain brush's own ceiling (the Radius slider's max). */
-const MAX_STAMP_RADIUS = 180;
+/**
+ * The widest stamp a map may hold: the map itself (4 800 units across). It was
+ * 180, the Radius slider's old maximum - the slider now reaches 300 and the
+ * town the game opens on is shaped by stamps up to 1 400 wide, so every map
+ * holding either was refused on reload and put in quarantine.
+ */
+const MAX_STAMP_RADIUS = 4_800;
 
 function isId(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) > 0 && (value as number) <= MAX_ID;

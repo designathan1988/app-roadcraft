@@ -20,6 +20,20 @@ await page.addInitScript(() => { window.confirm = () => true; try { localStorage
 await page.goto(base, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => Boolean(window.__roadcraft), null, { timeout: 120_000 });
 await page.waitForTimeout(1500);
+// On an empty map (the default), so the brush is judged on its own and not
+// under the town; --town keeps the town.
+if (!process.argv.includes('--town')) {
+  await page.evaluate(() => {
+    const R = window.__roadcraft;
+    const data = R.doc.toJSON();
+    for (const key of Object.keys(data)) if (Array.isArray(data[key])) data[key] = [];
+    if (data.buildings && typeof data.buildings === 'object' && !Array.isArray(data.buildings)) {
+      for (const key of Object.keys(data.buildings)) if (Array.isArray(data.buildings[key])) data.buildings[key] = [];
+    }
+    R.loadDoc(data);
+  });
+  await page.waitForTimeout(1500);
+}
 
 const centre = { x: 800, y: 470 };
 const look = async (x, y, zoom) => {
