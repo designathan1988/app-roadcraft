@@ -1,0 +1,12 @@
+{
+  "shortRoad": {
+    "warm": 174.1,
+    "cleared": 346.3,
+    "speedup": "50%"
+  },
+  "acrossMap": {
+    "warm": 275.7,
+    "cleared": 550.9,
+    "speedup": "50%"
+  }
+}
