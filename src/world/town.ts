@@ -242,7 +242,7 @@ export function house(rng: Rng, W: number, D: number): BlueprintBody {
 // ---------------------------------------------------------------- variety
 
 /** A catalogue model made its own: other walls and roof, a storey more or less. */
-function varied(rng: Rng, fn: BuildingFunction): BlueprintBody | null {
+export function varied(rng: Rng, fn: BuildingFunction): BlueprintBody | null {
   const model = cityBuilding(fn);
   if (!model) return null;
   const body = JSON.parse(JSON.stringify(model.body)) as BlueprintBody;
@@ -295,13 +295,13 @@ const HIGH_STREET: readonly (readonly BuildingFunction[])[] = [
 const FILL_TERRACE: readonly BuildingFunction[] = ['townhouse', 'shop'];
 const FILL_CENTRE: readonly BuildingFunction[] = ['shop', 'townhouse'];
 
-interface Placer {
+export interface Placer {
   readonly placed: Box[];
   put(body: Omit<Building, 'id'>, box: Box): void;
 }
 
 /** Fronts all round `lot`, from `wanted` in order, then the gaps closed with `fillers`. */
-function perimeter(rng: Rng, lot: Box, wanted: BuildingFunction[], fillers: readonly BuildingFunction[], into: Placer): void {
+export function perimeter(rng: Rng, lot: Box, wanted: BuildingFunction[], fillers: readonly BuildingFunction[], into: Placer): void {
   const w = lot.x1 - lot.x0, d = lot.y1 - lot.y0;
   const edges: Edge[] = [
     { start: { x: lot.x0, y: lot.y0 }, along: { x: 1, y: 0 }, inward: { x: 0, y: 1 }, length: w },
@@ -335,7 +335,7 @@ function perimeter(rng: Rng, lot: Box, wanted: BuildingFunction[], fillers: read
 }
 
 /** A block of houses: two rows back to back, each house on its own plot. */
-function houses(rng: Rng, lot: Box, into: Placer): void {
+export function houses(rng: Rng, lot: Box, into: Placer): void {
   const depth = (lot.y1 - lot.y0) / 2;
   const rows: Edge[] = [
     { start: { x: lot.x0, y: lot.y0 }, along: { x: 1, y: 0 }, inward: { x: 0, y: 1 }, length: lot.x1 - lot.x0 },
@@ -365,7 +365,7 @@ function houses(rng: Rng, lot: Box, into: Placer): void {
  * the water, flowers and shrubs. (A building has at most 24 blocks and 64
  * parts: the plan is kept to that.)
  */
-function square(rng: Rng, Wm: number, Dm: number): BlueprintBody {
+export function square(rng: Rng, Wm: number, Dm: number): BlueprintBody {
   const model = new Model('square', 'commercial', 3);
   const arm = Math.min(18, Math.max(12, Math.min(Wm, Dm) * 0.3));
   const pond: Rect = { x: Wm / 2 - arm / 2 + 3, y: Dm / 2 - arm / 2 + 3, w: arm - 6, d: arm - 6 };
@@ -406,7 +406,7 @@ function square(rng: Rng, Wm: number, Dm: number): BlueprintBody {
 }
 
 /** A park: lawn, a pond, paths across it, trees in groups, shrubs, benches, a playground corner. */
-function park(rng: Rng, Wm: number, Dm: number): BlueprintBody {
+export function park(rng: Rng, Wm: number, Dm: number): BlueprintBody {
   const model = new Model('park', 'commercial', 2);
   const pond: Rect = { x: Wm * between(rng, 0.45, 0.55), y: Dm * between(rng, 0.25, 0.35), w: Math.min(26, Wm * 0.3), d: Math.min(16, Dm * 0.3) };
   const pathW = 2.4;
@@ -444,7 +444,7 @@ function park(rng: Rng, Wm: number, Dm: number): BlueprintBody {
  * The garden inside a block of terraces: lawn round a gravel walk, trees,
  * shrubs, flower beds and benches; in a big one, a games court.
  */
-function courtyard(rng: Rng, Wm: number, Dm: number): BlueprintBody {
+export function courtyard(rng: Rng, Wm: number, Dm: number): BlueprintBody {
   const model = new Model('square', 'commercial', 1);
   const walk = 2.2;
   const inner: Rect = { x: 4, y: 4, w: Wm - 8, d: Dm - 8 };

@@ -1,3 +1,4 @@
+/* global window, document, localStorage, performance */
 // The default town, photographed and measured: the map the game opens on,
 // built through its own module (`src/world/defaultTown.ts`) inside the running
 // app, from a list of cameras - the overview, the avenue, the square, each
