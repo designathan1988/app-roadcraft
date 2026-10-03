@@ -1,0 +1,25 @@
+{
+  "msPerWalkFrame": 963.9,
+  "top": [
+    "26.5% overlap @conflictPoints.ts:432",
+    "16.3% run @regionIndex.ts:292",
+    "16.0% pairZones @conflictPoints.ts:456",
+    "5.3% segSeg @intersect.ts:33",
+    "5.2% winding @regionIndex.ts:189",
+    "4.7% firstCrossing @conflictPoints.ts:559",
+    "2.9% (garbage collector) @:0",
+    "1.8% build @conflictPoints.ts:129",
+    "1.7% overlap @turnPaths.ts:156",
+    "1.6% rebuildVehicleTopology @world.ts:316",
+    "1.6% cachedPair @conflictPoints.ts:357",
+    "1.1% add @conflictPoints.ts:216",
+    "1.0% (program) @:0",
+    "0.8% sampleAt @polyline.ts:109",
+    "0.7% sweep @turnPaths.ts:189",
+    "0.7% (anon) @streetFurniture.ts:193",
+    "0.5% build @sidewalk.ts:92",
+    "0.5% cornerPath @sidewalk.ts:822",
+    "0.4% isSimple @polygon.ts:17",
+    "0.4% build @crossingSpans.ts:51"
+  ]
+}
