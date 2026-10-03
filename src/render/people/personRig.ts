@@ -201,8 +201,6 @@ export function createPersonRig(input: PersonRigInput): PersonRig {
     return out;
   };
   const posed = poseBody(metres);
-  {
-  }
   const boneHead = meta.bones.map((b, i) => {
     const parent = b.parent === null ? undefined : index.get(b.parent);
     return heads[i]!.clone().applyMatrix4(parent === undefined ? correction[i]! : correction[parent]!);

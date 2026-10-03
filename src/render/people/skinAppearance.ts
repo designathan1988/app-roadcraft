@@ -42,7 +42,6 @@ export async function loadSkinAppearance(person: PersonSpec): Promise<SkinAppear
     bright + (desired.r / Math.max(0.01, average.r) - bright) * hue,
     bright + (desired.g / Math.max(0.01, average.g) - bright) * hue,
     bright + (desired.b / Math.max(0.01, average.b) - bright) * hue);
-  let hairTexture: Texture | undefined;
   const garments = await Promise.all(texturedGarments(person.look).map(async name => {
     if (!name || name === 'none') return null;
     const item = await loadProxyItem(name);
@@ -60,7 +59,7 @@ export async function loadSkinAppearance(person: PersonSpec): Promise<SkinAppear
     map.flipY = false;
     return map;
   };
-  hairTexture = await cardTexture(person.look.hairCut);
+  const hairTexture = await cardTexture(person.look.hairCut);
   const browTexture = await cardTexture(person.look.brows);
   const lashTexture = await cardTexture(person.look.lashes);
   const beardName = (person.look.extras ?? []).find((e) => /beard|moustache|goatee|stubble|sideburn/i.test(e));
