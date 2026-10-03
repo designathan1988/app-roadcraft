@@ -43,10 +43,42 @@ export function peopleCookHash(root: string): string {
   return hash.digest('hex').slice(0, 16);
 }
 
+/**
+ * Refuses to build a game whose people are not the ones this code makes.
+ *
+ * The bodies are read back only under the fingerprint of the code that builds
+ * them, and a body that does not match is built during play instead - 21 to
+ * 92 ms a person, which is the stutter the player feels and nobody is told
+ * about. `cooked/` is not committed (it is regenerated), so an edit to any
+ * people source without a fresh cook is the ordinary way to get here.
+ *
+ * Both cases keep the game running - the runtime fallback is real and stays -
+ * but neither is allowed through a release build in silence: this throws, the
+ * build stops, and the message says what to run.
+ */
+function checkCooked(root: string, hash: string): void {
+  const manifest = path.join(root, DIR, 'people', 'manifest.json');
+  const fix = "Run `npm run cook:people` (a development server must be up: npx vite --port 4196 --strictPort --host 127.0.0.1) and build again.";
+  if (!fs.existsSync(manifest)) {
+    throw new Error(
+      `No cooked people in ${DIR}/people: this build would build every person during play (21-92 ms each). ${fix}`,
+    );
+  }
+  const stamp = (JSON.parse(fs.readFileSync(manifest, 'utf8')) as { hash?: string }).hash;
+  if (stamp !== hash) {
+    throw new Error(
+      `The cooked people are stale: cooked under ${stamp ?? '(no hash)'}, this code fingerprints ${hash}. `
+      + `The people sources or assets changed without a fresh cook. ${fix}`,
+    );
+  }
+}
+
 export function cookPlugin(): Plugin {
   let root = process.cwd();
   let outDir = 'dist';
   let hash = '';
+  let building = false;
+  let checked = false;
   return {
     name: 'roadcraft-cook',
     config(config) {
@@ -54,8 +86,17 @@ export function cookPlugin(): Plugin {
       hash = peopleCookHash(root);
       return { define: { __PEOPLE_COOK_HASH__: JSON.stringify(hash) } };
     },
+    // A release build refuses stale people; a dev server must still start,
+    // because cooking them needs one running. There the console says it
+    // instead (`cookedPerson.ts`), and the game builds each body meanwhile.
+    buildStart() {
+      if (!building || checked) return;
+      checked = true;
+      checkCooked(root, hash);
+    },
     configResolved(resolved) {
       outDir = path.resolve(resolved.root, resolved.build.outDir);
+      building = resolved.command === 'build';
     },
     configureServer(server) {
       // A change to how people are built changes the fingerprint: the server

@@ -236,9 +236,18 @@ function cookedIds(): Promise<ReadonlySet<string> | null> {
     if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('nocook')) return null;
     try {
       const response = await fetch('/cooked/people/manifest.json', { cache: 'no-cache' });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        console.warn(`No cooked people for this build (fingerprint ${COOK_HASH}): every person is built during play, which stutters. Run "npm run cook:people".`);
+        return null;
+      }
       const m = (await response.json()) as { hash?: string; ids?: string[] };
-      return m.hash === COOK_HASH && Array.isArray(m.ids) ? new Set(m.ids) : null;
+      if (m.hash !== COOK_HASH) {
+        // Named rather than silent: a stale cook is how a rebuild turned into
+        // a stutter nobody could explain.
+        console.warn(`The cooked people are stale: they were cooked under ${m.hash ?? '(no hash)'}, this build fingerprints ${COOK_HASH}. Every person is built during play until "npm run cook:people" is run again.`);
+        return null;
+      }
+      return Array.isArray(m.ids) ? new Set(m.ids) : null;
     } catch {
       return null;
     }
